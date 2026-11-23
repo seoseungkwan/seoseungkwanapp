@@ -123,6 +123,14 @@ export type CollectDeps = {
   now: string
   /** 의원 과목 고르기(location_settings.dept_rule) — 없으면 처음 값(DEFAULT_DEPT_RULE) */
   deptRule?: DeptRule
+  /**
+   * 승하차 한 달 저장(location_flow_cache, design.md 4절, AC-7908.5, TASK-97). 같은 시군구·달을 전에 받았으면 정류장별 이용량을 부르지 않는다.
+   * 없으면 늘 받는다. 읽기·저장이 던지거나 저장한 줄이 비었으면 없는 것으로 본다
+   */
+  flowCache?: {
+    read: (sgg: string, ym: string) => Promise<{ asOf: string; rows: FlowVolumeRow[] } | null>
+    save: (sgg: string, ym: string, v: { asOf: string; rows: FlowVolumeRow[] }) => Promise<void>
+  }
   onProgress?: (p: CollectProgress) => void
 }
 
@@ -838,8 +846,30 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
     return replies.flatMap((x) => (x.ok ? x.v : []))
   })
 
-  // 승하차 한 달: 묶음 part 0 → 답의 parts만큼 1…parts−1을 더 불러 정류장(역) ID마다 더한다(묶음 사이에 나뉜 줄도)
+  // 승하차 저장(AC-7908.5): 저장한 줄이 있으면 그것, 던짐·빈 줄·모양 틀림은 없는 것으로
+  const keptFlow = async (sgg: string, ym: string): Promise<{ asOf: string; rows: FlowVolumeRow[] } | null> => {
+    if (!deps.flowCache) return null
+    try {
+      const kept = await deps.flowCache.read(sgg, ym)
+      return isObj(kept) && typeof kept.asOf === 'string' && Array.isArray(kept.rows) && kept.rows.length > 0 ? kept : null
+    } catch {
+      return null
+    }
+  }
+  const keepFlow = async (sgg: string, ym: string, v: { asOf: string; rows: FlowVolumeRow[] }) => {
+    if (!deps.flowCache || v.rows.length === 0) return
+    try {
+      await deps.flowCache.save(sgg, ym, v)
+    } catch {
+      // 저장 실패는 이번 값과 상관없다
+    }
+  }
+
+  // 승하차 한 달: 저장한 줄이 있으면 그것(부르지 않음). 없으면 묶음 part 0 → 답의 parts만큼 1…parts−1을 더 불러
+  // 정류장(역) ID마다 더하고(묶음 사이에 나뉜 줄도) 줄이 있으면 저장한다
   const volumeOf = async (home: Sgg, ym: string): Promise<Res<FlowVolume>> => {
+    const kept = await keptFlow(home.code5, ym)
+    if (kept) return got({ ym, rows: kept.rows }, kept.asOf)
     const q = { kind: 'flow-volume', sido: home.sido.code2, sgg: home.code5, ym } as const
     const first = await b.ask({ ...q, part: 0 }, READ.volume)
     if (!first.ok) return first
@@ -853,7 +883,10 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
         byId.set(row.id, seen ? { ...seen, board: seen.board + row.board, alight: seen.alight + row.alight, days: Math.max(seen.days, row.days) } : { ...row })
       }
     }
-    return got({ ym, rows: [...byId.values()] }, latest([first, ...rest].map((x) => (x.ok ? x.asOf : ''))))
+    const rows = [...byId.values()]
+    const asOf = latest([first, ...rest].map((x) => (x.ok ? x.asOf : '')))
+    await keepFlow(home.code5, ym, { asOf, rows })
+    return got({ ym, rows }, asOf)
   }
 
   const fields: { [K in SnapshotKey]: () => Promise<Res<SnapshotValue<K>>> } = {

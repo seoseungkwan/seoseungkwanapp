@@ -24,11 +24,13 @@ import {
   markCandidateEventsSeen,
   markEventsSeen,
   readDeptRule,
+  readFlowCache,
   readPhoto,
   removePhotos,
   resetDeptRule,
   resetScoreRule,
   saveDeptRule,
+  saveFlowCache,
   saveHomeEswt,
   saveScoreRule,
   setWatchChecked,
@@ -1423,5 +1425,113 @@ describe('실패 — 오류 번호만, Supabase 글·입력값 없음', () => {
     await expectFail(addNote(wrong.client, CAND, { day: '2026-11-22', body: '메모' }), 'E-LOC-SAVE-FAILED')
     await expectFail(saveScoreRule(wrong.client, rule), 'E-LOC-SAVE-FAILED')
     await expectFail(saveDeptRule(wrong.client, DEFAULT_DEPT_RULE), 'E-LOC-SAVE-FAILED')
+  })
+})
+
+// 승하차 저장(location_flow_cache, design.md 4·7절, TASK-97): 같은 병원·시군구·달은 한 번 받은 줄을 다음 모으기가 쓴다
+describe('readFlowCache · saveFlowCache — 같은 구 승하차는 한 번만 받기(AC-7908.5)', () => {
+  const FLOW_ROWS = [
+    { id: '4100167', mode: 'bus', board: 12_000, alight: 11_500, days: 30 },
+    { id: 'R1', mode: 'rail', board: 90_000, alight: 88_000, days: 31 },
+  ] as const
+  const KEPT = { asOf: '2026-09-30', rows: FLOW_ROWS.map((r) => ({ ...r })) }
+  const flowAnswer = (answer: () => Reply) => (call: Call) => (call.kind === 'table' && call.table === 'location_flow_cache' ? answer() : okReply(call))
+
+  it('AC-7908.5: 시군구·달 한 줄을 as_of·rows만 골라 읽어 { asOf, rows }로 돌려준다', async () => {
+    const { client, calls } = fakeClient(flowAnswer(() => ({ data: { as_of: '2026-09-30', rows: FLOW_ROWS } })))
+    expect(await readFlowCache(client, '41131', '2026-09')).toEqual(KEPT)
+    expect(onlyTable(calls)).toMatchObject({
+      table: 'location_flow_cache',
+      op: 'select',
+      columns: 'as_of, rows',
+      single: true,
+      filters: [
+        ['eq', 'sgg', '41131'],
+        ['eq', 'ym', '2026-09'],
+      ],
+    })
+  })
+
+  it('AC-7908.5: 줄 없음·읽기 오류·던짐이면 null이다(모으기가 받아 온다)', async () => {
+    const answers: (() => Reply)[] = [
+      () => ({ data: null }),
+      () => ({ error: RAW_ERROR }),
+      () => {
+        throw new Error(SECRET)
+      },
+    ]
+    for (const answer of answers) expect(await readFlowCache(fakeClient(flowAnswer(answer)).client, '41131', '2026-09')).toBeNull()
+  })
+
+  it('AC-7908.5: 읽은 줄 모양이 틀리면(빈 rows·배열 아님·날짜 아님·틀린 줄 하나) null이다', async () => {
+    const row = FLOW_ROWS[0]
+    const bad: unknown[] = [
+      { as_of: '2026-09-30', rows: [] },
+      { as_of: '2026-09-30', rows: { id: 'R1' } },
+      { as_of: '2026-9-30', rows: FLOW_ROWS },
+      { as_of: null, rows: FLOW_ROWS },
+      ...[
+        { ...row, mode: 'tram' },
+        { ...row, id: '' },
+        { ...row, id: 'a b' },
+        { ...row, board: -1 },
+        { ...row, alight: 1.5 },
+        { ...row, board: '12000' },
+        { ...row, days: 0 },
+        { ...row, days: 32 },
+        null,
+      ].map((wrong) => ({ as_of: '2026-09-30', rows: [FLOW_ROWS[1], wrong] })),
+    ]
+    for (const data of bad) expect(await readFlowCache(fakeClient(flowAnswer(() => ({ data }))).client, '41131', '2026-09'), JSON.stringify(data)).toBeNull()
+  })
+
+  it('AC-7908.5: 시군구·달 모양이 틀리면 읽지 않고 null이다', async () => {
+    for (const [sgg, ym] of [
+      ['4113', '2026-09'],
+      ['41131', '2026-13'],
+      ['41131', '202609'],
+    ]) {
+      const { client, calls } = fakeClient()
+      expect(await readFlowCache(client, sgg, ym)).toBeNull()
+      expect(calls).toEqual([])
+    }
+  })
+
+  it('AC-7908.5: 저장은 칸 넷(sgg·ym·as_of·rows)만 넣고 줄마다 다섯 칸만 새로 만든다(hospital_id는 DB가)', async () => {
+    const { client, calls } = fakeClient()
+    await saveFlowCache(client, '41131', '2026-09', { asOf: '2026-09-30', rows: [{ ...FLOW_ROWS[0], extra: SECRET } as never, FLOW_ROWS[1]] })
+    const call = onlyTable(calls)
+    expect(call).toMatchObject({ table: 'location_flow_cache', op: 'insert' })
+    expect(call.body).toEqual({ sgg: '41131', ym: '2026-09', as_of: '2026-09-30', rows: FLOW_ROWS })
+    expect(Object.keys(call.body as object)).toEqual(['sgg', 'ym', 'as_of', 'rows'])
+    expect(JSON.stringify(call.body)).not.toContain(SECRET)
+  })
+
+  it('AC-7908.5: 빈 줄·틀린 값·jsonb 1,000,000바이트 넘음은 보내지 않는다', async () => {
+    const many = Array.from({ length: 20_000 }, (_, i) => ({ id: `B${i}`, mode: 'bus' as const, board: 100_000, alight: 100_000, days: 30 }))
+    const wrong: [string, string, { asOf: string; rows: unknown[] }][] = [
+      ['41131', '2026-09', { asOf: '2026-09-30', rows: [] }],
+      ['4113', '2026-09', KEPT],
+      ['41131', '2026-13', KEPT],
+      ['41131', '2026-09', { asOf: '2026-09', rows: KEPT.rows }],
+      ['41131', '2026-09', { asOf: '2026-09-30', rows: [{ ...FLOW_ROWS[0], mode: 'tram' }] }],
+      ['41131', '2026-09', { asOf: '2026-09-30', rows: many }],
+    ]
+    for (const [sgg, ym, value] of wrong) {
+      const { client, calls } = fakeClient()
+      await saveFlowCache(client, sgg, ym, value as never)
+      expect(calls, `${sgg} ${ym}`).toEqual([])
+    }
+  })
+
+  it('AC-7908.5: 넣기 오류(같은 줄 있음 23505 포함)·던짐은 삼킨다(모으기는 그대로)', async () => {
+    const answers: (() => Reply)[] = [
+      () => ({ error: { ...RAW_ERROR, code: '23505' } }),
+      () => ({ error: RAW_ERROR }),
+      () => {
+        throw new Error(SECRET)
+      },
+    ]
+    for (const answer of answers) await expect(saveFlowCache(fakeClient(flowAnswer(answer)).client, '41131', '2026-09', KEPT)).resolves.toBeUndefined()
   })
 })

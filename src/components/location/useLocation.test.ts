@@ -17,9 +17,11 @@ import {
   loadLocation,
   LocationStorageError,
   markCandidateEventsSeen,
+  readFlowCache,
   readPhoto,
   resetDeptRule,
   saveDeptRule,
+  saveFlowCache,
   saveScoreRule,
   updateCandidate,
   updateListing,
@@ -61,6 +63,8 @@ vi.mock('@/lib/storage/location', async (importOriginal) => {
     deletePhoto: vi.fn(),
     readPhoto: vi.fn(),
     removePhotos: vi.fn(),
+    readFlowCache: vi.fn(),
+    saveFlowCache: vi.fn(),
     markCandidateEventsSeen: vi.fn(),
     markEventsSeen: vi.fn(),
   }
@@ -722,5 +726,26 @@ describe('다시 받기 겹치지 않기 (AC-7917.4)', () => {
     expect(result.current.refreshing).toEqual({})
     await act(async () => result.current.refresh(CAND_ID))
     expect(collect).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('승하차 저장 잇기 (AC-7908.5, TASK-97)', () => {
+  const DRAFT = { name: '예시빌딩 2층', addressNote: '예시구 가람동', lat: 37.501, lng: 127.002, radiusM: 700 as const, floorLabel: '', memo: '', listingId: null }
+
+  it('AC-7908.5: deps.flowCache는 readFlowCache·saveFlowCache(같은 클라이언트)로 승하차 한 달을 읽고 저장한다', async () => {
+    vi.mocked(addCandidate).mockImplementation(async (_c, f) => savedCandidate({ ...f, snapshot: f.snapshot ?? null }))
+    const kept = { asOf: '2026-09-30', rows: [{ id: 'B1', mode: 'bus' as const, board: 1, alight: 1, days: 30 }] }
+    vi.mocked(readFlowCache).mockResolvedValue(kept)
+    vi.mocked(saveFlowCache).mockResolvedValue()
+    const { result } = await ready()
+    await act(async () => {
+      await result.current.addCandidate(DRAFT)
+    })
+    const [, , deps] = vi.mocked(collect).mock.calls[0]!
+    expect(deps.flowCache).toBeDefined()
+    expect(await deps.flowCache!.read('41131', '2026-09')).toEqual(kept)
+    expect(readFlowCache).toHaveBeenCalledWith(CLIENT, '41131', '2026-09')
+    await deps.flowCache!.save('41131', '2026-09', kept)
+    expect(saveFlowCache).toHaveBeenCalledWith(CLIENT, '41131', '2026-09', kept)
   })
 })

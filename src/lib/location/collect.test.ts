@@ -1399,3 +1399,98 @@ describe('AC-7903.3 심평원은 실패하면 두 번 더(TASK-94)', () => {
     }
   })
 })
+
+// 같은 구 승하차는 한 번만 받기(design.md 4절, TASK-97 — 2026-11-23 다시 받기를 거듭해 정류장별 이용량 하루 1,000번을 다 씀)
+describe('AC-7908.5 같은 구 승하차는 한 번만 받기(TASK-97)', () => {
+  type Kept = { asOf: string; rows: { id: string; mode: 'bus' | 'rail'; board: number; alight: number; days: number }[] }
+  // 기본 세상의 2026-09 묶음 셋을 정류장 ID마다 이은 줄(처음 나온 차례)
+  const KEPT: Kept = {
+    asOf: '2026-09-30',
+    rows: [
+      { id: 'B1', mode: 'bus', board: 3000, alight: 3000, days: 30 },
+      { id: 'R1', mode: 'rail', board: 9000, alight: 9000, days: 30 },
+      { id: 'B9', mode: 'bus', board: 1, alight: 1, days: 1 },
+    ],
+  }
+  function cache(read: (sgg: string, ym: string) => Kept | null) {
+    const reads: [string, string][] = []
+    const saved: [string, string, Kept][] = []
+    const flowCache = {
+      read: async (sgg: string, ym: string) => {
+        reads.push([sgg, ym])
+        return read(sgg, ym)
+      },
+      save: async (sgg: string, ym: string, v: Kept) => {
+        saved.push([sgg, ym, v])
+      },
+    }
+    return { flowCache, reads, saved }
+  }
+
+  it('AC-7908.5: 저장한 달이 있으면 그 달 정류장별 이용량은 부르지 않고 저장한 줄·기준 날짜로 잇는다', async () => {
+    const c = cache((_sgg, ym) => (ym === '2026-10' ? { asOf: '2026-10-31', rows: KEPT.rows } : null))
+    const { deps, askedOf } = world({ deps: { flowCache: c.flowCache } })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('flow-volume')).toEqual([])
+    expect(vOf(s, 'flow')).toMatchObject({ ym: '2026-10', total: 800, unmatched: 1 })
+    expect(s.flow.ok && s.flow.asOf).toBe('2026-10-31')
+    expect(askedOf('flow-bus')).toEqual([{ kind: 'flow-bus', sgg: '41111', ym: '2026-10' }])
+    expect(c.reads).toEqual([['41111', '2026-10']])
+    expect(c.saved).toEqual([])
+  })
+
+  it('AC-7908.5: 저장이 없으면 받아서 줄이 있는 달만(묶음을 다 이은 줄로) 저장하고, 빈 달은 저장하지 않는다', async () => {
+    const c = cache(() => null)
+    const { deps, askedOf } = world({ deps: { flowCache: c.flowCache } })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('flow-volume').map((q) => [q.ym, q.part])).toEqual([
+      ['2026-10', 0],
+      ['2026-09', 0],
+      ['2026-09', 1],
+      ['2026-09', 2],
+    ])
+    expect(c.reads).toEqual([
+      ['41111', '2026-10'],
+      ['41111', '2026-09'],
+    ])
+    expect(c.saved).toEqual([['41111', '2026-09', KEPT]])
+    expect(vOf(s, 'flow')).toMatchObject({ ym: '2026-09', total: 800 })
+  })
+
+  it('AC-7908.5: 저장 읽기·쓰기가 던지거나 저장한 줄이 비었으면 없는 것으로 보고 그대로 받는다', async () => {
+    const broken = [
+      {
+        read: async () => {
+          throw new Error('read')
+        },
+        save: async () => {
+          throw new Error('save')
+        },
+      },
+      {
+        read: () => {
+          throw new Error('sync')
+        },
+        save: () => {
+          throw new Error('sync')
+        },
+      },
+      { read: async () => ({ asOf: '2026-10-31', rows: [] }), save: async () => undefined },
+      { read: async () => undefined as never, save: async () => undefined },
+    ]
+    for (const flowCache of broken) {
+      const { deps, askedOf } = world({ deps: { flowCache } })
+      const s = await collect(AT, R, deps)
+      expect(vOf(s, 'flow')).toMatchObject({ ym: '2026-09', total: 800 })
+      expect(askedOf('flow-volume')).toHaveLength(4)
+    }
+  })
+
+  it('AC-7908.5: 받기가 실패하면 저장하지 않는다', async () => {
+    const c = cache(() => null)
+    const { deps } = world({ deps: { flowCache: c.flowCache }, handlers: { 'flow-volume': () => FAIL } })
+    const s = await collect(AT, R, deps)
+    expect(whyOf(s, 'flow')).toBe('failed')
+    expect(c.saved).toEqual([])
+  })
+})

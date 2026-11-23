@@ -28,9 +28,11 @@ import {
   deletePhoto as deletePhotoRow,
   loadLocation,
   markCandidateEventsSeen,
+  readFlowCache,
   readPhoto as readPhotoFile,
   resetDeptRule as resetDeptRuleRow,
   saveDeptRule as saveDeptRuleRow,
+  saveFlowCache,
   saveHomeEswt as saveHomeEswtRow,
   saveScoreRule,
   updateCandidate,
@@ -260,9 +262,14 @@ export function useLocation() {
       },
       now: new Date().toISOString(),
       deptRule: deptNow.current,
+      // 같은 구 승하차는 한 번만 받기(AC-7908.5, TASK-97)
+      flowCache: {
+        read: (sgg, ym) => readFlowCache(client, sgg, ym),
+        save: (sgg, ym, v) => saveFlowCache(client, sgg, ym, v),
+      },
       onProgress,
     }),
-    [dongFile],
+    [client, dongFile],
   )
 
   // ── 후보 더하기(AC-7908.1·AC-7908.2) ──

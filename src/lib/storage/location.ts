@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isYmd } from '@/lib/analytics/dates'
 import { checkDeptRule, DEFAULT_DEPT_RULE, fillDeptRule } from '@/lib/location/depts'
+import type { FlowVolumeRow } from '@/lib/location/flow'
 import { checkScoreRule, fillScoreRule, DEFAULT_SCORE_RULE, type ScoreRule } from '@/lib/location/score'
 import type { ErrorCode } from '@/types/errors'
 import type {
@@ -785,4 +786,65 @@ export async function markCandidateEventsSeen(client: LocationClient, candidateI
   if (!isUuid(candidateId)) return stop(SAVE)
   const seenAt = new Date().toISOString()
   await send(SAVE, () => client.from(EVENTS).update({ seen_at: seenAt }).eq('candidate_id', candidateId).is('seen_at', null))
+}
+
+// ── 승하차 저장(location_flow_cache, design.md 4·7절, AC-7908.5, TASK-97) ──────────
+// 같은 병원·시군구·달의 정류장별 이용량 한 달 줄(정류장 ID마다 승차·하차·날 수)을 한 번 받아 두고 다음 모으기가 쓴다.
+// 읽기·저장은 모으기를 막지 않는다: 없음·실패·틀린 모양은 null, 저장 실패(같은 줄 있음 23505 포함)는 삼킨다
+
+const FLOW_CACHE = 'location_flow_cache'
+/** rows 칸 jsonb 글자 바이트 한도(migration 20261123000000_location_flow_cache.sql) */
+const FLOW_CACHE_MAX_BYTES = 1_000_000
+const SGG5 = /^[0-9]{5}$/
+const YM = /^[0-9]{4}-(0[1-9]|1[0-2])$/
+const STOP_ID = /^[0-9A-Za-z]{1,20}$/
+const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
+
+/** 저장한 승하차 한 달 */
+export type FlowMonth = { asOf: string; rows: FlowVolumeRow[] }
+
+/** 줄 하나를 다섯 칸으로 새로 만든다. 틀리면 null */
+function flowRow(v: unknown): FlowVolumeRow | null {
+  if (!isRecord(v)) return null
+  const { id, mode, board, alight, days } = v
+  if (!isString(id) || !STOP_ID.test(id) || (mode !== 'bus' && mode !== 'rail')) return null
+  if (!isCount(board) || !isCount(alight) || !isCount(days) || days < 1 || days > 31) return null
+  return { id, mode, board, alight, days }
+}
+
+/** 줄 목록을 새로 만든다. 비었거나 하나라도 틀리면 null */
+function flowRows(v: unknown): FlowVolumeRow[] | null {
+  if (!Array.isArray(v) || v.length === 0) return null
+  const out: FlowVolumeRow[] = []
+  for (const item of v) {
+    const row = flowRow(item)
+    if (row === null) return null
+    out.push(row)
+  }
+  return out
+}
+
+/** 저장한 그 시군구·달 한 줄. 없음·읽기 실패·모양 틀림은 null(모으기가 받아 온다) */
+export async function readFlowCache(client: LocationClient, sgg: string, ym: string): Promise<FlowMonth | null> {
+  if (!SGG5.test(sgg) || !YM.test(ym)) return null
+  try {
+    const { data, error } = await client.from(FLOW_CACHE).select('as_of, rows').eq('sgg', sgg).eq('ym', ym).maybeSingle()
+    if (error || !isRecord(data) || !isDay(data.as_of)) return null
+    const rows = flowRows(data.rows)
+    return rows === null ? null : { asOf: data.as_of, rows }
+  } catch {
+    return null
+  }
+}
+
+/** 줄이 하나라도 있는 맞는 값만 칸 넷(sgg·ym·as_of·rows)으로 넣는다(hospital_id는 DB 기본값). 실패는 삼킨다 */
+export async function saveFlowCache(client: LocationClient, sgg: string, ym: string, value: FlowMonth): Promise<void> {
+  if (!SGG5.test(sgg) || !YM.test(ym) || !isRecord(value) || !isDay(value.asOf)) return
+  const rows = flowRows(value.rows)
+  if (rows === null || jsonbBytes(rows) > FLOW_CACHE_MAX_BYTES) return
+  try {
+    await client.from(FLOW_CACHE).insert({ sgg, ym, as_of: value.asOf, rows })
+  } catch {
+    // 저장은 다음 모으기를 빠르게 할 뿐이다 — 못 해도 이번 값은 그대로
+  }
 }
