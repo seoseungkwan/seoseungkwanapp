@@ -438,3 +438,13 @@
 - TDD: exempt
 - 예외 이유: 끝난 step을 적는 기록 파일이라 시험할 동작이 없다. 이 줄이 없으면 훅이 Edit을 막아 끝난 step을 적지 못한다
 - 할 일: 승인 뒤 `phases/precheck-2-rules/index.json` step 2(TASK-9)를 메모에 적힌 요약과 함께 completed로 하고, TASK-35~38 줄은 `index.json`에 더하지 않는다(`scripts/execute.py`는 step 파일이 없으면 멈춘다). 그 진행은 `sdd status`로 본다. 다른 칸은 건드리지 않는다
+
+## TASK-43: 처음 등록이 막힌 곳 알려 주기 (도우미 + 오류 글)
+- Step: 어느 Phase에도 속하지 않는 고침 (2026-11-23 사용자 '어디서 막혔는지 알려 주게', design.md 9-1)
+- AC: AC-005.13, AC-005.14
+- REQ: REQ-005
+- Files: helper/src/Precheck.Core/Bit/BitErrors.cs, helper/src/Precheck.Core/Bit/HospitalCheck.cs, helper/src/Precheck.Core/Registration/RegisterFlow.cs, helper/tests/Precheck.Core.Tests/Registration/RegisterFlow.test.cs, helper/tests/bit-connect.dotnet.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: helper/tests/bit-connect.dotnet.test.ts, src/lib/errors.test.ts
+- TDD: required
+- 처음 등록(`RegisterFlow`)만 번호를 나눈다. 매번 확인·통계 화면 확인·다시 등록 안내(`E-BIT-HOSPITAL-MISMATCH` 글)는 그대로다. `RegisterFlow.test.cs`의 `BadHospitalStops`·`ChecksWorkDayAndToday`는 새 번호를 보도록 고친다(지우지 않음)
+- 화면 부품은 고치지 않는다: 위 오류 상자(`SetupAlert`)가 `errorInfo(번호)`를 그린다. 도우미 판 번호·태그·릴리스와 `MIN_HELPER`·`LATEST_HELPER`는 사용자가 말할 때만(ssk-clinic-pc-files)
