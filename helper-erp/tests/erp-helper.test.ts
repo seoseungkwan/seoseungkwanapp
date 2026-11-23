@@ -30,10 +30,10 @@ const UNINSTALL_PS1 = `${INSTALL}/uninstall.ps1`
 /** install.cmd 여섯 줄(spec erp-bit-anywhere design.md, AC-3802.1·3802.2) */
 const INSTALL_CMD_LINES = [
   '@echo off',
-  'setlocal',
+  'setlocal DisableDelayedExpansion',
   '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"',
   'set ERP_SETUP_CODE=%errorlevel%',
-  'if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="1" if not "%ERP_SETUP_CODE%"=="2" pause',
+  'if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="2" pause',
   'exit /b %ERP_SETUP_CODE%',
 ]
 const WORKFLOW = '.github/workflows/helper-erp.yml'
@@ -85,10 +85,13 @@ function consoleText(bytes: Buffer | null | undefined): string {
  * install.cmd를 한글·괄호·띄어쓰기·&가 든 임시 폴더에 복사해, 탐색기에서 두 번 누를 때와 같은 따옴표(cmd /d /s /c ""경로"")로
  * PATH = C:\nowhere, 입력 없음으로 돌린다. ps1이 null이면 install.ps1을 두지 않는다(가짜만, 실제 install.ps1은 돌리지 않는다).
  */
-function runInstallCmd(ps1: string | null): { code: number | null; text: string } {
+function runInstallCmd(
+  ps1: string | null,
+  options: { folderName?: string; delayedExpansion?: boolean } = {},
+): { code: number | null; text: string } {
   const dir = mkdtempSync(path.join(tmpdir(), 'erp-cmd-'))
   try {
-    const folder = path.join(dir, '한글 폴더 (1)&b')
+    const folder = path.join(dir, options.folderName ?? '한글 폴더 (1)&b')
     mkdirSync(folder)
     const target = path.join(folder, 'install.cmd')
     copyFileSync(path.join(ROOT, INSTALL_CMD), target)
@@ -96,7 +99,7 @@ function runInstallCmd(ps1: string | null): { code: number | null; text: string 
     const env: NodeJS.ProcessEnv = { ...process.env }
     for (const key of Object.keys(env)) if (key.toLowerCase() === 'path') delete env[key]
     env.Path = 'C:\\nowhere'
-    const run = spawnSync(process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe', ['/d', '/s', '/c', `""${target}""`], {
+    const run = spawnSync(process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe', [...(options.delayedExpansion ? ['/v:on'] : []), '/d', '/s', '/c', `""${target}""`], {
       windowsVerbatimArguments: true,
       windowsHide: true,
       input: '',
@@ -649,10 +652,11 @@ describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실�
     expect(lines.at(-1)).toBe('exit /b %ERP_SETUP_CODE%')
   })
 
-  it('AC-3802.2: 끝 번호가 0·1·2면 더 기다리지 않고, 그 밖이면 pause로 창을 열어 둔다(글자)', () => {
+  it('AC-3802.2: 끝 번호가 0·2면 더 기다리지 않고, 그 밖(1 포함)이면 pause로 창을 열어 둔다(글자)', () => {
     const lines = cmdLines()
     expect(lines[3]).toBe('set ERP_SETUP_CODE=%errorlevel%')
-    expect(lines[4]).toBe('if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="1" if not "%ERP_SETUP_CODE%"=="2" pause')
+    expect(lines[4]).toBe('if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="2" pause')
+    expect(read(INSTALL_CMD)).not.toContain('=="1"')
     expect(read(INSTALL_CMD).match(/\bpause\b/gi)).toHaveLength(1)
   })
 
@@ -666,8 +670,15 @@ describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실�
     expect(dp0).toHaveLength(1)
     expect(text.match(/"%~dp0[^"\r\n]*"/g)).toHaveLength(dp0.length)
     expect(text.match(/"%SystemRoot%[^"\r\n]*"/g)).toHaveLength(1)
-    // 설치 파일 목록과 install.ps1·uninstall.ps1·README.md는 그대로(목록은 아래 AC-3611.5 시험, 글자는 TASK-2가 고치지 않음)
+    // 지연 확장을 꺼서 폴더 이름의 !가 바뀌지 않는다
+    expect(cmdLines()[1]).toBe('setlocal DisableDelayedExpansion')
+    // 설치 파일 목록과 install.ps1·uninstall.ps1·README.md는 그대로(갈래 시작 6754571c와 글자가 같다)
     expect(filesUnder(INSTALL).sort()).toEqual([INSTALL_CMD, INSTALL_PS1, MANIFEST, UNINSTALL_PS1, `${INSTALL}/README.md`].sort())
+    const diff = spawnSync('git', ['diff', '--quiet', '6754571c', '--', INSTALL_PS1, UNINSTALL_PS1, `${INSTALL}/README.md`], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    })
+    expect(diff.status, `${diff.stdout ?? ''}${diff.stderr ?? ''}${diff.error?.message ?? ''}`).toBe(0)
   })
 
   it.runIf(process.platform === 'win32')('AC-3802.2: (윈도우) PATH가 망가져도 가짜 install.ps1 exit 2 → 끝 번호 2, 멈춤 없음', () => {
@@ -688,10 +699,28 @@ describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실�
     expect(run.text).toMatch(PAUSED)
   }, 90_000)
 
-  it.runIf(process.platform === 'win32')('AC-3802.3: (윈도우) install.ps1이 없으면 끝 번호가 0·1·2가 아니고 멈춤 글이 남는다', () => {
+  it.runIf(process.platform === 'win32')('AC-3802.3: (윈도우) install.ps1이 없으면 끝 번호가 0·2가 아니고 멈춤 글이 남는다', () => {
     const run = runInstallCmd(null)
-    expect([0, 1, 2], run.text).not.toContain(run.code)
+    expect([0, 2], run.text).not.toContain(run.code)
     expect(run.text).toMatch(PAUSED)
+  }, 90_000)
+
+  it.runIf(process.platform === 'win32')('AC-3802.2: (윈도우) 가짜 install.ps1 exit 1(취소·설치 실패) → 끝 번호 1, 멈춤 글이 남는다', () => {
+    const run = runInstallCmd('exit 1')
+    expect(run.code, run.text).toBe(1)
+    expect(run.text).toMatch(PAUSED)
+  }, 90_000)
+
+  it.runIf(process.platform === 'win32')('AC-3802.2: (윈도우) 글이 틀린 install.ps1 → PowerShell 끝 번호 1, 멈춤 글이 남는다', () => {
+    const run = runInstallCmd('if ( {')
+    expect(run.code, run.text).toBe(1)
+    expect(run.text).toMatch(PAUSED)
+  }, 90_000)
+
+  it.runIf(process.platform === 'win32')('AC-3802.3: (윈도우) 지연 확장을 켠 명령 창(/v:on)·이름에 !가 든 폴더에서도 가짜 exit 2 → 2, 멈춤 없음', () => {
+    const run = runInstallCmd('exit 2', { folderName: 'x!y (1)&b', delayedExpansion: true })
+    expect(run.code, run.text).toBe(2)
+    expect(run.text).not.toMatch(PAUSED)
   }, 90_000)
 })
 
