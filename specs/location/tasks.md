@@ -498,3 +498,9 @@
 - Files: src/app/api/ai/location/sources/clinics.ts, src/app/api/ai/location/sources/clinics.test.ts, src/lib/location/collect.ts, src/lib/location/collect.test.ts, src/components/location/clients.ts, src/components/location/clients.test.ts
 - Tests: src/app/api/ai/location/sources/clinics.test.ts, src/lib/location/collect.test.ts, src/components/location/clients.test.ts
 - TDD: required — (1) `hospList`·`hospDetail` `timeoutMs` 50,000·`retryTimeout` 참. (2) 모으기 의원 목록은 의원 과목을 차례대로 2과목씩 나눠 부르고 합친다. (3) 모으기 `ask`는 심평원 셋이 `failed`면 두 번 더(모두 세 번), 다른 종류·`no-key`·`not-applied`는 한 번. (4) `clients.ts` 심평원 셋 125초(design 3절·5절)
+
+## TASK-95: 칸마다 다시 받는 중
+- REQ: REQ-7917, REQ-7908 · AC-7917.4, AC-7908.3
+- Files: src/components/location/common/RefreshBusy.ts, src/components/location/common/text.ts, src/components/location/common/WhyLine.tsx, src/components/location/common/WhyLine.test.tsx, src/components/location/detail/frame/CandidateFrame.tsx, src/components/location/detail/frame/CandidateFrame.test.tsx, src/components/location/detail/rivals/PriceSection.tsx, src/components/location/detail/rivals/rivals.test.tsx, src/components/location/useLocation.ts, src/components/location/useLocation.test.ts, docs/mockups/location/notes.md
+- Tests: src/components/location/common/WhyLine.test.tsx, src/components/location/detail/frame/CandidateFrame.test.tsx, src/components/location/detail/rivals/rivals.test.tsx, src/components/location/useLocation.test.ts
+- TDD: required — (1) `RefreshBusy` 문맥이 글이면 `WhyLine` failed + onRetry(카카오 출처 빼고)는 그 글만, 단추 없음. (2) `CandidateFrame`이 progress를 문맥으로 내려 준다. (3) `PriceSection` 못 받은 줄도 같은 글. (4) `refresh`는 같은 후보를 받는 중이면 다시 부르지 않는다(design 15절)
