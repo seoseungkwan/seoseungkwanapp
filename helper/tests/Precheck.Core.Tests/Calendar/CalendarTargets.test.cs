@@ -556,6 +556,6 @@ public class CalendarTargetsTests
 
     // ── AC-5903.5 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-5903.5 AC-6912.6 도우미 판은 0.13.0이다(예약 탭 비트 읽기는 0.10.0부터. 웹 LATEST_HELPER 0.13.0·CAL_HELPER 0.10.0, MIN·SUNAP·LIST 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroEleven() => Assert.Equal("0.13.0", HelperVersion.Value);
+    [Fact(DisplayName = "AC-5903.5 AC-6912.6 도우미 판은 0.13.1이다(예약 탭 비트 읽기는 0.10.0부터. 웹 LATEST_HELPER 0.13.1·CAL_HELPER 0.10.0, MIN·SUNAP·LIST 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroEleven() => Assert.Equal("0.13.1", HelperVersion.Value);
 }
