@@ -163,7 +163,8 @@ export const clinicHours: Adapter<'hosp-hours', ClinicHours[]> = {
       Array.from({ length: pages }, (_, i) => {
         const params = new URLSearchParams({
           Q0: q.sidoName,
-          Q1: q.sggName,
+          // 시 아래 구는 빈칸이 있으면 0곳이라 붙여서 묻는다(성남시 수정구 → 성남시수정구, 진짜 답 2026-11-23, TASK-92)
+          Q1: q.sggName.replace(/\s+/g, ''),
           QZ: kind,
           pageNo: String(i + 1),
           numOfRows: String(HOURS_ROWS),

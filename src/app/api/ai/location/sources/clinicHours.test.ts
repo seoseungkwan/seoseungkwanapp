@@ -269,3 +269,12 @@ describe('AC-7904.1 의원 맞추기: 이름(공백·의원 빼고 같음) + 50m
     expect(hoursFor({ name: ' 의원 ', at }, [blank])).toBeNull()
   })
 })
+
+// 시 아래 구(성남시 수정구 등)는 빈칸이 있으면 0곳이라 붙여서 묻는다(진짜 답 2026-11-23, TASK-92)
+describe('AC-7904.1 진료 시간 시군구 이름 빈칸(TASK-92)', () => {
+  it('AC-7904.1: Q1은 시군구 이름의 빈칸을 빼고(가상시 가람구 → 가상시가람구), 빈칸 없는 이름은 그대로', () => {
+    const q1s = (sggName: string) => clinicHours.requests({ kind: 'hosp-hours', sidoName: '가상도', sggName }).map((r) => new URL(r.url).searchParams.get('Q1'))
+    expect(q1s('가상시 가람구')).toEqual(Array(5).fill('가상시가람구'))
+    expect(q1s('가람구')).toEqual(Array(5).fill('가람구'))
+  })
+})
