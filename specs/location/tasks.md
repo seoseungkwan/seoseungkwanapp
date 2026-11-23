@@ -468,3 +468,9 @@
 - Files: src/components/location/map/KakaoMap.tsx, src/components/location/map/KakaoMap.test.tsx, src/components/location/map/kakao.ts, src/components/location/map/fakeKakao.test.data.ts
 - Tests: src/components/location/map/KakaoMap.test.tsx
 - TDD: required — `KakaoMap` 동 다각형: 그릴 때 이름·점수 글(`data-area`)을 지도에 얹지 않는다. 다각형에 `mouseover`면 그 동 글(이름 + 점수 글)을 마우스 점 위에 얹고, `mousemove`면 따라가고, `mouseout`이면 뗀다. 글은 마우스를 가리지 않게 점 위쪽(`yAnchor` 1 + 아래 여백), `pointer-events-none`, 바탕 `surface`·테두리 `line`. 사라지면 듣기를 모두 뗀다(design 13절, AC-7907.1)
+
+## TASK-90: 3년 개폐업도 시간 넘은 쪽 한 번 더
+- REQ: REQ-7903 · AC-7903.3
+- Files: src/app/api/ai/location/sources/licenses.ts, src/app/api/ai/location/sources/licenses.test.ts
+- Tests: src/app/api/ai/location/sources/licenses.test.ts
+- TDD: required — `clinicLicense` `retryTimeout` 참, `timeoutMs`는 없음(쪽마다 8초 그대로, 브라우저 125초·경로 120초 그대로 — design 3절)
