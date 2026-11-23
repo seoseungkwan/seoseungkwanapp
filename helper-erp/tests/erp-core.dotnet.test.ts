@@ -7,6 +7,8 @@
 // - spec erp-closing-range TASK-10(REQ-3708·3709): 새 명령 closing.findCodes(AC-3708.1)·묶음 exclude(AC-3709.2)의 명령 표·문장 글자,
 //   C# 시험(Erp* 시험 + Closing 시험. Closing 시험 감싸개 erp-closing.dotnet.test.ts는 TASK-10 범위 밖이라 여기서 Closing 시험을 한 번 더 돌린다)
 // - TASK-14(AC-3709.2): 묶음 exclude가 코드 배열에서 규칙 { code, with 1~5개, all? } 0~20개로 바뀜(design.md 11절)
+// - spec erp-bit-anywhere TASK-1(REQ-3801): ERP 비트 찾기 규칙 ErpInstallRules(AC-3801.1·AC-3801.2)의 C# 시험 ErpInstallRulesTests를 감싸고,
+//   Erp.Core 파일 목록에 ErpInstallRules.cs를 더한다
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -126,6 +128,15 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
 
   it('AC-3709.2 ERP 명령 표 closing.day 묶음 exclude(선택, 규칙 0~20개 { code, with 1~5개, all? }): 21개·with 0개·6개·코드 꼴 아님·all 참/거짓 아님·모르는 칸은 E-HELPER-BAD-MESSAGE', () => {
     expectAc('AC-3709.2')
+  })
+
+  // spec erp-bit-anywhere AC-3801.1·AC-3801.2: C# ErpInstallRulesTests(namespace Erp.Core.Tests, 거르기 Erp.Core.Tests.Erp에 든다)
+  it('AC-3801.1 ErpInstallRules.Choose는 필요한 파일 셋이 있는 로컬 설치 가운데 윈도우 드라이브 환경 파일 Path·Bin과 맞는 첫 설치를 드라이브·폴더 이름과 상관없이 고른다(C:\\DrBIT50·D:\\DrBIT50·C:\\DrBIT·한글·띄어쓰기, 실행 파일 경로, 대소문자·끝 \\ 무시)', () => {
+    expectAc('AC-3801.1')
+  })
+
+  it('AC-3801.2 ErpInstallRules.Choose는 UNC·네트워크 드라이브·상대 경로·빈 값·파일 빠짐·환경 파일 없음·Path·Bin 다름을 건너뛰고 다음 후보를 보며, 같은 설치는 한 번만, 없으면 E-BIT-NOT-FOUND', () => {
+    expectAc('AC-3801.2')
   })
 })
 
@@ -316,6 +327,7 @@ describe('AC-3611.1 Erp.Core 틀', () => {
       'Closing/ClosingDay.cs',
       'Closing/ClosingSql.cs',
       'ErpCommandTable.cs',
+      'ErpInstallRules.cs',
       'ErpLogLine.cs',
       'ErpReadGuard.cs',
     ])

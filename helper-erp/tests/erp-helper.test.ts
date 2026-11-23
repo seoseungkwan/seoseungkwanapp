@@ -2,6 +2,9 @@
 // - 실행 프로그램(Erp.Helper, net48)은 윈도우에서만 돈다. 그래서 차례·이름·경로·규칙을 글자로 보고, 만들어지는지는 erp-helper-build.dotnet.test.ts가 본다
 // - 기존 도우미(helper/)와 그 workflow는 운영(1a721ef) 그대로여야 한다: 줄 끝을 맞춘 글자의 sha256을 1a721ef 값과 견준다
 // - YAML 해석 패키지는 넣지 않는다. helper/tests/build.test.ts와 같은 작은 해석기(이 workflow가 쓰는 모양만)를 둔다
+// - spec erp-bit-anywhere TASK-1(REQ-3801): 설치 찾기가 ERP 부품 ErpInstallationLocator(AC-3801.3)이고, 청구 도우미 쪽은
+//   갈래 시작 커밋 6754571c 그대로다(AC-3801.4, git diff)
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -12,6 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const ERP_HELPER = 'helper-erp/src/Erp.Helper'
 const PROGRAM = `${ERP_HELPER}/Program.cs`
 const SERVICES = `${ERP_HELPER}/ErpServices.cs`
+const LOCATOR = `${ERP_HELPER}/ErpInstallationLocator.cs`
 const BIT_DB = `${ERP_HELPER}/ErpBitDb.cs`
 const LOG = `${ERP_HELPER}/ErpLog.cs`
 const CSPROJ = `${ERP_HELPER}/Erp.Helper.csproj`
@@ -347,7 +351,7 @@ describe('AC-3611.2 저장 자리: %LOCALAPPDATA%\\Seoseungkwan\\ErpHelper\\ 의
 
   it('AC-3611.2: Erp.Helper 코드·프로젝트에 기존 도우미 폴더·이름(PrecheckHelper·Precheck.Helper)이 없다', () => {
     const files = filesUnder(ERP_HELPER)
-    expect(files.sort()).toEqual([CSPROJ, BIT_DB, LOG, SERVICES, PROGRAM].sort())
+    expect(files.sort()).toEqual([CSPROJ, BIT_DB, LOCATOR, LOG, SERVICES, PROGRAM].sort())
     for (const file of files) {
       const text = read(file)
       for (const old of OLD_NAMES) expect(text, `${file}: ${old}`).not.toContain(old)
@@ -367,7 +371,8 @@ describe('AC-3611.3 ErpServices: 기존 BitServices에 ERP 부품', () => {
       text,
       [
         'var store = new RegistrationStore(DataDirectory(), new DpapiProtector());',
-        'var locator = new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store));',
+        // spec erp-bit-anywhere AC-3801.3: 설치 찾기는 ERP 부품 ErpInstallationLocator(같은 인자)
+        'var locator = new ErpInstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store));',
         'return new BitServices(locator, new ErpBitConnector(), new VendorLogin(), new ConfirmWindow(), store);',
       ],
       'ErpServices.Create',
@@ -376,6 +381,92 @@ describe('AC-3611.3 ErpServices: 기존 BitServices에 ERP 부품', () => {
     // 등록을 읽지 못하면 없는 것으로 본다(기존 HelperServices와 같다)
     expect(text).toMatch(/return store\.Load\(\)\?\.InstallPath;/)
     expect(text).toMatch(/catch \(HelperException\)\s*\{\s*return null;\s*\}/)
+  })
+})
+
+describe('AC-3801.3 ErpInstallationLocator: 기존 InstallationLocator 후보를 ErpInstallRules.Choose로 고른다', () => {
+  const locator = () => code(read(LOCATOR))
+
+  it('AC-3801.3: ErpServices.Create의 설치 찾기는 new ErpInstallationLocator(도우미 exe 폴더, 등록한 설치 위치)이고 나머지 부품은 그대로다', () => {
+    const create = methodBody(code(read(SERVICES)), /public static BitServices Create\(\)/)
+    expect(create).toContain('var locator = new ErpInstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store));')
+    expect(create).not.toMatch(/new InstallationLocator\(/)
+    expect(create).toContain('var store = new RegistrationStore(DataDirectory(), new DpapiProtector());')
+    expect(create).toContain('return new BitServices(locator, new ErpBitConnector(), new VendorLogin(), new ConfirmWindow(), store);')
+    expect(create.match(/\bnew \w+\(/g)).toEqual([
+      'new RegistrationStore(',
+      'new DpapiProtector(',
+      'new ErpInstallationLocator(',
+      'new BitServices(',
+      'new ErpBitConnector(',
+      'new VendorLogin(',
+      'new ConfirmWindow(',
+    ])
+    expect(read(SERVICES)).toContain('spec erp-bit-anywhere AC-3801.3')
+  })
+
+  it('AC-3801.3: ErpInstallationLocator는 namespace Erp.Helper의 IBitLocator이고 파일 모양은 LocalFileProbe, 후보는 기존 InstallationLocator(같은 인자·같은 파일 모양)다', () => {
+    const text = locator()
+    expect(text).toMatch(/^namespace Erp\.Helper;$/m)
+    expect(text).toMatch(/\bpublic sealed class ErpInstallationLocator : IBitLocator\b/)
+    expect(text).toMatch(/private readonly IFileProbe probe = new LocalFileProbe\(\);/)
+    expect(text).toMatch(/private readonly InstallationLocator candidates;/)
+    expect(text).toMatch(
+      /public ErpInstallationLocator\(string appDirectory, Func<string\?> rememberedRoot\)\s*=>\s*candidates = new InstallationLocator\(appDirectory, rememberedRoot, probe\);/,
+    )
+    expect(text.match(/\bnew \w+\(/g)).toEqual(['new LocalFileProbe(', 'new InstallationLocator('])
+  })
+
+  it('AC-3801.3: Find는 ErpInstallRules.Choose(candidates.FindCandidates(), probe, NativeEnvironmentGuard.SystemDrive())이고 후보 부품은 FindCandidates만 쓴다', () => {
+    const text = locator()
+    expect(text).toMatch(
+      /public string Find\(\)\s*=>\s*ErpInstallRules\.Choose\(candidates\.FindCandidates\(\), probe, NativeEnvironmentGuard\.SystemDrive\(\)\);/,
+    )
+    expect([...text.matchAll(/\bcandidates\.(\w+)/g)].map((m) => m[1])).toEqual(['FindCandidates'])
+    expect(text.match(/\bFind\(\)/g)).toHaveLength(1)
+  })
+
+  it('AC-3801.3: helper-erp/src 안에 기존 InstallationLocator(...).Find·BitInstallRules.Choose를 부르는 곳이 없고, InstallationLocator를 만드는 곳은 ErpInstallationLocator 하나다', () => {
+    const sources = filesUnder('helper-erp/src').filter((f) => f.endsWith('.cs'))
+    expect(sources).toContain(LOCATOR)
+    expect(sources).toContain('helper-erp/src/Erp.Core/ErpInstallRules.cs')
+    for (const file of sources) {
+      const text = code(read(file))
+      expect(text, file).not.toMatch(/\bBitInstallRules\.Choose\b/)
+      expect(text, file).not.toMatch(/\bBitInstallRules\.MatchesEnvironment\b/)
+      expect(text, file).not.toMatch(/\bnew InstallationLocator\([^;]*\)\s*\.\s*Find\(/)
+      expect(text, file).not.toMatch(/\bIBitLocator\b[^;{]*=\s*new InstallationLocator\(/)
+      if (file !== LOCATOR) expect(text, file).not.toMatch(/\bnew InstallationLocator\(/)
+    }
+  })
+})
+
+describe('AC-3801.4 청구 도우미 쪽은 갈래 시작(6754571c) 그대로', () => {
+  const BASE = '6754571c'
+
+  function gitDiffQuiet(paths: string[]): { status: number | null; output: string } {
+    const result = spawnSync('git', ['diff', '--quiet', BASE, '--', ...paths], { cwd: ROOT, encoding: 'utf8' })
+    return { status: result.status, output: `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}` }
+  }
+
+  it('AC-3801.4: git diff --quiet 6754571c -- helper src extension 가 0으로 끝난다(Precheck.Core·Precheck.Windows·웹·기존 확장 한 글자도 안 바뀜)', () => {
+    const run = gitDiffQuiet(['helper', 'src', 'extension'])
+    expect(run.status, run.output).toBe(0)
+  })
+
+  it('AC-3801.4: ERP 명령 표(helper-erp/commands.json)·확장(extension-erp/)도 6754571c 그대로다', () => {
+    const run = gitDiffQuiet(['helper-erp/commands.json', 'extension-erp'])
+    expect(run.status, run.output).toBe(0)
+  })
+
+  it('AC-3801.4: ERP 도우미 판은 그대로 0.3.0이다(helper-erp/Directory.Build.props)', () => {
+    expect(/<Version>([^<]*)<\/Version>/.exec(read('helper-erp/Directory.Build.props'))?.[1]).toBe('0.3.0')
+  })
+
+  it('AC-3801.4: 기존 BitInstallRules.SupportedRoot는 그대로 C:\\DrBIT50이고 기존 MatchesEnvironment는 그 위치만 받는다(글자)', () => {
+    const rules = code(read('helper/src/Precheck.Core/Bit/BitInstallRules.cs'))
+    expect(rules).toContain('public const string SupportedRoot = @"C:\\DrBIT50";')
+    expect(rules).toContain('return WinPath.Same(selected, SupportedRoot);')
   })
 })
 

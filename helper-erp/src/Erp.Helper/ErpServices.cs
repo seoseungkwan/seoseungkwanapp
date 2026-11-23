@@ -9,7 +9,7 @@ namespace Erp.Helper;
 
 /// <summary>
 /// ERP 도우미가 쓰는 비트 부품 한 벌(spec erp-closing-fill design.md 3-4, AC-3611.2·AC-3611.3): 기존 BitServices에 기존 윈도우 부품
-/// (설치 찾기·비트 로그인 창·PC 확인 창·DPAPI)과 ERP 비트 읽기(ErpBitConnector)를 넣는다. 등록 파일은 ERP 도우미 자기 data 폴더에 둔다.
+/// (비트 로그인 창·PC 확인 창·DPAPI), ERP 설치 찾기(ErpInstallationLocator, spec erp-bit-anywhere)와 ERP 비트 읽기(ErpBitConnector)를 넣는다. 등록 파일은 ERP 도우미 자기 data 폴더에 둔다.
 /// 만들기만 하고 비트를 건드리지 않는다. 비트 DLL은 명령·등록을 처리할 때 처음 불러온다.
 /// </summary>
 internal static class ErpServices
@@ -21,7 +21,8 @@ internal static class ErpServices
     public static BitServices Create()
     {
         var store = new RegistrationStore(DataDirectory(), new DpapiProtector());
-        var locator = new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store));
+        // spec erp-bit-anywhere AC-3801.3: 설치 찾기는 ERP 부품(기존 InstallationLocator 후보 + ErpInstallRules.Choose, C:\DrBIT50 조건 없음)
+        var locator = new ErpInstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store));
         return new BitServices(locator, new ErpBitConnector(), new VendorLogin(), new ConfirmWindow(), store);
     }
 
