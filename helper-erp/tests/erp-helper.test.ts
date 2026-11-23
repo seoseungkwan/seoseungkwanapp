@@ -4,9 +4,12 @@
 // - YAML 해석 패키지는 넣지 않는다. helper/tests/build.test.ts와 같은 작은 해석기(이 workflow가 쓰는 모양만)를 둔다
 // - spec erp-bit-anywhere TASK-1(REQ-3801): 설치 찾기가 ERP 부품 ErpInstallationLocator(AC-3801.3)이고, 청구 도우미 쪽은
 //   갈래 시작 커밋 6754571c 그대로다(AC-3801.4, git diff)
+// - spec erp-bit-anywhere TASK-2(REQ-3802): install.cmd 여섯 줄(PowerShell 전체 경로, 끝 번호 그대로, 0·1·2 밖이면 pause)을
+//   글자로 보고, 윈도우에서는 한글·괄호·&가 든 임시 폴더에서 PATH를 망가뜨린 채 실제로 돌려 본다(가짜 install.ps1만)
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -24,6 +27,15 @@ const MANIFEST = `${INSTALL}/host-manifest.json`
 const INSTALL_CMD = `${INSTALL}/install.cmd`
 const INSTALL_PS1 = `${INSTALL}/install.ps1`
 const UNINSTALL_PS1 = `${INSTALL}/uninstall.ps1`
+/** install.cmd 여섯 줄(spec erp-bit-anywhere design.md, AC-3802.1·3802.2) */
+const INSTALL_CMD_LINES = [
+  '@echo off',
+  'setlocal',
+  '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"',
+  'set ERP_SETUP_CODE=%errorlevel%',
+  'if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="1" if not "%ERP_SETUP_CODE%"=="2" pause',
+  'exit /b %ERP_SETUP_CODE%',
+]
 const WORKFLOW = '.github/workflows/helper-erp.yml'
 const COMMANDS = 'helper-erp/commands.json'
 
@@ -57,6 +69,47 @@ function readBytes(rel: string): Buffer {
 function read(rel: string): string {
   return readBytes(rel).toString('utf8').replace(/^﻿/, '')
 }
+
+/** install.cmd 줄들(줄 끝 LF·CRLF 상관없이, 끝 빈 줄 뺌) */
+function cmdLines(): string[] {
+  return read(INSTALL_CMD).replace(/(\r?\n)+$/, '').split(/\r?\n/)
+}
+
+/** 명령 창이 낸 글(영어 판·한국어 판 윈도우 둘 다 보려고 UTF-8과 EUC-KR로 함께 푼다) */
+function consoleText(bytes: Buffer | null | undefined): string {
+  if (!bytes || bytes.length === 0) return ''
+  return `${bytes.toString('utf8')}\n${new TextDecoder('euc-kr').decode(bytes)}`
+}
+
+/**
+ * install.cmd를 한글·괄호·띄어쓰기·&가 든 임시 폴더에 복사해, 탐색기에서 두 번 누를 때와 같은 따옴표(cmd /d /s /c ""경로"")로
+ * PATH = C:\nowhere, 입력 없음으로 돌린다. ps1이 null이면 install.ps1을 두지 않는다(가짜만, 실제 install.ps1은 돌리지 않는다).
+ */
+function runInstallCmd(ps1: string | null): { code: number | null; text: string } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'erp-cmd-'))
+  try {
+    const folder = path.join(dir, '한글 폴더 (1)&b')
+    mkdirSync(folder)
+    const target = path.join(folder, 'install.cmd')
+    copyFileSync(path.join(ROOT, INSTALL_CMD), target)
+    if (ps1 !== null) writeFileSync(path.join(folder, 'install.ps1'), `\uFEFF${ps1}\r\n`, 'utf8')
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    for (const key of Object.keys(env)) if (key.toLowerCase() === 'path') delete env[key]
+    env.Path = 'C:\\nowhere'
+    const run = spawnSync(process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe', ['/d', '/s', '/c', `""${target}""`], {
+      windowsVerbatimArguments: true,
+      windowsHide: true,
+      input: '',
+      env,
+      timeout: 60_000,
+    })
+    return { code: run.status, text: consoleText(run.stdout) + consoleText(run.stderr) }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+const PAUSED = /Press any key|계속하려면/
 
 function readJson(rel: string): Record<string, unknown> {
   return JSON.parse(read(rel)) as Record<string, unknown>
@@ -584,12 +637,71 @@ describe('AC-3601.2 ERP 도우미 등록 틀 host-manifest.json', () => {
   })
 })
 
+describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실패하면 창을 열어 둔다(spec erp-bit-anywhere REQ-3802)', () => {
+  it('AC-3802.1: PowerShell을 PATH가 아닌 전체 경로로 부르고, 그 끝 번호를 담아 그대로 낸다', () => {
+    const lines = cmdLines()
+    expect(lines).toEqual(INSTALL_CMD_LINES)
+    expect(lines[2]).toBe(
+      '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"',
+    )
+    // PATH에서 찾는 맨 이름 powershell이 없다
+    expect(read(INSTALL_CMD)).not.toMatch(/(^|[\s@&])powershell(\.exe)?\s/im)
+    expect(lines.at(-1)).toBe('exit /b %ERP_SETUP_CODE%')
+  })
+
+  it('AC-3802.2: 끝 번호가 0·1·2면 더 기다리지 않고, 그 밖이면 pause로 창을 열어 둔다(글자)', () => {
+    const lines = cmdLines()
+    expect(lines[3]).toBe('set ERP_SETUP_CODE=%errorlevel%')
+    expect(lines[4]).toBe('if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="1" if not "%ERP_SETUP_CODE%"=="2" pause')
+    expect(read(INSTALL_CMD).match(/\bpause\b/gi)).toHaveLength(1)
+  })
+
+  it('AC-3802.3: 글자는 모두 ASCII이고 -EncodedCommand·goto·라벨이 없으며 경로는 따옴표 안에서만 쓴다', () => {
+    const bytes = readBytes(INSTALL_CMD)
+    expect([...bytes].every((b) => b < 0x80)).toBe(true)
+    const text = read(INSTALL_CMD)
+    expect(text).not.toMatch(/EncodedCommand|-enc\b/i)
+    expect(text).not.toMatch(/\bgoto\b|\bcall\s+:|^\s*:/im)
+    const dp0 = text.match(/%~dp0/g) ?? []
+    expect(dp0).toHaveLength(1)
+    expect(text.match(/"%~dp0[^"\r\n]*"/g)).toHaveLength(dp0.length)
+    expect(text.match(/"%SystemRoot%[^"\r\n]*"/g)).toHaveLength(1)
+    // 설치 파일 목록과 install.ps1·uninstall.ps1·README.md는 그대로(목록은 아래 AC-3611.5 시험, 글자는 TASK-2가 고치지 않음)
+    expect(filesUnder(INSTALL).sort()).toEqual([INSTALL_CMD, INSTALL_PS1, MANIFEST, UNINSTALL_PS1, `${INSTALL}/README.md`].sort())
+  })
+
+  it.runIf(process.platform === 'win32')('AC-3802.2: (윈도우) PATH가 망가져도 가짜 install.ps1 exit 2 → 끝 번호 2, 멈춤 없음', () => {
+    const run = runInstallCmd('exit 2')
+    expect(run.code, run.text).toBe(2)
+    expect(run.text).not.toMatch(PAUSED)
+  }, 90_000)
+
+  it.runIf(process.platform === 'win32')('AC-3802.2: (윈도우) 가짜 install.ps1 exit 0 → 끝 번호 0, 멈춤 없음', () => {
+    const run = runInstallCmd('exit 0')
+    expect(run.code, run.text).toBe(0)
+    expect(run.text).not.toMatch(PAUSED)
+  }, 90_000)
+
+  it.runIf(process.platform === 'win32')('AC-3802.3: (윈도우) 가짜 install.ps1 exit 5 → 끝 번호 5, 멈춤 글이 남는다', () => {
+    const run = runInstallCmd('exit 5')
+    expect(run.code, run.text).toBe(5)
+    expect(run.text).toMatch(PAUSED)
+  }, 90_000)
+
+  it.runIf(process.platform === 'win32')('AC-3802.3: (윈도우) install.ps1이 없으면 끝 번호가 0·1·2가 아니고 멈춤 글이 남는다', () => {
+    const run = runInstallCmd(null)
+    expect([0, 1, 2], run.text).not.toContain(run.code)
+    expect(run.text).toMatch(PAUSED)
+  }, 90_000)
+})
+
 describe('AC-3611.5 설치·지우기(helper-erp/install)', () => {
   const install = () => psCode(read(INSTALL_PS1))
   const uninstall = () => psCode(read(UNINSTALL_PS1))
 
-  it('AC-3611.5: install.cmd는 옆의 install.ps1을 PowerShell로 부른다(기존 install.cmd와 같은 한 줄)', () => {
-    expect(read(INSTALL_CMD).trim()).toBe('@powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"')
+  it('AC-3611.5: install.cmd는 옆의 install.ps1을 PowerShell로 부른다(spec erp-bit-anywhere AC-3802.1로 여섯 줄이 됨)', () => {
+    expect(cmdLines()).toEqual(INSTALL_CMD_LINES)
+    expect(read(INSTALL_CMD)).toContain('-NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"')
   })
 
   it('AC-3611.5: install.ps1·uninstall.ps1은 한글이 깨지지 않게 UTF-8 BOM이고 StrictMode·Stop이다', () => {
