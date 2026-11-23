@@ -462,3 +462,9 @@
 - Files: src/types/location.ts, src/app/api/ai/location/query/route.ts, src/app/api/ai/location/query/route.test.ts, src/app/api/ai/location/sources/people.ts, src/app/api/ai/location/sources/people.test.ts, src/app/api/ai/location/sources/facilities.ts, src/app/api/ai/location/sources/facilities.test.ts, src/components/location/clients.ts, src/components/location/clients.test.ts
 - Tests: src/app/api/ai/location/query/route.test.ts, src/app/api/ai/location/sources/people.test.ts, src/app/api/ai/location/sources/facilities.test.ts, src/components/location/clients.test.ts
 - TDD: required — (1) `Adapter`에 `retryTimeout?: boolean`. `popAgeAdapter` `timeoutMs` 20,000·`retryTimeout` 참, `gymAdapter` `timeoutMs` 15,000·`retryTimeout` 참(design 3절). (2) `route.ts` `fetchAll`: `retryTimeout`인 종류는 `fetchSource`가 `timeout`으로 실패한 하위 부르기만 같은 요청으로 한 번 더 부르고, 되면 그 답을 쓴다. 두 번째도 넘거나 다른 실패(http·too-big)는 지금처럼 `failed`, `retryTimeout`이 없는 종류는 다시 부르지 않음. (3) `clients.ts` 한도 `pop-age` 45초·`gym` 95초(AC-7903.3)
+
+## TASK-89: 지도 동 이름·점수는 마우스를 올리면만
+- REQ: REQ-7907, REQ-7916 · AC-7907.1, AC-7916.1
+- Files: src/components/location/map/KakaoMap.tsx, src/components/location/map/KakaoMap.test.tsx, src/components/location/map/kakao.ts, src/components/location/map/fakeKakao.test.data.ts
+- Tests: src/components/location/map/KakaoMap.test.tsx
+- TDD: required — `KakaoMap` 동 다각형: 그릴 때 이름·점수 글(`data-area`)을 지도에 얹지 않는다. 다각형에 `mouseover`면 그 동 글(이름 + 점수 글)을 마우스 점 위에 얹고, `mousemove`면 따라가고, `mouseout`이면 뗀다. 글은 마우스를 가리지 않게 점 위쪽(`yAnchor` 1 + 아래 여백), `pointer-events-none`, 바탕 `surface`·테두리 `line`. 사라지면 듣기를 모두 뗀다(design 13절, AC-7907.1)

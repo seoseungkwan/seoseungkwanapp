@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "location",
-  "approved_at": "2026-11-23T00:12:16Z",
+  "approved_at": "2026-11-23T00:22:47Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "8049d346ca2eeda016527187e888d0f41840abc1eba20cb366d5df23d19a5066",
+  "spec_sha256": "57eb7efa5453dd00b91c77982d716df2060ab265512f3eca1f9d3f5f17f56f17",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -112,6 +112,10 @@
     "src/components/location/listings/**",
     "src/components/location/map/",
     "src/components/location/map/**",
+    "src/components/location/map/KakaoMap.test.tsx",
+    "src/components/location/map/KakaoMap.tsx",
+    "src/components/location/map/fakeKakao.test.data.ts",
+    "src/components/location/map/kakao.ts",
     "src/components/location/method/",
     "src/components/location/method/**",
     "src/components/location/prep/",
