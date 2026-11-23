@@ -75,6 +75,10 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
   it('AC-005.15 bit.check는 빈 기관기호를 주지 않고, 확인 창은 기관기호 못 찾음', () => {
     expectAc('AC-005.15')
   })
+
+  it('AC-005.17 비트 설치 위치(드라이브·폴더 이름) 상관없이 환경 파일이 가리키는 로컬 설치를 고르고, 네트워크·UNC는 그대로 막는다', () => {
+    expectAc('AC-005.17')
+  })
 })
 
 /** 주석(//·///·블록 주석)을 뺀 C# 글자. ReadOnlyConnection.cs의 문자열 안에는 //가 없다 */

@@ -92,7 +92,7 @@ public class BitInstallRulesTests
 
     // ---- 환경 파일(Path·Bin)과 지원 위치 ---------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-005.1 환경 파일의 Path·Bin이 고른 폴더와 같고 지원 위치 C:\\DrBIT50일 때만 통과")]
+    [Fact(DisplayName = "AC-005.1 AC-005.17 환경 파일의 Path·Bin이 고른 폴더와 같을 때만 통과(드라이브·폴더 이름은 따지지 않음)")]
     public void EnvironmentMustMatchSupportedRoot()
     {
         Assert.True(BitInstallRules.MatchesEnvironment(Synthetic.Root, GoodPc(), @"C:\"));
@@ -116,9 +116,9 @@ public class BitInstallRulesTests
         var noFile = new FakeProbe().Install(Synthetic.Root);
         Assert.False(BitInstallRules.MatchesEnvironment(Synthetic.Root, noFile, @"C:\"));
 
-        // 환경 파일과 맞아도 C:\DrBIT50이 아니면 지원하지 않는다(원본 SupportedRoot)
+        // TASK-45부터 환경 파일과 맞으면 C:\DrBIT50이 아니어도 고른다(AC-005.17, 원본 SupportedRoot 조건 없음)
         var otherRoot = new FakeProbe().Install(@"D:\DrBIT50").Environment(@"D:\DrBIT50", @"D:\DrBIT50\EXE");
-        Assert.False(BitInstallRules.MatchesEnvironment(@"D:\DrBIT50", otherRoot, @"C:\"));
+        Assert.True(BitInstallRules.MatchesEnvironment(@"D:\DrBIT50", otherRoot, @"C:\"));
     }
 
     [Fact(DisplayName = "AC-005.1 환경 파일은 윈도우 드라이브의 DrBIT50\\Environment\\DrBIT50Environment.ini에서 읽는다")]
@@ -144,7 +144,7 @@ public class BitInstallRulesTests
             "",
             @"C:\Users\Synthetic\AppData\Local\Seoseungkwan\PrecheckHelper\app", // 앱 폴더: 비트 아님
             @"\\server\share\DrBIT50",                                           // 공유 폴더
-            @"D:\DrBIT50",                                                        // 모양은 맞지만 환경 파일·지원 위치와 다름
+            @"D:\DrBIT50",                                                        // 모양은 맞지만 환경 파일(C:\DrBIT50)과 다름
             "\"C:\\DrBIT50\\EXE\\BITStatistics.exe\" /s",                         // 레지스트리 실행 경로(인자 붙음): 거절
             Exe,                                                                  // 레지스트리 DisplayIcon
             Synthetic.Root,                                                       // 기본 폴더
@@ -163,6 +163,57 @@ public class BitInstallRulesTests
         Assert.Equal("E-BIT-NOT-FOUND", Assert.Throws<BitException>(() => BitInstallRules.Choose(new[] { Synthetic.Root }, noEnvironment, @"C:\")).Code);
 
         Assert.Equal("E-BIT-NOT-FOUND", Assert.Throws<BitException>(() => BitInstallRules.Choose(new string?[0], GoodPc(), @"C:\")).Code);
+    }
+
+    // ---- 설치 위치 상관없이(AC-005.17, TASK-45) ------------------------------------------------------
+
+    [Theory(DisplayName = "AC-005.17 환경 파일이 가리키는 로컬 설치면 드라이브·폴더 이름과 상관없이 고른다(폴더·실행 파일 후보 둘 다)")]
+    [InlineData(@"C:\DrBIT50")]
+    [InlineData(@"D:\DrBIT50")]
+    [InlineData(@"C:\DrBIT")]
+    [InlineData(@"E:\병원 프로그램\DrBIT50")]
+    public void AnyLocalFolder(string root)
+    {
+        var probe = new FakeProbe().Install(root).Environment(root, root + @"\EXE");
+        Assert.Equal(root, BitInstallRules.Choose(new[] { root }, probe, @"C:\"), ignoreCase: true);
+        Assert.Equal(root, BitInstallRules.Choose(new[] { root + @"\EXE\BITStatistics.exe" }, probe, @"C:\"), ignoreCase: true);
+    }
+
+    [Fact(DisplayName = "AC-005.17 위치는 풀어도 네트워크 드라이브·UNC·필요한 파일 빠짐·환경 파일과 다름은 그대로 E-BIT-NOT-FOUND")]
+    public void StillRefuses()
+    {
+        var network = new FakeProbe().Install(@"Z:\DrBIT50").NetworkDrive(@"Z:\").Environment(@"Z:\DrBIT50", @"Z:\DrBIT50\EXE");
+        Assert.Equal("E-BIT-NOT-FOUND", Assert.Throws<BitException>(() => BitInstallRules.Choose(new[] { @"Z:\DrBIT50" }, network, @"C:\")).Code);
+
+        var unc = new FakeProbe().Environment(@"\\server\share\DrBIT50", @"\\server\share\DrBIT50\EXE");
+        Assert.Equal("E-BIT-NOT-FOUND", Assert.Throws<BitException>(() => BitInstallRules.Choose(new[] { @"\\server\share\DrBIT50" }, unc, @"C:\")).Code);
+
+        var noStatistics = new FakeProbe().Install(@"D:\DrBIT50", @"EXE\BITStatistics.exe").Environment(@"D:\DrBIT50", @"D:\DrBIT50\EXE");
+        Assert.Equal("E-BIT-NOT-FOUND", Assert.Throws<BitException>(() => BitInstallRules.Choose(new[] { @"D:\DrBIT50" }, noStatistics, @"C:\")).Code);
+
+        var otherPlace = new FakeProbe().Install(@"D:\DrBIT50").Install(@"E:\DrBIT50").Environment(@"E:\DrBIT50", @"E:\DrBIT50\EXE");
+        Assert.Equal(@"E:\DrBIT50", BitInstallRules.Choose(new[] { @"D:\DrBIT50", @"E:\DrBIT50" }, otherPlace, @"C:\"), ignoreCase: true);
+    }
+
+    [Fact(DisplayName = "AC-005.17 윈도우 드라이브에 환경 파일이 없을 때만 설치 폴더 드라이브의 환경 파일을 본다(있는데 못 읽거나 다른 곳을 가리키면 넘어가지 않음)")]
+    public void EnvironmentOnInstallDrive()
+    {
+        var onlyD = new FakeProbe().Install(@"D:\DrBIT50").Environment(@"D:\DrBIT50", @"D:\DrBIT50\EXE", systemDrive: @"D:\");
+        Assert.True(BitInstallRules.MatchesEnvironment(@"D:\DrBIT50", onlyD, @"C:\"));
+        Assert.Equal(new[] { @"C:\DrBIT50\Environment\DrBIT50Environment.ini", @"D:\DrBIT50\Environment\DrBIT50Environment.ini" }, onlyD.EnvironmentReads);
+
+        var brokenC = new FakeProbe().Install(@"D:\DrBIT50").File(@"C:\DrBIT50\Environment\DrBIT50Environment.ini")
+            .Environment(@"D:\DrBIT50", @"D:\DrBIT50\EXE", systemDrive: @"D:\");
+        Assert.False(BitInstallRules.MatchesEnvironment(@"D:\DrBIT50", brokenC, @"C:\"));
+        Assert.Equal(new[] { @"C:\DrBIT50\Environment\DrBIT50Environment.ini" }, brokenC.EnvironmentReads);
+
+        var cWins = new FakeProbe().Install(@"D:\DrBIT50").Environment(Synthetic.Root, Synthetic.Root + @"\EXE")
+            .Environment(@"D:\DrBIT50", @"D:\DrBIT50\EXE", systemDrive: @"D:\");
+        Assert.False(BitInstallRules.MatchesEnvironment(@"D:\DrBIT50", cWins, @"C:\"));
+
+        var sameDrive = new FakeProbe().Install(@"C:\DrBIT");
+        Assert.False(BitInstallRules.MatchesEnvironment(@"C:\DrBIT", sameDrive, @"C:\"));
+        Assert.Equal(new[] { @"C:\DrBIT50\Environment\DrBIT50Environment.ini" }, sameDrive.EnvironmentReads);
     }
 
     // ---- 환경 파일 읽기(원본 TryReadConfiguration) ------------------------------------------------------

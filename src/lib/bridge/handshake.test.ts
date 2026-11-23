@@ -82,10 +82,11 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.11.0 = 0.10.0 + stats.rows v5(접수 줄 신환 표시 칸, spec new-mark)·v5 extra.pays 환자·날 금액 줄(spec stats-insights). 새 명령 없음, MIN·SUNAP·LIST·CAL은 그대로
   // 도우미 0.12.0 = 0.11.0 + bit.input 항목 appends(비트 메모 뒤에 붙이기)·붙인 메모 견주기·3,000바이트(spec clinic-profile). 새 명령 없음, MIN·SUNAP·LIST·CAL·VALUE는 그대로
   // 도우미 0.13.0 = 0.12.0 + 환불·변경수납·예치금·연결 중복이 있는 날·달도 금액을 다 읽음(spec bit-total). 새 명령·새 칸 없음, MIN·SUNAP·LIST·CAL·VALUE·APPEND는 그대로
+  // 도우미 0.13.2 = 0.13.1 + 비트 설치 위치 상관없이 찾기(precheck TASK-45)
   // 도우미 0.13.1 = 0.13.0 + 다른 의원 비트에서도 처음 등록·요양기관번호 없어도 청구(precheck TASK-43). 새 명령·새 칸 없음, 다른 최소 판은 그대로
-  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.13.1, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.13.2, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.13.1')
+    expect(LATEST_HELPER).toBe('0.13.2')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
