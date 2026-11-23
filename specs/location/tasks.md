@@ -480,3 +480,9 @@
 - Files: src/types/location.ts, src/app/api/ai/location/query/route.ts, src/app/api/ai/location/query/route.test.ts, src/app/api/ai/location/sources/licenses.ts, src/app/api/ai/location/sources/licenses.test.ts, src/app/api/ai/location/sources/flow.ts, src/app/api/ai/location/sources/flow.test.ts, src/components/location/clients.ts, src/components/location/clients.test.ts
 - Tests: src/app/api/ai/location/query/route.test.ts, src/app/api/ai/location/sources/licenses.test.ts, src/app/api/ai/location/sources/flow.test.ts, src/components/location/clients.test.ts
 - TDD: required — (1) `Adapter.pagesNeeded?(first: string, q): number`. `route.ts`: 있으면 요청 1을 먼저 부르고 그 답으로 n(1~요청 수로 자름, 던지거나 숫자 아니면 요청 수)을 정해 요청 2~n만 더 부른 뒤 n개 답으로 `parse`. (2) `clinicLicense.pagesNeeded` = 1쪽 전체 수 ÷ 100 올림(전체 수가 없고 1쪽이 꽉 찼으면 기간 쪽 수, 읽지 못하면 1). `parse`는 1~기간 쪽 수 답을 받는다(0개·넘침은 failed, AC-7904.2). `clinicLicense.timeoutMs` 15,000. (3) `flowVolume` `timeoutMs` 15,000·`retryTimeout` 참, `clients.ts` `flow-volume` 60초(design 3절)
+
+## TASK-92: 진료 시간 — 시 아래 구 이름은 붙여서
+- REQ: REQ-7904 · AC-7904.1
+- Files: src/app/api/ai/location/sources/clinicHours.ts, src/app/api/ai/location/sources/clinicHours.test.ts
+- Tests: src/app/api/ai/location/sources/clinicHours.test.ts
+- TDD: required — `clinicHours.requests`의 `Q1`은 시군구 이름의 빈칸을 뺀다: `성남시 수정구` → `성남시수정구`(국립중앙의료원은 빈칸이 있으면 0곳, 붙이면 251곳 — 진짜 답 2026-11-23). 빈칸 없는 이름(`종로구`)은 그대로(design 5절)

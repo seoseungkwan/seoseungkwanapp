@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "location",
-  "approved_at": "2026-11-23T00:52:07Z",
+  "approved_at": "2026-11-23T00:55:24Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "800006853d8b39f7d4919fe4528b5f230116f71431f19ea1d513f8881722b321",
+  "spec_sha256": "cce581d3d7eea2fc7ac8fcf641d1311a3ace7c74ce42e0bf25a0d788408925d8",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
