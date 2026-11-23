@@ -223,6 +223,9 @@ export const hospList: Adapter<'hosp-list', HospList> = {
   kind: 'hosp-list',
   src: 'hosp-list',
   key: 'data',
+  // 심평원이 아침 내내 한 번에 13~60초이거나 결과 코드 99(2026-11-23) → 50초까지, 시간 넘은 부르기는 한 번 더(50 × 2 = 100초 < 경로 120초, TASK-94)
+  timeoutMs: 50_000,
+  retryTimeout: true,
   requests: (q): SiteRequest[] => plansOf(q).map((plan) => ({ url: listUrl(q, plan) })),
   parse: readList,
 }
@@ -265,6 +268,9 @@ export const hospDetail: Adapter<'hosp-detail', HospDetail> = {
   kind: 'hosp-detail',
   src: 'hosp-detail',
   key: 'data',
+  // 심평원이 아침 내내 한 번에 13~60초이거나 결과 코드 99(2026-11-23) → 50초까지, 시간 넘은 부르기는 한 번 더(50 × 2 = 100초 < 경로 120초, TASK-94)
+  timeoutMs: 50_000,
+  retryTimeout: true,
   requests: (q): SiteRequest[] => DETAIL_OPS.map((op) => ({ url: detailUrl(op, q.ykiho) })),
   parse: readDetail,
 }

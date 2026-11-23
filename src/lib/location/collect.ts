@@ -5,6 +5,7 @@ import type {
   DeptRule,
   Point,
   Query,
+  QueryKind,
   QueryOf,
   QueryReply,
   Rival,
@@ -50,6 +51,11 @@ import { SNAPSHOT_KEYS, placeAddr } from './snapshot'
 
 /** 바깥 부르기·파일 읽기를 동시에 이만큼까지(design.md 14절 '동시에 4개') */
 export const COLLECT_LIMIT = 4
+/** 심평원 셋은 failed면 모두 이만큼까지 묻는다(design.md 5절, TASK-94 — 사용자 '그냥 시간 상관없이 보이게') */
+export const HIRA_TRIES = 3
+const HIRA_KINDS: ReadonlySet<QueryKind> = new Set<QueryKind>(['hosp-list', 'hosp-detail', 'nonpay'])
+/** 의원 목록은 의원 과목을 이만큼씩 나눠 부른다(서버가 둘씩 부르므로 한 번에 한 차례 — 50초 × 두 번이 경로 한도 안, TASK-94) */
+export const CLINIC_CHUNK = 2
 /** 체외충격파 비급여 항목 코드 — app/api/ai/location/sources/nonpay.ts의 ESWT_ITEM과 같은 값(서버 전용 파일이라 불러오지 못해 여기 둔다, 시험이 같음을 본다) */
 export const ESWT_ITEM = 'SZ084'
 /** 법정동을 알려고 k-point를 부르는 표본 점 수(가운데부터, design.md 5절) */
@@ -354,13 +360,18 @@ function base(deps: CollectDeps) {
   /** 바깥 자료 하나. 같은 몸통은 한 번만 부른다. 틀린 답 모양·던짐은 failed */
   const ask = <T>(q: Query, read: (v: unknown) => T | Bad): Promise<Res<T>> =>
     once(`q ${JSON.stringify(q)}`, async (): Promise<Res<T>> => {
-      let reply: QueryReply
-      try {
-        reply = await limit(() => deps.ask(q))
-      } catch {
-        return no('failed')
+      // 심평원 셋은 failed(던짐 포함)면 두 번 더 — no-key·not-applied·되었지만 모양이 틀린 답은 다시 묻지 않는다(TASK-94)
+      const tries = HIRA_KINDS.has(q.kind) ? HIRA_TRIES : 1
+      let reply: QueryReply | null = null
+      for (let i = 0; i < tries; i++) {
+        try {
+          reply = await limit(() => deps.ask(q))
+        } catch {
+          reply = null
+        }
+        if (isObj(reply) && (reply.ok || reply.code !== 'failed')) break
       }
-      if (!isObj(reply)) return no('failed')
+      if (reply === null || !isObj(reply)) return no('failed')
       if (!reply.ok) return no(REPLY_CODES.includes(reply.code) ? reply.code : 'failed')
       if (typeof reply.asOf !== 'string') return no('failed')
       let value: T | Bad
@@ -586,7 +597,11 @@ async function clinicsAround(b: Base, at: Point, r: number, mode: 'all' | 'rival
   const clinicDepts = CLINIC_DEPTS.filter(shown)
   const asks: { group: 'clinic' | 'dental' | 'korean'; reply: Promise<Res<{ items: HospItem[]; capped: boolean }>> }[] = []
   if (clinicDepts.length > 0 && CLINIC_DEPTS.some(wanted)) {
-    asks.push({ group: 'clinic', reply: b.ask({ kind: 'hosp-list', at, r, group: 'clinic', depts: clinicDepts }, READ.hospList) })
+    // 차례대로 CLINIC_CHUNK 과목씩 나눠 부르고 아래에서 기관 기호로 합친다(TASK-94)
+    for (let i = 0; i < clinicDepts.length; i += CLINIC_CHUNK) {
+      const depts = clinicDepts.slice(i, i + CLINIC_CHUNK)
+      asks.push({ group: 'clinic', reply: b.ask({ kind: 'hosp-list', at, r, group: 'clinic', depts }, READ.hospList) })
+    }
   }
   for (const group of ['dental', 'korean'] as const) if (wanted(group)) asks.push({ group, reply: b.ask({ kind: 'hosp-list', at, r, group }, READ.hospList) })
   if (asks.length === 0) return null

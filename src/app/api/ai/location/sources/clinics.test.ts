@@ -462,3 +462,13 @@ describe('hosp-detail — 심평원 의료기관별상세정보서비스(장비�
     expect(hospDetail.parse([fixture('detail-equip.json')], detailQ(), TODAY)).toEqual(failed)
   })
 })
+
+// 심평원이 아침 내내 한 번에 13~60초이거나 결과 코드 99(2026-11-23) → 50초까지 기다리고 시간 넘은 부르기는 한 번 더(design.md 3절, TASK-94)
+describe('AC-7903.3 심평원 시간 한도(TASK-94)', () => {
+  it('AC-7903.3: 의원 목록·상세는 부르기마다 50초이고 시간 넘은 부르기는 한 번 더', () => {
+    for (const adapter of [hospList, hospDetail]) {
+      expect(adapter.timeoutMs, adapter.kind).toBe(50_000)
+      expect(adapter.retryTimeout, adapter.kind).toBe(true)
+    }
+  })
+})

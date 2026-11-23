@@ -440,6 +440,9 @@ function pointsIn(v: unknown): Point[] {
   return [...here, ...Object.values(o).flatMap(pointsIn)]
 }
 
+/** 차례대로 2개씩(의원 과목 나눠 부르기, TASK-94) */
+const pairsOf = <T,>(xs: readonly T[]): T[][] => Array.from({ length: Math.ceil(xs.length / 2) }, (_, i) => xs.slice(i * 2, i * 2 + 2))
+
 // ── 시험 ─────────────────────────────────────────────────
 
 describe('AC-7908.2 collect — 그날 값 모으기', () => {
@@ -688,15 +691,17 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
       },
     ])
     for (const r of rivalsOf(s)) for (const id of r.depts) expect(DEPTS.map((x) => x.id)).toContain(id)
+    // 의원 과목은 차례대로 2과목씩 나눠 부른다(TASK-94)
     expect(askedOf('hosp-list')).toEqual([
-      { kind: 'hosp-list', at: AT, r: R, group: 'clinic', depts: CLINIC_IDS },
+      ...pairsOf(CLINIC_IDS).map((depts) => ({ kind: 'hosp-list', at: AT, r: R, group: 'clinic', depts })),
       { kind: 'hosp-list', at: AT, r: R, group: 'dental' },
       { kind: 'hosp-list', at: AT, r: R, group: 'korean' },
     ])
     expect(CLINIC_IDS.length).toBe(19)
-    // 상세·비급여는 경쟁 과목(처음 설정: 정형외과·신경외과·마취통증·재활) 의원만, 의원마다 따로
-    expect(askedOf('hosp-detail').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y2', 'Y6'])
-    expect(askedOf('nonpay').sort((a, b) => (a.ykiho < b.ykiho ? -1 : 1))).toEqual([
+    // 상세·비급여는 경쟁 과목(처음 설정: 정형외과·신경외과·마취통증·재활) 의원만, 의원마다 따로(실패한 Y2는 세 번 — TASK-94)
+    expect([...new Set(askedOf('hosp-detail').map((q) => q.ykiho))].sort()).toEqual(['Y1', 'Y2', 'Y6'])
+    const nonpays = [...new Map(askedOf('nonpay').map((q) => [q.ykiho, q])).values()]
+    expect(nonpays.sort((a, b) => (a.ykiho < b.ykiho ? -1 : 1))).toEqual([
       { kind: 'nonpay', ykiho: 'Y1', item: 'SZ084' },
       { kind: 'nonpay', ykiho: 'Y2', item: 'SZ084' },
       { kind: 'nonpay', ykiho: 'Y6', item: 'SZ084' },
@@ -768,7 +773,7 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     const { deps, askedOf } = world({ deps: { deptRule: rule } })
     const s = await collect(AT, R, deps)
     expect(askedOf('hosp-list')).toEqual([
-      { kind: 'hosp-list', at: AT, r: R, group: 'clinic', depts: CLINIC_IDS.filter((x) => x !== 'im') },
+      ...pairsOf(CLINIC_IDS.filter((x) => x !== 'im')).map((depts) => ({ kind: 'hosp-list', at: AT, r: R, group: 'clinic', depts })),
       { kind: 'hosp-list', at: AT, r: R, group: 'korean' },
     ])
     const list = rivalsOf(s)
@@ -778,8 +783,9 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
       ['별빛신경외과의원', false],
       ['나래마취통증의학과의원', false],
     ])
-    expect(askedOf('hosp-detail').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y3'])
-    expect(askedOf('nonpay').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y3'])
+    // 실패한 곳은 세 번까지 묻는다(TASK-94) — 물은 곳만 본다
+    expect([...new Set(askedOf('hosp-detail').map((q) => q.ykiho))].sort()).toEqual(['Y1', 'Y3'])
+    expect([...new Set(askedOf('nonpay').map((q) => q.ykiho))].sort()).toEqual(['Y1', 'Y3'])
 
     // 경쟁 0개: 목록은 받지만 상세·진료 시간·비급여는 부르지 않는다
     const none = world({ deps: { deptRule: { v: 1, rival: [], hide: [] } } })
@@ -1283,9 +1289,13 @@ describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)
     for (const q of asked) expect(allowed.has(q.kind), q.kind).toBe(true)
     const list = askedOf('hosp-list')
     // 같은 몸통 규칙: 의원은 안 보기가 아닌 과목 모두(대표 과목을 세려고), 치과·한의원은 경쟁 과목일 때만
-    expect(list.map((q) => q.group)).toEqual(['clinic'])
-    expect(list[0].group === 'clinic' && list[0].depts).toEqual(CLINIC_IDS)
-    expect(list[0].at).toEqual({ lat: 37.5, lng: 127 })
+    // 의원 과목은 차례대로 2과목씩 나눠 부른다(TASK-94)
+    expect(list.map((q) => q.group)).toEqual(pairsOf(CLINIC_IDS).map(() => 'clinic'))
+    expect(list.map((q) => q.group === 'clinic' && q.depts)).toEqual(pairsOf(CLINIC_IDS))
+    for (const q of list) {
+      expect(q.at).toEqual({ lat: 37.5, lng: 127 })
+      expect(q.r).toBe(list[0].r)
+    }
     expect(list[0].r).toBeGreaterThanOrEqual(d({ lat: 37.49, lng: 126.99 }, { lat: 37.5, lng: 127 }))
     expect(list[0].r).toBeLessThanOrEqual(20_000)
     for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(LOST)
@@ -1336,5 +1346,56 @@ describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)
     expect(await collectScan('99999', world().deps)).toEqual({ ok: false, why: 'outside' })
     const broken = world({ deps: { dongFile: async () => Promise.reject(new Error('x')) } })
     expect(await collectScan('41111', broken.deps)).toEqual({ ok: false, why: 'failed' })
+  })
+})
+
+// 심평원 다시 묻기(design.md 5절, TASK-94 — 사용자 '그냥 시간 상관없이 보이게')
+describe('AC-7903.3 심평원은 실패하면 두 번 더(TASK-94)', () => {
+  it('AC-7903.3: 상세가 두 번 실패하고 세 번째에 되면 그 값을 붙인다', async () => {
+    let n = 0
+    const { deps, askedOf } = world({
+      handlers: { 'hosp-detail': (q) => (q.ykiho === 'Y1' ? (++n < 3 ? FAIL : ok({ mri: true, ct: false, therapists: 3 })) : FAIL) },
+    })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('hosp-detail').filter((q) => q.ykiho === 'Y1')).toHaveLength(3)
+    const y1 = rivalsOf(s).find((x) => x.name === '가람정형외과의원')
+    expect(y1?.detail).toMatchObject({ therapists: 3, mri: true, ct: false })
+  })
+
+  it('AC-7903.3: 세 번 다 실패하면 세 번만 묻고 그만둔다(심평원 셋 모두)', async () => {
+    const { deps, askedOf } = world({ handlers: { 'hosp-detail': () => FAIL, nonpay: () => FAIL } })
+    await collect(AT, R, deps)
+    for (const kind of ['hosp-detail', 'nonpay'] as const) {
+      const per = new Map<string, number>()
+      for (const q of askedOf(kind)) per.set(q.ykiho, (per.get(q.ykiho) ?? 0) + 1)
+      expect([...per.values()].length, kind).toBeGreaterThan(0)
+      for (const [ykiho, times] of per) expect(times, `${kind} ${ykiho}`).toBe(3)
+    }
+  })
+
+  it('AC-7903.3: 의원 목록이 던지면(실패) 세 번까지 묻는다', async () => {
+    let thrown = 0
+    const { deps, askedOf } = world({
+      handlers: {
+        'hosp-list': (q) => {
+          if (q.group === 'korean' && thrown++ < 2) throw new Error('x')
+          return ok({ items: [], capped: false })
+        },
+      },
+    })
+    await collect(AT, R, deps)
+    expect(askedOf('hosp-list').filter((q) => q.group === 'korean')).toHaveLength(3)
+  })
+
+  it('AC-7903.3: 활용신청 안 됨·열쇠 없음은 다시 묻지 않고, 다른 종류(인구)는 실패해도 한 번', async () => {
+    const { deps, askedOf } = world({
+      handlers: { 'hosp-detail': () => ({ ok: false, code: 'not-applied' }), nonpay: () => ({ ok: false, code: 'no-key', key: 'data' }), 'pop-age': () => FAIL },
+    })
+    await collect(AT, R, deps)
+    for (const kind of ['hosp-detail', 'nonpay', 'pop-age'] as const) {
+      const keys = askedOf(kind).map((q) => JSON.stringify(q))
+      expect(keys.length, kind).toBeGreaterThan(0)
+      expect(new Set(keys).size, kind).toBe(keys.length)
+    }
   })
 })

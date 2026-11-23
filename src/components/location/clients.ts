@@ -19,8 +19,10 @@ export const CLIENT_TIMEOUT_MS = 10_000
 // 서버가 오래 붙잡는 종류만 더 기다린다(서버 한도보다 조금 길게 — 서버 답이 오기 전에 끊지 않게, design.md 3절)
 // 인구(pop-age)·체력단련장(gym)은 서버가 시간 넘은 부르기를 한 번 더 부른다: 인구 20초 × 두 번 → 45초, 체력단련장 5쪽을 둘씩 = 3번 × 15초 × 두 번 → 95초(TASK-88)
 const SLOW_QUERY_MS: Readonly<Partial<Record<QueryKind, number>>> = {
-  'hosp-list': 60_000,
-  nonpay: 70_000,
+  // 심평원 셋: 서버 경로 한도 120초보다 조금 길게(심평원 50초 × 두 번, 비급여 60초 — TASK-94)
+  'hosp-list': 125_000,
+  'hosp-detail': 125_000,
+  nonpay: 125_000,
   'clinic-license': 125_000,
   'pop-age': 45_000,
   gym: 95_000,

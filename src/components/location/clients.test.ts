@@ -133,10 +133,11 @@ describe('queryLocation — POST /api/ai/location/query', () => {
   const HOSP_DETAIL: Query = { kind: 'hosp-detail', ykiho: 'JDQ4MTYxMiM1MSMk' }
 
   it.each([
-    ['hosp-list 의원(과목 넷)', 60_000, HOSP_CLINIC],
-    ['hosp-list 한의원', 60_000, HOSP_KOREAN],
-    ['nonpay(서버 한도 60초보다 길게)', 70_000, NONPAY],
-    ['hosp-detail(기본)', 10_000, HOSP_DETAIL],
+    // 심평원 셋은 서버 경로 한도 120초보다 조금 긴 125초(TASK-94)
+    ['hosp-list 의원(과목 넷)', 125_000, HOSP_CLINIC],
+    ['hosp-list 한의원', 125_000, HOSP_KOREAN],
+    ['nonpay', 125_000, NONPAY],
+    ['hosp-detail', 125_000, HOSP_DETAIL],
     ['household(기본)', 10_000, HOUSEHOLD],
   ] as const)('AC-7922.2: 한도는 종류마다 — %s는 %i ms가 지나야 끊고 failed', async (_name, limitMs, q) => {
     vi.useFakeTimers()
