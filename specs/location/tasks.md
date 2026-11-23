@@ -492,3 +492,9 @@
 - Files: src/components/location/compare/text.ts, src/components/location/compare/CandidateCompare.tsx, src/components/location/compare/CandidateCompare.test.tsx, src/components/location/compare/DeleteCandidateDialog.tsx, src/components/location/useLocation.ts, src/components/location/useLocation.test.ts, src/components/location/LocationScreen.tsx, docs/mockups/location/notes.md
 - Tests: src/components/location/compare/CandidateCompare.test.tsx, src/components/location/useLocation.test.ts
 - TDD: required — (1) 진행 상태 줄·내려놓은 후보 줄마다 [지우기] → 확인 창(제목·본문·[그만두기]·[지우기], 초점 [그만두기], Esc) → onDelete(id), [그만두기]·Esc는 부르지 않음. (2) `removeCandidate`: 되면 후보·메모·사진·알림 빼고 매물 candidateId null, 실패하면 그대로 + saveError. (3) `LocationScreen`이 `onDelete={api.removeCandidate}`(design 14절)
+
+## TASK-94: 심평원은 오래 기다리고 다시 묻기
+- REQ: REQ-7903, REQ-7922 · AC-7903.3, AC-7922.2
+- Files: src/app/api/ai/location/sources/clinics.ts, src/app/api/ai/location/sources/clinics.test.ts, src/lib/location/collect.ts, src/lib/location/collect.test.ts, src/components/location/clients.ts, src/components/location/clients.test.ts
+- Tests: src/app/api/ai/location/sources/clinics.test.ts, src/lib/location/collect.test.ts, src/components/location/clients.test.ts
+- TDD: required — (1) `hospList`·`hospDetail` `timeoutMs` 50,000·`retryTimeout` 참. (2) 모으기 의원 목록은 의원 과목을 차례대로 2과목씩 나눠 부르고 합친다. (3) 모으기 `ask`는 심평원 셋이 `failed`면 두 번 더(모두 세 번), 다른 종류·`no-key`·`not-applied`는 한 번. (4) `clients.ts` 심평원 셋 125초(design 3절·5절)
