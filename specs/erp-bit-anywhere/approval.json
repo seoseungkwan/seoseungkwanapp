@@ -1,16 +1,24 @@
 {
   "status": "approved",
   "feature": "erp-bit-anywhere",
-  "approved_at": "2026-11-23T08:04:57Z",
+  "approved_at": "2026-11-23T08:41:43Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "5b5227ef05bb0d39c9ec1cfcda944f1fc6f7da8f0a9150d24d7769e635799e72",
+  "spec_sha256": "ace52dc569764e875f7b897530fe6854073a9e60f82177bd28338743e68b1bce",
   "scope": [
     "helper-erp/install/install.cmd",
+    "helper-erp/install/install.ps1",
     "helper-erp/src/Erp.Core/ErpInstallRules.cs",
+    "helper-erp/src/Erp.Core/ErpServerRules.cs",
+    "helper-erp/src/Erp.Helper/ErpBitDb.cs",
     "helper-erp/src/Erp.Helper/ErpInstallationLocator.cs",
+    "helper-erp/src/Erp.Helper/ErpReadOnlyConnection.cs",
     "helper-erp/src/Erp.Helper/ErpServices.cs",
+    "helper-erp/src/Erp.Helper/ErpStage.cs",
+    "helper-erp/src/Erp.Helper/ErpVendorPreload.cs",
+    "helper-erp/src/Erp.Helper/Program.cs",
     "helper-erp/tests/Erp.Core.Tests/ErpInstallRules.test.cs",
+    "helper-erp/tests/Erp.Core.Tests/ErpServerRules.test.cs",
     "helper-erp/tests/erp-core.dotnet.test.ts",
     "helper-erp/tests/erp-helper.test.ts"
   ]
