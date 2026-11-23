@@ -497,6 +497,24 @@ describe('AC-3801.3 ErpInstallationLocator: 기존 InstallationLocator 후보를
   })
 })
 
+describe('AC-3803.1 ErpInstallRules.FindRoot 몸통은 기존 BitInstallRules.FindRoot와 같다(파일 목록만 ERP 것)', () => {
+  const findRoot = (file: string) => csBody(methodBody(code(read(file)), /public static string\? FindRoot\(string\? candidate, IFileProbe probe\)/))
+
+  it('AC-3803.1: 두 몸통이 글자로 같고(RequiredFiles·AncestorLimit은 각 형의 것), ERP 상수는 기존 AncestorLimit을 그대로 쓴다', () => {
+    const erp = findRoot('helper-erp/src/Erp.Core/ErpInstallRules.cs')
+    expect(erp).toBe(findRoot('helper/src/Precheck.Core/Bit/BitInstallRules.cs'))
+    const text = code(read('helper-erp/src/Erp.Core/ErpInstallRules.cs'))
+    expect(text).toMatch(/private const int AncestorLimit = BitInstallRules\.AncestorLimit;/)
+    expect(text).toMatch(/public static readonly IReadOnlyList<string> RequiredFiles = new\[\]\s*\{\s*@"EXE\\BITDataBaseCommon\.dll", @"EXE\\BITUserLogIn\.dll",?\s*\};/)
+  })
+
+  it('AC-3803.2: helper-erp/src 안에 기존 BitInstallRules.FindRoot를 부르는 곳이 없다', () => {
+    for (const file of filesUnder('helper-erp/src').filter((f) => f.endsWith('.cs'))) {
+      expect(code(read(file)), file).not.toMatch(/\bBitInstallRules\.FindRoot\(/)
+    }
+  })
+})
+
 describe('AC-3801.4 청구 도우미 쪽은 갈래 시작(6754571c) 그대로', () => {
   const BASE = '6754571c'
 

@@ -138,6 +138,27 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
   it('AC-3801.2 ErpInstallRules.Choose는 UNC·네트워크 드라이브·상대 경로·빈 값·파일 빠짐·환경 파일 없음·Path·Bin 다름을 건너뛰고 다음 후보를 보며, 같은 설치는 한 번만, 없으면 E-BIT-NOT-FOUND', () => {
     expectAc('AC-3801.2')
   })
+
+  // spec erp-bit-anywhere AC-3803.1~3·AC-3804.1·2: C# ErpInstallRulesTests·ErpServerRulesTests(namespace Erp.Core.Tests)
+  it('AC-3803.1 ErpInstallRules.FindRoot는 ERP가 부르는 DLL 둘(BITDataBaseCommon·BITUserLogIn)만 보고 기존과 같이 위로 4단계·UNC·네트워크·상대·빈 값을 거른다', () => {
+    expectAc('AC-3803.1')
+  })
+
+  it('AC-3803.2 ErpInstallRules.Choose는 통계 파일이 없는 설치도 고르고 ERP DLL이 빠지면 고르지 않는다', () => {
+    expectAc('AC-3803.2')
+  })
+
+  it('AC-3803.3 환경 파일은 윈도우 드라이브가 이기고, 그 파일이 없을 때만 설치 폴더 드라이브 파일을 본다(있는데 못 읽으면 거절)', () => {
+    expectAc('AC-3803.3')
+  })
+
+  it('AC-3804.1 ErpServerRules.IsAllowed: 기존 값은 풀지 않고 받고, 이름은 병원 안 주소로만 풀릴 때 받고, 밖 주소·풀이 실패·이상한 이름·tcp: 없는 :는 막는다', () => {
+    expectAc('AC-3804.1')
+  })
+
+  it('AC-3804.2 ErpServerRules.Require는 막을 때 E-BIT-DB-FAILED', () => {
+    expectAc('AC-3804.2')
+  })
 })
 
 describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규칙 칸', () => {
@@ -330,6 +351,7 @@ describe('AC-3611.1 Erp.Core 틀', () => {
       'ErpInstallRules.cs',
       'ErpLogLine.cs',
       'ErpReadGuard.cs',
+      'ErpServerRules.cs', // spec erp-bit-anywhere AC-3804.1
     ])
   })
 
