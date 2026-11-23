@@ -504,3 +504,9 @@
 - Files: src/components/location/common/RefreshBusy.ts, src/components/location/common/text.ts, src/components/location/common/WhyLine.tsx, src/components/location/common/WhyLine.test.tsx, src/components/location/detail/frame/CandidateFrame.tsx, src/components/location/detail/frame/CandidateFrame.test.tsx, src/components/location/detail/rivals/PriceSection.tsx, src/components/location/detail/rivals/rivals.test.tsx, src/components/location/useLocation.ts, src/components/location/useLocation.test.ts, docs/mockups/location/notes.md
 - Tests: src/components/location/common/WhyLine.test.tsx, src/components/location/detail/frame/CandidateFrame.test.tsx, src/components/location/detail/rivals/rivals.test.tsx, src/components/location/useLocation.test.ts
 - TDD: required — (1) `RefreshBusy` 문맥이 글이면 `WhyLine` failed + onRetry(카카오 출처 빼고)는 그 글만, 단추 없음. (2) `CandidateFrame`이 progress를 문맥으로 내려 준다. (3) `PriceSection` 못 받은 줄도 같은 글. (4) `refresh`는 같은 후보를 받는 중이면 다시 부르지 않는다(design 15절)
+
+## TASK-96: 심평원이 막히면 빨리 포기
+- REQ: REQ-7903 · AC-7903.3
+- Files: src/lib/location/collect.ts, src/lib/location/collect.test.ts
+- Tests: src/lib/location/collect.test.ts
+- TDD: required — 모으기 한 번 안에서 세 번 다 실패한 심평원 부르기가 2개면(`HIRA_DOWN_AFTER`) 남은 심평원 부르기·다시 묻기는 deps.ask를 부르지 않고 failed. 의원 한 곳만 늘 실패하면 그대로(다른 의원 값은 받음). 다른 칸은 그대로 받는다(design 5절)

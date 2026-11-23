@@ -356,7 +356,7 @@
 ### REQ-7903: 서버 경로 (`POST /api/ai/location/query` · `GET /api/ai/location/keys`)
 - AC-7903.1: Given 로그인 안 함·관리자 아님·데스크·승인 대기, When 두 경로를 부르면, Then 401·403(몸통 없음)이고 바깥 사이트를 한 번도 부르지 않는다
 - AC-7903.2: Given 몸통, When 정해 둔 종류(design.md 4절)·칸·범위 밖이면, Then 400이다. 열쇠는 서버 환경 변수 둘에서만 읽고 답·로그·오류 글에 열쇠·바깥 오류 글이 들지 않는다
-- AC-7903.3: Given 열쇠 없음 · 활용신청 안 됨 · 바깥 실패(시간 한도 — 기본 8초·인구 20초·체력단련장 15초·심평원 의원 목록·상세 50초·비급여 60초, 인구·체력단련장·3년 개폐업·사람 흐름·심평원 의원 목록·상세는 시간 한도를 넘은 부르기를 한 번 더 부른 뒤에도 넘을 때. 3년 개폐업은 1쪽의 전체 수로 필요한 쪽만 부른다 · 2MB·HTTP·모양), When 부르면, Then `{ ok: false, code: 'no-key' | 'not-applied' | 'failed', key? }`이고, 되면 `{ ok: true, value, src, asOf }`이다. 공공 자료의 미등록 답은 HTTP 200(결과 코드 20·30)이든 401·403 + `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` 몸통이든 `not-applied`다(이 명세가 정한 것 19)
+- AC-7903.3: Given 열쇠 없음 · 활용신청 안 됨 · 바깥 실패(시간 한도 — 기본 8초·인구 20초·체력단련장 15초·심평원 의원 목록·상세 50초·비급여 60초 — 한 번 모으는 동안 심평원 부르기 2개가 세 번씩 다 실패하면 남은 심평원 부르기는 바로 실패, 인구·체력단련장·3년 개폐업·사람 흐름·심평원 의원 목록·상세는 시간 한도를 넘은 부르기를 한 번 더 부른 뒤에도 넘을 때. 3년 개폐업은 1쪽의 전체 수로 필요한 쪽만 부른다 · 2MB·HTTP·모양), When 부르면, Then `{ ok: false, code: 'no-key' | 'not-applied' | 'failed', key? }`이고, 되면 `{ ok: true, value, src, asOf }`이다. 공공 자료의 미등록 답은 HTTP 200(결과 코드 20·30)이든 401·403 + `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` 몸통이든 `not-applied`다(이 명세가 정한 것 19)
 - AC-7903.4: Given 바깥 부르기, When 보내면, Then 정해 둔 host(design.md 3절)만, redirect 없이 부르고, 답 머리는 `Cache-Control: no-store`다. 서버는 DB에 쓰지 않고 카카오 답을 담아 두지 않는다. 로그는 `[api/ai/location]` + 오류 번호 + 종류뿐이다(좌표·주소·답 없음)
 - AC-7903.5: Given 관리자, When `keys`를 부르면, Then 열쇠마다 `ok | missing | rejected | failed`를 작은 부르기 하나(공공 = 활용신청이 된 `pop-age` 동 하나, 카카오 = `k-address`)로 확인해 돌려주고 아무것도 저장하지 않는다. `query` 경로의 `maxDuration`은 120이다
 
