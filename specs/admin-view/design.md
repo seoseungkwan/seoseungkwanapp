@@ -822,7 +822,7 @@ TASK-6 일꾼 보고(커밋 `904eb776`): 긴 기간을 여러 조각으로 읽�
 `partSave` 바꿈(TASK-18이 `src/components/stats/loadPlan.ts`를 고침 — Phase 2 TASK-8 뒤라 겹치지 않음): `unsure`일 때 `sunap`을 빼던 것을 지우고, `dropoff`는 `monthRange(addMonths(row.month, 3)).to ≤ read.to`인 달 줄만 남긴다. 통계 탭 '전체 기간' 옛 조각에도 같은 규칙이 걸려 거기서도 옛 달 합계가 생긴다(화면 숫자는 Worker 기억에서 그리므로 그대로). TASK-6 시험 가운데 '옛 조각은 둘 다 뺀다'를 새 규칙으로 고친다.
 
 ## 저절로 올리기 — 돌리기 (TASK-18, `src/components/autoUpload/`)
-- `AutoUpload.tsx`: `AppShell`이 늘 그린다(한 줄). `null`을 그린다. 쪽을 처음 열 때 한 번 `runUpload`를 부른다(탭 사이를 옮겨도 다시 부르지 않음 — 앱 틀이 남아 있음). 연 뒤 15초 기다림(첫 화면·대시보드 비트 읽기가 먼저), 탭이 보이는 중이 아니면 보일 때까지 기다림.
+- `AutoUpload.tsx`: `AppShell`이 늘 그린다(한 줄). `null`을 그린다. 쪽을 처음 열 때 한 번 `runUpload`를 부른다(탭 사이를 옮겨도 다시 부르지 않음 — 앱 틀이 남아 있음). 단 화면이 통로를 쥐어 시작하지 못했거나 화면에 비켜 끊겼으면(`'lane-busy'`) `bitLane.waitBackground`로 통로가 풀린 뒤 15초 지나 다시 부른다(한 번에 하나, `'ended'` 뒤엔 다시 안 부름 — AC-8021.8, 마지막 검토 뒤 고침). 연 뒤 15초 기다림(첫 화면·대시보드 비트 읽기가 먼저), 탭이 보이는 중이 아니면 보일 때까지 기다림.
 - `runUpload(deps)`(훅 아님 — 본보기 `components/dashboard/live/readBitDays.ts`; 통로·Worker·저장소·시계·`bitLane`·`navigator.locks`를 인자로 받아 시험):
   1. 보는 중(`useReadOnly()`·`readViewKey()`)이면 끝. `readMyUploadPlan()` 줄 없음이면 끝.
   2. 읽기 넷(`readSavedSalesDays`·`readCoverage`·`readStatsMarks` — 채울 기간 안, 처방 묶음·수납일지 설정) → `uploadPlan`. 빈 목록 + `through_day` ≥ 어제면 끝(그날 두 번째 열기부터 서버 읽기만).
