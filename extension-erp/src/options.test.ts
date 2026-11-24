@@ -9,6 +9,8 @@ import { ERRORS, OTHER } from './errors'
 import { startOptions } from './options'
 import { GROUP_KEYS, GROUP_NAMES, RSV_NAMES, RSV_ROWS, SETTINGS_KEY } from './types'
 import type { ClosingCodes, Settings } from './types'
+import { UIS_CODES_KEY, UIS_SETTINGS_KEY } from './uisTypes'
+import type { UisSettings } from './uisTypes'
 
 const EXT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -65,9 +67,13 @@ function helperFind(text: string) {
   return { type: 'result', data: { codes } }
 }
 
-function fakeChrome(opts: { stored?: unknown; reply?: Reply; find?: (text: string) => unknown } = {}) {
+function fakeChrome(
+  opts: { stored?: unknown; reply?: Reply; find?: (text: string) => unknown; uis?: unknown; uisCodes?: unknown } = {},
+) {
   const data: Record<string, unknown> = {}
   if (opts.stored !== undefined) data[SETTINGS_KEY] = JSON.parse(JSON.stringify(opts.stored))
+  // 의사랑판(spec erp-uisarang AC-4214.1): 의사랑 설정·[코드 목록 읽기] 답. 주지 않으면 지금 시험과 같다
+  if (opts.uis !== undefined) data[UIS_SETTINGS_KEY] = JSON.parse(JSON.stringify(opts.uis))
   const local = {
     get: vi.fn(async (key: string) => (key in data ? { [key]: JSON.parse(JSON.stringify(data[key])) } : {})),
     set: vi.fn(async (items: Record<string, unknown>) => {
@@ -78,6 +84,7 @@ function fakeChrome(opts: { stored?: unknown; reply?: Reply; find?: (text: strin
   const find = opts.find ?? helperFind
   const sendMessage = vi.fn(async (message?: { cmd?: string; args?: { text?: string } }) => {
     if (message?.cmd === 'closing.findCodes') return find(message.args?.text ?? '')
+    if (message?.cmd === 'closing.uisCodes') return opts.uisCodes
     return typeof reply === 'function' ? (reply as () => Promise<unknown>)() : reply
   })
   vi.stubGlobal('chrome', { runtime: { id: 'erp-test', sendMessage }, storage: { local } })
@@ -1632,5 +1639,124 @@ describe("AC-3615.8 '치료별 건수 · 매출' 안내 글", () => {
       "그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그날 고른 코드 처방 줄의 금액 합을 매출로 채워요. 씨암 · SONO 매출은 그 줄의 '매출로 셀 코드'로 세요.",
     )
     expect(document.body.textContent).not.toContain('총진료비')
+  })
+})
+
+// --- 의사랑판(spec erp-uisarang TASK-12, design.md 8-9 options · 결정 7): 어느 설정 화면을 그리나 ---
+
+/** 의사랑 설정 예시(시안 ⑱ 일부, 코드는 지은 값) */
+const UIS_SAVED: UisSettings = {
+  v: 1,
+  counts: { sono: ['sono5'], ptVisit: ['AA222'] },
+  sales: { sono: ['sono5'], etc1: ['CRYO 대관절'] },
+  etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
+}
+const WRONG_SOURCE = { type: 'error', code: 'E-CLOSING-WRONG-SOURCE' }
+/** 지금 도우미 부름(cmd만, 차례대로) */
+const calls = (sendMessage: ReturnType<typeof vi.fn>) => sendMessage.mock.calls.map((c) => (c[0] as { cmd: string }).cmd)
+
+async function openBoth(opts: { stored?: unknown; reply?: Reply; uis?: unknown; uisCodes?: unknown } = {}) {
+  const fake = fakeChrome(opts)
+  mountPage()
+  await startOptions()
+  return fake
+}
+
+describe('AC-4214.1 의사랑 설정 화면으로 가는 때', () => {
+  it('AC-4214.1: 의사랑 설정(erpClosingUis)만 저장돼 있으면 closing.codes를 부르지 않고 의사랑 화면이다', async () => {
+    const { sendMessage, local } = await openBoth({ uis: UIS_SAVED })
+    expect(sendMessage).not.toHaveBeenCalled()
+    expect(text($('.notice.src b'))).toBe('의사랑 통계 엑셀에서 읽어요.')
+    expect($$('[data-rsv]')).toHaveLength(0)
+    expect($$('.notice.wait')).toHaveLength(0)
+    expect($('#optReset').hidden).toBe(true)
+    expect(status()).toBe('저장했어요.')
+    // 비트 설정은 있는지만 본다(값은 쓰지 않는다)
+    expect(local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-4214.1: closing.codes가 E-CLOSING-WRONG-SOURCE면 오류 글 없이 의사랑 화면이다(부름은 closing.codes 한 번)', async () => {
+    const { sendMessage } = await openBoth({ reply: WRONG_SOURCE })
+    expect(calls(sendMessage)).toEqual(['closing.codes'])
+    expect($$('.notice.err')).toHaveLength(0)
+    expect($$('.notice.wait')).toHaveLength(0)
+    expect(document.body.textContent).not.toContain('E-CLOSING-WRONG-SOURCE')
+    expect(document.body.textContent).not.toContain('다른 차트 프로그램')
+    expect(text($('.notice.src b'))).toBe('의사랑 통계 엑셀에서 읽어요.')
+    expect($$('.notice.first')).toHaveLength(1)
+    expect(status()).toBe('아직 한 번도 저장하지 않았어요.')
+    expect($('#optReset').hidden).toBe(true)
+    expect($$('[data-rsv]')).toHaveLength(0)
+  })
+
+  it('AC-4214.1: 비트 설정이 남은 의사랑 PC(둘 다 저장)는 closing.codes를 부르고 WRONG-SOURCE면 저장한 의사랑 설정을 보인다', async () => {
+    const { sendMessage } = await openBoth({ stored: SAVED, uis: UIS_SAVED, reply: WRONG_SOURCE })
+    expect(calls(sendMessage)).toEqual(['closing.codes'])
+    expect([...$('[data-row="sono"] [data-kind="counts"]').querySelectorAll('.chip b')].map(text)).toEqual(['sono5'])
+    expect(status()).toBe('저장했어요.')
+  })
+
+  it('AC-4214.1: 둘 다 저장돼 있고 비트 도우미면 지금 비트 화면 그대로다', async () => {
+    const { sendMessage } = await openBoth({ stored: SAVED, uis: UIS_SAVED })
+    expect(calls(sendMessage)).toEqual(['closing.codes'])
+    expect(text($('.notice.ok'))).toBe('비트에서 최근 1년 처방 코드 1,284개와 예약 메모 6개를 받았어요.')
+    expect($$('.notice.src')).toHaveLength(0)
+    expect($$('[data-rsv]')).toHaveLength(6)
+    expect($('#optReset').hidden).toBe(false)
+    expect(chipCodes('manual')).toEqual(['도수', 'MA4'])
+  })
+
+  it('AC-4214.1: 둘 다 없고 비트 도우미면 지금 비트 화면 그대로다(부름 한 번, 처음 값)', async () => {
+    const { sendMessage } = await openBoth()
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(sendMessage).toHaveBeenCalledWith({ cmd: 'closing.codes', args: {} })
+    expect($$('.notice.src')).toHaveLength(0)
+    expect(text($('.lead-p'))).toBe(
+      'ERP 칸마다 셀 비트 처방 코드를 고르세요. 여러 개를 고를 수 있어요. 코드를 고르지 않은 항목의 칸은 건드리지 않아요.',
+    )
+    expect(chipText('carm', 'CARM1')).toBe('CARM1 씨암 영상 유도 ×')
+  })
+
+  it('AC-4214.1: 다른 오류는 지금처럼 비트 화면 오류 줄이다', async () => {
+    await openBoth({ reply: { type: 'error', code: 'E-BIT-NOT-FOUND' } })
+    expect(text($('.notice.err b'))).toBe('도우미에서 코드 목록을 받지 못했어요 (E-BIT-NOT-FOUND)')
+    expect($$('.notice.src')).toHaveLength(0)
+  })
+
+  it('AC-4214.1: WRONG-SOURCE로 간 의사랑 화면의 [저장]은 erpClosingUis만 쓰고 비트 화면 단추·나가기 확인은 남지 않는다', async () => {
+    const { local, data } = await openBoth({ stored: SAVED, reply: WRONG_SOURCE })
+    expect(leaveBlocked()).toBe(false)
+    type($<HTMLInputElement>('[data-etc="etc1"]'), '크라이오')
+    expect(leaveBlocked()).toBe(true)
+    $('#optSave').click()
+    await flush()
+    expect(local.set).toHaveBeenCalledTimes(1)
+    expect(Object.keys(local.set.mock.calls[0][0] as object)).toEqual([UIS_SETTINGS_KEY])
+    expect(data[SETTINGS_KEY]).toEqual(SAVED)
+    expect(askHidden()).toBe(true)
+    expect(leaveBlocked()).toBe(false)
+  })
+
+  it('AC-4214.1 AC-4214.3: 의사랑 화면의 [코드 목록 읽기]는 서비스 워커에 closing.uisCodes를 보내고 목록을 erpClosingUisCodes에 쓴다', async () => {
+    const codes = [{ code: 'sono5', name: '초음파 유도 주사', qty: 402, amount: 24120000 }]
+    const { sendMessage, data } = await openBoth({
+      uis: UIS_SAVED,
+      uisCodes: { type: 'result', data: { state: 'ok', from: '2026-08-24', to: '2026-11-23', value: null, codes } },
+    })
+    $<HTMLButtonElement>('[data-reread]').click()
+    await flush()
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(sendMessage).toHaveBeenCalledWith({ cmd: 'closing.uisCodes', args: {} })
+    expect(data[UIS_CODES_KEY]).toEqual({ v: 1, from: '2026-08-24', to: '2026-11-23', codes })
+  })
+
+  it('AC-4214.1: 의사랑 화면을 연 뒤 비트 화면을 다시 열면 비트 화면 그대로다(의사랑 나가기 확인이 남지 않음)', async () => {
+    await openBoth({ uis: UIS_SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    expect(leaveBlocked()).toBe(true)
+    const { sendMessage } = await openBoth({ stored: SAVED })
+    expect(calls(sendMessage)).toEqual(['closing.codes'])
+    expect(leaveBlocked()).toBe(false)
+    expect($$('.notice.src')).toHaveLength(0)
   })
 })
