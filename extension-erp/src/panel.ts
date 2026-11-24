@@ -619,17 +619,20 @@ export function createDock(
         closeButton: true,
       })
     },
+    // 두 묻기의 첫 줄만 자료원으로 고른다: 의사랑이면 의사랑 글(spec erp-uisarang design.md 10-1 ★, 고침 7), 비트면 지금 글 그대로
     askZero(date) {
+      const first = source === 'uisarang' ? UIS_TEXT.zero(date) : FLOW_TEXT.zero(date)
       return ask(
-        [lead(FLOW_TEXT.zero(date)), plain(FLOW_TEXT.zeroHow), small(FLOW_TEXT.zeroUntouched)],
+        [lead(first), plain(FLOW_TEXT.zeroHow), small(FLOW_TEXT.zeroUntouched)],
         [{ label: FLOW_TEXT.goAnyway, value: true }],
         false,
         { focus: 1, closeButton: true },
       )
     },
     askWritten(places) {
+      const first = source === 'uisarang' ? UIS_TEXT.ask(places.length) : FLOW_TEXT.ask(places.length)
       return ask<'all' | 'empty' | null>(
-        [lead(FLOW_TEXT.ask(places.length)), plain(FLOW_TEXT.askRows(placeLine(places))), small(FLOW_TEXT.askHelp)],
+        [lead(first), plain(FLOW_TEXT.askRows(placeLine(places))), small(FLOW_TEXT.askHelp)],
         [
           { label: FLOW_TEXT.replace, value: 'all' },
           { label: FLOW_TEXT.emptyOnly, value: 'empty' },

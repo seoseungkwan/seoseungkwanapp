@@ -20,11 +20,17 @@ export const UIS_REPORT_NAMES: Readonly<Record<UisKind, string>> = Object.freeze
   rsvPatients: '예약환자통계 아래쪽 표',
 })
 
-/** 엑셀 폴더 글(design.md 8-2, 답 uis.folder로 고름) */
+/** 엑셀 폴더 글(design.md 8-2, ERP 화면 안내는 답 uis.folder로 고름) */
 export const UIS_FOLDER_TEXT: Readonly<Record<UisFolder, string>> = Object.freeze({
   desktop: '바탕화면 › ERP마감 폴더',
   profile: '사용자 폴더 › ERP마감 폴더',
 })
+
+/**
+ * 설정 화면 폴더 글(design.md 10-6 ★ 폴더 글, 고침 10). closing.uisCodes 답에는 폴더 자리가 없어 바탕화면 · 사용자 폴더를
+ * 가리지 못하므로 설정 화면은 늘 이 글이고, 자리는 맨 위 상자 뒤 글(UIS_OPTIONS_TEXT.source.where)이 설명한다
+ */
+export const UIS_OPTIONS_FOLDER = 'ERP마감 폴더'
 
 // --- 조사 ---
 
@@ -130,20 +136,18 @@ export const UIS_TEXT = {
     /** 환자별 엑셀이 날짜 다름일 때 더하는 줄 */
     patientDeleted: '환자별 엑셀(4 · 6번)은 날짜가 달라도 읽은 뒤 바로 지웠어요.',
   },
-  /** ⑩ 조건이 '전체' 아님(라벨 이름이 외/입 구분이 아니면 leadLabel) */
+  /** ⑩ 조건이 '전체' 아님(답에 라벨 이름 칸이 없어 늘 '외/입 구분' 글, design.md 10-1 · 5-2, 고침 1) */
   cond: {
     lead: (report: string, value: string) => `${report} 엑셀의 외/입 구분이 '${value}'예요.`,
-    leadLabel: (report: string, label: string, value: string) =>
-      `${report} 엑셀의 ${label}${uisJosa(label, '이/가')} '${value}'예요.`,
     how: "의사랑 통계에서 외/입 구분을 '전체'로 바꿔 [검색]한 뒤 다시 엑셀로 저장해 주세요.",
   },
-  /** ⑪ 같은 엑셀 둘(셋 이상이면 그 수) */
+  /** ⑪ 같은 엑셀 여럿(답에 파일 수 칸이 없어 수를 말하지 않음, 고침 1) */
   dup: {
-    lead: (report: string, n: number) => `${report} 엑셀이 ${count(n)}개 있어요.`,
+    lead: (report: string) => `${report} 엑셀이 여러 개 있어요.`,
     how: (folder: string) => `${folder}에서 하나만 남기고 지운 뒤 다시 눌러 주세요.`,
     why: '어느 것이 맞는지 몰라 아무 칸도 바꾸지 않았어요.',
     /** 환자별 표일 때 더하는 줄 */
-    patient: '환자별 엑셀은 둘 다 지웠어요. 하나만 다시 저장해 주세요.',
+    patient: '환자별 엑셀은 모두 지웠어요. 하나만 다시 저장해 주세요.',
   },
   /** ⑫ 한셀에 열림(빨강) */
   open: {
@@ -154,6 +158,12 @@ export const UIS_TEXT = {
     why: '환자별 엑셀은 읽은 뒤 바로 지워야 해서, 열려 있으면 읽지 않아요.',
     code: `아무 칸도 바꾸지 않았어요. (번호 ${UIS_OPEN_CODE})`,
   },
+  /**
+   * 채우기 전 묻기 첫 줄(design.md 10-1 ★, 고침 7): 진료 0건 묻기 · 이미 적힌 칸 묻기. 뒤 줄 · 단추는 지금 panel.ts FLOW_TEXT 그대로이고,
+   * 자료원이 의사랑일 때 panel.ts askZero · askWritten이 첫 줄만 이 글로 바꾼다
+   */
+  zero: (date: string) => `${date}에는 의사랑 진료가 한 건도 없어요.`,
+  ask: (n: number) => `이미 적힌 칸 ${count(n)}개가 의사랑 값으로 바뀌어요.`,
   /** 10-2 1. 맞춰 볼 숫자(null인 줄은 그리는 쪽이 뺀다) */
   check: {
     title: '의사랑과 맞춰 볼 숫자',
@@ -248,13 +258,15 @@ type ReportRow = { menu: string; name: string; table: string | null; how: string
 /**
  * 의사랑 설정 화면 글(design.md 9-5·10-6, 시안 notes.md '설정 화면'과 index.html 줄 글).
  * 저장 줄 글 셋과 [저장]·찾기 칸 자리 글·코드 조각 단추 글은 지금 options.ts 글 그대로라 여기 없다.
- * 폴더 글은 받아서 쓴다(closing.uisCodes 답에는 폴더 자리가 없어 그리는 쪽이 고른다)
+ * 폴더 글은 받아서 쓴다(closing.uisCodes 답에는 폴더 자리가 없어 설정 화면은 늘 UIS_OPTIONS_FOLDER를 넘긴다, 고침 10)
  */
 export const UIS_OPTIONS_TEXT = {
-  /** 맨 위 상자(앞 굵은 글 + 뒤 글) */
+  /** 맨 위 상자(앞 굵은 글 + 뒤 글 + 폴더 자리 설명, design.md 10-6 ★ 폴더 글) */
   source: {
     strong: '의사랑 통계 엑셀에서 읽어요.',
     rest: (folder: string) => `이 PC의 ERP 도우미는 ${folder}에 저장한 의사랑 통계 엑셀을 읽어 ERP 칸을 채워요.`,
+    where:
+      "ERP마감 폴더는 보통 바탕화면에 있고, 바탕화면이 OneDrive와 이어진 PC에서는 사용자 폴더에 있어요(설치할 때 알려 준 자리 · ERP 화면 안내의 '저장할 곳').",
   },
   /** 한 번도 저장하지 않았을 때 */
   first: {
@@ -279,7 +291,8 @@ export const UIS_OPTIONS_TEXT = {
     /** missing 뒤에는 steps를 보인다 */
     missing: (folder: string) => `${folder}에 기간별처방통계 엑셀이 없어요.`,
     notAll: (value: string) => `기간별처방통계 엑셀의 외/입 구분이 '${value}'예요. '전체'로 다시 저장해 주세요.`,
-    twice: '기간별처방통계 엑셀이 2개 있어요. 하나만 남겨 주세요.',
+    /** 답에 파일 수 칸이 없어 수를 말하지 않는다(고침 1) */
+    twice: '기간별처방통계 엑셀이 여러 개 있어요. 하나만 남겨 주세요.',
     open: `기간별처방통계 엑셀이 한셀에 열려 있어요. ${AGAIN}`,
   },
   /** 줄 이름표 */
@@ -345,7 +358,7 @@ export const UIS_OPTIONS_TEXT = {
     about:
       '의사랑 예약에는 종류가 없어 실예약환자수만 채워요. 종류별 줄과 변경 · 취소는 직접 넣어 주세요. 예약건수 · 내원 수는 채운 뒤 안내에 보여요.',
   },
-  /** '매일 저장할 엑셀 6개' 표와 저장법(시안 + design.md 10-6 ★ '꼭' 열·표 밑 줄) */
+  /** '매일 저장할 엑셀 6개' 표와 저장법(시안 + design.md 10-6 ★ '꼭' 열 · 저장법 셋째 줄. '-환자별' 안내는 저장법 둘째 줄 하나뿐, 고침 9) */
   reports: {
     title: '매일 저장할 엑셀 6개',
     intro: (folder: string) => `마감할 때마다 의사랑 통계(FStat)에서 아래 6개를 엑셀로 저장해 ${folder}에 두세요.`,
@@ -397,14 +410,12 @@ export const UIS_OPTIONS_TEXT = {
         fills: '실예약환자수',
       },
     } as Readonly<Record<UisKind, ReportRow>>,
-    /** 저장법 세 줄(시안) */
+    /** 저장법 세 줄(앞 두 줄은 시안, 셋째 줄은 실제 지우기 규칙 design.md 10-6 ★ · 5-5, 고침 2) */
     howTo: [
       "조회일은 마감 일자 하루로, 외/입 구분은 '전체'로 두고 [검색]한 뒤 표 오른쪽 위 초록 엑셀 단추를 눌러 저장해요.",
       "이름은 바꿔도 돼요(도우미가 표 머리글로 어느 보고서인지 알아봐요). 아래쪽 표는 위쪽 표와 이름이 겹치지 않게 끝에 '-환자별'을 붙여 주세요.",
-      '이 폴더에는 마감 엑셀만 두세요. 다 읽은 뒤 폴더 안 엑셀을 모두 지워요.',
+      '이 폴더에는 마감 엑셀만 두세요. 읽은 엑셀은 지워요. 환자 정보가 든 4 · 6번은 날짜가 달라도 늘 바로 지우고, 의사랑 통계 엑셀이 아닌 엑셀도 지워요. 날짜가 다르거나 같은 보고서가 여럿인 합계 엑셀은 그대로 둬요.',
     ] as readonly string[],
-    /** 표 밑 줄(design.md 10-6 ★) */
-    suffix: '아래쪽 표는 저장할 때 이름 끝에 -환자별을 붙여 주세요.',
     privacy: {
       strong: '4 · 6번 환자별 표에는 환자 이름 · 주민번호가 들어 있어요.',
       rest: 'ERP 도우미가 이 PC 안에서만 읽고 바로 지워요. 주민번호로는 나이만 셈하고, ERP에는 숫자만 넣어요.',

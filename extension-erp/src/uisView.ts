@@ -148,10 +148,10 @@ export function renderUis(
           buttons: [],
         }
       case 'twice':
-        // 답에 같은 엑셀 수 칸이 없어 늘 2개
+        // 답에 같은 엑셀 수 칸이 없어 수를 말하지 않는다('여러 개', design.md 10-1 ⑪, 고침 1)
         return {
           lines: [
-            lead(T.dup.lead(UIS_REPORT_NAMES[stop.report.kind], 2)),
+            lead(T.dup.lead(UIS_REPORT_NAMES[stop.report.kind])),
             p(T.dup.how(folder)),
             small(T.dup.why),
             UIS_PATIENT.includes(stop.report.kind) && small(T.dup.patient),
