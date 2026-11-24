@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { SUNAP_HELPER } from '@/lib/bridge/versions'
 import type { SunapDay, SunapSpend } from '@/lib/storage/sunap'
@@ -11,6 +12,7 @@ import { SPEND_LABEL, SunapCards } from './SunapCards'
 // 다른 기기 수납일지(spec sunap-ilji AC-4905.7, 시안 remotePage): 도우미 없는 PC·폰·0.8.0 미만 도우미, 그리고 오늘−62일보다 이른 날.
 // 서버 숫자만 그린다(마감한 날 합계 24칸·그날 지출). 고치기·마감 단추가 없다. 날짜 줄은 SunapScreen이 그린다.
 // 안내 상자 아래 한 줄·[이 PC 연결하기]·[도우미 새 판 받기]는 비트 PC 연결 화면(/claim/setup)으로 간다(spec desk-setup REQ-7004, 시안 docs/mockups/desk-setup ①). 데스크·원장 같다
+// 관리자가 다른 의원을 보는 중(admin-view AC-8009.2)이면 이 PC를 연결하는 한 줄·단추(/claim/setup)를 숨긴다 — 이 PC 비트로는 보는 의원 장부를 볼 수 없다
 // 시안과 다른 곳: 원장님별 표를 뺐다(design.md, 서버에 원장님별 숫자를 두지 않는다 — spec sunap-doctors AC-5003.3). 읽는 중·읽기 실패·옛 도우미·62일 넘은 날·지출 없음 글은 시안에 없어 더했다
 
 /** 서버에서 읽은 그날(마감 줄·지출). closed = null은 마감 전 */
@@ -112,12 +114,14 @@ export function RemoteView({ server, reason, onRetry }: { server: ServerDayView;
         <Icon name="lock" className="text-muted" />
         <b className="text-body font-semibold text-ink">{away.title}</b>
         <p className={AWAY_TEXT}>{away.body}</p>
-        {away.more && <p className={AWAY_TEXT}>{away.more}</p>}
-        {away.link && (
-          <Link href={SETUP_HREF} className={`${ds.button.secondary} no-underline`}>
-            {away.link}
-          </Link>
-        )}
+        <WriteOnly>
+          {away.more && <p className={AWAY_TEXT}>{away.more}</p>}
+          {away.link && (
+            <Link href={SETUP_HREF} className={`${ds.button.secondary} no-underline`}>
+              {away.link}
+            </Link>
+          )}
+        </WriteOnly>
       </section>
     </>
   )

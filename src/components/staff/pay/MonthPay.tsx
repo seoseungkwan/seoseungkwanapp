@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { WriteOnly } from '@/components/shell/viewing'
 import { TableScroll } from '@/components/staff/TableScroll'
 import { EMPLOYMENT_LABEL, jobLabel } from '@/components/staff/labels'
 import { ds } from '@/components/ui/classes'
@@ -17,6 +18,7 @@ import { InfoLine, MonthNav, Note, ToolRow, WonInput } from './parts'
 // 금액 칸은 칸에서 나가면 그 줄만 바로 저장한다(usePayData.saveLine). 인센티브 칸은 실적 합계(누르면 인센티브 칸).
 // 더 일한 시간은 근무표에서 온 회색 숫자(읽기만)이고 합계에 안 들어간다. 조정 칸은 작은 창(AdjustPanel)을 연다.
 // [급여 확정]·잠금은 없다(사용자 결정)
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) 금액은 글자로만 보이고 [지난달 금액 가져오기]·[항목 고치기]·저장 안내 줄이 없다. [엑셀 받기]는 그대로
 
 export type MonthPayProps = {
   month: string
@@ -85,12 +87,14 @@ export function MonthPay(props: MonthPayProps) {
         left={<MonthNav month={month} onMonth={props.onMonth} />}
         right={
           <>
-            <button type="button" className={ds.button.secondary} onClick={props.onCopyPrev}>
-              지난달 금액 가져오기
-            </button>
-            <button type="button" aria-pressed={editingItems} className={ds.button.secondary} onClick={() => setEditingItems((on) => !on)}>
-              항목 고치기
-            </button>
+            <WriteOnly>
+              <button type="button" className={ds.button.secondary} onClick={props.onCopyPrev}>
+                지난달 금액 가져오기
+              </button>
+              <button type="button" aria-pressed={editingItems} className={ds.button.secondary} onClick={() => setEditingItems((on) => !on)}>
+                항목 고치기
+              </button>
+            </WriteOnly>
             <button type="button" className={ds.button.primary} onClick={props.onDownloadExcel}>
               엑셀 받기
             </button>
@@ -105,7 +109,9 @@ export function MonthPay(props: MonthPayProps) {
         {payMonth?.copiedOn != null && <span className={ds.chip.neutral}>{`${monthNumber(prevMonth)}월 금액을 가져왔어요 · ${monthDay(payMonth.copiedOn)}`}</span>}
         <span className={ds.chip.neutral}>{`이달 입사 ${joined.length === 0 ? '없음' : joined.map((p) => p.name).join(' · ')}`}</span>
         <span className={ds.chip.neutral}>{`이달 퇴사 ${leaving.length === 0 ? '없음' : leaving.map((p) => p.name).join(' · ')}`}</span>
-        <span className="ml-auto">칸에서 나가면 바로 저장돼요. 언제든 다시 고칠 수 있어요.</span>
+        <WriteOnly>
+          <span className="ml-auto">칸에서 나가면 바로 저장돼요. 언제든 다시 고칠 수 있어요.</span>
+        </WriteOnly>
       </div>
       <TableScroll label="이달 급여 표 (옆으로 밀어 보기)">
         <table aria-label="이달 급여 표" className="w-full border-collapse rounded-control border border-line bg-surface text-small tabular-nums">

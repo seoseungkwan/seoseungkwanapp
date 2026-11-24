@@ -1,10 +1,12 @@
 'use client'
 
 import { useId } from 'react'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { TemplateLink } from './RosterList'
 
 // 직원이 아직 없을 때 처음 화면(staff AC-7612.6, 시안 list.html ⑥). 알림 줄과 재직·퇴사 고르기는 없다
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) [엑셀 올리기]·[＋ 직원 더하기]가 없다([엑셀 양식 받기]는 그대로)
 
 export function RosterEmpty({ onAdd, onPickExcel }: { onAdd(): void; onPickExcel(): void }) {
   const excelId = useId()
@@ -28,9 +30,11 @@ export function RosterEmpty({ onAdd, onPickExcel }: { onAdd(): void; onPickExcel
           </ol>
           <div className="mt-1 flex flex-wrap gap-2">
             <TemplateLink />
-            <button type="button" className={ds.button.secondary} onClick={onPickExcel}>
-              엑셀 올리기
-            </button>
+            <WriteOnly>
+              <button type="button" className={ds.button.secondary} onClick={onPickExcel}>
+                엑셀 올리기
+              </button>
+            </WriteOnly>
           </div>
         </section>
         <section aria-labelledby={oneId} className="flex min-w-0 flex-col gap-2 rounded-control border border-line px-4 py-4">
@@ -39,9 +43,11 @@ export function RosterEmpty({ onAdd, onPickExcel }: { onAdd(): void; onPickExcel
           </h3>
           <p className="text-small text-ink-2">칸을 채우고 저장해요. 이름과 입사일만 꼭 적으면 돼요.</p>
           <div className="mt-1 flex flex-wrap gap-2">
-            <button type="button" className={ds.button.primary} onClick={onAdd}>
-              ＋ 직원 더하기
-            </button>
+            <WriteOnly>
+              <button type="button" className={ds.button.primary} onClick={onAdd}>
+                ＋ 직원 더하기
+              </button>
+            </WriteOnly>
           </div>
         </section>
       </div>

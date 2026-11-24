@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useBridge } from '@/components/claim/useBridge'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useReadOnly } from '@/components/shell/viewing'
 import { groupDefs } from '@/components/stats/treatmentView'
 import { ds } from '@/components/ui/classes'
 import { addDays, compareYmd } from '@/lib/analytics/dates'
@@ -37,6 +38,8 @@ import { useSunapWorker, useSunapWorkerObject, type SunapWorkerApi } from './use
 // 시안과 다른 곳(design.md): 원장님별 hint는 '접수할 때 정한 진료의 기준'. 시안에 없는 글(읽는 중·오류·묶음 안 고름·서버에 아직 안 올라간 마감)은 더했다.
 // 다음 예약 종류(spec sunap-kinds REQ-5503): 설정의 종류 목록을 Worker load·장부 칩·고르기 판·카드(예약률 ○인 이름)·알림 띠에 쓴다
 // 도우미 답의 unsure는 장부 모양에 그대로 남지만 화면에 알림 줄로 그리지 않는다(spec bit-total AC-6909.1, 옛 AC-4905.9)
+// 관리자가 다른 의원을 보는 중(useReadOnly, admin-view AC-8009.2)이면 이 PC의 비트·도우미·날짜와 상관없이 늘 서버 숫자 화면(RemoteView)이다:
+// Worker·통로를 만들지 않아 환자 칸이 든 장부(LedgerRows·PaidRows·RsvPicker)와 PC 저장소를 아예 그리거나 읽지 않는다(design.md '환자 칸 숨김')
 
 export type SunapMode = 'ledger' | 'connecting' | 'device' | 'old-helper' | 'old-day'
 type BridgeLink = { state: BridgeState; helperVersion?: string; helloError: string | null }
@@ -422,13 +425,30 @@ function Connected({ worker, initialToday }: { worker: Worker; initialToday: str
 
   if (mode === 'connecting') return <Connecting />
   if (mode === 'ledger') return <LedgerView day={day} today={today} onDay={setDay} api={api} server={server} />
+  return <ServerNumbers day={day} today={today} onDay={setDay} server={server} reason={REMOTE[mode] ?? 'device'} />
+}
+
+/** 서버 숫자 화면: 날짜 줄(마감 칩) + RemoteView(서버 마감 줄·지출) */
+function ServerNumbers({ day, today, onDay, server, reason }: { day: string; today: string; onDay(day: string): void; server: ServerDay; reason: RemoteReason }) {
   const chip = server.status === 'ready' ? stateText(server.closed?.closedAt ?? null, server.closed?.late ?? false) : null
   return (
     <>
-      <DayBar day={day} today={today} chip={chip} locked={false} onDay={setDay} />
-      <RemoteView server={server} reason={REMOTE[mode] ?? 'device'} onRetry={server.retry} />
+      <DayBar day={day} today={today} chip={chip} locked={false} onDay={onDay} />
+      <RemoteView server={server} reason={reason} onRetry={server.retry} />
     </>
   )
+}
+
+/** 보는 중: 서버 숫자(그 의원 마감 줄·지출)만. 날짜 옮기기·[다시 불러오기]는 읽기라 그대로다 */
+function ServerOnly({ initialToday }: { initialToday: string }) {
+  const [day, setDay] = useState(initialToday)
+  const server = useServerDay(day)
+  return <ServerNumbers day={day} today={initialToday} onDay={setDay} server={server} reason="device" />
+}
+
+function WithWorker({ initialToday }: { initialToday: string }) {
+  const worker = useSunapWorkerObject()
+  return worker ? <Connected worker={worker} initialToday={initialToday} /> : <Connecting />
 }
 
 function Connecting() {
@@ -440,11 +460,11 @@ function Connecting() {
 }
 
 export function SunapScreen({ initialToday }: { initialToday: string }) {
-  const worker = useSunapWorkerObject()
+  const readOnly = useReadOnly()
   return (
     <div className="grid gap-4 max-md:gap-3">
       <h1 className="sr-only">수납일지</h1>
-      {worker ? <Connected worker={worker} initialToday={initialToday} /> : <Connecting />}
+      {readOnly ? <ServerOnly initialToday={initialToday} /> : <WithWorker initialToday={initialToday} />}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { TableScroll } from '@/components/staff/TableScroll'
 import { EMPLOYMENT_LABEL, jobLabel } from '@/components/staff/labels'
 import { ds } from '@/components/ui/classes'
@@ -17,6 +18,7 @@ import type { RevenueRead } from './usePayData'
 // 매출은 웹앱 매출 자료(sales_days)가 있는 달만 쓴다(없거나 못 읽으면 '매출 자료 없음').
 // 보는 달은 이달 급여와 같은 줄(monthLines — 저장 안 한 재직자는 새 줄)로 세고 '{n}명'은 그달 재직자 수, 다른 달은 그 달 저장된 줄로 센다(AC-7615.11).
 // 저장된 급여 줄이 하나도 없는 달은 그림의 막대·% 점과 달별 표의 지급 합계·인건비·매출 대비를 비운다(AC-7615.9)
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) 병원 부담분은 저장된 금액 글자로만 보이고 [저장]이 없다
 
 const SPAN = 6
 
@@ -69,6 +71,7 @@ function BurdenRow({ month, today, row, onSave }: { month: string; today: string
   const [draft, setDraft] = useState<string | null>(null)
   const [bad, setBad] = useState(false)
   const [busy, setBusy] = useState(false)
+  const readOnly = useReadOnly()
   const label = `병원 부담분 (${monthNumber(month)}월)`
   const saved = row?.employerCost ?? null
   const save = async () => {
@@ -90,19 +93,25 @@ function BurdenRow({ month, today, row, onSave }: { month: string; today: string
         <small className="text-caption text-muted">세무사가 알려준 이달 병원 몫 세금·보험료</small>
       </span>
       <span className="ml-auto inline-flex flex-wrap items-center gap-2 text-small text-ink">
-        <input
-          type="text"
-          inputMode="numeric"
-          aria-label={label}
-          aria-invalid={bad || undefined}
-          className="h-8 w-36 rounded-control border border-line-strong bg-surface px-2 text-right text-small text-ink tabular-nums focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-hidden aria-invalid:border-negative"
-          value={draft ?? (saved === null ? '' : won(saved))}
-          onChange={(event) => setDraft(event.target.value)}
-        />
+        {readOnly ? (
+          <span className="tabular-nums">{saved === null ? '–' : won(saved)}</span>
+        ) : (
+          <input
+            type="text"
+            inputMode="numeric"
+            aria-label={label}
+            aria-invalid={bad || undefined}
+            className="h-8 w-36 rounded-control border border-line-strong bg-surface px-2 text-right text-small text-ink tabular-nums focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-hidden aria-invalid:border-negative"
+            value={draft ?? (saved === null ? '' : won(saved))}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        )}
         원
-        <button type="button" disabled={busy} className={ds.button.primarySmall} onClick={() => void save()}>
-          저장
-        </button>
+        {!readOnly && (
+          <button type="button" disabled={busy} className={ds.button.primarySmall} onClick={() => void save()}>
+            저장
+          </button>
+        )}
         {row?.costSavedOn != null && <span className="text-caption text-positive">{`✓ ${monthDay(row.costSavedOn)} 저장함`}</span>}
       </span>
     </div>

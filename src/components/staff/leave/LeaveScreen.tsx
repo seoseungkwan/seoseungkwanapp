@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { useStaffBase } from '@/components/staff/useStaffBase'
 import { ds } from '@/components/ui/classes'
 import { monthOf } from '@/lib/analytics/dates'
@@ -19,6 +20,7 @@ import { endNotice, isActive, linkOf, loadRange, shiftMonth, statusOf, withWeekd
 // 휴가 화면 (staff REQ-7614, 시안 docs/mockups/staff/leave.html ①~⑥ — 폰 장면 ⑦은 만들지 않는다). 제목 '직원'과 작은 메뉴는 staff/layout이 그린다.
 // 첫 모습: ⑥ 이번 달 끝나는 연차 안내 → ① 연차 현황 표 → ② 휴가 달력. 이름을 누르면 ④ 한 사람 기록이 그 자리에 열리고,
 // [휴가 넣기]·날짜 칸·칩·[고치기]는 ③ 휴가 넣기 칸, [연차 규칙]은 ⑤ 칸(떠 있는 칸)이다.
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) [휴가 넣기]·[연차 규칙]이 없고 휴가 넣기 칸을 열지 않는다(보기만).
 // 직원·설정·기본 근무·병원 정보는 공용 읽기 훅(useStaffBase), 휴가와 근무표 바뀐 날은 여기서 한 번에 읽는다 —
 // 가장 이른 입사일부터 오늘 + 2년까지(연차 셈은 입사일부터 모든 기간을 차례로 센다). 달력이 그 밖으로 가면 범위를 넓혀 다시 읽는다.
 // 다시 읽는 동안은 앞서 읽은 값을 그대로 보인다. 저장·지우기 뒤에는 휴가만 다시 읽고, 연차 규칙 저장 뒤에는 공용 자료를 다시 읽는다
@@ -44,6 +46,7 @@ function ReadFailed({ onRetry }: { onRetry(): void }) {
 export function LeaveScreen({ today }: { today: string }) {
   const { state, members, settings, plans, clinic, store, reload } = useStaffBase()
   const headId = useId()
+  const readOnly = useReadOnly()
   const thisMonth = monthOf(today)
   const [month, setMonth] = useState(thisMonth)
   const [recordId, setRecordId] = useState<string | null>(null)
@@ -88,7 +91,9 @@ export function LeaveScreen({ today }: { today: string }) {
   if (state === 'loading' || (data === null && failedTag !== tag)) return <p className="text-small text-muted">휴가를 불러오는 중이에요</p>
   if (data === null) return <ReadFailed onRetry={retryLeaves} />
 
-  const openEditor = (preset: Partial<EditorPreset>) => setDialog({ kind: 'editor', preset: { staffId: null, day: null, group: null, ...preset } })
+  const openEditor = (preset: Partial<EditorPreset>) => {
+    if (!readOnly) setDialog({ kind: 'editor', preset: { staffId: null, day: null, group: null, ...preset } })
+  }
   const editGroup = (groupId: string) => openEditor({ group: leaves.filter((l) => l.groupId === groupId) })
 
   async function remove(groupId: string) {
@@ -144,14 +149,16 @@ export function LeaveScreen({ today }: { today: string }) {
                   {`연차 기준 ${settings.leaveBasis === 'hire' ? '입사일 기준' : '1월 1일 기준'} · 못 쓴 연차는 ${settings.leftover === 'pay' ? '수당으로 정산' : '다음 해로 넘김'} · ${withWeekday(today)} 기준`}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={active.length === 0} onClick={() => openEditor({})} className={ds.button.primary}>
-                  휴가 넣기
-                </button>
-                <button type="button" onClick={() => setDialog({ kind: 'rules' })} className={ds.button.secondary}>
-                  연차 규칙
-                </button>
-              </div>
+              <WriteOnly>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={active.length === 0} onClick={() => openEditor({})} className={ds.button.primary}>
+                    휴가 넣기
+                  </button>
+                  <button type="button" onClick={() => setDialog({ kind: 'rules' })} className={ds.button.secondary}>
+                    연차 규칙
+                  </button>
+                </div>
+              </WriteOnly>
             </div>
             {rows.length > 0 ? (
               <LeaveStatusTable labelledBy={headId} rows={rows} leftover={settings.leftover} onName={setRecordId} />
