@@ -10,6 +10,10 @@
 // - [기간 채우기](spec erp-closing-range design.md 6절): 원무 화면이면 안내만 → 설정 → 기간 고르기 → 살펴보기(scanRange) →
 //   승인 안내 → 하루씩 채우고 두 저장(runRange) → 끝·멈춤 안내. 살펴보기부터 안내를 닫을 때까지 두 단추·[지난 결과]를 막는다.
 //   살펴본 결과·남은 날은 이 화면 기억(ranging)에만 두고 닫기·화면 떠남 때 지운다(AC-3703.5·3704.3)
+// - 의사랑판(spec erp-uisarang design.md 8-9 main, TASK-14): 단추 줄을 처음 붙일 때 자료원을 정하고(uisFlow.ts decideSource — 비트 설정만이면
+//   도우미를 부르지 않음), 의사랑이면 dock.setSource + 단추 셋([기간 채우기] [엑셀로 받기] [의사랑 값 채우기])을 createUisFlow로 잇는다.
+//   정해지기 전 누름은 정해진 뒤 그 흐름으로 간다. 비트면 아래 줄 그대로다. 비트 흐름이 '설정 없음'에 닿았을 때만 다시 정해 본다
+//   (그사이 설정 화면이 의사랑 설정을 저장했으면 의사랑으로 — 둘 다 없을 때 도우미를 부르지 않는 대신)
 import { planCells } from './cells.js'
 import { blocker, dateLabels, draftNotice, readDate, readJournal, save as pressSave, setDate, todayOnly, waitLoaded } from './erpday.js'
 import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HELPER_TIMEOUT } from './errors.js'
@@ -19,6 +23,8 @@ import { rangeDays, runRange, scanRange, type RangeDeps } from './range.js'
 import type { RangeAction, RunSummary, ScanSummary } from './rangeTypes.js'
 import { load, overlapAsks, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
+import { createUisFlow, decideSource, type Send } from './uisFlow.js'
+import type { Source } from './uisTypes.js'
 
 /** 단추를 붙이는 화면 주소 */
 export const PAGE_PATH = '/h/closing'
@@ -152,13 +158,54 @@ export function startPage(doc: Document = document): { stop(): void } {
   let memory: Memory | null = null
   /** 기간 채우기 기억(이 화면에만) */
   let ranging: Ranging | null = null
+  /** 이 PC의 자료원(spec erp-uisarang). 정하기 전에는 null */
+  let source: Source | null = null
+  let deciding = false
+  /** 정하기 전에 누른 단추(마지막 것 하나). 정해지면 그 흐름으로 */
+  let queued: (() => void) | null = null
+  const send: Send = (message) => chrome.runtime.sendMessage(message)
   const dock: Dock = createDock(doc, {
-    onFill: () => void run(),
+    onFill: () => press(() => (source === 'uisarang' ? void uis.fill() : void run())),
     onOpenSettings: openSettings,
     onUndo: () => void undo(),
-    onRange: () => void openRange(),
+    onRange: () => press(() => (source === 'uisarang' ? uis.range() : void openRange())),
     onRangeAction: (action) => void rangeAct(action),
+    onExport: () => press(() => void (source === 'uisarang' && uis.exportXlsx())),
+    onUisAction: (action) => uis.act(action),
   })
+  const uis = createUisFlow({ doc, dock, send, openSettings, today: () => today() })
+
+  /** 단추 누름: 자료원이 정해졌으면 곧바로, 아니면 정해진 뒤 */
+  function press(go: () => void) {
+    if (source === null) queued = go
+    else go()
+  }
+
+  /** 자료원을 정한다(이 화면에서 한 번, 단추 줄을 처음 붙일 때). 의사랑이면 단추 줄을 바꾼다 */
+  function decide() {
+    if (deciding) return
+    deciding = true
+    void decideSource(send).then((found) => {
+      applySource(found)
+      const go = queued
+      queued = null
+      go?.()
+    })
+  }
+  function applySource(found: Source) {
+    source = found
+    if (found === 'uisarang') dock.setSource('uisarang')
+  }
+
+  /**
+   * 비트 흐름이 비트 설정 없음에 닿았을 때: 그사이 설정 화면이 의사랑 설정을 저장했으면 의사랑으로 정하고 true
+   * (설정이 둘 다 없는 화면은 도우미를 부르지 않고 비트로 정했으므로)
+   */
+  async function nowUis(): Promise<boolean> {
+    if ((await decideSource(send)) !== 'uisarang') return false
+    applySource('uisarang')
+    return true
+  }
 
   const remember = (next: Memory | null) => {
     memory = next
@@ -196,6 +243,11 @@ export function startPage(doc: Document = document): { stop(): void } {
       }
       if (!still()) return
       if (!settings) {
+        if (await nowUis()) {
+          if (still()) void uis.fill()
+          return
+        }
+        if (!still()) return
         openSettings()
         dock.show({ kind: 'first' })
         return
@@ -312,6 +364,11 @@ export function startPage(doc: Document = document): { stop(): void } {
     }
     if (mine !== visit || busy) return
     if (!settings) {
+      if (await nowUis()) {
+        if (mine === visit && !busy) uis.range()
+        return
+      }
+      if (mine !== visit || busy) return
       openSettings()
       dock.show({ kind: 'first' })
       return
@@ -505,8 +562,11 @@ export function startPage(doc: Document = document): { stop(): void } {
     visit += 1
     busy = false
     ranging = null
+    queued = null
+    uis.reset()
     remember(null)
     dock.setReading(false)
+    dock.setUisReading(null)
     dock.setRangeBusy(false)
     dock.hide()
     dock.host.remove()
@@ -514,8 +574,10 @@ export function startPage(doc: Document = document): { stop(): void } {
 
   function watch() {
     const here = onClosingPage(doc)
-    if (here && !dock.host.isConnected) doc.body.append(dock.host)
-    else if (!here && dock.host.isConnected) leave()
+    if (here && !dock.host.isConnected) {
+      doc.body.append(dock.host)
+      decide()
+    } else if (!here && dock.host.isConnected) leave()
   }
 
   watch()

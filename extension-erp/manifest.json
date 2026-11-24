@@ -34,7 +34,17 @@
         "erpday.js",
         "range.js",
         "rangeTypes.js",
-        "rangeView.js"
+        "rangeView.js",
+        "uisTypes.js",
+        "uisText.js",
+        "josa.js",
+        "uisSettings.js",
+        "uisCells.js",
+        "uisSheet.js",
+        "zip.js",
+        "xlsxWrite.js",
+        "uisView.js",
+        "uisFlow.js"
       ],
       "matches": [
         "https://erp.minesolution.com/*"

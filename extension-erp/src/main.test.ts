@@ -1405,7 +1405,18 @@ describe('AC-3609.1 내용 스크립트와 모듈 파일', () => {
       'rangeView.js',
       'settings.js',
       'types.js',
-    ])
+      // spec erp-uisarang design.md 12-4(TASK-14): 새 모듈 아홉 + uisText.ts가 부르는 지금 조사 모듈 josa.js
+      'josa.js',
+      'uisCells.js',
+      'uisFlow.js',
+      'uisSettings.js',
+      'uisSheet.js',
+      'uisText.js',
+      'uisTypes.js',
+      'uisView.js',
+      'xlsxWrite.js',
+      'zip.js',
+    ].sort())
   })
 })
 
