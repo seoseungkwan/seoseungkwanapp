@@ -1,10 +1,12 @@
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { listDate } from './formsState'
 
 // 서식 화면 왼쪽: 저장한 안내문 목록 (spec forms AC-3507.2·AC-3507.3·AC-3507.5, 시안 screen.html '저장한 안내문').
 // 휴진 안내와 환자 안내문이 같이 쓴다(spec forms-guide design.md 9절, AC-4507.2): 구역 이름·빈 목록 글·항목 제목은 부르는 쪽이 준다.
-// 저장·지우는 동안(busy)은 다른 안내문으로 옮기지 못한다(늦게 온 저장 답이 다른 안내문에 붙지 않게)
+// 저장·지우는 동안(busy)은 다른 안내문으로 옮기지 못한다(늦게 온 저장 답이 다른 안내문에 붙지 않게).
+// 보는 중(admin-view AC-8011.1)에는 [+ 새로 만들기]를 그리지 않는다(WriteOnly) — 목록·열어 보기·[다시 읽기]는 그대로다
 
 const ITEM = `flex w-full cursor-pointer flex-col items-start rounded-control border px-3 py-2 text-left transition ${ds.focusRing} disabled:cursor-not-allowed disabled:opacity-40`
 const ITEM_ON = 'border-accent bg-accent-soft'
@@ -29,9 +31,11 @@ export function NoticeList({ label, emptyText, list, openId, busy, onNew, onOpen
   return (
     <section aria-label={label} className={`${ds.panel} p-4`}>
       <h2 className="text-body font-semibold text-ink">{label}</h2>
-      <button type="button" className={`${ds.button.secondarySmall} mt-3 w-full`} disabled={busy} onClick={onNew}>
-        + 새로 만들기
-      </button>
+      <WriteOnly>
+        <button type="button" className={`${ds.button.secondarySmall} mt-3 w-full`} disabled={busy} onClick={onNew}>
+          + 새로 만들기
+        </button>
+      </WriteOnly>
       {list.kind === 'loading' && <p className="mt-3 text-small text-muted">읽는 중…</p>}
       {list.kind === 'failed' && (
         <div className="mt-3 flex flex-col items-start gap-2">

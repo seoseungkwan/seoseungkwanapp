@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { badgeText } from '@/lib/notices/ruleView'
@@ -16,7 +17,9 @@ import type { RuleBadge } from '@/types/ruleAuto'
 // 규칙 목록은 Worker에 ruleList로 받는다(표 JSON을 화면이 불러오지 않는다, AC-007.4). 고른 값은 원본 저장 모양 그대로 들고 있다가 [저장] 때 바뀐 줄만 보낸다.
 // 줄이 있다 = 규칙표 기본값과 다르다. 기본값으로 돌아오면 줄이 없는 것으로 본다 → [저장]이 그 줄을 지운다
 // 고시로 바뀐 규칙(specs/rule-auto REQ-7817, 시안 ?v=settings): readRuleBadges를 화면을 열 때 한 번 읽어 규칙 칸 제목 옆에 칩, 오늘 쓰이는 판이면 제목·고시 근거도 그 판 것.
-// 못 읽으면 칩 없이 지금 표 그대로다(오류 상자 없음). 켜기·등급·기본값은 원래 규칙 그대로 걸린다
+// 못 읽으면 칩 없이 지금 표 그대로다(오류 상자 없음). 켜기·등급·기본값은 원래 규칙 그대로 걸린다.
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 켜기·등급 칸을 막고(disabled — 고른 값은 보인다) [기본값으로]·[되돌리기]·[저장]을 그리지 않는다(WriteOnly).
+// 찾기·거르기·[다음 N개]는 읽기라 그대로다
 
 const GRADES: readonly Grade[] = ['확인필요', '알림', '참고']
 // 값은 DB·규칙표 글자 그대로, 보이는 글자만 목업대로
@@ -250,6 +253,7 @@ function RuleRow({
   onChoose(enabled: boolean, grade: Grade | null): void
   onReset(): void
 }) {
+  const readOnly = useReadOnly()
   const enabled = choice?.enabled ?? rule.enabled_default
   const grade = choice?.grade ?? rule.grade
   return (
@@ -261,6 +265,7 @@ function RuleRow({
               type="checkbox"
               aria-label={`${rule.id} 켜기`}
               checked={enabled}
+              disabled={readOnly}
               onChange={(event) => onChoose(event.target.checked, choice?.grade ?? null)}
               className={ds.checkbox}
             />
@@ -286,6 +291,7 @@ function RuleRow({
         <select
           aria-label={`${rule.id} 등급`}
           value={grade}
+          disabled={readOnly}
           onChange={(event) => onChoose(enabled, event.target.value as Grade)}
           className={ds.input}
         >
@@ -306,9 +312,11 @@ function RuleRow({
         </span>
       </td>
       <td className={cellClass}>
-        <button type="button" aria-label={`${rule.id} 기본값으로`} disabled={choice === undefined} onClick={onReset} className={ds.textButton}>
-          기본값으로
-        </button>
+        <WriteOnly>
+          <button type="button" aria-label={`${rule.id} 기본값으로`} disabled={choice === undefined} onClick={onReset} className={ds.textButton}>
+            기본값으로
+          </button>
+        </WriteOnly>
       </td>
     </tr>
   )
@@ -449,18 +457,20 @@ export function RuleSettings() {
               <span className="ml-auto flex flex-wrap items-center gap-2">
                 <span className={ds.count}>{`바꾼 것 ${changed.size}개`}</span>
                 {/* 저장 중에 되돌리면 화면만 옛 값이 되어 서버와 어긋난다. 실패 뒤에는 '바뀐 것'이 0개여도 서버가 다를 수 있어 두 단추를 다 연다 */}
-                <button type="button" disabled={saving || (changed.size === 0 && !saveFailed)} onClick={undo} className={ds.button.secondarySmall}>
-                  되돌리기
-                </button>
-                <button
-                  type="button"
-                  disabled={changed.size === 0 && !saveFailed}
-                  aria-busy={saving ? 'true' : undefined}
-                  onClick={() => void save()}
-                  className={ds.button.primarySmall}
-                >
-                  {saveFailed ? '다시 저장' : '저장'}
-                </button>
+                <WriteOnly>
+                  <button type="button" disabled={saving || (changed.size === 0 && !saveFailed)} onClick={undo} className={ds.button.secondarySmall}>
+                    되돌리기
+                  </button>
+                  <button
+                    type="button"
+                    disabled={changed.size === 0 && !saveFailed}
+                    aria-busy={saving ? 'true' : undefined}
+                    onClick={() => void save()}
+                    className={ds.button.primarySmall}
+                  >
+                    {saveFailed ? '다시 저장' : '저장'}
+                  </button>
+                </WriteOnly>
               </span>
             </div>
             <p className={ds.help}>저장하면 바로 적용돼요. 비트 PC에서 청구 작업 중이면 그 화면에 &quot;설정이 바뀌었어요, 다시 점검하세요&quot;가 떠요.</p>

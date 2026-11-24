@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { THEMES, backgroundPick, isThemePick, withArt, withTheme } from '@/lib/forms/themes'
 import { MAX_BACKGROUNDS, MAX_BG_WORDS, type SavedBackground } from '@/types/formBackground'
@@ -10,7 +11,9 @@ import type { Backgrounds } from './useBackgrounds'
 // 휴진 안내 만들기 맨 아래 '배경' 칸 (specs/forms-themes REQ-4610~4612, design.md 10-3절, 승인 시안 docs/mockups/forms-themes/screen.html).
 // 묶음 '배경 종류' [테마 그림] — 테마 고르기(옵션 24개)·그림 1·2 / [내 배경] — AI 배경 만들기·만든 배경·내 배경 목록.
 // 고른 그림 값(pick = 안내문 theme)은 부르는 쪽 상태에 있고, 바꾸면 새 값을 onPick으로 보낸다. 부르기·저장은 hook(useBackgrounds)이 한다.
-// 앱 화면 색·글자는 토큰과 ds만 쓴다(작은 그림은 data: 주소 <img>)
+// 앱 화면 색·글자는 토큰과 ds만 쓴다(작은 그림은 data: 주소 <img>).
+// 보는 중(admin-view AC-8011.1)에는 [AI로 배경 만들기]·만든 배경 단추([내 배경으로 저장]·[다시 만들기]·[안 쓰기])·[이 배경 지우기]를 그리지 않는다(WriteOnly).
+// 칸·고르기는 부르는 편집 칸의 ReadOnlyFields가 막는다
 
 const HELP = '카드 이름에 공휴일 이름이 있으면 그 공휴일, 없으면 안내 달의 그림이 저절로 골라져요'
 const BG_NOTE = '적은 말만 OpenAI 그림 AI로 보내요. 전화번호·주민번호·메일 주소는 적지 마세요. 한 장에 10초쯤 걸리고 약 80원이 들어요(하루 20장까지)'
@@ -148,9 +151,11 @@ function MineBox({ id, pick, bg, note, onPick }: { id: string; pick: ThemePick |
             aria-describedby={`${id}-words-note`}
             onChange={(e) => bg.setWords(e.target.value)}
           />
-          <button type="button" className={ds.button.primaryLarge} disabled={state.making || state.words.trim() === ''} onClick={() => void bg.make()}>
-            {state.making ? '만드는 중…' : 'AI로 배경 만들기'}
-          </button>
+          <WriteOnly>
+            <button type="button" className={ds.button.primaryLarge} disabled={state.making || state.words.trim() === ''} onClick={() => void bg.make()}>
+              {state.making ? '만드는 중…' : 'AI로 배경 만들기'}
+            </button>
+          </WriteOnly>
         </div>
         <div className="flex items-start justify-between gap-3">
           <p id={`${id}-words-note`} className={ds.help}>
@@ -173,23 +178,25 @@ function MineBox({ id, pick, bg, note, onPick }: { id: string; pick: ThemePick |
           <div className="flex min-w-0 flex-col gap-1.5">
             <p className="text-small font-semibold text-ink [overflow-wrap:anywhere]">{`만든 배경: ${trial.words}`}</p>
             <p className={NOTE_TEXT}>{TRIAL_NOTE}</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={ds.button.primarySmall}
-                disabled={!canSaveTrial(state) || state.making}
-                aria-busy={state.saving || undefined}
-                onClick={() => void bg.saveTrial()}
-              >
-                {state.saving ? '저장하는 중…' : '내 배경으로 저장'}
-              </button>
-              <button type="button" className={ds.button.secondarySmall} disabled={state.saving || state.making} onClick={() => void bg.remake()}>
-                다시 만들기
-              </button>
-              <button type="button" className={ds.button.ghostSmall} disabled={state.saving || state.making} onClick={bg.discard}>
-                안 쓰기
-              </button>
-            </div>
+            <WriteOnly>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={ds.button.primarySmall}
+                  disabled={!canSaveTrial(state) || state.making}
+                  aria-busy={state.saving || undefined}
+                  onClick={() => void bg.saveTrial()}
+                >
+                  {state.saving ? '저장하는 중…' : '내 배경으로 저장'}
+                </button>
+                <button type="button" className={ds.button.secondarySmall} disabled={state.saving || state.making} onClick={() => void bg.remake()}>
+                  다시 만들기
+                </button>
+                <button type="button" className={ds.button.ghostSmall} disabled={state.saving || state.making} onClick={bg.discard}>
+                  안 쓰기
+                </button>
+              </div>
+            </WriteOnly>
             {isFull(state) && <p className="text-small text-warning">{FULL_NOTE}</p>}
             {state.storeError && bg.storeWork === 'save' && <ErrorCard code="E-FORMS-BG-STORE-FAILED" />}
           </div>
@@ -239,9 +246,11 @@ function MineBox({ id, pick, bg, note, onPick }: { id: string; pick: ThemePick |
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="min-w-0 text-small text-ink-2 [overflow-wrap:anywhere]">{`고른 배경: ${chosen.words}`}</p>
-            <button type="button" className={ds.button.danger} disabled={state.deleting} aria-busy={state.deleting || undefined} onClick={() => void bg.remove(chosen)}>
-              이 배경 지우기
-            </button>
+            <WriteOnly>
+              <button type="button" className={ds.button.danger} disabled={state.deleting} aria-busy={state.deleting || undefined} onClick={() => void bg.remove(chosen)}>
+                이 배경 지우기
+              </button>
+            </WriteOnly>
           </div>
           {state.storeError && bg.storeWork === 'delete' && <ErrorCard code="E-FORMS-BG-STORE-FAILED" />}
         </div>

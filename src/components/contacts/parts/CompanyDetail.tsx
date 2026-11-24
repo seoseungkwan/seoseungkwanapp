@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { WriteOnly } from '@/components/shell/viewing'
 import { categoryLabel } from '@/lib/contacts/categories'
 import { FIELD_LABELS, homepageHref, wonText } from '@/lib/contacts/fields'
 import { warrantyState } from '@/lib/contacts/warranty'
@@ -17,7 +18,8 @@ import { WarrantyChip } from './WarrantyChip'
 // 업체 자세히(spec contacts AC-6505.2·AC-6505.5·AC-6505.6·AC-6505.7, 시안 기본값 5·6·9·10·11·14·15·16 · detailHtml·peopleHtml·infoHtml·equipHtml).
 // 머리(분류 칩·업체 이름·하는 일·[고치기][지우기]) → 대표 전화(큰 번호) → 두 칸(화면 폭 1200px 이상: 왼쪽 담당자·업체 정보, 오른쪽 장비).
 // 적힌 칸만 줄로 보이고, 계좌·사이트 비밀번호는 [보기]를 누른 칸만 값이 보인다(업체를 바꾸면 다시 가림 = 업체 id로 새로 그림).
-// 담당자·장비·수리 기록은 그 자리 칸에서 고치고(한 번에 하나), 업체·장비 지우기만 확인 창으로 한 번 더 묻는다. 저장·지우기는 콜백이 하고 답(SaveResult)만 받는다
+// 담당자·장비·수리 기록은 그 자리 칸에서 고치고(한 번에 하나), 업체·장비 지우기만 확인 창으로 한 번 더 묻는다. 저장·지우기는 콜백이 하고 답(SaveResult)만 받는다.
+// 보는 중(admin-view AC-8011.1)에는 [고치기]·[지우기]·더하기 단추를 그리지 않는다(WriteOnly) — 적힌 칸·[보기]·[복사]는 그대로라 사이트 비밀번호도 보인다(사용자 "비밀번호도 보이기")
 
 export type CompanyDetailProps = {
   book: ContactBook
@@ -127,7 +129,15 @@ function Detail({
   const addingPerson = isOpen('person', null)
   const peopleSection = (
     <section aria-label="담당자" className="min-w-0">
-      <SectionHead title="담당자" count={people.length} action={<AddButton label="담당자 더하기" text="담당자" onClick={() => setOpen({ kind: 'person', id: null })} />} />
+      <SectionHead
+        title="담당자"
+        count={people.length}
+        action={
+          <WriteOnly>
+            <AddButton label="담당자 더하기" text="담당자" onClick={() => setOpen({ kind: 'person', id: null })} />
+          </WriteOnly>
+        }
+      />
       {people.length > 0 && (
         <ul className="list-none">
           {people.map((person) => (
@@ -141,9 +151,11 @@ function Detail({
                     {person.role !== '' && <span className="ml-2 text-small text-muted">{person.role}</span>}
                   </div>
                   {person.mobile !== '' ? <PhoneNumber value={person.mobile} /> : <span />}
-                  <button type="button" aria-label={`${person.name} 고치기`} onClick={() => setOpen({ kind: 'person', id: person.id })} className={look.textButtonMuted}>
-                    고치기
-                  </button>
+                  <WriteOnly>
+                    <button type="button" aria-label={`${person.name} 고치기`} onClick={() => setOpen({ kind: 'person', id: person.id })} className={look.textButtonMuted}>
+                      고치기
+                    </button>
+                  </WriteOnly>
                 </div>
               )}
             </li>
@@ -161,9 +173,11 @@ function Detail({
       <SectionHead
         title="업체 정보"
         action={
-          <button type="button" aria-label="업체 정보 고치기" onClick={onEdit} className={look.textButtonMuted}>
-            고치기
-          </button>
+          <WriteOnly>
+            <button type="button" aria-label="업체 정보 고치기" onClick={onEdit} className={look.textButtonMuted}>
+              고치기
+            </button>
+          </WriteOnly>
         }
       />
       <CompanyInfo company={company} />
@@ -193,7 +207,15 @@ function Detail({
   const addingEquipment = isOpen('equipment', null)
   const equipmentSection = (
     <section aria-label="장비" className="min-w-0">
-      <SectionHead title="장비" count={equipment.length} action={<AddButton label="장비 더하기" text="장비" onClick={() => setOpen({ kind: 'equipment', id: null })} />} />
+      <SectionHead
+        title="장비"
+        count={equipment.length}
+        action={
+          <WriteOnly>
+            <AddButton label="장비 더하기" text="장비" onClick={() => setOpen({ kind: 'equipment', id: null })} />
+          </WriteOnly>
+        }
+      />
       {equipment.map((item) => (
         <article key={item.id} aria-label={item.name} className="border-b border-line pt-3 pb-3.5">
           {isOpen('equipment', item.id) ? (
@@ -228,14 +250,16 @@ function Detail({
             </p>
           )}
         </div>
-        <div className="flex gap-2">
-          <button type="button" aria-label={`${company.name} 고치기`} onClick={onEdit} className={look.buttonSmall}>
-            고치기
-          </button>
-          <button type="button" aria-label={`${company.name} 지우기`} onClick={() => setAsking({ kind: 'company' })} className={look.dangerSmall}>
-            지우기
-          </button>
-        </div>
+        <WriteOnly>
+          <div className="flex gap-2">
+            <button type="button" aria-label={`${company.name} 고치기`} onClick={onEdit} className={look.buttonSmall}>
+              고치기
+            </button>
+            <button type="button" aria-label={`${company.name} 지우기`} onClick={() => setAsking({ kind: 'company' })} className={look.dangerSmall}>
+              지우기
+            </button>
+          </div>
+        </WriteOnly>
       </div>
       {company.phone !== '' && (
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-line py-3">
@@ -381,9 +405,11 @@ function EquipmentBlock({ item, today, repairs, onEdit, onAddRepair, onEditRepai
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <b className={ended ? 'text-body font-medium wrap-anywhere text-ink-2' : 'text-body font-semibold wrap-anywhere text-ink'}>{item.name}</b>
         <WarrantyChip state={state} />
-        <button type="button" aria-label={`${item.name} 고치기`} onClick={onEdit} className={`ml-auto ${look.textButtonMuted}`}>
-          고치기
-        </button>
+        <WriteOnly>
+          <button type="button" aria-label={`${item.name} 고치기`} onClick={onEdit} className={`ml-auto ${look.textButtonMuted}`}>
+            고치기
+          </button>
+        </WriteOnly>
       </div>
       {meta.length > 0 && (
         <div data-meta className="mt-0.5 flex flex-wrap gap-x-3.5 text-small text-muted">
@@ -399,7 +425,9 @@ function EquipmentBlock({ item, today, repairs, onEdit, onAddRepair, onEditRepai
         <span>
           수리 기록 <span className="font-medium text-muted tabular-nums">{repairs.length}</span>
         </span>
-        <AddButton label={`${item.name} 수리 기록 더하기`} text="수리 기록" onClick={onAddRepair} />
+        <WriteOnly>
+          <AddButton label={`${item.name} 수리 기록 더하기`} text="수리 기록" onClick={onAddRepair} />
+        </WriteOnly>
       </div>
       {adding}
       {repairs.length > 0 && (
@@ -415,9 +443,11 @@ function EquipmentBlock({ item, today, repairs, onEdit, onAddRepair, onEditRepai
                   ) : (
                     <span className="text-right whitespace-nowrap text-ink tabular-nums">{`${wonText(repair.cost)}원`}</span>
                   )}
-                  <button type="button" aria-label={`${repair.day} ${repair.content} 고치기`} onClick={() => onEditRepair(repair)} className={look.textButtonMuted}>
-                    고치기
-                  </button>
+                  <WriteOnly>
+                    <button type="button" aria-label={`${repair.day} ${repair.content} 고치기`} onClick={() => onEditRepair(repair)} className={look.textButtonMuted}>
+                      고치기
+                    </button>
+                  </WriteOnly>
                 </div>
               )}
             </li>

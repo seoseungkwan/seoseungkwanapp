@@ -1,6 +1,7 @@
 import { useId, type Dispatch } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { guideColorsOf } from '@/lib/forms/guide'
 import { readableColors, type GuideColors } from '@/lib/forms/logoColors'
@@ -9,6 +10,7 @@ import { DRAWING_LIMITS, GUIDE_LIMITS, PICTURES, PICTURE_IDS, type GuideField, t
 import { MAX_MEMO } from '@/types/forms'
 import { guidePalette } from './guideColors'
 import type { GuideAction, GuideState } from './guideState'
+import { ReadOnlyFields } from './ReadOnlyFields'
 import { StyleControls } from './StyleControls'
 
 // 서식 화면 가운데(환자 안내문): 대충 적기 → [정리하기], '노란 윗단'·'진회색 띠' 칸, 그림 고르기와 AI로 그림 그리기
@@ -16,7 +18,8 @@ import { StyleControls } from './StyleControls'
 // 칸 아래 까닭은 부르는 쪽이 준 visibleProblems다. 부르기(정리·그리기)는 부르는 쪽(GuideWorkspace)이 하고, 칸 고치기는 동작(dispatch)으로 보낸다.
 // '진회색 띠' 아래 '색' 칸(spec clinic-profile AC-6604.5): [자동](로고 색 또는 지금 색)·[직접 고르기]('바탕색'·'띠 색' 색 고르기).
 // 고른 색이 잘 안 읽히면(대비 4.5 미만) 경고만 하고 막지 않는다. 사용자가 고른 색 값은 색 칸 value로만 쓴다.
-// 맨 아래('색' 칸 다음) '글씨·로고' 칸(spec form-style AC-6801.1, StyleControls): 제목·본문 글씨와 로고의 크기·색. 값은 content.style(없으면 처음대로)
+// 맨 아래('색' 칸 다음) '글씨·로고' 칸(spec form-style AC-6801.1, StyleControls): 제목·본문 글씨와 로고의 크기·색. 값은 content.style(없으면 처음대로).
+// 보는 중(admin-view AC-8011.1)에는 칸을 모두 막고(ReadOnlyFields) [정리하기]·[AI로 그림 그리기](AI)·줄 [빼기]·[+ 줄 더하기]를 그리지 않는다(WriteOnly)
 
 const MEMO_NOTE = '전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요. AI는 적은 글에 없는 숫자를 넣지 않아요'
 const MEMO_PLACEHOLDER = '예) 보험 서류 필요하면 수납할 때 말해 달라고. 진단서, 영수증, 세부내역서, 통원확인서. 보험사마다 다름'
@@ -180,232 +183,242 @@ export function GuideEditor({ state, problems, dispatch, onTidy, onDraw, logoCol
 
   return (
     <section aria-label="만들기" className={`${ds.panel} p-4`}>
-      <div className={ds.field}>
-        <label htmlFor={`${id}-memo`} className={ds.label}>
-          대충 적기
-        </label>
-        <textarea
-          id={`${id}-memo`}
-          className={TEXTAREA}
-          maxLength={MAX_MEMO}
-          placeholder={MEMO_PLACEHOLDER}
-          value={state.memo}
-          aria-describedby={`${id}-memo-note`}
-          onChange={(e) => dispatch({ type: 'memo', text: e.target.value })}
-        />
-        <div className="flex items-start justify-between gap-3">
-          <p id={`${id}-memo-note`} className={ds.help}>
-            {MEMO_NOTE}
-          </p>
-          <span className="shrink-0 text-caption text-muted tabular-nums">{`${memoLength}/${MAX_MEMO}`}</span>
-        </div>
-        <div>
-          <button type="button" className={ds.button.primary} disabled={state.tidying || state.memo.trim() === ''} onClick={onTidy}>
-            {state.tidying ? '정리하는 중…' : '정리하기'}
-          </button>
-        </div>
-        {state.tidyError && <ErrorCard code={state.tidyError} />}
-        {state.truncated && (
-          <p role="status" className="text-small text-ink-2">
-            줄은 4개까지라 앞의 4개만 넣었어요
-          </p>
-        )}
-      </div>
-
-      <hr className="my-4 border-line" />
-
-      <h2 className={SECTION_TITLE}>안내 내용</h2>
-
-      <fieldset className={GROUP}>
-        <legend className={LEGEND}>노란 윗단</legend>
-        <div className={TWO}>
-          {field('tag', '머리표', false)}
-          {field('subtitle', '작은 제목', false)}
-        </div>
-        <div className={`${TWO} mt-2`}>
-          {field('big1', '큰 문구 윗줄', false)}
-          {field('big2', '큰 문구 아랫줄', false)}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-small text-ink-2">
-          <label className="inline-flex cursor-pointer items-center gap-1.5">
-            <span className={ds.checkboxWrap}>
-              <input
-                type="checkbox"
-                className={ds.checkbox}
-                checked={content.firstSmall}
-                onChange={(e) => dispatch({ type: 'firstSmall', value: e.target.checked })}
-              />
-              <Icon name="check" className={ds.checkboxMark} />
-            </span>
-            윗줄 작게
+      <ReadOnlyFields>
+        <div className={ds.field}>
+          <label htmlFor={`${id}-memo`} className={ds.label}>
+            대충 적기
           </label>
-          <span>(아랫줄을 크게 — 금액·횟수 안내)</span>
-        </div>
-        <div className={`${TWO} mt-2`}>
-          {field('boxTop', '흰 상자 윗줄', true, '작은 글')}
-          {field('boxBottom', '흰 상자 아랫줄', true, '굵은 글')}
+          <textarea
+            id={`${id}-memo`}
+            className={TEXTAREA}
+            maxLength={MAX_MEMO}
+            placeholder={MEMO_PLACEHOLDER}
+            value={state.memo}
+            aria-describedby={`${id}-memo-note`}
+            onChange={(e) => dispatch({ type: 'memo', text: e.target.value })}
+          />
+          <div className="flex items-start justify-between gap-3">
+            <p id={`${id}-memo-note`} className={ds.help}>
+              {MEMO_NOTE}
+            </p>
+            <span className="shrink-0 text-caption text-muted tabular-nums">{`${memoLength}/${MAX_MEMO}`}</span>
+          </div>
+          <WriteOnly>
+            <div>
+              <button type="button" className={ds.button.primary} disabled={state.tidying || state.memo.trim() === ''} onClick={onTidy}>
+                {state.tidying ? '정리하는 중…' : '정리하기'}
+              </button>
+            </div>
+          </WriteOnly>
+          {state.tidyError && <ErrorCard code={state.tidyError} />}
+          {state.truncated && (
+            <p role="status" className="text-small text-ink-2">
+              줄은 4개까지라 앞의 4개만 넣었어요
+            </p>
+          )}
         </div>
 
-        <div className={`${ds.field} mt-2`}>
-          <div className="flex items-baseline gap-1.5">
-            <label htmlFor={`${id}-picture`} className={ds.label}>
-              그림
-            </label>
-            <span className={ds.labelHint}>선택</span>
-          </div>
-          <select
-            id={`${id}-picture`}
-            className={ds.input}
-            value={content.picture ?? ''}
-            onChange={(e) => {
-              const value = e.target.value
-              dispatch({ type: 'picture', picture: value === CUSTOM ? CUSTOM : isPictureId(value) ? value : null })
-            }}
-          >
-            <option value="">없음</option>
-            {PICTURES.map((picture) => (
-              <option key={picture.id} value={picture.id}>
-                {picture.name}
-              </option>
-            ))}
-            {content.drawing && <option value={CUSTOM}>{`AI로 그린 그림: ${content.drawing.subject}`}</option>}
-          </select>
-        </div>
+        <hr className="my-4 border-line" />
 
-        <div className={`${ds.field} mt-2`}>
-          <div className="flex items-baseline gap-1.5">
-            <label htmlFor={`${id}-subject`} className={ds.label}>
-              새로 그릴 것
-            </label>
-            <span className={ds.labelHint}>{`선택 · ${DRAWING_LIMITS.subject}자까지`}</span>
+        <h2 className={SECTION_TITLE}>안내 내용</h2>
+
+        <fieldset className={GROUP}>
+          <legend className={LEGEND}>노란 윗단</legend>
+          <div className={TWO}>
+            {field('tag', '머리표', false)}
+            {field('subtitle', '작은 제목', false)}
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              id={`${id}-subject`}
-              type="text"
+          <div className={`${TWO} mt-2`}>
+            {field('big1', '큰 문구 윗줄', false)}
+            {field('big2', '큰 문구 아랫줄', false)}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-small text-ink-2">
+            <label className="inline-flex cursor-pointer items-center gap-1.5">
+              <span className={ds.checkboxWrap}>
+                <input
+                  type="checkbox"
+                  className={ds.checkbox}
+                  checked={content.firstSmall}
+                  onChange={(e) => dispatch({ type: 'firstSmall', value: e.target.checked })}
+                />
+                <Icon name="check" className={ds.checkboxMark} />
+              </span>
+              윗줄 작게
+            </label>
+            <span>(아랫줄을 크게 — 금액·횟수 안내)</span>
+          </div>
+          <div className={`${TWO} mt-2`}>
+            {field('boxTop', '흰 상자 윗줄', true, '작은 글')}
+            {field('boxBottom', '흰 상자 아랫줄', true, '굵은 글')}
+          </div>
+
+          <div className={`${ds.field} mt-2`}>
+            <div className="flex items-baseline gap-1.5">
+              <label htmlFor={`${id}-picture`} className={ds.label}>
+                그림
+              </label>
+              <span className={ds.labelHint}>선택</span>
+            </div>
+            <select
+              id={`${id}-picture`}
               className={ds.input}
-              maxLength={DRAWING_LIMITS.subject}
-              placeholder="예) 휠체어"
-              value={state.subject}
-              aria-describedby={`${id}-subject-note`}
-              onChange={(e) => dispatch({ type: 'subject', text: e.target.value })}
-            />
-            <button
-              type="button"
-              className={`${ds.button.secondarySmall} shrink-0`}
-              disabled={state.drawingBusy || state.subject.trim() === ''}
-              onClick={onDraw}
+              value={content.picture ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                dispatch({ type: 'picture', picture: value === CUSTOM ? CUSTOM : isPictureId(value) ? value : null })
+              }}
             >
-              {state.drawingBusy ? '그리는 중…' : 'AI로 그림 그리기'}
-            </button>
+              <option value="">없음</option>
+              {PICTURES.map((picture) => (
+                <option key={picture.id} value={picture.id}>
+                  {picture.name}
+                </option>
+              ))}
+              {content.drawing && <option value={CUSTOM}>{`AI로 그린 그림: ${content.drawing.subject}`}</option>}
+            </select>
           </div>
-          <p id={`${id}-subject-note`} className={ds.help}>
-            {DRAW_NOTE}
-          </p>
-          {state.drawError && <ErrorCard code={state.drawError} />}
-        </div>
-      </fieldset>
 
-      <fieldset className={GROUP}>
-        <legend className={LEGEND}>진회색 띠</legend>
-        {field('bandTitle', '띠 제목', true)}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <span className={ds.label}>줄 표시</span>
-          <div role="group" aria-label="줄 표시" className={`${ds.segment.group} max-md:grid-cols-2`}>
-            {MARKS.map(([mark, name]) => {
-              const on = content.mark === mark
-              return (
+          <div className={`${ds.field} mt-2`}>
+            <div className="flex items-baseline gap-1.5">
+              <label htmlFor={`${id}-subject`} className={ds.label}>
+                새로 그릴 것
+              </label>
+              <span className={ds.labelHint}>{`선택 · ${DRAWING_LIMITS.subject}자까지`}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id={`${id}-subject`}
+                type="text"
+                className={ds.input}
+                maxLength={DRAWING_LIMITS.subject}
+                placeholder="예) 휠체어"
+                value={state.subject}
+                aria-describedby={`${id}-subject-note`}
+                onChange={(e) => dispatch({ type: 'subject', text: e.target.value })}
+              />
+              <WriteOnly>
                 <button
-                  key={mark}
                   type="button"
-                  aria-pressed={on}
-                  className={`${ds.segment.button} ${on ? ds.segment.on : ds.segment.off}`}
-                  onClick={() => dispatch({ type: 'mark', mark })}
+                  className={`${ds.button.secondarySmall} shrink-0`}
+                  disabled={state.drawingBusy || state.subject.trim() === ''}
+                  onClick={onDraw}
                 >
-                  {name}
+                  {state.drawingBusy ? '그리는 중…' : 'AI로 그림 그리기'}
                 </button>
+              </WriteOnly>
+            </div>
+            <p id={`${id}-subject-note`} className={ds.help}>
+              {DRAW_NOTE}
+            </p>
+            {state.drawError && <ErrorCard code={state.drawError} />}
+          </div>
+        </fieldset>
+
+        <fieldset className={GROUP}>
+          <legend className={LEGEND}>진회색 띠</legend>
+          {field('bandTitle', '띠 제목', true)}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className={ds.label}>줄 표시</span>
+            <div role="group" aria-label="줄 표시" className={`${ds.segment.group} max-md:grid-cols-2`}>
+              {MARKS.map(([mark, name]) => {
+                const on = content.mark === mark
+                return (
+                  <button
+                    key={mark}
+                    type="button"
+                    aria-pressed={on}
+                    className={`${ds.segment.button} ${on ? ds.segment.on : ds.segment.off}`}
+                    onClick={() => dispatch({ type: 'mark', mark })}
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            {content.lines.map((line, i) => {
+              const n = i + 1
+              const lineError = problems[`line${i}`]
+              const emError = problems[`em${i}`]
+              return (
+                <div key={i} className="mt-2 grid grid-cols-[minmax(0,1fr)_150px_auto] items-start gap-2 max-md:grid-cols-1">
+                  <div className={ds.field}>
+                    <input
+                      type="text"
+                      className={ds.input}
+                      aria-label={`줄 ${n}`}
+                      maxLength={GUIDE_LIMITS.line}
+                      placeholder={`줄 ${n} (${GUIDE_LIMITS.line}자까지)`}
+                      value={line.text}
+                      aria-invalid={Boolean(lineError)}
+                      aria-describedby={lineError ? `${id}-line${i}-error` : undefined}
+                      onChange={(e) => dispatch({ type: 'line', index: i, field: 'text', value: e.target.value })}
+                    />
+                    {reason(`line${i}`)}
+                  </div>
+                  <div className={ds.field}>
+                    <input
+                      type="text"
+                      className={ds.input}
+                      aria-label={`줄 ${n} 노랑 강조`}
+                      placeholder="노랑 강조(선택)"
+                      value={line.em}
+                      aria-invalid={Boolean(emError)}
+                      aria-describedby={emError ? `${id}-em${i}-error` : undefined}
+                      onChange={(e) => dispatch({ type: 'line', index: i, field: 'em', value: e.target.value })}
+                    />
+                    {reason(`em${i}`)}
+                  </div>
+                  <WriteOnly>
+                    <button
+                      type="button"
+                      className={ds.button.ghostSmall}
+                      disabled={content.lines.length <= 1}
+                      onClick={() => dispatch({ type: 'removeLine', index: i })}
+                    >
+                      빼기
+                    </button>
+                  </WriteOnly>
+                </div>
               )
             })}
           </div>
-        </div>
-
-        <div className="flex flex-col">
-          {content.lines.map((line, i) => {
-            const n = i + 1
-            const lineError = problems[`line${i}`]
-            const emError = problems[`em${i}`]
-            return (
-              <div key={i} className="mt-2 grid grid-cols-[minmax(0,1fr)_150px_auto] items-start gap-2 max-md:grid-cols-1">
-                <div className={ds.field}>
-                  <input
-                    type="text"
-                    className={ds.input}
-                    aria-label={`줄 ${n}`}
-                    maxLength={GUIDE_LIMITS.line}
-                    placeholder={`줄 ${n} (${GUIDE_LIMITS.line}자까지)`}
-                    value={line.text}
-                    aria-invalid={Boolean(lineError)}
-                    aria-describedby={lineError ? `${id}-line${i}-error` : undefined}
-                    onChange={(e) => dispatch({ type: 'line', index: i, field: 'text', value: e.target.value })}
-                  />
-                  {reason(`line${i}`)}
-                </div>
-                <div className={ds.field}>
-                  <input
-                    type="text"
-                    className={ds.input}
-                    aria-label={`줄 ${n} 노랑 강조`}
-                    placeholder="노랑 강조(선택)"
-                    value={line.em}
-                    aria-invalid={Boolean(emError)}
-                    aria-describedby={emError ? `${id}-em${i}-error` : undefined}
-                    onChange={(e) => dispatch({ type: 'line', index: i, field: 'em', value: e.target.value })}
-                  />
-                  {reason(`em${i}`)}
-                </div>
-                <button
-                  type="button"
-                  className={ds.button.ghostSmall}
-                  disabled={content.lines.length <= 1}
-                  onClick={() => dispatch({ type: 'removeLine', index: i })}
-                >
-                  빼기
-                </button>
-              </div>
-            )
-          })}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={ds.button.secondarySmall}
-            disabled={content.lines.length >= GUIDE_LIMITS.lines}
-            onClick={() => dispatch({ type: 'addLine' })}
-          >
-            + 줄 더하기
-          </button>
-          <span className="text-caption text-muted">줄은 4개까지 · 짧은 항목은 저절로 두 열</span>
-        </div>
-        {(problems.band || problems.lines) && (
-          <div className="mt-1.5 flex flex-col gap-1">
-            {reason('band')}
-            {reason('lines')}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <WriteOnly>
+              <button
+                type="button"
+                className={ds.button.secondarySmall}
+                disabled={content.lines.length >= GUIDE_LIMITS.lines}
+                onClick={() => dispatch({ type: 'addLine' })}
+              >
+                + 줄 더하기
+              </button>
+            </WriteOnly>
+            <span className="text-caption text-muted">줄은 4개까지 · 짧은 항목은 저절로 두 열</span>
           </div>
-        )}
-        <div className="mt-2">{field('note', '아래 작은 글', true, '앞에 ※가 붙어요')}</div>
-      </fieldset>
+          {(problems.band || problems.lines) && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {reason('band')}
+              {reason('lines')}
+            </div>
+          )}
+          <div className="mt-2">{field('note', '아래 작은 글', true, '앞에 ※가 붙어요')}</div>
+        </fieldset>
 
-      <ColorsField colors={guideColorsOf(content)} logoColors={logoColors} onColors={(colors) => dispatch({ type: 'colors', colors })} />
+        <ColorsField colors={guideColorsOf(content)} logoColors={logoColors} onColors={(colors) => dispatch({ type: 'colors', colors })} />
 
-      <StyleControls
-        tool="guide"
-        style={content.style ?? DEFAULT_STYLE}
-        logoSwatches={logoSwatches}
-        starts={starts}
-        logoTintable={logoTintable}
-        onStyle={(style) => dispatch({ type: 'style', style })}
-        onReset={() => dispatch({ type: 'style', style: DEFAULT_STYLE })}
-      />
+        <StyleControls
+          tool="guide"
+          style={content.style ?? DEFAULT_STYLE}
+          logoSwatches={logoSwatches}
+          starts={starts}
+          logoTintable={logoTintable}
+          onStyle={(style) => dispatch({ type: 'style', style })}
+          onReset={() => dispatch({ type: 'style', style: DEFAULT_STYLE })}
+        />
+      </ReadOnlyFields>
     </section>
   )
 }

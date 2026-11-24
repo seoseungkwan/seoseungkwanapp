@@ -8,6 +8,7 @@ import { useClinicProfile, type ClinicProfileView } from '@/components/clinic/us
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { useDesk } from '@/components/shell/role'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { EMR_LABEL } from '@/lib/clinic/emrText'
@@ -34,6 +35,7 @@ import {
   type Honorific,
   type StaffRole,
 } from '@/types/clinicProfile'
+import { ReadOnlyFields } from './ReadOnlyFields'
 
 // 설정 '병원 정보' 칸 (spec clinic-profile REQ-6602 AC-6602.1~AC-6602.8, design.md 3절, ADR-033). 시안 없음(사용자 결정) —
 // 지금 설정 칸 모양(CashFloatSetting·DeskAccounts의 읽기 상태·ds.panel·결과 줄)과 ds 클래스를 따른다.
@@ -41,7 +43,9 @@ import {
 // 검사는 저장 층 checkProfile·dayProblem 한 곳이다. 열기만 해서는 저장하지 않고 [저장]이 표(saveClinicProfile)를 먼저 저장한 뒤
 // 로고가 바뀌었으면 올리거나(uploadLogo — 줄이 있어야 올라가고, 옛 파일은 그 함수가 지운다) 뺀다(removeLogo).
 // 실패하면 적은 값·고른 로고를 그대로 두고 오류 칸 + [다시 저장]. 표가 저장되면 router.refresh()로 헤더·탭 제목 이름을 다시 읽는다(readMe).
-// 데스크에게는 그리지 않는다(설정 화면은 DeskGate가 막지만 칸도 스스로 숨는다, 자료는 RLS가 막는다)
+// 데스크에게는 그리지 않는다(설정 화면은 DeskGate가 막지만 칸도 스스로 숨는다, 자료는 RLS가 막는다).
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 칸을 모두 막고(ReadOnlyFields — 값은 칸 안 글자로 보인다) 로고 단추·휴진일 [더하기]·[빼기]·
+// 사람 차례·[빼기]·[사람 더하기]·저장 줄을 그리지 않는다(WriteOnly)
 
 type Draft = {
   name: string
@@ -418,346 +422,360 @@ function ProfileForm({ view }: { view: ClinicProfileView }) {
 
   return (
     <>
-      <div className="flex flex-col gap-5">
-        <Field titleId={ids.name} title="병원 이름" help="헤더·탭 제목·서식·문자에 이 이름이 보여요. 비우면 가입할 때 적은 이름을 써요.">
-          <input
-            type="text"
-            autoComplete="off"
-            aria-labelledby={ids.name}
-            maxLength={CLINIC_NAME_MAX}
-            placeholder={view.signupName}
-            className={`${ds.input} max-w-md`}
-            value={draft.name}
-            onChange={(event) => edit((d) => ({ ...d, name: event.target.value }))}
-          />
-        </Field>
-
-        <Field titleId={ids.logo} title="로고" help={LOGO_HELP}>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="grid h-20 w-48 place-items-center overflow-clip rounded-control border border-line bg-canvas p-2">
-              {preview !== null ? (
-                // eslint-disable-next-line @next/next/no-img-element -- 작은 그림 data: 주소(이미지 최적화 대상이 아니다)
-                <img src={preview} alt="로고 미리보기" className="max-h-full max-w-full object-contain" />
-              ) : (
-                <span className="text-small text-muted">{logo.kind === 'saved' ? '미리보기를 불러오지 못했어요' : '로고 없음'}</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className={ds.button.secondarySmall} onClick={() => fileInput.current?.click()}>
-                <Icon name="upload" size={14} />
-                {hasLogo ? '로고 바꾸기' : '로고 고르기'}
-              </button>
-              {hasLogo && (
-                <button type="button" className={ds.button.secondarySmall} onClick={dropLogo}>
-                  로고 빼기
-                </button>
-              )}
-              <input
-                ref={fileInput}
-                type="file"
-                hidden
-                accept={LOGO_TYPES}
-                aria-label="로고 그림 파일"
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  event.target.value = '' // 같은 파일을 다시 고를 수 있게
-                  void pickLogo(file)
-                }}
-              />
-            </div>
-          </div>
-          {logoProblem && <p className={ds.fieldError}>{LOGO_PROBLEM[logoProblem]}</p>}
-        </Field>
-
-        <Field titleId={ids.phone} title="전화">
-          <input
-            type="text"
-            inputMode="tel"
-            autoComplete="off"
-            aria-labelledby={ids.phone}
-            placeholder="02-123-4567"
-            className={`${ds.input} max-w-60`}
-            value={draft.phone}
-            onChange={(event) => edit((d) => ({ ...d, phone: event.target.value }))}
-          />
-        </Field>
-
-        <Field titleId={ids.address} title="주소">
-          <input
-            type="text"
-            autoComplete="off"
-            aria-labelledby={ids.address}
-            maxLength={CLINIC_ADDRESS_MAX}
-            className={`${ds.input} max-w-xl`}
-            value={draft.address}
-            onChange={(event) => edit((d) => ({ ...d, address: event.target.value }))}
-          />
-        </Field>
-
-        <Field titleId={ids.honorific} title="호칭" help="문자·안내문에서 원장님을 부르는 말이에요.">
-          <div role="group" aria-labelledby={ids.honorific} className={`${ds.segment.group} self-start max-md:grid-cols-3`}>
-            {HONORIFICS.map((word) => (
-              <button
-                key={word}
-                type="button"
-                aria-pressed={draft.honorific === word}
-                className={`${ds.segment.button} ${draft.honorific === word ? ds.segment.on : ds.segment.off}`}
-                onClick={() => edit((d) => ({ ...d, honorific: word }))}
-              >
-                {word}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field titleId={ids.emr} title="쓰는 EMR" help="진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 의사랑·이지스는 준비하고 있어요.">
-          <div role="group" aria-labelledby={ids.emr} className={`${ds.segment.group} self-start max-md:grid-cols-2`}>
-            {EMR_KINDS.map((emr) => (
-              <button
-                key={emr}
-                type="button"
-                aria-pressed={draft.emr === emr}
-                className={`${ds.segment.button} ${draft.emr === emr ? ds.segment.on : ds.segment.off}`}
-                onClick={() => edit((d) => ({ ...d, emr }))}
-              >
-                {EMR_LABEL[emr]}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field titleId={ids.hours} title="진료시간" help="요일마다 10분 단위로 골라요. 점심을 '없음'으로 두면 점심시간이 없어요.">
-          <ul aria-labelledby={ids.hours} className="flex flex-col rounded-control border border-line">
-            {draft.hours.map((row, index) => {
-              const day = WEEKDAY_NAMES[index]
-              const problem = dayProblem(toDay(row))
-              const bad = problem !== null
-              return (
-                <li key={day} className="flex flex-col gap-1 border-b border-line px-3 py-2 last:border-b-0">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span className="w-5 text-body font-semibold text-ink">{day}</span>
-                    <label className={INLINE}>
-                      <Checkbox label={`${day}요일 휴진`} checked={row.closed} onChange={(closed) => setHour(index, { closed })} />
-                      휴진
-                    </label>
-                    <span className={INLINE}>
-                      <TimeSelect label={`${day}요일 시작`} value={row.open} disabled={row.closed} invalid={bad} onChange={(open) => setHour(index, { open: open ?? row.open })} />
-                      <span aria-hidden="true">~</span>
-                      <TimeSelect label={`${day}요일 끝`} value={row.close} disabled={row.closed} invalid={bad} onChange={(close) => setHour(index, { close: close ?? row.close })} />
-                    </span>
-                    <span className={INLINE}>
-                      점심
-                      <TimeSelect
-                        label={`${day}요일 점심 시작`}
-                        value={row.lunchFrom}
-                        empty
-                        disabled={row.closed}
-                        invalid={bad}
-                        onChange={(lunchFrom) => setHour(index, { lunchFrom })}
-                      />
-                      <span aria-hidden="true">~</span>
-                      <TimeSelect
-                        label={`${day}요일 점심 끝`}
-                        value={row.lunchTo}
-                        empty
-                        disabled={row.closed}
-                        invalid={bad}
-                        onChange={(lunchTo) => setHour(index, { lunchTo })}
-                      />
-                    </span>
-                  </div>
-                  {problem !== null && <p className={ds.fieldError}>{problem}</p>}
-                </li>
-              )
-            })}
-          </ul>
-        </Field>
-
-        <Field
-          titleId={ids.closed}
-          title="휴진일"
-          help={`날짜를 더하면 앞날부터 차례로 보여요. 같은 날은 한 번만, ${CLOSED_DATES_MAX}개까지 적어요. 1년 넘게 지난 날은 저장할 때 빠져요.`}
-        >
-          <div className="flex flex-wrap items-center gap-2">
+      <ReadOnlyFields>
+        <div className="flex flex-col gap-5">
+          <Field titleId={ids.name} title="병원 이름" help="헤더·탭 제목·서식·문자에 이 이름이 보여요. 비우면 가입할 때 적은 이름을 써요.">
             <input
-              type="date"
-              aria-label="휴진일 날짜"
-              className={`${ds.input} w-48! max-w-full`}
-              value={dateText}
-              disabled={datesFull}
-              onChange={(event) => {
-                setDateText(event.target.value)
-                setDateTaken(false)
-              }}
+              type="text"
+              autoComplete="off"
+              aria-labelledby={ids.name}
+              maxLength={CLINIC_NAME_MAX}
+              placeholder={view.signupName}
+              className={`${ds.input} max-w-md`}
+              value={draft.name}
+              onChange={(event) => edit((d) => ({ ...d, name: event.target.value }))}
             />
-            <button type="button" className={ds.button.secondary} disabled={datesFull} onClick={addDate}>
-              더하기
-            </button>
-          </div>
-          {datesFull ? (
-            <p className={ds.help}>{`휴진일은 ${CLOSED_DATES_MAX}개까지예요`}</p>
-          ) : (
-            dateTaken && <p className={ds.fieldError}>이미 더한 날이에요.</p>
-          )}
-          <ul aria-label="휴진일 목록" className="flex flex-wrap gap-1.5">
-            {draft.closedDates.map((day) => (
-              <li key={day} className={CHIP}>
-                <span>{dateLabel(day)}</span>
-                <button
-                  type="button"
-                  aria-label={`${day} 빼기`}
-                  className={CHIP_X}
-                  onClick={() => edit((d) => ({ ...d, closedDates: d.closedDates.filter((x) => x !== day) }))}
-                >
-                  <Icon name="x" size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
-          {draft.closedDates.length === 0 && <p className="text-small text-muted">더한 휴진일이 없어요.</p>}
-        </Field>
+          </Field>
 
-        <Field
-          titleId={ids.staff}
-          title="원장님·직원"
-          help={`'예약에 보이기'를 켠 사람이 예약 시행자로 나와요. 표시는 예약 칸 끝의 한 글자예요. ${STAFF_MAX}명까지 적어요.`}
-        >
-          {draft.staff.length > 0 ? (
-            <ul aria-label="원장님·직원 목록" className="flex flex-col gap-1.5">
-              {draft.staff.map((person, index) => {
-                const n = index + 1
-                const open = palette === person.id
-                const name = person.name.trim()
-                const nameBad = name === '' || [...name].length > STAFF_NAME_MAX
-                const mark = person.mark.trim()
-                const markBad = [...mark].length !== 1 || (markCount.get(mark) ?? 0) > 1
+          <Field titleId={ids.logo} title="로고" help={LOGO_HELP}>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="grid h-20 w-48 place-items-center overflow-clip rounded-control border border-line bg-canvas p-2">
+                {preview !== null ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- 작은 그림 data: 주소(이미지 최적화 대상이 아니다)
+                  <img src={preview} alt="로고 미리보기" className="max-h-full max-w-full object-contain" />
+                ) : (
+                  <span className="text-small text-muted">{logo.kind === 'saved' ? '미리보기를 불러오지 못했어요' : '로고 없음'}</span>
+                )}
+              </div>
+              <WriteOnly>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className={ds.button.secondarySmall} onClick={() => fileInput.current?.click()}>
+                    <Icon name="upload" size={14} />
+                    {hasLogo ? '로고 바꾸기' : '로고 고르기'}
+                  </button>
+                  {hasLogo && (
+                    <button type="button" className={ds.button.secondarySmall} onClick={dropLogo}>
+                      로고 빼기
+                    </button>
+                  )}
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    hidden
+                    accept={LOGO_TYPES}
+                    aria-label="로고 그림 파일"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      event.target.value = '' // 같은 파일을 다시 고를 수 있게
+                      void pickLogo(file)
+                    }}
+                  />
+                </div>
+              </WriteOnly>
+            </div>
+            {logoProblem && <p className={ds.fieldError}>{LOGO_PROBLEM[logoProblem]}</p>}
+          </Field>
+
+          <Field titleId={ids.phone} title="전화">
+            <input
+              type="text"
+              inputMode="tel"
+              autoComplete="off"
+              aria-labelledby={ids.phone}
+              placeholder="02-123-4567"
+              className={`${ds.input} max-w-60`}
+              value={draft.phone}
+              onChange={(event) => edit((d) => ({ ...d, phone: event.target.value }))}
+            />
+          </Field>
+
+          <Field titleId={ids.address} title="주소">
+            <input
+              type="text"
+              autoComplete="off"
+              aria-labelledby={ids.address}
+              maxLength={CLINIC_ADDRESS_MAX}
+              className={`${ds.input} max-w-xl`}
+              value={draft.address}
+              onChange={(event) => edit((d) => ({ ...d, address: event.target.value }))}
+            />
+          </Field>
+
+          <Field titleId={ids.honorific} title="호칭" help="문자·안내문에서 원장님을 부르는 말이에요.">
+            <div role="group" aria-labelledby={ids.honorific} className={`${ds.segment.group} self-start max-md:grid-cols-3`}>
+              {HONORIFICS.map((word) => (
+                <button
+                  key={word}
+                  type="button"
+                  aria-pressed={draft.honorific === word}
+                  className={`${ds.segment.button} ${draft.honorific === word ? ds.segment.on : ds.segment.off}`}
+                  onClick={() => edit((d) => ({ ...d, honorific: word }))}
+                >
+                  {word}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field titleId={ids.emr} title="쓰는 EMR" help="진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 의사랑·이지스는 준비하고 있어요.">
+            <div role="group" aria-labelledby={ids.emr} className={`${ds.segment.group} self-start max-md:grid-cols-2`}>
+              {EMR_KINDS.map((emr) => (
+                <button
+                  key={emr}
+                  type="button"
+                  aria-pressed={draft.emr === emr}
+                  className={`${ds.segment.button} ${draft.emr === emr ? ds.segment.on : ds.segment.off}`}
+                  onClick={() => edit((d) => ({ ...d, emr }))}
+                >
+                  {EMR_LABEL[emr]}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field titleId={ids.hours} title="진료시간" help="요일마다 10분 단위로 골라요. 점심을 '없음'으로 두면 점심시간이 없어요.">
+            <ul aria-labelledby={ids.hours} className="flex flex-col rounded-control border border-line">
+              {draft.hours.map((row, index) => {
+                const day = WEEKDAY_NAMES[index]
+                const problem = dayProblem(toDay(row))
+                const bad = problem !== null
                 return (
-                  <li key={person.id} className="flex flex-col gap-2 rounded-control border border-line px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        aria-label="이름"
-                        placeholder="이름"
-                        maxLength={STAFF_NAME_MAX}
-                        aria-invalid={nameBad || undefined}
-                        className={`${FIELD} w-32`}
-                        value={person.name}
-                        onChange={(event) => rename(person.id, event.target.value)}
-                      />
-                      <div role="group" aria-label={`${n}번째 사람 구분`} className={`${ds.segment.group} max-md:grid-cols-2`}>
-                        {STAFF_ROLES.map((role) => (
-                          <button
-                            key={role}
-                            type="button"
-                            aria-pressed={person.role === role}
-                            className={`${ds.segment.button} ${person.role === role ? ds.segment.on : ds.segment.off}`}
-                            onClick={() => setPerson(person.id, { role })}
-                          >
-                            {ROLE_LABEL[role]}
-                          </button>
-                        ))}
-                      </div>
+                  <li key={day} className="flex flex-col gap-1 border-b border-line px-3 py-2 last:border-b-0">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <span className="w-5 text-body font-semibold text-ink">{day}</span>
                       <label className={INLINE}>
-                        표시
-                        <input
-                          type="text"
-                          autoComplete="off"
-                          aria-label="예약 표시 글자"
-                          maxLength={2}
-                          aria-invalid={markBad || undefined}
-                          className={`${FIELD} w-10 text-center font-semibold max-md:w-11`}
-                          value={person.mark}
-                          onChange={(event) => setPerson(person.id, { mark: event.target.value, markTouched: true })}
-                        />
+                        <Checkbox label={`${day}요일 휴진`} checked={row.closed} onChange={(closed) => setHour(index, { closed })} />
+                        휴진
                       </label>
-                      <button
-                        type="button"
-                        aria-label={`색 고르기 (${CAL_COLOR_LABEL[person.color]})`}
-                        aria-expanded={open}
-                        className={colorButton(open)}
-                        onClick={() => setPalette(open ? null : person.id)}
-                      >
-                        <Swatch color={person.color} />
-                        {CAL_COLOR_LABEL[person.color]}
-                        <span aria-hidden="true" className="text-caption text-muted">
-                          ▼
-                        </span>
-                      </button>
-                      <label className={INLINE}>
-                        <Checkbox checked={person.calendar} onChange={(calendar) => setPerson(person.id, { calendar })} />
-                        예약에 보이기
-                      </label>
-                      <span className="inline-flex gap-1">
-                        <button type="button" aria-label={`${n}번째 사람 위로`} disabled={index === 0} className={MINI} onClick={() => move(index, -1)}>
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`${n}번째 사람 아래로`}
-                          disabled={index === draft.staff.length - 1}
-                          className={MINI}
-                          onClick={() => move(index, 1)}
-                        >
-                          ▼
-                        </button>
+                      <span className={INLINE}>
+                        <TimeSelect label={`${day}요일 시작`} value={row.open} disabled={row.closed} invalid={bad} onChange={(open) => setHour(index, { open: open ?? row.open })} />
+                        <span aria-hidden="true">~</span>
+                        <TimeSelect label={`${day}요일 끝`} value={row.close} disabled={row.closed} invalid={bad} onChange={(close) => setHour(index, { close: close ?? row.close })} />
                       </span>
-                      <button
-                        type="button"
-                        aria-label={`${n}번째 사람 빼기`}
-                        className={DELETE}
-                        onClick={() => edit((d) => ({ ...d, staff: d.staff.filter((s) => s.id !== person.id) }))}
-                      >
-                        빼기
-                      </button>
+                      <span className={INLINE}>
+                        점심
+                        <TimeSelect
+                          label={`${day}요일 점심 시작`}
+                          value={row.lunchFrom}
+                          empty
+                          disabled={row.closed}
+                          invalid={bad}
+                          onChange={(lunchFrom) => setHour(index, { lunchFrom })}
+                        />
+                        <span aria-hidden="true">~</span>
+                        <TimeSelect
+                          label={`${day}요일 점심 끝`}
+                          value={row.lunchTo}
+                          empty
+                          disabled={row.closed}
+                          invalid={bad}
+                          onChange={(lunchTo) => setHour(index, { lunchTo })}
+                        />
+                      </span>
                     </div>
-                    {open && (
-                      <Palette
-                        color={person.color}
-                        onPick={(color) => {
-                          setPerson(person.id, { color })
-                          setPalette(null)
-                        }}
-                      />
-                    )}
+                    {problem !== null && <p className={ds.fieldError}>{problem}</p>}
                   </li>
                 )
               })}
             </ul>
-          ) : (
-            <p className="text-small text-muted">더한 사람이 없어요.</p>
-          )}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <button type="button" className={ds.button.secondarySmall} disabled={staffFull} onClick={addPerson}>
-              <CalIcon name="plus" size={14} />
-              사람 더하기
-            </button>
-            {staffFull && <span className={ds.help}>{`원장님·직원은 ${STAFF_MAX}명까지예요`}</span>}
-          </div>
-        </Field>
-      </div>
+          </Field>
 
-      <div className="flex flex-col gap-2 border-t border-line pt-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className={ds.button.primary} disabled={blocked} aria-busy={saving || undefined} onClick={() => void save()}>
-            저장
-          </button>
-          {blocked && <p className={ds.fieldError}>{problems[0]}</p>}
-          {outcome.kind === 'saved' && (
-            <p role="status" className="text-small text-ink-2">
-              저장했어요
-            </p>
+          <Field
+            titleId={ids.closed}
+            title="휴진일"
+            help={`날짜를 더하면 앞날부터 차례로 보여요. 같은 날은 한 번만, ${CLOSED_DATES_MAX}개까지 적어요. 1년 넘게 지난 날은 저장할 때 빠져요.`}
+          >
+            <WriteOnly>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  aria-label="휴진일 날짜"
+                  className={`${ds.input} w-48! max-w-full`}
+                  value={dateText}
+                  disabled={datesFull}
+                  onChange={(event) => {
+                    setDateText(event.target.value)
+                    setDateTaken(false)
+                  }}
+                />
+                <button type="button" className={ds.button.secondary} disabled={datesFull} onClick={addDate}>
+                  더하기
+                </button>
+              </div>
+              {datesFull ? (
+                <p className={ds.help}>{`휴진일은 ${CLOSED_DATES_MAX}개까지예요`}</p>
+              ) : (
+                dateTaken && <p className={ds.fieldError}>이미 더한 날이에요.</p>
+              )}
+            </WriteOnly>
+            <ul aria-label="휴진일 목록" className="flex flex-wrap gap-1.5">
+              {draft.closedDates.map((day) => (
+                <li key={day} className={CHIP}>
+                  <span>{dateLabel(day)}</span>
+                  <WriteOnly>
+                    <button
+                      type="button"
+                      aria-label={`${day} 빼기`}
+                      className={CHIP_X}
+                      onClick={() => edit((d) => ({ ...d, closedDates: d.closedDates.filter((x) => x !== day) }))}
+                    >
+                      <Icon name="x" size={12} />
+                    </button>
+                  </WriteOnly>
+                </li>
+              ))}
+            </ul>
+            {draft.closedDates.length === 0 && <p className="text-small text-muted">더한 휴진일이 없어요.</p>}
+          </Field>
+
+          <Field
+            titleId={ids.staff}
+            title="원장님·직원"
+            help={`'예약에 보이기'를 켠 사람이 예약 시행자로 나와요. 표시는 예약 칸 끝의 한 글자예요. ${STAFF_MAX}명까지 적어요.`}
+          >
+            {draft.staff.length > 0 ? (
+              <ul aria-label="원장님·직원 목록" className="flex flex-col gap-1.5">
+                {draft.staff.map((person, index) => {
+                  const n = index + 1
+                  const open = palette === person.id
+                  const name = person.name.trim()
+                  const nameBad = name === '' || [...name].length > STAFF_NAME_MAX
+                  const mark = person.mark.trim()
+                  const markBad = [...mark].length !== 1 || (markCount.get(mark) ?? 0) > 1
+                  return (
+                    <li key={person.id} className="flex flex-col gap-2 rounded-control border border-line px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          aria-label="이름"
+                          placeholder="이름"
+                          maxLength={STAFF_NAME_MAX}
+                          aria-invalid={nameBad || undefined}
+                          className={`${FIELD} w-32`}
+                          value={person.name}
+                          onChange={(event) => rename(person.id, event.target.value)}
+                        />
+                        <div role="group" aria-label={`${n}번째 사람 구분`} className={`${ds.segment.group} max-md:grid-cols-2`}>
+                          {STAFF_ROLES.map((role) => (
+                            <button
+                              key={role}
+                              type="button"
+                              aria-pressed={person.role === role}
+                              className={`${ds.segment.button} ${person.role === role ? ds.segment.on : ds.segment.off}`}
+                              onClick={() => setPerson(person.id, { role })}
+                            >
+                              {ROLE_LABEL[role]}
+                            </button>
+                          ))}
+                        </div>
+                        <label className={INLINE}>
+                          표시
+                          <input
+                            type="text"
+                            autoComplete="off"
+                            aria-label="예약 표시 글자"
+                            maxLength={2}
+                            aria-invalid={markBad || undefined}
+                            className={`${FIELD} w-10 text-center font-semibold max-md:w-11`}
+                            value={person.mark}
+                            onChange={(event) => setPerson(person.id, { mark: event.target.value, markTouched: true })}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          aria-label={`색 고르기 (${CAL_COLOR_LABEL[person.color]})`}
+                          aria-expanded={open}
+                          className={colorButton(open)}
+                          onClick={() => setPalette(open ? null : person.id)}
+                        >
+                          <Swatch color={person.color} />
+                          {CAL_COLOR_LABEL[person.color]}
+                          <span aria-hidden="true" className="text-caption text-muted">
+                            ▼
+                          </span>
+                        </button>
+                        <label className={INLINE}>
+                          <Checkbox checked={person.calendar} onChange={(calendar) => setPerson(person.id, { calendar })} />
+                          예약에 보이기
+                        </label>
+                        <WriteOnly>
+                          <span className="inline-flex gap-1">
+                            <button type="button" aria-label={`${n}번째 사람 위로`} disabled={index === 0} className={MINI} onClick={() => move(index, -1)}>
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`${n}번째 사람 아래로`}
+                              disabled={index === draft.staff.length - 1}
+                              className={MINI}
+                              onClick={() => move(index, 1)}
+                            >
+                              ▼
+                            </button>
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`${n}번째 사람 빼기`}
+                            className={DELETE}
+                            onClick={() => edit((d) => ({ ...d, staff: d.staff.filter((s) => s.id !== person.id) }))}
+                          >
+                            빼기
+                          </button>
+                        </WriteOnly>
+                      </div>
+                      {open && (
+                        <Palette
+                          color={person.color}
+                          onPick={(color) => {
+                            setPerson(person.id, { color })
+                            setPalette(null)
+                          }}
+                        />
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="text-small text-muted">더한 사람이 없어요.</p>
+            )}
+            <WriteOnly>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <button type="button" className={ds.button.secondarySmall} disabled={staffFull} onClick={addPerson}>
+                  <CalIcon name="plus" size={14} />
+                  사람 더하기
+                </button>
+                {staffFull && <span className={ds.help}>{`원장님·직원은 ${STAFF_MAX}명까지예요`}</span>}
+              </div>
+            </WriteOnly>
+          </Field>
+        </div>
+      </ReadOnlyFields>
+
+      <WriteOnly>
+        <div className="flex flex-col gap-2 border-t border-line pt-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className={ds.button.primary} disabled={blocked} aria-busy={saving || undefined} onClick={() => void save()}>
+              저장
+            </button>
+            {blocked && <p className={ds.fieldError}>{problems[0]}</p>}
+            {outcome.kind === 'saved' && (
+              <p role="status" className="text-small text-ink-2">
+                저장했어요
+              </p>
+            )}
+          </div>
+          {outcome.kind === 'failed' && (
+            <div className="flex flex-col items-start gap-2">
+              <ErrorCard code={outcome.code} />
+              <button type="button" className={ds.button.secondarySmall} disabled={blocked} aria-busy={saving || undefined} onClick={() => void save()}>
+                다시 저장
+              </button>
+            </div>
           )}
         </div>
-        {outcome.kind === 'failed' && (
-          <div className="flex flex-col items-start gap-2">
-            <ErrorCard code={outcome.code} />
-            <button type="button" className={ds.button.secondarySmall} disabled={blocked} aria-busy={saving || undefined} onClick={() => void save()}>
-              다시 저장
-            </button>
-          </div>
-        )}
-      </div>
+      </WriteOnly>
     </>
   )
 }

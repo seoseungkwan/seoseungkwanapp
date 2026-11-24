@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { WriteOnly } from '@/components/shell/viewing'
 import { CashFloatSetting } from './CashFloatSetting'
 import { ClinicProfileCard } from './ClinicProfileCard'
 import { DeskAccounts } from './DeskAccounts'
@@ -12,7 +13,9 @@ import { TabAccessSettings } from './TabAccessSettings'
 // 맨 위 '병원 정보' 칸(clinic-profile AC-6602.1, 원장만 — 데스크에게는 칸이 스스로 그리지 않는다) → '비트 PC 연결 · 설치 파일' 칸
 // (helper-download AC-5103.2) → '청구'의 패널들(이름은 settings-tab-name AC-5201.1) → '데스크 계정'(desk-feedback AC-6304.2, 원장만)
 // → 맨 아래 '관리자만 보는 탭'(multi-admin AC-7707.2, 주 관리자만 — 다른 계정에게는 칸이 스스로 그리지 않는다).
-// 안쪽 메뉴의 모양은 비트 PC 연결 화면(SetupScreen의 SettingsSubnav, AC-034.2)과 같다. 페이지 이동 링크라 tablist가 아니고 aria-current를 쓴다
+// 안쪽 메뉴의 모양은 비트 PC 연결 화면(SetupScreen의 SettingsSubnav, AC-034.2)과 같다. 페이지 이동 링크라 tablist가 아니고 aria-current를 쓴다.
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 [비트 PC 연결]로 가는 길을 그리지 않는다(WriteOnly — 비트 PC는 그 의원 PC다).
+// 칸마다 읽기만은 칸이 스스로 한다('관리자만 보는 탭' 칸은 보는 중에 그리지 않는다)
 const subBase =
   'relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body no-underline first:-ml-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 const subIdle = `${subBase} font-medium text-ink-2 hover:text-ink`
@@ -27,9 +30,11 @@ export function SettingsPage() {
           <Link href="/settings" aria-current="page" className={subCurrent}>
             설정
           </Link>
-          <Link href="/claim/setup" className={subIdle}>
-            비트 PC 연결
-          </Link>
+          <WriteOnly>
+            <Link href="/claim/setup" className={subIdle}>
+              비트 PC 연결
+            </Link>
+          </WriteOnly>
         </nav>
       </div>
       <ClinicProfileCard />

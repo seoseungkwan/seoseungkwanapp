@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { useDesk } from '@/components/shell/role'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { addDeskMember, listDeskMembers, removeDeskMember } from '@/lib/storage/desk'
@@ -13,7 +14,8 @@ import type { ErrorCode } from '@/types/errors'
 // 설정 '데스크 계정' 칸 (specs/desk-feedback REQ-6304 AC-6304.2·AC-6304.3, design.md '③ 설정 데스크 계정 칸', 시안 ③, ADR-031).
 // 원장이 데스크 구글 메일을 5개까지 더하고 뺀다. 읽기·더하기·빼기는 lib/storage/desk.ts(정의자 함수 셋)만 부른다.
 // 원장 계정에서만 그린다(시안 ③): 설정 화면은 데스크에게 DeskGate가 막지만, 칸도 useDesk()가 참이면 그리지 않는다. 자료는 함수가 원장만 준다.
-// 읽기는 효과에서만 한다. 더하기·빼기 뒤에는 목록을 다시 읽는다(그동안 지금 목록을 그대로 보인다). [빼기]는 묻지 않고 바로 지운다
+// 읽기는 효과에서만 한다. 더하기·빼기 뒤에는 목록을 다시 읽는다(그동안 지금 목록을 그대로 보인다). [빼기]는 묻지 않고 바로 지운다.
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 메일 칸·[더하기]·[빼기]를 그리지 않는다(WriteOnly) — 보는 의원의 데스크 메일 목록은 보인다
 
 type Load = 'loading' | 'failed' | 'ready'
 type Busy = { kind: 'add' } | { kind: 'remove'; id: string } | null
@@ -119,31 +121,33 @@ function DeskAccountsPanel() {
       )}
       {load === 'ready' && (
         <>
-          <form
-            noValidate
-            className="flex flex-wrap items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void add()
-            }}
-          >
-            <input
-              type="text"
-              inputMode="email"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              aria-label="데스크 구글 메일"
-              placeholder="데스크가 로그인할 구글 메일"
-              className={EMAIL_INPUT}
-              value={text}
-              disabled={full}
-              onChange={(event) => setText(event.target.value)}
-            />
-            <button type="submit" className={ds.button.primary} disabled={full} aria-busy={busy?.kind === 'add' || undefined}>
-              더하기
-            </button>
-          </form>
+          <WriteOnly>
+            <form
+              noValidate
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void add()
+              }}
+            >
+              <input
+                type="text"
+                inputMode="email"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-label="데스크 구글 메일"
+                placeholder="데스크가 로그인할 구글 메일"
+                className={EMAIL_INPUT}
+                value={text}
+                disabled={full}
+                onChange={(event) => setText(event.target.value)}
+              />
+              <button type="submit" className={ds.button.primary} disabled={full} aria-busy={busy?.kind === 'add' || undefined}>
+                더하기
+              </button>
+            </form>
+          </WriteOnly>
           {problem && <ErrorCard code={problem} />}
           {members.length > 0 && (
             <ul aria-label="데스크 계정 목록" className="flex flex-col rounded-control border border-line">
@@ -158,15 +162,17 @@ function DeskAccountsPanel() {
                   ) : (
                     <span className="text-small text-muted">아직 로그인 안 함</span>
                   )}
-                  <button
-                    type="button"
-                    className={ds.button.secondarySmall}
-                    aria-label={`${member.email} 빼기`}
-                    aria-busy={(busy?.kind === 'remove' && busy.id === member.id) || undefined}
-                    onClick={() => void remove(member.id)}
-                  >
-                    빼기
-                  </button>
+                  <WriteOnly>
+                    <button
+                      type="button"
+                      className={ds.button.secondarySmall}
+                      aria-label={`${member.email} 빼기`}
+                      aria-busy={(busy?.kind === 'remove' && busy.id === member.id) || undefined}
+                      onClick={() => void remove(member.id)}
+                    >
+                      빼기
+                    </button>
+                  </WriteOnly>
                 </li>
               ))}
             </ul>

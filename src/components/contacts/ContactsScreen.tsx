@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { buildImportPlan, type ImportPlan } from '@/lib/contacts/plan'
 import type { ReadProblem } from '@/lib/contacts/workbook'
@@ -30,6 +31,8 @@ import { useContacts } from './useContacts'
 // 읽는 동안은 h1만, 읽기 실패는 목록 자리에 오류 카드 + [다시 읽기], 빈 주소록은 빈 화면만, 엑셀 미리 보기 동안은 그 한 화면만(자기 h1).
 // 폰 전용 모양 없음(사용자 규칙 2026-11-21): 두 칸 틀은 최소 폭 720px이고 그보다 좁으면 감싼 칸 안에서만 옆으로 밀린다.
 // 목록 칸만 시안대로 1024px 미만 300px · 이상 360px(자세히 왼쪽 여백 24px · 32px)
+// 보는 중(admin-view AC-8011.1, 관리자가 다른 의원을 읽기만)에는 [엑셀 올리기]·[업체 더하기]를 그리지 않는다(WriteOnly) — 넣기·업체 판도 열 길이 없다.
+// [양식 받기]·찾기·목록·자세히는 그대로다(자세히의 쓰기 단추는 CompanyDetail이 숨긴다)
 
 type Panel = { mode: 'new' } | { mode: 'edit'; companyId: string }
 type Preview = { plan: ImportPlan; fileName: string; saving: boolean; failed: boolean }
@@ -138,8 +141,10 @@ export function ContactsScreen({ initialCompanyId }: { initialCompanyId?: string
           actions={
             <>
               <TemplateLink onDownloaded={downloaded} />
-              <UploadButton onRead={onRead} />
-              <AddCompanyButton onClick={openNew} />
+              <WriteOnly>
+                <UploadButton onRead={onRead} />
+                <AddCompanyButton onClick={openNew} />
+              </WriteOnly>
             </>
           }
         />
@@ -153,9 +158,13 @@ export function ContactsScreen({ initialCompanyId }: { initialCompanyId?: string
           count={shown.companies.length}
           actions={
             <>
-              <UploadButton onRead={onRead} />
+              <WriteOnly>
+                <UploadButton onRead={onRead} />
+              </WriteOnly>
               <TemplateLink onDownloaded={downloaded} />
-              <AddCompanyButton onClick={openNew} />
+              <WriteOnly>
+                <AddCompanyButton onClick={openNew} />
+              </WriteOnly>
             </>
           }
         />

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { TAG_LABEL } from '@/lib/ai/markdown'
 import { compareMonths, longMonth, madeAtText, modelName, partialNotice, shortMonth } from '@/lib/ai/reportScreen'
@@ -212,11 +213,14 @@ export function ReportBody({
           )}
           <h2 className={EMPTY_TITLE}>{`${name} 리포트를 아직 만들지 않았어요`}</h2>
           <p className={EMPTY_LINE}>{`[AI 분석]을 누르면 ${compareMonths(month)}과 견줘 ${honorific}께 드릴 보고를 1분쯤 걸려 써 드려요.`}</p>
-          <div className={EMPTY_ACTIONS}>
-            <button type="button" onClick={onAnalyze} className={`${ds.button.primaryLarge} max-md:w-full`}>
-              AI 분석
-            </button>
-          </div>
+          {/* 보는 중(admin-view AC-8011.2)에는 [AI 분석] 줄을 그리지 않는다 */}
+          <WriteOnly>
+            <div className={EMPTY_ACTIONS}>
+              <button type="button" onClick={onAnalyze} className={`${ds.button.primaryLarge} max-md:w-full`}>
+                AI 분석
+              </button>
+            </div>
+          </WriteOnly>
         </>
       )
     case 'report':

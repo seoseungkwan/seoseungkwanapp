@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { LOGO_SCALE, TEXT_SCALE, type FormStyle } from '@/lib/forms/style'
 import { ColorChips } from './ColorChips'
@@ -7,7 +8,8 @@ import { ColorChips } from './ColorChips'
 // 승인 시안 docs/mockups/form-style/index.html). 줄: 제목 글씨 · 본문 글씨 · (강조 색 — 진료일정 안내만, accentRow) · 로고, 도움말, [처음대로].
 // 글씨 줄은 '크기' 밀대(%)와 색 고르기(ColorChips), 로고 줄은 밀대와 로고 색 고르기. 값(style)은 부르는 쪽 상태에 있고 바꾸면 새 값 전체를 onStyle로 보낸다.
 // 색을 칠할 수 없는 로고(배경이 남은 그림)면 로고 색 고르기만 막고 까닭을 보인다 — 저장된 로고 색 값은 건드리지 않는다(AC-6801.8).
-// 앱 화면 색은 토큰과 ds만 쓴다. 시안에서만 있는 것('어두운 AI 배경으로 보기', 강조 색 제목 옆 설명)은 넣지 않는다(notes.md)
+// 앱 화면 색은 토큰과 ds만 쓴다. 시안에서만 있는 것('어두운 AI 배경으로 보기', 강조 색 제목 옆 설명)은 넣지 않는다(notes.md).
+// 보는 중(admin-view AC-8011.1)에는 [처음대로]를 그리지 않는다(WriteOnly). 칸은 부르는 편집 칸의 ReadOnlyFields가 막는다
 
 const HELP = {
   notice:
@@ -111,9 +113,11 @@ export function StyleControls({ tool, style, logoSwatches, starts, logoTintable,
         {!logoTintable && <p className={ds.help}>{LOCKED}</p>}
       </StyleRow>
       <p className={`${ds.help} mt-1`}>{HELP[tool]}</p>
-      <button type="button" className={`${ds.button.secondarySmall} mt-3`} onClick={onReset}>
-        처음대로
-      </button>
+      <WriteOnly>
+        <button type="button" className={`${ds.button.secondarySmall} mt-3`} onClick={onReset}>
+          처음대로
+        </button>
+      </WriteOnly>
     </fieldset>
   )
 }

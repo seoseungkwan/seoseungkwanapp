@@ -5,13 +5,15 @@ import { useId } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { DownloadButton } from '@/components/install/DownloadButton'
 import { useInstallFiles } from '@/components/install/useInstallFiles'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { installMeta, type InstallFile, type InstallKind } from '@/lib/storage/installFiles'
 
 // 설정 탭 맨 위 '비트 PC 연결 · 설치 파일' 칸 (helper-download REQ-5103 AC-5103.2, design.md '화면', 시안 docs/mockups/helper-download ?s=settings).
 // 크롬 확장·도우미 두 줄: 이름·설명 · 지금 판 · 크기 · [받기](보조 — 이 화면의 주 단추는 다른 칸의 [저장]이다).
 // 목록은 이 칸에서 한 번 읽고 두 단추와 나눠 쓴다(useInstallFiles). 목록 읽기 실패는 칸 안에 오류 카드 하나, 받기 실패는 그 줄에 보인다.
-// 768px 미만은 지금 판·크기 칸을 숨기고(시안 hide-sm) 단추·링크는 44px 전체 폭이다. 설치 순서와 연결 확인은 비트 PC 연결 화면(/claim/setup)이 맡는다
+// 768px 미만은 지금 판·크기 칸을 숨기고(시안 hide-sm) 단추·링크는 44px 전체 폭이다. 설치 순서와 연결 확인은 비트 PC 연결 화면(/claim/setup)이 맡는다.
+// 보는 중(admin-view AC-8011.3)에는 아래 [비트 PC 연결 확인하러 가기 →] 줄을 그리지 않는다(WriteOnly). 설치 파일 [받기]는 읽기라 그대로다
 
 const ROWS: readonly { kind: InstallKind; name: string; desc: string; label: string }[] = [
   { kind: 'extension', name: '크롬 확장', desc: '크롬에 붙이는 작은 프로그램', label: '확장 내려받기' },
@@ -75,12 +77,14 @@ export function InstallFilesCard() {
         </table>
       </div>
       {list.status === 'failed' && <ErrorCard code={list.code} />}
-      <div className="flex flex-wrap items-center gap-2 max-md:grid">
-        <Link href="/claim/setup" className={`${ds.button.secondary} no-underline max-md:w-full`}>
-          비트 PC 연결 확인하러 가기 →
-        </Link>
-        <span className="text-small text-muted">설치 순서와 연결 확인은 이 화면에서 해요(청구 탭 아래)</span>
-      </div>
+      <WriteOnly>
+        <div className="flex flex-wrap items-center gap-2 max-md:grid">
+          <Link href="/claim/setup" className={`${ds.button.secondary} no-underline max-md:w-full`}>
+            비트 PC 연결 확인하러 가기 →
+          </Link>
+          <span className="text-small text-muted">설치 순서와 연결 확인은 이 화면에서 해요(청구 탭 아래)</span>
+        </div>
+      </WriteOnly>
     </section>
   )
 }
