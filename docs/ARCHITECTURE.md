@@ -64,7 +64,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 입지 분석 탭(관리자만): `components/location/`(화면 부품은 props·콜백만, `clients.ts`가 같은 origin 서버 경로를 부름) · `lib/location/`(좌표·점수·위험 신호·비용 등 순수 함수, 환자 구역 아님) · `lib/storage/location.ts`(표 여섯 + Storage `location-photos`) · `app/api/ai/location/`(바깥 자료 `query`·열쇠 상태 `keys`, Claude 안 부름) · `public/location/`(동 경계·정류장·역 좌표 정적 파일) · migration `supabase/migrations/20261122000000_location.sql` — 사이트 올리기 전에 SQL Editor에 붙여 한 번 실행하고 Storage `location-photos`가 Private인지 본다. 서버가 바깥 공개 자료를 대신 부르고 카카오 결과는 저장하지 않는 예외(ADR-043~045), `specs/location/design.md`
 
 ## 패턴
-- 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄, 관리자만 보는 탭 목록만 읽는다 (ADR-004·ADR-042)
+- 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄, 관리자만 보는 탭 목록, 보는 의원 한 줄(ADR-046)만 읽는다 (ADR-004·ADR-042·ADR-046)
 - 같은 효과면 코드 대신 DB 제약. 예: 급여 `final` 잠금, 승인 DB 함수
 - 통계: 원래 숫자는 `aggregate`, 비율·'집계 중' 판정은 `compare`, 저장 모양은 `payload` (`specs/stats-core/design.md`)
 - 저장은 세기 숫자만. 비율은 읽을 때 계산한다
@@ -119,12 +119,15 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 ## DB 표 (§5)
 모든 표에 `hospital_id`를 둔다(§0). 모든 표에 RLS.
 예외: 고시·공지 공용 표(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)와 `notice_collectors`·`notice_runs`는 병원과 상관없어 `hospital_id` 없이 한 벌이다 (ADR-037) · 관리자만 보는 탭 `tab_access`도 병원과 상관없는 한 벌이다 (ADR-042)
+병원별 표에는 보기 정책 둘(ADR-046): permissive `관리자 보는 의원 읽기`(보는 의원 줄 select) + restrictive `보는 중에는 그 의원만 · 쓰기 없음`(보는 중이면 그 의원 줄만·쓰기 모두 실패). 예약 줄(`calendar_appts`)·환자·청구 표는 restrictive만(보는 중 아무 줄도 안 보임). 보는 중이 아니면 둘 다 아무것도 바꾸지 않는다. 새 병원별 표 migration도 둘을 더한다(`supabase/adminView.rls.test.ts` AC-8002.8이 잡는다). 목록·까닭은 `specs/admin-view/design.md` '병원별 표'
 
 | 표 | 내용 |
 |---|---|
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 관리자 줄(`user_id`·`is_owner` 주 관리자 표시, 참인 줄은 하나). 처음 한 줄(운영자)은 SQL 편집기로(`first-admin.sql`) 넣고 `20261122000000_multi_admin.sql`이 주 관리자로 표시한다. 그 뒤는 관리자가 가입 승인 화면 '승인' 탭에서 승인된 원장 계정을 정하고 뺀다 — 정의자 함수 `set_admin`·`admin_hospitals`(관리자만, 자기 자신·주 관리자는 못 바꿈). 사용자 표 권한은 내 줄 읽기뿐 (ADR-041·ADR-042, specs/multi-admin) |
 | `tab_access` | 관리자만 보는 탭(공용 표, `hospital_id` 없음): `path`(탭 주소, `/dashboard`·`/settings`·`/admin` 빼고)·`admin_only`. 줄 없는 탭 = 관리자만. 읽기는 로그인한 사람 모두, 쓰기는 정의자 함수 `set_tab_access`(주 관리자만). 관리자가 아닌 계정의 메뉴·주소만 막고 RLS는 그대로 (ADR-042, specs/multi-admin) |
+| `admin_views` | 관리자가 다른 의원을 본 기록 = 보기 줄: `id`(이 브라우저의 보기 열쇠)·`user_id`·`hospital_id`·`started_at`·`ended_at`. 열쇠는 끝나지 않은 12시간 안 줄일 때만 통한다. 표 권한·정책이 없고 정의자 함수 `start_admin_view`·`stop_admin_view`·`my_admin_view`·`admin_view_log`(최근 30일, 관리자만)로만 다룬다. 지우지 않는다, 보인 의원에는 알리지 않는다 (ADR-046, specs/admin-view) |
+| `hospital_regions` | 관리자가 정한 의원 지역 한 줄: `hospital_id`·`sido`(17개 시·도 이름, null = '지역 모름'으로 정함)·`updated_at`. 줄이 없으면 앱이 병원 정보 주소에서 읽는다. 표 권한·정책이 없고 `set_hospital_region`·`admin_view_hospitals`(관리자만)로만. 의원 비교 숫자는 정의자 함수 `admin_rows`(관리자만, 승인된 병원, 이름·연락처·차트번호 없는 칸)로 읽는다 (ADR-047, specs/admin-view) |
 | `hospital_members` | 병원의 데스크 메일 한 줄: `id`·`hospital_id`·`email`(소문자·앞뒤 빈칸 없는 메일 모양 3~254자, 표 전체에서 하나)·`role`('desk'뿐)·`created_at`. 표 권한·정책이 없고 정의자 함수(`add_desk_member`·`desk_members`·`remove_desk_member`·`my_desk`)로만 다룬다. 데스크는 `my_desk_hospital_id()`와 '데스크 …' 정책이 연 표(`worklog_days`·`sunap_*`·`calendar_*` 표 권한대로, `worklog_settings`·`stats_rx_groups`·`calendar_rev` 읽기)만 쓴다. 그 일곱 표의 `hospital_id` 기본값·예약 트리거 둘은 `my_clinic_hospital_id()` (ADR-031, specs/desk-feedback) |
 | `stats_months` · `stats_days` · `stats_coverage` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용. 칸: `month` 또는 `day`·`partial`·`source`·`payload`·`updated_at`, 완전한 줄은 덜 덮인 줄로 안 바뀌는 트리거) · 불러온 기간 한 줄씩(칸: `from_day`·`to_day`·`source`·`created_at`, 넣기만) |
 | `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 처방별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |
@@ -188,6 +191,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 계정 1개 = 병원 1개. 예외는 데스크 계정(ADR-031): 원장이 설정에서 더한 데스크 구글 메일(병원마다 5개까지)로 로그인하면 가입 승인 없이 그 병원의 데스크다. 로그인 메일(JWT의 email)로 맞추고 사용자 id는 적지 않는다. 이미 병원 가입 신청이 있는 메일은 데스크가 될 수 없고, 데스크 메일은 가입 신청을 못 한다. 페이지 문지기는 내 병원 줄이 없을 때 `my_desk()`만 읽는다(쓰지 않음)
 - 승인·거절은 DB 함수 하나가 한다. `admins` 표에 있는 사람만 상태를 바꿀 수 있다. service role 키는 없다
 - 관리자는 여럿일 수 있다. 관리자가 가입 승인 화면에서 승인된 원장 계정을 관리자로 정하고 뺀다(권한은 모두 같음, 자기 자신·주 관리자는 못 뺌, ADR-041). 주 관리자는 설정에서 관리자만 보는 탭을 고르고, 앱 틀이 관리자가 아닌 계정의 메뉴에서 빼고 주소를 대시보드로 돌린다(ADR-042)
+- 관리자는 다른 승인된 의원 화면을 읽기만 하며 볼 수 있다(ADR-046): 관리자 탭에서 의원을 고르면 `start_admin_view`가 본 기록 한 줄과 보기 열쇠를 주고, 브라우저가 열쇠를 세션 쿠키 `ssk_view`에 두어 요청 머리 `x-ssk-view`로 보낸다. RLS가 그 의원 줄만 주고 쓰기를 모두 막는다(예약·환자·청구 표는 안 보임). 앱 틀은 보기 쿠키가 있을 때만 `my_admin_view()`(보는 의원 id·이름)를 읽는다(쓰지 않음)
 - AI 경로도 '승인된 사용자'인지 다시 확인한다
 - 30분 동안 움직임이 없으면 자동 로그아웃. 화면 위쪽 띠에 로그인한 구글 계정을 보인다
 
