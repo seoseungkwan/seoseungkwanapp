@@ -76,5 +76,7 @@ export type ErrorCode =
   | 'E-LOC-READ-FAILED' | 'E-LOC-SAVE-FAILED' | 'E-LOC-SOURCE' | 'E-LOC-MAP' | 'E-LOC-PHOTO'
   // 다른 의원 보기·의원 비교(specs/admin-view design.md '화면 글자' 오류 표): 보기 시작 · 본 기록 읽기 · 지역 바꾸기 · 비교 숫자 읽기 · 보는 중 저장
   | 'E-VIEW-START' | 'E-VIEW-LOG' | 'E-REGION-SAVE' | 'E-COMPARE-READ' | 'E-VIEW-READONLY'
+  // 저절로 올리기(specs/admin-view design.md '화면 글자' 2차 오류 셋): 채울 기간 바꾸기 · 올리기 실패(번호 없는 오류) · 다른 의원 비트 PC
+  | 'E-AUTO-MONTHS' | 'E-AUTO-UPLOAD' | 'E-AUTO-OTHER-BIT'
 
 export type ErrorInfo = { what: string; fix: string }
