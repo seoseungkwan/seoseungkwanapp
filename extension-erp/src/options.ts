@@ -14,7 +14,10 @@
 // 고른 코드 줄(묶음 코드) 찾기는 그대로 1년 목록
 // REQ-3709(TASK-11, design.md 11절 · 승인 시안 docs/mockups/erp-closing-range/exclude.html): 건수를 세는 17줄마다 '읽지 않을 처방' 줄.
 // 새 규칙 칸에 담는 중인 것은 화면에만 두고(저장할 바꿈이 아님) [규칙 더하기]한 규칙만 [저장]에 들어간다. 같이 있을 처방 찾기는 셀 코드 찾기와 같다
-import { E_BRIDGE_BAD_REPLY, E_HELPER_MISSING, explain } from './errors.js'
+// 의사랑판(spec erp-uisarang TASK-12, design.md 8-9 options · 결정 7, AC-4214.1): 맨 앞에서 의사랑 설정(erpClosingUis)만 저장돼 있으면
+// 도우미를 부르지 않고 의사랑 화면(uisOptions.ts). 그 밖은 지금 그대로이고, closing.codes가 E-CLOSING-WRONG-SOURCE면 오류 글 없이 의사랑 화면.
+// 두 화면이 같이 쓰는 글(SHARED_TEXT)은 지금 글 그대로다
+import { E_BRIDGE_BAD_REPLY, E_CLOSING_WRONG_SOURCE, E_HELPER_MISSING, explain } from './errors.js'
 import { josa } from './josa.js'
 import {
   addCode,
@@ -40,6 +43,34 @@ import {
 import type { Conflict, RuleProblem } from './settings.js'
 import { AMOUNT_KEYS, EXCLUDE_KEYS, GROUP_NAMES, RSV_NAMES, RSV_ROWS } from './types.js'
 import type { AmountKey, ClosingCodes, ClosingCommand, EtcKey, ExcludeRule, FoundCodes, GroupKey, RsvRow, Settings } from './types.js'
+import { startUisOptions, stopUisOptions } from './uisOptions.js'
+import type { Send } from './uisOptions.js'
+import { savedSources } from './uisSettings.js'
+
+/**
+ * 비트·의사랑 설정 화면이 같이 쓰는 글(지금 글 그대로). 의사랑 화면(uisOptions.ts)은 함수 안에서만 읽는다
+ * (두 파일이 서로 부르므로 맨 위에서 읽지 않는다)
+ */
+export const SHARED_TEXT = {
+  /** 찾기 칸 안내: 보통 · 20개 다 고름 */
+  find: '코드나 이름으로 찾기',
+  full: '20개까지 고를 수 있어요',
+  /** 찾기 목록에서 이미 고른 줄 꼬리 · 맞는 코드가 없을 때 */
+  picked: '골랐어요',
+  noMatch: '맞는 코드가 없어요.',
+  /** 고른 코드가 없는 줄 */
+  none: '고른 코드 없음 · 이 칸은 채우지 않아요',
+  /** 기타 줄 ERP 줄 이름 칸 */
+  etcLabel: 'ERP 줄 이름',
+  etcHint: '업무일지 2 줄 이름과 똑같이',
+  /** 코드 조각 [×] 단추 이름 */
+  remove: (code: string) => `${code} 빼기`,
+  /** 저장 줄 글 셋 · 저장 실패 */
+  dirty: '바꾼 것을 아직 저장하지 않았어요.',
+  saved: '저장했어요.',
+  never: '아직 한 번도 저장하지 않았어요.',
+  saveFailed: '저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.',
+} as const
 
 /** 묶음(design.md 2절 '/' 나눔)과 줄마다 쓰는 칸. 줄 차례를 이어 붙이면 GROUP_KEYS 차례다 */
 const SECTIONS: { title: string; about: string; rows: [GroupKey, string][] }[] = [
@@ -118,7 +149,7 @@ const FIND_MAX = 20
 /** 옛 도우미가 모르는 명령에 주는 번호(errors.ts 표에는 옛 도우미 글로 있다) */
 const E_HELPER_UNKNOWN_COMMAND = 'E-HELPER-UNKNOWN-COMMAND'
 /** 1년 목록에서 맞는 코드가 없을 때(지금 글) */
-const NO_MATCH = '맞는 코드가 없어요.'
+const NO_MATCH = SHARED_TEXT.noMatch
 
 /** 규칙 조각의 {때}(AC-3709.1): 같이 있을 처방이 1개면 '같이 있으면', 2개 이상이면 '하나라도 있으면' 또는 '모두 있으면' */
 const WHEN = { one: '같이 있으면', any: '하나라도 있으면', all: '모두 있으면' }
@@ -163,7 +194,7 @@ const TEXT = {
   loading: '코드 목록을 받는 중이에요(30초쯤).',
   codesFailed: '도우미에서 코드 목록을 받지 못했어요 ',
   codesFailedTail: '고른 코드는 그대로 두고 저장할 수 있어요. 고친 뒤 이 화면을 새로고침(F5)하면 목록을 다시 받아요.',
-  saveFailed: '저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.',
+  saveFailed: SHARED_TEXT.saveFailed,
   unused: (n: number) => `최근 1년에 처방이 없는 코드 ${count(n)}개 — 맞나요?`,
   unusedNote: '다른 의원 코드거나 잘못 고른 코드면 그 칸은 매일 0이 돼요.',
   keep: '그대로 저장',
@@ -404,7 +435,7 @@ function codeChip(code: string, del = 'data-del'): HTMLElement {
     { class: 'chip' },
     h('b', {}, code),
     name,
-    h('button', { type: 'button', [del]: code, 'aria-label': `${code} 빼기` }, '×'),
+    h('button', { type: 'button', [del]: code, 'aria-label': SHARED_TEXT.remove(code) }, '×'),
   )
 }
 
@@ -421,7 +452,7 @@ function results(key: GroupKey, text: string): HTMLElement[] {
       { type: 'button', 'data-add': c.code, disabled: has },
       h('b', {}, c.code),
       h('span', {}, c.name ?? ''),
-      h('em', {}, has ? '골랐어요' : `최근 1년 ${count(c.visits)}번`),
+      h('em', {}, has ? SHARED_TEXT.picked : `최근 1년 ${count(c.visits)}번`),
     )
   })
 }
@@ -481,7 +512,7 @@ function findParts(where: Where, key: GroupKey): { items: HTMLElement[]; note: s
 /** 찾기 칸 안내 글: 목록을 못 받음 · 20개 다 고름 · 보통 */
 function findPlaceholder(full: boolean): string {
   if (page.codes.status === 'error') return '코드 목록을 받지 못해 찾을 수 없어요'
-  return full ? '20개까지 고를 수 있어요' : '코드나 이름으로 찾기'
+  return full ? SHARED_TEXT.full : SHARED_TEXT.find
 }
 
 function codeRow(key: GroupKey, use: string): HTMLElement {
@@ -494,13 +525,13 @@ function codeRow(key: GroupKey, use: string): HTMLElement {
     ? h(
         'label',
         { class: 'etc' },
-        h('span', {}, 'ERP 줄 이름'),
+        h('span', {}, SHARED_TEXT.etcLabel),
         h('input', {
           type: 'text',
           maxlength: '20',
           'data-etc': key,
           value: page.settings.etcNames[key],
-          placeholder: '업무일지 2 줄 이름과 똑같이',
+          placeholder: SHARED_TEXT.etcHint,
         }),
       )
     : null
@@ -515,7 +546,7 @@ function codeRow(key: GroupKey, use: string): HTMLElement {
       h(
         'div',
         { class: 'pickline' },
-        ...(mine.length > 0 ? mine.map((code) => codeChip(code)) : [h('span', { class: 'none' }, '고른 코드 없음 · 이 칸은 채우지 않아요')]),
+        ...(mine.length > 0 ? mine.map((code) => codeChip(code)) : [h('span', { class: 'none' }, SHARED_TEXT.none)]),
         h(
           'div',
           { class: 'find' },
@@ -770,13 +801,7 @@ function renderStatus() {
   const blocked = page.ask?.kind === 'blocked'
   const saved = page.everSaved && !blocked
   status.className = 'status' + (page.dirty ? ' dirty' : saved ? ' saved' : '')
-  status.textContent = page.dirty
-    ? '바꾼 것을 아직 저장하지 않았어요.'
-    : saved
-      ? '저장했어요.'
-      : page.everSaved
-        ? ''
-        : '아직 한 번도 저장하지 않았어요.'
+  status.textContent = page.dirty ? SHARED_TEXT.dirty : saved ? SHARED_TEXT.saved : page.everSaved ? '' : SHARED_TEXT.never
 }
 
 /** 저장 바 바로 위 알림 상자를 그린다. focus = 먼저 포커스를 받을 단추(data-ask) */
@@ -1215,13 +1240,27 @@ function onLeave(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
-/** 설정 화면을 연다. 저장한 설정(없으면 처음 값)을 그리고, 도우미 코드 목록이 오면 다시 그린다 */
+/** 의사랑 화면이 도우미에 묻는 길(서비스 워커 { cmd, args }, 답은 받은 그대로) */
+const sendToHelper: Send = (cmd, args) => chrome.runtime.sendMessage({ cmd, args })
+
+/**
+ * 설정 화면을 연다. 의사랑 설정만 저장돼 있으면 의사랑 화면(도우미를 부르지 않음, AC-4214.1). 그 밖은 저장한 설정(없으면 처음 값)을
+ * 그리고, 도우미 코드 목록이 오면 다시 그린다. 도우미가 의사랑 자료원이라고 하면(E-CLOSING-WRONG-SOURCE) 오류 글 없이 의사랑 화면
+ */
 export async function startOptions(): Promise<void> {
   stop?.abort()
   stopAsking()
+  stopUisOptions()
   const controller = new AbortController()
   stop = controller
   const signal = controller.signal
+  // 설정 값은 읽지 않고 있는지만 본다. 못 보면 지금처럼 비트 화면부터
+  const sources = await savedSources().catch(() => ({ bit: false, uis: false }))
+  if (signal.aborted) return
+  if (sources.uis && !sources.bit) {
+    await startUisOptions(document, { send: sendToHelper })
+    return
+  }
   main = byId('optMain')
   const codes = askCodes()
   const stored = await load().catch(() => null)
@@ -1269,6 +1308,13 @@ export async function startOptions(): Promise<void> {
 
   const got = await codes
   if (signal.aborted) return
+  if (got.status === 'error' && got.code === E_CLOSING_WRONG_SOURCE) {
+    // 비트 화면 누르기·나가기 확인을 떼고 의사랑 화면으로 바꿔 그린다
+    controller.abort()
+    stopAsking()
+    await startUisOptions(document, { send: sendToHelper })
+    return
+  }
   page.codes = got
   renderMain()
 }
