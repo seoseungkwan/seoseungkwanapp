@@ -10,6 +10,8 @@
   <ItemGroup>
     <!-- 기존 Precheck.Core와 같은 판 -->
     <PackageReference Include="System.Text.Json" Version="10.0.14" />
+    <!-- 의사랑 .xls(BIFF8) 읽기(spec erp-uisarang ADR-050·design.md 5-6). netstandard2.0은 의존 패키지 없음, BIFF8 전용 입구 CreateBinaryReader만 쓴다 -->
+    <PackageReference Include="ExcelDataReader" Version="3.9.0" />
   </ItemGroup>
 
   <ItemGroup>

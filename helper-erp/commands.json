@@ -66,6 +66,27 @@
               }
             }
           }
+        },
+        "sales": {
+          "type": "array",
+          "optional": true,
+          "min": 0,
+          "max": 10,
+          "items": {
+            "type": "object",
+            "fields": {
+              "key": {
+                "type": "enum",
+                "values": ["carm", "sono", "arthro", "manual", "eswt", "pt", "etc1", "etc2", "etc3", "etc4"]
+              },
+              "codes": {
+                "type": "array",
+                "min": 1,
+                "max": 20,
+                "items": { "type": "string", "min": 1, "max": 20, "pattern": "^\\S(?: ?\\S)*$" }
+              }
+            }
+          }
         }
       }
     },
@@ -74,6 +95,14 @@
       "args": {
         "text": { "type": "string", "min": 2, "max": 20, "pattern": "^\\S(?:.*\\S)?$" }
       }
+    },
+    "closing.source": {
+      "patient": false,
+      "args": {}
+    },
+    "closing.uisCodes": {
+      "patient": false,
+      "args": {}
     }
   }
 }

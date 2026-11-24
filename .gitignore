@@ -33,6 +33,23 @@ tsconfig.tsbuildinfo
 !fixtures/fake-bit/fake-2026-08.csv
 !fixtures/fake-bit/fake-2025-09.csv
 !public/fake-sample/bit-sample.csv
+# 가짜 의사랑 통계 엑셀(spec erp-uisarang, 생성기 fixtures/make-fake-uisarang.ts — 파일 이름 하나하나만 되살린다)
+!fixtures/fake-uisarang/income.xls
+!fixtures/fake-uisarang/income-no-sum.xls
+!fixtures/fake-uisarang/income-outpatient.xls
+!fixtures/fake-uisarang/income-other-date.xls
+!fixtures/fake-uisarang/rx.xls
+!fixtures/fake-uisarang/rx-3months.xls
+!fixtures/fake-uisarang/visits.xls
+!fixtures/fake-uisarang/visit-patients.xls
+!fixtures/fake-uisarang/visit-patients-no-date.xls
+!fixtures/fake-uisarang/rsv.xls
+!fixtures/fake-uisarang/rsv-patients.xls
+!fixtures/fake-uisarang/rsv-patients-other-day.xls
+!fixtures/fake-uisarang/other-report.xls
+!fixtures/fake-uisarang/broken.xls
+!fixtures/fake-uisarang/real-xlsx.xls
+!fixtures/fake-uisarang/html.xls
 
 # OS·오피스가 만드는 파일(열어 둔 엑셀의 잠금 파일 등)
 .DS_Store

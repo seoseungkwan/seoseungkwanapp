@@ -15,6 +15,17 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <!-- 의사랑 .xls 시험(spec erp-uisarang ADR-050): net10.0만 코드 페이지 제공자를 시험 시작에서 등록한다(Uisarang/CodePagesSetup.cs).
+         net48(도우미와 같은 틀)은 코드 페이지가 기본으로 있어 참조하지 않는다. .NET 10 SDK는 틀에 든 패키지라 NU1510(정리 권고)을 내므로 이 참조에서만 끈다 -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.14" NoWarn="NU1510" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 가짜 의사랑 엑셀(fixtures/fake-uisarang, design.md 12-1)을 시험 출력 uisarang/ 아래로 복사한다. 실제 의원 파일은 없다 -->
+    <None Include="../../../fixtures/fake-uisarang/*.xls" Link="uisarang/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../src/Erp.Core/Erp.Core.csproj" />
     <ProjectReference Include="../../../helper/src/Precheck.Core/Precheck.Core.csproj" />

@@ -109,15 +109,20 @@ export type Settings = {
   defaultsSeen?: number
 }
 
-/** 새 확장이 ERP 도우미에 보내는 명령 셋(helper-erp/commands.json commands). closing.findCodes는 REQ-3708(도우미 0.3.0) */
-export type ClosingCommand = 'closing.codes' | 'closing.day' | 'closing.findCodes'
+/**
+ * 새 확장이 ERP 도우미에 보내는 명령(helper-erp/commands.json commands). closing.findCodes는 REQ-3708(도우미 0.3.0),
+ * closing.source·closing.uisCodes는 의사랑판(spec erp-uisarang AC-4210.1, 도우미 0.4.0 — 옛 도우미는 E-HELPER-UNKNOWN-COMMAND)
+ */
+export type ClosingCommand = 'closing.codes' | 'closing.day' | 'closing.findCodes' | 'closing.source' | 'closing.uisCodes'
 /**
  * closing.day args. 매출 규칙 두 칸은 carm·sono에만, 둘 중 하나라도 있을 때만 붙인다.
- * exclude는 읽지 않을 처방 규칙이 있는 묶음에만 붙인다(REQ-3709 AC-3709.3, 없으면 지금 모양이라 옛 도우미에서도 된다)
+ * exclude는 읽지 않을 처방 규칙이 있는 묶음에만 붙인다(REQ-3709 AC-3709.3, 없으면 지금 모양이라 옛 도우미에서도 된다).
+ * sales는 의사랑에서만 보낸다: 묶음마다 '매출로 셀 코드'(spec erp-uisarang design.md 3-1, 비트 처리기는 읽지 않는다)
  */
 export type ClosingDayArgs = {
   date: string
   groups: { key: GroupKey; codes: string[]; amountPrefixes?: string[]; amountCodes?: string[]; exclude?: ExcludeRule[] }[]
+  sales?: { key: GroupKey; codes: string[] }[]
 }
 
 // --- 도우미 답(`{ v, id, type: 'result', data }`의 data) ---

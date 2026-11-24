@@ -114,9 +114,14 @@ describe('AC-3609.6 도우미 통로: 이름표·명령', () => {
   })
 
   // REQ-3708(TASK-10·11): 도우미 새 명령 closing.findCodes가 더해져 셋이다(명령 표도 셋)
-  it('AC-3609.6 AC-3708.2: 받는 명령은 closing.codes·closing.day·closing.findCodes 셋뿐이고 ERP 명령 표의 명령과 같다', () => {
-    expect([...COMMANDS]).toEqual(['closing.codes', 'closing.day', 'closing.findCodes'])
+  // spec erp-uisarang AC-4210.1(design.md 8-9·12-4): 의사랑 명령 둘이 배열 끝에 더해져 다섯이다(명령 표와 같은지 보는 시험은 그대로)
+  it('AC-3609.6 AC-3708.2 AC-4210.1: 받는 명령은 closing.codes·closing.day·closing.findCodes·closing.source·closing.uisCodes 다섯뿐이고 ERP 명령 표의 명령과 같다', () => {
+    expect([...COMMANDS]).toEqual(['closing.codes', 'closing.day', 'closing.findCodes', 'closing.source', 'closing.uisCodes'])
     expect(Object.keys(erpTable().commands).sort()).toEqual([...COMMANDS].sort())
+  })
+
+  it('AC-4210.1: 명령 차례도 ERP 명령 표 차례와 같다(새 둘은 끝)', () => {
+    expect(Object.keys(erpTable().commands)).toEqual([...COMMANDS])
   })
 
   it('AC-3609.6: 답 기다리는 시간은 120초다', () => {
@@ -174,6 +179,34 @@ describe('AC-3609.6 요청마다 연결 하나', () => {
     port.emit({ v: 1, id: envelope(port).id, type: 'result', data })
     expect(replies).toEqual([{ type: 'result', data }])
     expect(port.disconnected).toBe(true)
+  })
+
+  it.each([['closing.source'], ['closing.uisCodes']])('AC-4210.1: %s { }도 같은 길로 도우미에 넘기고 받은 답을 고치지 않고 돌려준다', (cmd) => {
+    const t = setup()
+    const { replies, keep } = t.send({ cmd, args: {} })
+    expect(keep).toBe(true)
+    expect(t.runtime.connectNative).toHaveBeenCalledWith(HOST_NAME)
+    const port = t.natives[0]
+    expect(envelope(port)).toMatchObject({ v: 1, cmd, args: {} })
+    const data = cmd === 'closing.source' ? { source: 'uisarang' } : { state: 'missing', from: null, to: null, value: null, codes: [] }
+    port.emit({ v: 1, id: envelope(port).id, type: 'result', data })
+    expect(replies).toEqual([{ type: 'result', data }])
+    expect(port.disconnected).toBe(true)
+  })
+
+  it('AC-4210.1: 옛 도우미가 closing.source를 모르면 그 오류 번호(E-HELPER-UNKNOWN-COMMAND)를 그대로 돌려준다', () => {
+    const t = setup()
+    const { replies } = t.send({ cmd: 'closing.source', args: {} })
+    const port = t.natives[0]
+    port.emit({ v: 1, id: envelope(port).id, type: 'error', code: 'E-HELPER-UNKNOWN-COMMAND' })
+    expect(replies).toEqual([{ type: 'error', code: 'E-HELPER-UNKNOWN-COMMAND' }])
+  })
+
+  it('AC-4210.1: closing.day args의 선택 칸 sales는 고치지 않고 그대로 도우미에 넘긴다', () => {
+    const t = setup()
+    const args = { ...DAY_ARGS, sales: [{ key: 'manual', codes: ['MM300', 'PROLO C'] }, { key: 'eswt', codes: ['ES100'] }] }
+    t.send({ cmd: 'closing.day', args })
+    expect(envelope(t.natives[0]).args).toEqual(args)
   })
 
   it('AC-3708.3: 옛 도우미가 closing.findCodes를 모르면 그 오류 번호(E-HELPER-UNKNOWN-COMMAND)를 그대로 돌려준다', () => {

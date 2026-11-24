@@ -1,6 +1,6 @@
 // 서비스 워커: 도우미 통로(design.md 1절·4절, REQ-3609 AC-3609.6)
-// - 같은 확장(ERP 화면의 내용 스크립트·설정 화면)이 보낸 { cmd: closing.codes | closing.day | closing.findCodes, args }만 받는다
-//   (closing.findCodes는 설정 화면 '셀 코드'·'같이 있을 처방' 찾기, REQ-3708)
+// - 같은 확장(ERP 화면의 내용 스크립트·설정 화면)이 보낸 { cmd: closing.codes | closing.day | closing.findCodes | closing.source | closing.uisCodes, args }만 받는다
+//   (closing.findCodes는 설정 화면 '셀 코드'·'같이 있을 처방' 찾기, REQ-3708. closing.source·closing.uisCodes는 의사랑판, spec erp-uisarang)
 // - 요청마다 도우미 연결을 하나 열어 { v: 1, id, cmd, args }를 보내고, 그 요청의 result·error 하나를 받으면 닫는다.
 //   답은 { type: 'result', data } | { type: 'error', code }로 돌려준다. 답은 고치지도 쌓아 두지도 않는다
 // - 연결이 끊기면 크롬 lastError 글로 나눈다(AC-3614.2): 'not found'·'forbidden'(ERP 도우미가 안 깔림·허락 안 됨)이면 E-HELPER-MISSING,
@@ -12,8 +12,8 @@ import { HOST_NAME, type ClosingCommand } from './types.js'
 
 /** 도우미 봉투 판(helper-erp/commands.json protocol) */
 export const PROTOCOL = 1
-/** 도우미에 넘기는 명령은 이 셋뿐이다(helper-erp/commands.json commands) */
-export const COMMANDS: readonly ClosingCommand[] = ['closing.codes', 'closing.day', 'closing.findCodes']
+/** 도우미에 넘기는 명령은 이것뿐이다(helper-erp/commands.json commands 차례). 끝 둘은 의사랑판(spec erp-uisarang AC-4210.1) */
+export const COMMANDS: readonly ClosingCommand[] = ['closing.codes', 'closing.day', 'closing.findCodes', 'closing.source', 'closing.uisCodes']
 /** 도우미 답을 기다리는 가장 긴 시간 */
 export const REPLY_TIMEOUT_MS = 120_000
 

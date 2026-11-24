@@ -13,6 +13,7 @@
     "ext:build": "node -e \"require('fs').rmSync('extension/dist',{recursive:true,force:true})\" && tsc -p extension/tsconfig.json && node -e \"const fs=require('fs'),d='extension/dist/';fs.copyFileSync('extension/manifest.json',d+'manifest.json');fs.writeFileSync(d+'commands.js','export default '+fs.readFileSync('src/lib/bridge/commands.json','utf8').trim()+'\\n');const r=d+'relay.js',s=fs.readFileSync(r,'utf8'),t=s.replace('../../src/lib/bridge/commands.json','./commands.js');if(t===s)throw new Error('relay.js에서 commands.json import를 찾지 못했다');fs.writeFileSync(r,t)\"",
     "ext-erp:build": "node -e \"require('fs').rmSync('extension-erp/dist',{recursive:true,force:true})\" && tsc -p extension-erp/tsconfig.json && node -e \"const fs=require('fs');for(const f of ['manifest.json','options.html'])fs.copyFileSync('extension-erp/'+f,'extension-erp/dist/'+f)\"",
     "fixtures": "tsx fixtures/make-fake-fixtures.ts",
+    "fixtures:uis": "tsx fixtures/make-fake-uisarang.ts",
     "ai:try": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/ai-try.ts",
     "ai:key": "tsx scripts/ai-key.ts"
   },

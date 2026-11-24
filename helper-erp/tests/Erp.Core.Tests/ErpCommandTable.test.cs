@@ -74,10 +74,11 @@ public class ErpCommandTableTests
         Assert.Equal(parsed.ExtensionId, Table.ExtensionId);
     }
 
-    [Fact(DisplayName = "AC-3601.4 AC-3708.1 명령은 closing.codes·closing.day·closing.findCodes 셋뿐이고 모두 patient:false(보내기·확인 창 없음), 기존 명령(hello·claim.month·revenue.days)은 없다")]
+    // spec erp-uisarang AC-4210.1(design.md 3-1·12-4): 의사랑 명령 둘(closing.source·closing.uisCodes)이 끝에 더해져 다섯이다
+    [Fact(DisplayName = "AC-3601.4 AC-3708.1 AC-4210.1 명령은 closing.codes·closing.day·closing.findCodes·closing.source·closing.uisCodes 다섯뿐이고 모두 patient:false(보내기·확인 창 없음), 기존 명령(hello·claim.month·revenue.days)은 없다")]
     public void OnlyClosingCommands()
     {
-        Assert.Equal(new[] { ClosingCommands.CodesName, ClosingCommands.DayName, ClosingCommands.FindCodesName }, Table.Names);
+        Assert.Equal(new[] { ClosingCommands.CodesName, ClosingCommands.DayName, ClosingCommands.FindCodesName, UisSourceName, UisCodesName }, Table.Names);
         Assert.Equal("closing.findCodes", ClosingCommands.FindCodesName);
         foreach (var name in Table.Names)
         {
@@ -91,7 +92,108 @@ public class ErpCommandTableTests
         Assert.False(WebTable.Has(ClosingCommands.CodesName));
         Assert.False(WebTable.Has(ClosingCommands.DayName));
         Assert.False(WebTable.Has(ClosingCommands.FindCodesName));
+        Assert.False(WebTable.Has(UisSourceName));
+        Assert.False(WebTable.Has(UisCodesName));
     }
+
+    // ---- AC-4210.1 의사랑 명령 둘·closing.day sales(spec erp-uisarang design.md 3-1) -----------------------------
+    // 처리기 상수(UisCommands.SourceName·CodesName)는 TASK-13이 만든다. 여기서는 표 글자로 본다
+
+    private const string UisSourceName = "closing.source";
+    private const string UisCodesName = "closing.uisCodes";
+
+    /// <summary>'매출로 셀 코드' 묶음 key 10개(design.md 3-1 차례).</summary>
+    private static readonly string[] SalesKeys = { "carm", "sono", "arthro", "manual", "eswt", "pt", "etc1", "etc2", "etc3", "etc4" };
+
+    /// <summary>sales 칸에 JSON 값을 그대로 넣은 closing.day args(groups는 비트와 같은 꼴).</summary>
+    private static string DayWithSales(string sales, params string[] groups) =>
+        "{\"date\":\"2026-11-23\",\"groups\":[" + string.Join(",", groups) + "],\"sales\":" + sales + "}";
+
+    private static string Sale(string key, params string[] codes) => "{\"key\":\"" + key + "\",\"codes\":" + Arr(codes) + "}";
+
+    private static string Sales(params string[] items) => "[" + string.Join(",", items) + "]";
+
+    [Fact(DisplayName = "AC-4210.1 명령 다섯은 closing.codes·closing.day·closing.findCodes·closing.source·closing.uisCodes 차례이고 새 둘도 patient:false·보내기 없음·확인 창 없음")]
+    public void FiveCommands()
+    {
+        Assert.Equal(new[] { "closing.codes", "closing.day", "closing.findCodes", "closing.source", "closing.uisCodes" }, Table.Names);
+        foreach (var name in new[] { UisSourceName, UisCodesName })
+        {
+            Assert.True(Table.Has(name), name);
+            Assert.False(Table.IsPatient(name), name);
+            Assert.False(Table.IsSend(name), name);
+            Assert.False(Table.NeedsConfirm(name), name);
+        }
+    }
+
+    public static TheoryData<string, string> BadEmptyArgs => new TheoryData<string, string>
+    {
+        { UisSourceName, "{\"date\":\"2026-11-23\"}" },
+        { UisSourceName, "{\"source\":\"uisarang\"}" },
+        { UisCodesName, "{\"date\":\"2026-11-23\"}" },
+        { UisCodesName, "{\"folder\":\"desktop\"}" },
+        { UisCodesName, "{\"codes\":[]}" },
+    };
+
+    [Fact(DisplayName = "AC-4210.1 closing.source·closing.uisCodes args는 빈 칸 {}을 받는다")]
+    public void EmptyArgsAccepted()
+    {
+        Accepts(UisSourceName, "{}");
+        Accepts(UisCodesName, "{}");
+    }
+
+    [Theory(DisplayName = "AC-4210.1 closing.source·closing.uisCodes에 칸이 하나라도 있으면 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadEmptyArgs))]
+    public void EmptyArgsRefuseFields(string cmd, string args) => Refuses(cmd, args);
+
+    [Fact(DisplayName = "AC-4210.1 closing.day 선택 칸 sales: 없음·빈 배열·매출 묶음 10개·코드 1~20개·가운데 빈칸 하나·20자 코드를 groups와 함께 받고, 나머지 칸은 그대로다")]
+    public void SalesAccepted()
+    {
+        Accepts("closing.day", Day("2026-11-23", Group("ptVisit", "AA222")));
+        Accepts("closing.day", DayWithSales("[]"));
+        Accepts("closing.day", DayWithSales(Sales(Sale("manual", "MM300")), Group("manual", "MM300"), Group("ptVisit", "AA222")));
+        Accepts("closing.day", DayWithSales(Sales(SalesKeys.Select(key => Sale(key, "X1")).ToArray())));
+        Accepts("closing.day", DayWithSales(Sales(Sale("eswt", Enumerable.Range(0, 20).Select(i => "ES" + i).ToArray()))));
+        Accepts("closing.day", DayWithSales(Sales(Sale("etc1", "PROLO C", new string('Z', 20), "도수", "mm300"))));
+        // 비트 묶음 칸(매출 규칙·exclude)과 함께여도 된다(비트 처리기는 sales를 읽지 않는다)
+        Accepts("closing.day", DayWithSales(Sales(Sale("carm", "CA100")),
+            RuleGroup("carm", new[] { "CA100" }, new[] { "LA" }, new[] { "KK090" }),
+            ExcludeGroup("sono", new[] { "SO100" }, ExRule("KK090", new[] { "CA100" }, true))));
+    }
+
+    public static TheoryData<string> BadSalesArgs => new TheoryData<string>
+    {
+        DayWithSales(Sales(Sale("manualConsult", "X1"))),                                                   // 건수 묶음 key(매출 묶음 밖)
+        DayWithSales(Sales(Sale("ptVisit", "AA222"))),
+        DayWithSales(Sales(Sale("injection", "X1"))),
+        DayWithSales(Sales(Sale("eswtStd", "X1"))),
+        DayWithSales(Sales(Sale("massage", "X1"))),
+        DayWithSales(Sales(Sale("Manual", "X1"))),
+        DayWithSales(Sales(Sale("manual"))),                                                                // 코드 0개
+        DayWithSales(Sales(Sale("manual", Enumerable.Range(0, 21).Select(i => "M" + i).ToArray()))),       // 코드 21개
+        DayWithSales(Sales(Sale("manual", "PROLO  C"))),
+        DayWithSales(Sales(Sale("manual", " MM300"))),
+        DayWithSales(Sales(Sale("manual", "MM300 "))),
+        DayWithSales(Sales(Sale("manual", "MM\t300"))),
+        DayWithSales(Sales(Sale("manual", new string('M', 21)))),
+        DayWithSales(Sales(Sale("manual", ""))),
+        DayWithSales(Sales(SalesKeys.Select(key => Sale(key, "X1")).Concat(new[] { Sale("carm", "X2") }).ToArray())),   // 11개
+        DayWithSales("[{\"key\":\"manual\",\"codes\":[\"MM300\"],\"total\":1}]"),                            // 모르는 칸
+        DayWithSales("[{\"codes\":[\"MM300\"]}]"),                                                           // key 없음
+        DayWithSales("[{\"key\":\"manual\"}]"),                                                              // codes 없음
+        DayWithSales("[{\"key\":\"manual\",\"codes\":\"MM300\"}]"),
+        DayWithSales("[{\"key\":\"manual\",\"codes\":[1]}]"),
+        DayWithSales("[{\"key\":1,\"codes\":[\"MM300\"]}]"),
+        DayWithSales("[\"MM300\"]"),
+        DayWithSales("[null]"),
+        DayWithSales("{\"manual\":[\"MM300\"]}"),
+        DayWithSales("\"manual\""),
+        DayWithSales("null"),
+    };
+
+    [Theory(DisplayName = "AC-4210.1 sales key가 매출 묶음 10개 밖·코드 0개·21개·코드 꼴 아님(빈칸 두 칸·앞뒤 빈칸·탭·21자·빈 글자)·11개·모르는 칸·빠진 칸·배열 아님·null은 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadSalesArgs))]
+    public void BadSalesRefused(string args) => Refuses("closing.day", args);
 
     // ---- AC-3708.1 closing.findCodes { text }(erp-closing-range design.md 10절) ------------------------------
 

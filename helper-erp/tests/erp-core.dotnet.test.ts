@@ -9,6 +9,8 @@
 // - TASK-14(AC-3709.2): 묶음 exclude가 코드 배열에서 규칙 { code, with 1~5개, all? } 0~20개로 바뀜(design.md 11절)
 // - spec erp-bit-anywhere TASK-1(REQ-3801): ERP 비트 찾기 규칙 ErpInstallRules(AC-3801.1·AC-3801.2)의 C# 시험 ErpInstallRulesTests를 감싸고,
 //   Erp.Core 파일 목록에 ErpInstallRules.cs를 더한다
+// - spec erp-uisarang TASK-1(REQ-4210·4203, design.md 12-4 앞 세 줄): 명령 다섯(closing.source·closing.uisCodes)·closing.day sales(AC-4210.1),
+//   NuGet 판은 기존 도우미에 없는 패키지면 ADR-050 목록의 판, Erp.Core 파일 목록은 Uisarang/ 밖만 그대로(Uisarang/*.cs는 namespace Erp.Core.Uisarang)
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -159,6 +161,11 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
   it('AC-3804.2 ErpServerRules.Require는 막을 때 E-BIT-DB-FAILED', () => {
     expectAc('AC-3804.2')
   })
+
+  // spec erp-uisarang AC-4210.1: C# ErpCommandTableTests(namespace Erp.Core.Tests)
+  it('AC-4210.1 (C# ErpCommandTable) 명령 다섯·새 둘 patient false·args {}만, closing.day sales(매출 묶음 10개 key·코드 1~20개·코드 꼴·0~10개) 받기·거절', () => {
+    expectAc('AC-4210.1')
+  })
 })
 
 describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규칙 칸', () => {
@@ -215,17 +222,41 @@ const EXCLUDE = {
   },
 }
 
-/** erp-closing-fill design.md 2절 표 + erp-closing-range 10절·11절 */
+/**
+ * spec erp-uisarang design.md 3-1: closing.day 선택 칸 sales(0~10개, { key: 매출 묶음 10개 가운데, codes: 코드 꼴 1~20개 }).
+ * 3-1의 'key enum'은 명령 표 꼴(기존 FieldSpec은 string에 enum 칸이 없다)로 { type: 'enum', values }다(groups key와 같은 꼴)
+ */
+const SALES = {
+  type: 'array',
+  optional: true,
+  min: 0,
+  max: 10,
+  items: {
+    type: 'object',
+    fields: {
+      key: { type: 'enum', values: ['carm', 'sono', 'arthro', 'manual', 'eswt', 'pt', 'etc1', 'etc2', 'etc3', 'etc4'] },
+      codes: { type: 'array', min: 1, max: 20, items: CODE },
+    },
+  },
+}
+/** spec erp-uisarang design.md 3-1: closing.source·closing.uisCodes는 args {} */
+const NO_ARGS = { patient: false, args: {} }
+const COMMAND_NAMES = ['closing.codes', 'closing.day', 'closing.findCodes', 'closing.source', 'closing.uisCodes']
+
+/** erp-closing-fill design.md 2절 표 + erp-closing-range 10절·11절 + erp-uisarang 3-1 */
 function expectedTable(): Record<string, unknown> {
   type Fields = Record<string, unknown>
-  const table = designTable() as { commands: Record<string, { args: { groups?: { items: { fields: Fields } } } }> }
+  const table = designTable() as { commands: Record<string, { args: Record<string, unknown> & { groups?: { items: { fields: Fields } } } }> }
   table.commands['closing.day'].args.groups!.items.fields.exclude = EXCLUDE
+  table.commands['closing.day'].args.sales = SALES
   ;(table.commands as Record<string, unknown>)['closing.findCodes'] = FIND_CODES
+  ;(table.commands as Record<string, unknown>)['closing.source'] = NO_ARGS
+  ;(table.commands as Record<string, unknown>)['closing.uisCodes'] = NO_ARGS
   return table as unknown as Record<string, unknown>
 }
 
 describe('AC-3601.4 helper-erp/commands.json', () => {
-  it('AC-3601.4 AC-3708.1: 맨 위 열쇠는 기존 표와 같은 여섯 개, 명령은 closing.codes·closing.day·closing.findCodes 셋뿐이고 patient: false다', () => {
+  it('AC-3601.4 AC-3708.1 AC-4210.1: 맨 위 열쇠는 기존 표와 같은 여섯 개, 명령은 closing.codes·closing.day·closing.findCodes·closing.source·closing.uisCodes 다섯뿐이고 patient: false다', () => {
     const table = readJson(path.join(ERP, 'commands.json'))
     expect(Object.keys(table)).toEqual(ROOT_KEYS)
     expect(table.protocol).toBe(1)
@@ -233,14 +264,35 @@ describe('AC-3601.4 helper-erp/commands.json', () => {
     expect(table.origin).toBe('https://erp.minesolution.com')
     expect(table.extensionId).toBe(NEW_ID)
     const commands = table.commands as Record<string, { patient: unknown }>
-    expect(Object.keys(commands)).toEqual(['closing.codes', 'closing.day', 'closing.findCodes'])
+    expect(Object.keys(commands)).toEqual(COMMAND_NAMES)
     for (const spec of Object.values(commands)) expect(spec.patient).toBe(false)
   })
 
-  it('AC-3601.4 AC-3708.1 AC-3709.2: 표 전체가 erp-closing-fill design.md 2절 + erp-closing-range design.md 10절(closing.findCodes)·11절(exclude) 그대로다(extensionKey = extension-erp/manifest.json key)', () => {
+  it('AC-3601.4 AC-3708.1 AC-3709.2 AC-4210.1: 표 전체가 erp-closing-fill design.md 2절 + erp-closing-range design.md 10절(closing.findCodes)·11절(exclude) + erp-uisarang design.md 3-1(sales·명령 둘) 그대로다(extensionKey = extension-erp/manifest.json key)', () => {
     const table = readJson(path.join(ERP, 'commands.json'))
     const key = readJson(path.join(ROOT, 'extension-erp', 'manifest.json')).key
     expect(table).toEqual({ ...expectedTable(), extensionKey: key })
+  })
+})
+
+describe('AC-4210.1 의사랑 명령 둘·closing.day sales (erp-uisarang design.md 3-1)', () => {
+  type Commands = Record<string, { patient: boolean; args: Record<string, unknown> }>
+  const commands = () => (readJson(path.join(ERP, 'commands.json')) as { commands: Commands }).commands
+
+  it('AC-4210.1: closing.source·closing.uisCodes = { patient: false, args: {} }이고 기존 세 명령 뒤에 그 차례로 있다', () => {
+    const table = commands()
+    expect(Object.keys(table).slice(-2)).toEqual(['closing.source', 'closing.uisCodes'])
+    expect(table['closing.source']).toEqual(NO_ARGS)
+    expect(table['closing.uisCodes']).toEqual(NO_ARGS)
+  })
+
+  it('AC-4210.1: closing.day args는 date·groups 그대로에 선택 칸 sales를 끝에 더한다(0~10개, key 매출 묶음 10개, codes 코드 꼴 1~20개)', () => {
+    const day = commands()['closing.day'].args
+    expect(Object.keys(day)).toEqual(['date', 'groups', 'sales'])
+    expect(day.sales).toEqual(SALES)
+    const groups = day.groups as { items: { fields: Record<string, { values?: string[] }> } }
+    // sales key는 groups key 19개 가운데 매출 묶음 앞 10개(같은 차례)
+    expect(SALES.items.fields.key.values).toEqual(groups.items.fields.key.values?.slice(0, 10))
   })
 })
 
@@ -342,7 +394,8 @@ describe('AC-3611.1 Erp.Core 틀', () => {
     for (const file of sources) {
       expect(read(path.join(ERP, file)), file).not.toMatch(/^namespace Precheck\.(?!Core\.Tests)/m)
     }
-    expect(filesUnder(CORE).filter((f) => f.endsWith('.cs')).sort()).toEqual([
+    // spec erp-uisarang design.md 12-4: Uisarang/ 밖은 지금 목록 그대로
+    expect(filesUnder(CORE).filter((f) => f.endsWith('.cs') && !f.startsWith('Uisarang/')).sort()).toEqual([
       'Closing/ClosingCodes.cs',
       'Closing/ClosingCommands.cs',
       'Closing/ClosingDay.cs',
@@ -353,6 +406,15 @@ describe('AC-3611.1 Erp.Core 틀', () => {
       'ErpReadGuard.cs',
       'ErpServerRules.cs', // spec erp-bit-anywhere AC-3804.1
     ])
+  })
+
+  it('AC-3611.1 AC-4203.3: 의사랑 부품 Uisarang/*.cs는 하위 폴더 없이 namespace Erp.Core.Uisarang이다(spec erp-uisarang design.md 4-1)', () => {
+    const uisarang = filesUnder(CORE).filter((f) => f.startsWith('Uisarang/'))
+    expect(uisarang.length).toBeGreaterThan(0)
+    for (const file of uisarang) {
+      expect(file).toMatch(/^Uisarang\/[A-Za-z]+\.cs$/)
+      expect(read(path.join(CORE, file)), file).toMatch(/^namespace Erp\.Core\.Uisarang;$/m)
+    }
   })
 
   it('AC-3611.1: Erp.Core.Tests는 net10.0;net48이고 기존 시험의 가짜 부품은 고치지 않고 링크로만 쓴다', () => {
@@ -369,7 +431,9 @@ describe('AC-3611.1 Erp.Core 틀', () => {
     }
   })
 
-  it('AC-3611.1: NuGet 판은 정확한 판이고 기존 도우미 csproj의 같은 패키지 판과 같다', () => {
+  // spec erp-uisarang AC-4203.3(design.md 12-4): 기존 도우미에 없는 패키지는 ADR-050 목록의 판이어야 한다
+  it('AC-3611.1 AC-4203.3: NuGet 판은 정확한 판이고, 기존 도우미에 있는 패키지는 기존 csproj와 같은 판, 없는 패키지는 ADR-050 목록(ExcelDataReader 3.9.0·System.Text.Encoding.CodePages 10.0.14)의 판이다', () => {
+    const adr050: Record<string, string> = { ExcelDataReader: '3.9.0', 'System.Text.Encoding.CodePages': '10.0.14' }
     const helperVersions: Record<string, string> = {}
     for (const file of filesUnder(HELPER).filter((f) => f.endsWith('.csproj'))) {
       Object.assign(helperVersions, packages(read(path.join(HELPER, file))))
@@ -381,7 +445,7 @@ describe('AC-3611.1 Erp.Core 틀', () => {
       expect(xml, file).not.toMatch(/<PackageReference\s+Include="[^"]+"\s*\/>/)
       for (const [name, version] of Object.entries(packages(xml))) {
         expect(version, `${file} ${name}`).toMatch(/^[0-9]+(\.[0-9]+)+$/)
-        expect(version, `${file} ${name}`).toBe(helperVersions[name])
+        expect(version, `${file} ${name}`).toBe(helperVersions[name] ?? adr050[name])
       }
     }
   })
