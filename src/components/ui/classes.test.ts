@@ -717,7 +717,8 @@ const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR
 
 // 규칙 예외(first90 REQ-4416 AC-4416.2, design.md 5-2, UI_GUIDE '통계 화면(first90)'): 통계 화면 파일만 아래 클래스를 쓴다.
 // 파일: src/components/stats/**·src/components/revenue/**(시험 빼고)와 통계 화면 차트 넷(범례 포함). 굵기 600 넘음·그라데이션·animate-*·transition-*은 여기서도 잡는다(AC-4416.3)
-const STATS_SCREEN_DIRS = ['src/components/stats/', 'src/components/revenue/']
+// admin-view: 의원 비교(src/components/admin/compare/**)는 통계 카드를 의원마다 나란히 그려 승인된 시안대로 같은 통계 토큰(카드 모서리·그림자·알약)을 쓴다
+const STATS_SCREEN_DIRS = ['src/components/stats/', 'src/components/revenue/', 'src/components/admin/compare/']
 const STATS_SCREEN_CHARTS = ['src/components/charts/DonutChart.tsx', 'src/components/charts/StackedBarChart.tsx', 'src/components/charts/InlineBar.tsx', 'src/components/charts/ChartLegend.tsx']
 const isStatsScreenFile = (file: string) =>
   !/\.test\.tsx?$/.test(file) && (STATS_SCREEN_DIRS.some((dir) => file.startsWith(dir)) || STATS_SCREEN_CHARTS.includes(file))

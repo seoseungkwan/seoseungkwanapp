@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "admin-view",
-  "approved_at": "2026-11-24T02:59:54Z",
+  "approved_at": "2026-11-24T03:08:40Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "bc64605090d942098fd14f6ecc831c266ec66b7f3a746ab85434f426bbf3bde7",
+  "spec_sha256": "398d68e86f1e39417e82924f92a867f68eca0c871f9e377fe835add8f9cf4833",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -79,6 +79,7 @@
     "src/components/dashboard/**",
     "src/components/dashboard/live/BitDashboard.test.tsx",
     "src/components/dashboard/live/BitDashboard.tsx",
+    "src/components/dashboard/viewMode.test.tsx",
     "src/components/forms/",
     "src/components/forms/**",
     "src/components/inventory/",

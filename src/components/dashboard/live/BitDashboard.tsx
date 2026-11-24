@@ -12,6 +12,7 @@ import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import { isConnected, type OlderDays, type SummarySource } from '@/components/dashboard/summary/source'
 import { useReadOnly } from '@/components/shell/viewing'
+import { addDays } from '@/lib/analytics/dates'
 import type { ChromeRuntimeLike } from '@/types/bridge'
 import type { Honorific } from '@/types/clinicProfile'
 import type { ErrorCode } from '@/types/errors'
@@ -169,8 +170,10 @@ export function BitDashboard({
   })
   // 묶음 읽기가 끝났다(왔음·읽지 못함·10초 한도). 끝나기 전에는 비트 읽기를 시작하지 않는다(묶음 정의를 실어야 한다, AC-606.7·AC-2701.2)
   const groupsSettled = groups !== 'pending'
-  // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5)
-  const selected = picked !== null && inDateRange(picked, today) ? picked : today
+  // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5).
+  // 다른 의원을 보는 중이면 처음 날은 어제다: 저절로 올림은 어제까지라 오늘 숫자는 아직 없다(admin-view 시안 ?s=viewing — 11월 23일로 열림)
+  const firstDay = readOnly ? addDays(today, -1) : today
+  const selected = picked !== null && inDateRange(picked, today) ? picked : firstDay
 
   useEffect(() => {
     // 보는 중: 이 PC 비트는 다른 의원 것이 아니라 읽지 않는다
@@ -218,7 +221,7 @@ export function BitDashboard({
           emptyText={emptyText}
           emptyNote={emptyNote}
           ptKey={ptKeyOf(groups)}
-          dateLine={<DateControl today={today} selected={selected} onChange={(day) => setPicked(day === today ? null : day)} />}
+          dateLine={<DateControl today={today} selected={selected} onChange={(day) => setPicked(day === firstDay ? null : day)} />}
           // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다. 재고 칸은 날짜와 상관없이 그대로다(다시 읽지 않는다)
           sentence={
             <InventoryAlertCard today={today}>

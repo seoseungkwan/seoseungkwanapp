@@ -55,7 +55,7 @@ const ROW_HEAD = 'col-span-full pt-3'
 const ROW_LABEL = 'sticky left-0 inline-flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pr-2'
 const ROW_NAME = 'text-lead font-semibold text-ink'
 const ROW_CELLS = 'text-small text-muted'
-const NOTE_CARD = 'mt-3 rounded-control border border-line bg-surface px-6 py-5'
+const NOTE_CARD = 'mt-3 rounded-st bg-surface px-6 py-5 shadow-st-card'
 const NOTE_TEXT = 'text-body text-ink-2'
 const NA = 'mt-1.5 text-small text-muted'
 

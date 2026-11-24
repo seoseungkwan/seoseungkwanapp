@@ -177,6 +177,8 @@ describe('대시보드: 다른 의원 보는 중은 읽기만 (AC-8008.3)', () =
     onBitPc()
     draw(VIEWING)
     await settle()
+    // 보는 중 처음 날은 어제다(올림은 어제까지) — [오늘로]로 오늘 저장 숫자를 본다
+    fireEvent.click(screen.getByRole('button', { name: '오늘로' }))
     expect(screen.getByText('오늘 지금까지 환자 5명이 왔습니다.')).toBeTruthy()
     expect(savedReads()).toBe(1)
     fireEvent.click(within(header()).getByRole('button', { name: '저장된 숫자 새로고침' }))

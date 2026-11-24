@@ -665,7 +665,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     for (const th of within(table()).getAllByRole('columnheader')) hasAll(th, ds.table.th)
     const [date, clinic, emr, who, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     for (const c of [date, emr, phone]) hasAll(c, ds.table.tdSub)
-    // 신청자 · 이메일 칸은 이름 줄이 몸 칸(ink), 메일 줄은 small ink-2(admin-view AC-8022.1)
+    // 신청자 · 이메일 칸은 이름 줄이 몸 칸(ink), 메일 줄은 caption muted(admin-view AC-8022.1, 시안 .who2 .e 12px muted)
     for (const c of [clinic, who, action]) hasAll(c, ds.table.td)
     hasAll(rowOf('가나 정형외과의원'), `${ds.table.row} md:h-14`)
     // 패널 틀(흰 상자·선·안쪽 여백)이 없다: 탭 패널과 표 감싸개에 테두리·바탕·안쪽 여백이 없다
@@ -674,13 +674,13 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     }
   })
 
-  it('AC-220.1·AC-8022.1: 칸 — 신청일(muted 고정폭) · 의원 이름(600) · 신청자 · 이메일(메일 줄 small ink-2) · 연락처(ink-2 고정폭) · 동작(오른쪽)', async () => {
+  it('AC-220.1·AC-8022.1: 칸 — 신청일(muted 고정폭) · 의원 이름(600) · 신청자 · 이메일(메일 줄 caption muted) · 연락처(ink-2 고정폭) · 동작(오른쪽)', async () => {
     const user = await renderLoaded()
     const [date, clinic, , , phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     hasAll(date.firstElementChild as Element, 'text-muted tabular-nums')
     expect(date.firstElementChild?.textContent).toBe('2026-10-28')
     hasAll(clinic, 'font-semibold')
-    hasAll(whoLines(rowOf('가나 정형외과의원'))[1], 'text-small text-ink-2')
+    hasAll(whoLines(rowOf('가나 정형외과의원'))[1], 'text-caption text-muted') // 시안 .who2 .e 12px muted
     hasAll(phone, 'text-ink-2 tabular-nums')
     hasAll(within(table()).getAllByRole('columnheader')[5], 'md:text-right')
     hasAll(within(action).getByRole('button', { name: '승인' }).parentElement as Element, 'flex justify-end')
@@ -1905,7 +1905,7 @@ describe('AC-8012.3 bottom 자리(본 기록)', () => {
 })
 
 describe('AC-8022.1 신청자 · 이메일 한 칸 두 줄', () => {
-  it('AC-8022.1: 승인·대기·거절 세 탭 모두 `신청자`·`이메일` 두 칸 대신 한 칸 `신청자 · 이메일` — 첫 줄 이름, 둘째 줄 메일(small ink-2), 메일 줄 바꿈 자리는 `@` 뒤', async () => {
+  it('AC-8022.1: 승인·대기·거절 세 탭 모두 `신청자`·`이메일` 두 칸 대신 한 칸 `신청자 · 이메일` — 첫 줄 이름, 둘째 줄 메일(caption muted, 시안 .who2 .e), 메일 줄 바꿈 자리는 `@` 뒤', async () => {
     const user = await renderAdminView()
     for (const [label, clinic, name, mail] of [
       ['승인', '다라 정형외과의원', '이다라', 'dara@fake.test'],
@@ -1922,7 +1922,7 @@ describe('AC-8022.1 신청자 · 이메일 한 칸 두 줄', () => {
         ['SPAN', mail, mail],
       ])
       hasAll(lines[0].parentElement as Element, 'flex min-w-0 flex-col')
-      hasAll(lines[1], 'text-small text-ink-2')
+      hasAll(lines[1], 'text-caption text-muted')
       expect(classesOf(lines[0])).not.toContain('text-small')
       const nodes = Array.from(lines[1].childNodes).map((n) => (n.nodeType === Node.TEXT_NODE ? n.textContent : (n as Element).tagName.toLowerCase()))
       expect(nodes, label).toEqual([mail.slice(0, mail.indexOf('@') + 1), 'wbr', mail.slice(mail.indexOf('@') + 1)])

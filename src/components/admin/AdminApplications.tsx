@@ -127,7 +127,8 @@ const cell = {
 }
 // 신청자 · 이메일 칸의 두 줄: 첫 줄 이름(몸 글자), 둘째 줄 메일(small ink-2). PC는 줄마다 말줄임 + title, 768~1023px은 줄바꿈(메일은 "@" 뒤에서만)
 const whoName = `md:truncate ${wrapTablet} wrap-anywhere`
-const whoEmail = `text-small text-ink-2 md:truncate ${wrapEmail}`
+// 메일 줄은 시안 .who2 .e처럼 12px muted라 1440 폭에서 잘리지 않는다
+const whoEmail = `text-caption text-muted md:truncate ${wrapEmail}`
 // 승인 줄 의원 이름 단추(시안 .vlink): 눈 14 + accent-strong 600 글자, 올리면 밑줄. 이름만 말줄임
 const viewLink = `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-control font-semibold text-accent-strong underline-offset-3 not-disabled:hover:underline disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
 // 지역 고르기 상자(시안 .sel, 설정 예약 칸 SELECT와 같은 32px 모양 — 채울 기간 고르기와 같은 selectBox). 지역 모름은 주황 글자 500(시안 .sel.unknown)

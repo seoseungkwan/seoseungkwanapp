@@ -37,12 +37,12 @@ const STEP_BOX = 'inline-flex h-8 shrink-0 items-stretch overflow-clip rounded-c
 const STEP_BUTTON = `flex w-8 cursor-pointer items-center justify-center text-ink-2 transition not-disabled:hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`
 const STEP_SELECT = 'h-full cursor-pointer border-0 border-l border-line bg-surface pr-1.5 pl-2 text-small font-semibold text-ink transition hover:bg-canvas focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
 // 시안 .toc: 붙는 회색 띠(머리줄 102px 아래) + 아래 1px line, 앱 틀 안쪽 여백까지 넓힌다. 알약 36px · 14px 600
-const TOC = 'sticky top-25.5 z-9 mt-5 -mx-6 border-b border-line bg-canvas px-6 py-2'
+const TOC = 'sticky top-25.5 z-9 mt-5 -mx-6 border-b border-st-line bg-st-canvas px-6 py-2'
 const TOC_STRIP = 'flex min-w-0 gap-1 overflow-x-auto'
 const TOC_LINK =
-  'inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-control px-4 text-body font-semibold no-underline transition focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
-const TOC_IDLE = `${TOC_LINK} text-ink-2 hover:bg-line`
-const TOC_CURRENT = `${TOC_LINK} bg-ink text-surface`
+  'inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-body font-semibold no-underline transition focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
+const TOC_IDLE = `${TOC_LINK} text-st-ink-2 hover:bg-st-line`
+const TOC_CURRENT = `${TOC_LINK} bg-st-ink text-surface`
 
 type Props = ComparePick & {
   months: CompareMonths

@@ -16,6 +16,7 @@ import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { OlderDays, SummarySource } from '@/components/dashboard/summary/source'
 import { RoleProvider } from '@/components/shell/role'
+import { ViewingProvider } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { loadInventory } from '@/lib/storage/inventory'
@@ -2819,5 +2820,24 @@ describe('입지 알림 자리 (location AC-7915.2)', () => {
     // LiveDashboard(summary 폴더의 불러오기 울타리)가 쓰도록 거쳐 내보내기만 한다(재고 칸 InventoryAlertCard와 같다)
     expect(text).toMatch(/^export \{ LocationAlert \} from '@\/components\/dashboard\/location\/LocationAlert'$/m)
     expect(text).toMatch(/^export \{ useLocationWatch \} from '@\/components\/dashboard\/location\/useLocationWatch'$/m)
+  })
+})
+
+// admin-view(시안 ?s=viewing — 어제 날로 열림): 다른 의원을 보는 중이면 저절로 올림이 어제까지라 처음 날은 어제다. [오늘로]로 오늘을 고를 수 있다
+describe('AC-8008.3: 보는 중 처음 날은 어제', () => {
+  const dateInput = () => screen.getByLabelText('날짜 고르기', { selector: 'input' }) as HTMLInputElement
+  it('AC-8008.3: 보는 중이면 어제로 열리고, [오늘로]를 누르면 오늘이다', () => {
+    render(
+      <ViewingProvider viewing={{ hospitalId: '00000000-0000-4000-8000-000000000001', name: '가나 정형외과의원' }}>
+        <BitDashboard today={TODAY} initial={SAVED} />
+      </ViewingProvider>,
+    )
+    expect(dateInput().value).toBe('2026-11-01')
+    fireEvent.click(screen.getByRole('button', { name: '오늘로' }))
+    expect(dateInput().value).toBe(TODAY)
+  })
+  it('AC-8008.3: 보는 중이 아니면 지금처럼 오늘로 열린다', () => {
+    render(<BitDashboard today={TODAY} initial={SAVED} />)
+    expect(dateInput().value).toBe(TODAY)
   })
 })
