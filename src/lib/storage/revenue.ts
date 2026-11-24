@@ -45,6 +45,8 @@ export type RevenueRangeStore = {
 // 통계 화면의 저장 숫자 읽기 실패와 같은 번호(같은 카드·같은 [다시 읽기], design.md '다르게 정한 것' 4)
 const STATS_READ_FAILED = 'E-STATS-READ-FAILED'
 const SAVE_RANGE_FUNCTION = 'save_revenue_range'
+// 데스크 계정 올리기(admin-view REQ-8024 AC-8024.6): 같은 인자·같은 검사를 데스크 병원에 하는 정의자 함수(데스크는 매출 표 정책이 없다)
+const DESK_SAVE_RANGE_FUNCTION = 'desk_save_revenue_range'
 const CODE_TOTALS_FUNCTION = 'sales_code_totals'
 
 type DayKey = (typeof REVENUE_DAY_KEYS)[number]
@@ -103,10 +105,12 @@ async function readOrFail<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
-export function createRevenueStore(client: SupabaseClient): RevenueRangeStore {
+/** desk 참 = 데스크 계정 저절로 올리기(saveRange만 desk_save_revenue_range로, 읽기 셋은 그대로 — 데스크는 부르지 않는다) */
+export function createRevenueStore(client: SupabaseClient, options: { desk?: boolean } = {}): RevenueRangeStore {
+  const saveFunction = options.desk === true ? DESK_SAVE_RANGE_FUNCTION : SAVE_RANGE_FUNCTION
   // 날 줄은 정해 둔 열다섯 칸 + rough_total, 코드 줄은 {day, code, count, amount}만 새 객체로. 옛 도우미(dayCodes 없음)면 null → 서버가 그 범위 코드 줄을 지우고 day_codes 거짓
   async function writeRange(range: DateRange, result: RevenueDaysResult): Promise<void> {
-    const { error } = await client.rpc(SAVE_RANGE_FUNCTION, {
+    const { error } = await client.rpc(saveFunction, {
       p_from: range.from,
       p_to: range.to,
       p_days: result.days.map(toDbDay),

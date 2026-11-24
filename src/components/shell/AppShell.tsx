@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { AutoUpload } from '@/components/autoUpload/AutoUpload'
 import { LogoMark } from '@/components/common/LogoMark'
 import { AccountMenu } from './AccountMenu'
 import { DeskGate } from './DeskGate'
@@ -40,6 +41,7 @@ const MAIN_CLASS = 'flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:s
 // 그 밖은 ViewingProvider — 관리자 화면은 viewing={null}). 띠가 보이는 동안 본문 건너뛰기 자리는 띠 45px만큼 더 내린다(102 → 147px).
 // 없으면(undefined·null) 지금 그대로이고, 보기 쿠키가 남아 있으면 ViewCookieSync가 지우고 한 번 새로 연다(아무것도 그리지 않는다).
 // 관리자(데스크 아님)는 머리 시계 왼쪽에 '보는 의원' 단추(ViewPicker)가 있다
+// 저절로 올리기(admin-view REQ-8021): AutoUpload를 늘 그린다(아무것도 그리지 않고, 보는 중·보기 쿠키면 아무 일도 하지 않는다)
 export function AppShell({
   hospitalName,
   email,
@@ -78,6 +80,7 @@ export function AppShell({
         본문으로 건너뛰기
       </a>
       {!viewing && <ViewCookieSync />}
+      <AutoUpload />
       <div className="sticky top-0 z-10 print:hidden">
         {viewing && <ViewBand viewing={viewing} />}
         <header className="border-b border-line bg-surface">

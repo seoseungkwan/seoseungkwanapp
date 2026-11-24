@@ -392,8 +392,10 @@ describe('AC-4409.3 가장 새 조각이 아닌 조각은 날 줄 처방 줄의 
   })
 })
 
-// 통계 합계 저장(admin-view REQ-8018 AC-8018.4): 날 줄 sunap·달 줄 dropoff도 read 끝날까지 센 값이라, 가장 새 조각이 아닌 조각은 둘 다 뺀다(열쇠 없음 = 못 셈)
-describe('AC-8018.4 가장 새 조각이 아닌 조각은 날 줄 sunap·달 줄 dropoff를 뺀다', () => {
+// 통계 합계 저장(admin-view AC-8018.4를 AC-8021.10이 두 열쇠에 한해 바꿈): 가장 새 조각이 아닌 조각(read 끝 > save 끝)에서도
+// 날 줄 sunap은 남기고(그날 접수만으로 세는 수라 read 끝과 상관없다), 달 줄 dropoff는 그 달 + 석 달의 끝 ≤ read 끝인 달만 남긴다(석 달 넘게 지켜본 값).
+// after30·once를 빼는 규칙과 가장 새 조각은 그대로다
+describe('AC-8021.10 가장 새 조각이 아닌 조각: 날 줄 sunap은 남기고 달 줄 dropoff는 석 달 넘게 지켜본 달만 남긴다', () => {
   const SUNAP = { visits: 3, first_n: 1, d90_n: 1, ret_n: 1, block_n: 2, pt_n: 1, first_block: 1, d90_block: 0, ret_block: 1 }
   const DROPOFF = { asOf: '2026-11-09', lines: [{ group: 'g1', n: 2, atLeast: [2, 1, 0, 0, 0, 0], ten: 0, once: 1, average: 1.5, drop: 1 }] }
   const monthsOf = ({ save }: LoadPart) => [monthOf(save.from), monthOf(save.to)]
@@ -403,43 +405,76 @@ describe('AC-8018.4 가장 새 조각이 아닌 조각은 날 줄 sunap·달 줄
       months: monthsOf(part).map((month) => ({ ...monthRow(month), dropoff: DROPOFF }) as unknown as MonthPayload),
       days: daysOf(part).map((ymd) => ({ ...dayRow(ymd), sunap: SUNAP }) as unknown as DayPayload),
     })
-  const newKeys = (input: ReturnType<typeof partSave>) => [...input.months.map((row) => 'dropoff' in row), ...input.days.map((row) => 'sunap' in row)]
+  const monthKeys = (input: ReturnType<typeof partSave>) => input.months.map((row) => [row.month, 'dropoff' in row])
+  const watched = (month: string, read: DateRange) => compareYmd(monthRange(addMonths(month, 3)).to, read.to) <= 0
 
-  it('AC-8018.4 최근 30일 + 전체 기간(조각 넷): 첫 조각은 sunap·dropoff 그대로, 둘째 ~ 넷째 조각 줄에는 두 열쇠가 없고 다른 칸은 지금 규칙 그대로', () => {
+  it('AC-8021.10 최근 30일 + 전체 기간(조각 넷): 첫 조각은 그대로, 둘째 ~ 넷째 조각은 sunap을 남기고 dropoff는 첫 달(석 달 넘게 지켜봄)만 남긴다. after30·once 규칙은 그대로', () => {
     const { parts } = planLoad(TODAY, recent30, 'all')
     expect(parts).toHaveLength(4)
     parts.forEach((part, i) => {
       const view = viewFor(part)
       const saved = partSave(view, part)
-      expect(newKeys(saved)).toEqual(i === 0 ? [true, true, true, true] : [false, false, false, false])
-      const revisit = i === 0 ? REVISIT : UNSURE
-      expect(saved.months).toEqual(monthsOf(part).map((month) => (i === 0 ? { ...monthRow(month), dropoff: DROPOFF } : monthRow(month, revisit))))
-      expect(saved.days).toEqual(daysOf(part).map((ymd) => (i === 0 ? { ...dayRow(ymd), sunap: SUNAP } : dayRow(ymd, revisit))))
+      const [first, last] = monthsOf(part)
+      if (i === 0) {
+        expect(saved.months).toEqual(monthsOf(part).map((month) => ({ ...monthRow(month), dropoff: DROPOFF })))
+        expect(saved.days).toEqual(daysOf(part).map((ymd) => ({ ...dayRow(ymd), sunap: SUNAP })))
+      } else {
+        expect(watched(first, part.read)).toBe(true)
+        expect(watched(last, part.read)).toBe(false)
+        expect(saved.months).toEqual([{ ...monthRow(first, UNSURE), dropoff: DROPOFF }, monthRow(last, UNSURE)])
+        expect(saved.days).toEqual(daysOf(part).map((ymd) => ({ ...dayRow(ymd, UNSURE), sunap: SUNAP })))
+      }
       // Worker 답은 바꾸지 않는다
       expect(view.months!.every((row) => row.dropoff === DROPOFF)).toBe(true)
       expect(view.days!.every((row) => row.sunap === SUNAP)).toBe(true)
     })
+    // 둘째 조각(save 2022-12-01 ~ 2024-11-30, read ~ 2024-12-31): 2022-12 + 석 달 = 2023-03-31 ≤ read 끝, 2024-11 + 석 달 = 2025-02-28 > read 끝
+    expect(monthKeys(partSave(viewFor(parts[1]), parts[1]))).toEqual([
+      ['2022-12', true],
+      ['2024-11', false],
+    ])
   })
 
-  it('AC-8018.4 2025년 8월 일별 + 지금 보는 기간(조각 둘): 둘째 조각은 두 열쇠가 없고, 조각 하나인 계획은 그대로다', () => {
+  it('AC-8021.10 그 달 + 석 달의 끝이 read 끝과 같은 날이면 남기고, 하루라도 모자라면 뺀다', () => {
+    const save = { from: '2024-01-01', to: '2024-03-31' }
+    const months = ['2024-01', '2024-03'].map((month) => ({ ...monthRow(month), dropoff: DROPOFF }) as unknown as MonthPayload)
+    const at = (to: string) => {
+      const part = { save, read: { from: '2023-12-01', to } }
+      return monthKeys(partSave(loaded(part.read, { months }), part))
+    }
+    expect(at('2024-06-30')).toEqual([
+      ['2024-01', true],
+      ['2024-03', true],
+    ])
+    expect(at('2024-06-29')).toEqual([
+      ['2024-01', true],
+      ['2024-03', false],
+    ])
+  })
+
+  it('AC-8021.10 2025년 8월 일별 + 지금 보는 기간(조각 둘): 둘째 조각(2024-08 ~ 11)은 sunap을 남기고 dropoff는 8월만, 조각 하나인 계획은 그대로다', () => {
     const { parts } = planLoad(TODAY, monthPick('2025-08'), 'view')
     expect(parts).toHaveLength(2)
-    expect(newKeys(partSave(viewFor(parts[0]), parts[0]))).toEqual([true, true, true, true])
-    expect(newKeys(partSave(viewFor(parts[1]), parts[1]))).toEqual([false, false, false, false])
+    const second = partSave(viewFor(parts[1]), parts[1])
+    expect(monthKeys(second)).toEqual([
+      ['2024-08', true],
+      ['2024-11', false],
+    ])
+    expect(second.days.map((row) => row.sunap)).toEqual([SUNAP, SUNAP])
     for (const span of ['view', '2y'] as const) {
       const [only] = planLoad(TODAY, recent30, span).parts
       const saved = partSave(viewFor(only), only)
-      expect(newKeys(saved)).toEqual([true, true, true, true])
       expect(saved.days.map((row) => row.sunap)).toEqual([SUNAP, SUNAP])
       expect(saved.months.map((row) => row.dropoff)).toEqual([DROPOFF, DROPOFF])
     }
   })
 
-  it('AC-8018.4 새 열쇠가 없는 옛 줄은 지금처럼 그대로 간다(열쇠를 새로 만들지 않는다)', () => {
+  it('AC-8021.10 새 열쇠가 없는 옛 줄은 지금처럼 그대로 간다(열쇠를 새로 만들지 않는다)', () => {
     const { parts } = planLoad(TODAY, recent30, 'all')
     for (const part of parts) {
       const view = loaded(part.read, { months: monthsOf(part).map((month) => monthRow(month)), days: daysOf(part).map((ymd) => dayRow(ymd)) })
-      expect(newKeys(partSave(view, part))).toEqual([false, false, false, false])
+      const saved = partSave(view, part)
+      expect([...saved.months.map((row) => 'dropoff' in row), ...saved.days.map((row) => 'sunap' in row)]).toEqual([false, false, false, false])
     }
   })
 })

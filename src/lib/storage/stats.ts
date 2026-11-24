@@ -15,6 +15,9 @@ export type SupabaseLike = Pick<SupabaseClient, 'from'>
 
 type StorageErrorCode = 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
 type Deps = { client?: SupabaseLike }
+// 데스크 계정 올리기(admin-view REQ-8024 AC-8024.6): desk 참이면 같은 검사·묶음 뒤 표 대신 정의자 함수를 부른다(데스크는 통계 표 정책이 없다)
+type SaveClient = SupabaseLike & Partial<Pick<SupabaseClient, 'rpc'>>
+type SaveDeps = { client?: SaveClient; desk?: boolean }
 type Latest = { at: string; source: StatsSource } | null
 
 export class StorageError extends Error {
@@ -100,6 +103,17 @@ async function upsertInBatches(client: SupabaseLike, table: string, onConflict: 
   }
 }
 
+// 데스크 길: 같은 200줄 묶음을 정의자 함수 하나에 p_rows로(병원·출처 'bit'는 DB가 정한다). 답은 없다
+async function deskRpc(client: SaveClient, fn: string, args: Record<string, unknown>): Promise<void> {
+  if (typeof client.rpc !== 'function') throw new Error('rpc 없음')
+  const { error } = await client.rpc(fn, args)
+  if (error) throw error
+}
+
+async function deskInBatches(client: SaveClient, fn: string, rows: readonly object[]): Promise<void> {
+  for (let at = 0; at < rows.length; at += BATCH_ROWS) await deskRpc(client, fn, { p_rows: rows.slice(at, at + BATCH_ROWS) })
+}
+
 // 달 줄 → 같은 달의 세 칸 합계(spec stats-bit-ai AC-2902.2). 검사(validateMonthSections)를 넘고 달·partial이 그 줄과 같고
 // 표 한도 안일 때만 그 값, 아니면 null — 옛 값이 남지 않게 늘 칸을 보낸다. 세 칸 때문에 달·일 저장이 실패하지 않게 던지지 않는다.
 // 같은 달이 둘이면 앞 것을 쓴다
@@ -121,12 +135,15 @@ function monthSectionsPicker(sections: unknown): (payload: MonthPayload) => Mont
 // sections = 비트 저장의 달마다 세 칸 합계(통계 화면이 Worker 값을 그대로 넘긴다). 파일 저장이면 무시하고 늘 null을 보낸다(AC-2902.3)
 export async function saveStats(
   input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange | null; source: StatsSource; sections?: MonthSections[] | null },
-  deps?: Deps,
+  deps?: SaveDeps,
 ): Promise<{ saved: number }> {
   return attempt('E-STATS-SAVE-FAILED', async () => {
     // 먼저 전부 검사한다. 하나라도 걸리면 아무것도 보내지 않는다
     const { source } = input
     if (!isSource(source)) throw new Error('출처가 아님')
+    const desk = deps?.desk === true
+    // 데스크는 비트 저장만 한다(DB가 source = 'bit'로 넣는다)
+    if (desk && source !== 'bit') throw new Error('데스크는 비트 저장만')
     // 파일의 덜 덮인 달 줄은 검사만 하고 보내지 않는다. 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 feat-ai-report뿐이다.
     // 통계 화면의 달 칸은 일 숫자의 합이다. 비트의 덜 덮인 달 줄은 보낸다
     const sectionsOf = monthSectionsPicker(source === 'bit' ? input.sections : null)
@@ -148,6 +165,13 @@ export async function saveStats(
     const covered = coverageRow(input.covered, source)
 
     const client = deps?.client ?? supabaseBrowser()
+    if (desk) {
+      // 같은 줄에서 source만 뺀다(칸 = 지금 upsert가 보내는 칸)
+      await deskInBatches(client, 'desk_upsert_stats_months', monthRows.map(({ month, partial, payload, sections }) => ({ month, partial, payload, sections })))
+      await deskInBatches(client, 'desk_upsert_stats_days', dayRows.map(({ day, partial, payload }) => ({ day, partial, payload })))
+      if (covered !== null) await deskRpc(client, 'desk_add_stats_coverage', { p_from: covered.from_day, p_to: covered.to_day })
+      return { saved: monthRows.length + dayRows.length }
+    }
     await upsertInBatches(client, 'stats_months', 'hospital_id,month', monthRows)
     await upsertInBatches(client, 'stats_days', 'hospital_id,day', dayRows)
     if (covered !== null) {
