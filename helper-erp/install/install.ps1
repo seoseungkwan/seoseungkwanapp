@@ -2,7 +2,7 @@
 # - 관리자 권한이 필요 없다. 이 윈도우 사용자의 폴더(%LOCALAPPDATA%\Seoseungkwan\ErpHelper)와 사용자 레지스트리(HKCU)의 ERP 도우미 열쇠 하나만 쓴다
 # - 프로그램은 ErpHelper\app에 둔다. 돌던 ERP 도우미를 먼저 끝내고 덮어쓴다. data\(이 PC 등록)와 logs\(진단 기록)는 건드리지 않는다
 # - 다른 도우미의 폴더·크롬 등록은 읽지도 쓰지도 않는다
-# - 끝에 이 PC 등록(비트 로그인 창 → 병원 확인 → PC 확인 창)을 띄우고, 끝날 때까지 기다려 결과를 알린다
+# - 끝에 이 PC 등록(비트 로그인 창 → 병원 확인 → PC 확인 창, 의사랑 PC는 창 없이)을 띄우고, 끝날 때까지 기다려 결과를 알린다
 # - 윈도우 PowerShell 5.1(윈도우 10·11 기본)에서 돈다. 한글 문구가 깨지지 않게 이 파일은 UTF-8 BOM으로 저장한다
 # - 부르는 법: zip을 모두 푼 폴더에서 install.cmd를 누른다
 $ErrorActionPreference = 'Stop'
@@ -67,9 +67,10 @@ catch {
 # 5. 이 PC 등록: 설치가 끝났을 때만. 등록 모드(--register)로 켜고 끝날 때까지 기다린다(PC 확인 창은 5분 뒤 저절로 닫힌다).
 #    종료 번호: 0 저장 · 1 취소 · 2 오류(그 밖 번호도 오류로 본다)
 #    오류면 도우미가 표준 출력에 오류 번호(E-…)와 멈춘 단계(STEP-…)를 한 줄씩 쓴다. 그것과 까닭을 창에 보여 사진으로 알 수 있게 한다(spec erp-bit-anywhere AC-3806.3)
+#    비트가 없고 의사랑이 있는 PC는 창 없이 의사랑 PC로 등록하고 0과 함께 SOURCE-UISARANG·FOLDER-DESKTOP|FOLDER-PROFILE을 한 줄씩 쓴다(spec erp-uisarang AC-4201.2·AC-4201.4)
 if ($installed) {
     Write-Host ''
-    Write-Host '이 PC를 등록합니다. 비트 로그인 창이 뜨면 로그인하고, 병원을 확인한 뒤 [확인]을 누르세요.'
+    Write-Host '이 PC를 등록합니다. 비트 PC면 비트 로그인 창이 뜨니 로그인하고, 병원을 확인한 뒤 [확인]을 누르세요. 의사랑 PC면 창 없이 끝나요.'
     $registerCode = 2
     $registerOutput = @()
     $launchError = $null
@@ -84,8 +85,23 @@ if ($installed) {
     $registerLines = @($registerOutput | ForEach-Object { "$_".Trim() })
     $errorNumber = @($registerLines | Where-Object { $_ -cmatch '^E-[A-Z0-9-]+$' }) | Select-Object -Last 1
     $stepLine = @($registerLines | Where-Object { $_ -cmatch '^STEP-[A-Z]+$' }) | Select-Object -Last 1
+    $uisarang = @($registerLines | Where-Object { $_ -ceq 'SOURCE-UISARANG' }).Count -gt 0
+    $uisFolderProfile = @($registerLines | Where-Object { $_ -ceq 'FOLDER-PROFILE' }).Count -gt 0
     Write-Host ''
     switch ($registerCode) {
+        # 의사랑 PC로 등록함(0 + SOURCE-UISARANG): 의사랑 글(엑셀 폴더 자리 두 갈래)만 보이고 아래 0 글은 건너뛴다
+        { $_ -eq 0 -and $uisarang } {
+            if ($uisFolderProfile) {
+                $profileDir = $env:USERPROFILE
+                if (-not $profileDir) { $profileDir = [Environment]::GetFolderPath('UserProfile') }
+                $uisFolder = Join-Path $profileDir 'ERP마감'
+                Write-Host ('의사랑 PC로 등록했어요. 바탕화면이 OneDrive와 이어져 있어, 환자 엑셀이 인터넷으로 올라가지 않게 엑셀 폴더를 ' + $uisFolder + '에 만들었어요. 의사랑 통계 엑셀은 이 폴더에 저장해 주세요.') -ForegroundColor Green
+            }
+            else {
+                Write-Host '의사랑 PC로 등록했어요. 의사랑 통계 엑셀은 바탕화면 › ERP마감 폴더에 저장해 주세요.' -ForegroundColor Green
+            }
+            break
+        }
         0 { Write-Host '이 PC를 등록했어요.' -ForegroundColor Green }
         1 {
             Write-Host '등록을 취소했어요. 다시 하려면 install.cmd를 다시 실행하세요.' -ForegroundColor Yellow
@@ -106,6 +122,12 @@ if ($installed) {
             elseif ($errorNumber -ceq 'E-BIT-DB-FAILED') {
                 Write-Host '비트 자료(DB)에 연결하지 못했어요. 이 PC에서 비트가 켜지는지, 자료 서버 컴퓨터가 켜져 있는지 확인하세요. 병원 밖 인터넷 주소의 자료 서버는 안전 때문에 쓸 수 없어요.'
             }
+            elseif ($errorNumber -ceq 'E-UIS-FOLDER') {
+                Write-Host 'ERP마감 엑셀 폴더를 만들지 못했어요. 같은 이름의 파일이 있거나 폴더 만들기가 막혔는지 확인하세요.'
+            }
+            elseif ($errorNumber -ceq 'E-STORE-FAILED' -and $stepLine -ceq 'STEP-UIS') {
+                Write-Host '도우미 설정 파일(의사랑 표시)을 쓰거나 지우지 못했어요. 크롬을 모두 닫고, 백신이 막지 않는지 확인한 뒤 install.cmd를 다시 실행하세요.'
+            }
             else {
                 Write-Host '비트를 확인하다가 문제가 생겼어요.'
             }
@@ -117,6 +139,7 @@ if ($installed) {
                     'SERVER' { '자료 서버 주소 확인' }
                     'CONNECT' { '자료 서버 연결' }
                     'LOGIN' { '비트 로그인·병원 확인' }
+                    'UIS' { '의사랑 등록(엑셀 폴더·자료원 파일)' }
                     default { $step }
                 }
                 Write-Host ('멈춘 단계: ' + $stepName + ' (' + $step + ')')
