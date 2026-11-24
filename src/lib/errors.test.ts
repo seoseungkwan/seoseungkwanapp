@@ -138,6 +138,9 @@ const ALL_CODES = [
   'E-REGION-SAVE',
   'E-COMPARE-READ',
   'E-VIEW-READONLY',
+  'E-AUTO-MONTHS',
+  'E-AUTO-UPLOAD',
+  'E-AUTO-OTHER-BIT',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1513,5 +1516,49 @@ describe('AC-8005.3 다른 의원 보기·의원 비교 오류 번호 다섯', (
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(ADMIN_VIEW)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 저절로 올리기(specs/admin-view design.md '화면 글자' 2차 오류 셋, TASK-17). 글은 그 표 글자 그대로다
+const AUTO_UPLOAD = {
+  'E-AUTO-MONTHS': {
+    what: '채울 기간을 바꾸지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 골라 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-AUTO-UPLOAD': {
+    what: '비트 숫자를 올리지 못했어요',
+    fix: '그 의원 PC에서 앱을 다시 열면 이어서 해요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-AUTO-OTHER-BIT': {
+    what: '다른 의원 비트 PC예요',
+    fix: '이 PC의 비트는 처음 올린 의원과 달라 올리지 않았어요. 그 의원 계정으로 열어 주세요.',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-8020.4 저절로 올리기 오류 번호 셋', () => {
+  it.each(Object.keys(AUTO_UPLOAD) as Array<keyof typeof AUTO_UPLOAD>)(
+    "AC-8020.4: %s는 번호가 있고 무엇이·어떻게 고치나가 design.md '화면 글자' 2차 오류 표 글자 그대로다",
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(AUTO_UPLOAD[code])
+    },
+  )
+
+  it('AC-8020.4: 이 명세가 더하는 E-AUTO- 번호는 표의 셋뿐이고, 그 밖 번호 수는 그대로다', () => {
+    expect(Object.keys(ERRORS).filter((code) => /^E-AUTO-/.test(code)).sort()).toEqual(Object.keys(AUTO_UPLOAD).sort())
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  it('AC-8020.4: 저절로 올림 칸이 첫 줄로 쓰는 다른 번호의 글은 그대로다 — E-HELPER-OLD·E-STATS-SAVE-FAILED', () => {
+    expect(errorInfo('E-HELPER-OLD').what).toBe('도우미를 업데이트하세요')
+    expect(errorInfo('E-STATS-SAVE-FAILED').what).toBe('통계 숫자를 저장하지 못했어요')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-8020.4: 세 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(AUTO_UPLOAD)) expect(union).toContain(`'${code}'`)
   })
 })
