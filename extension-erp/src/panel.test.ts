@@ -1370,6 +1370,51 @@ describe('TASK-11 의사랑 단추 줄과 의사랑 안내(spec erp-uisarang des
     expect(text(p.$('.lead'))).toBe('의사랑 엑셀을 읽지 못했어요.')
   })
 
+  it("AC-4212.7: 의사랑 자료원이면 진료 0건 묻기 첫 줄만 '{날짜}에는 의사랑 진료가 한 건도 없어요.'이고 뒤 줄·단추·답은 지금 그대로다", async () => {
+    const p = openUis()
+    const asked = p.dock.askZero(UIS_DAY)
+    expect([...p.body().children].filter((c) => c.tagName === 'P').map(text)).toEqual([
+      '2026-11-23에는 의사랑 진료가 한 건도 없어요.',
+      '마감 일자가 맞는지 확인해 주세요. 맞으면 [그래도 채우기]로 채울 수 있어요(쉬는 날 예약 칸 등).',
+      '아직 아무 칸도 바꾸지 않았어요.',
+    ])
+    expect(p.$$('.pb .lead')).toHaveLength(1)
+    expect(p.acts()).toEqual(['그래도 채우기', '안내 닫기'])
+    expect(dock?.host.shadowRoot?.activeElement).toBe(p.act('안내 닫기'))
+    p.act('그래도 채우기').click()
+    await expect(asked).resolves.toBe(true)
+  })
+
+  it("AC-4212.7: 의사랑 자료원이면 이미 적힌 칸 묻기 첫 줄만 '이미 적힌 칸 {N}개가 의사랑 값으로 바뀌어요.'이고 뒤 줄·단추·답은 지금 그대로다", async () => {
+    const p = openUis()
+    const places: Where[] = [
+      { j: 1, box: '환자현황', row: '신환' },
+      { j: 2, card: '예약', row: '경과', col: '내원' },
+      { j: 2, card: '예약', row: '경과', col: '취소' },
+    ]
+    const asked = p.dock.askWritten(places)
+    expect([...p.body().children].filter((c) => c.tagName === 'P').map(text)).toEqual([
+      '이미 적힌 칸 3개가 의사랑 값으로 바뀌어요.',
+      '바뀌는 칸: 환자현황 신환 · 예약 경과',
+      '[빈 칸만]을 누르면 적힌 칸은 그대로 두고 빈 칸만 채워요.',
+    ])
+    expect(p.acts()).toEqual(['바꾸기', '빈 칸만', '안내 닫기'])
+    expect(dock?.host.shadowRoot?.activeElement).toBe(p.act('빈 칸만'))
+    p.act('빈 칸만').click()
+    await expect(asked).resolves.toBe('empty')
+    void p.dock.askWritten(Array.from({ length: 1234 }, () => places[0]))
+    expect(text(p.$('.lead'))).toBe('이미 적힌 칸 1,234개가 의사랑 값으로 바뀌어요.')
+  })
+
+  it('AC-4212.7 AC-4215.3: 자료원을 비트로 되돌리면(setSource(bit)) 두 묻기 첫 줄은 지금 비트 글 그대로다', () => {
+    const p = openUis()
+    p.dock.setSource('bit')
+    void p.dock.askZero('2026-11-09')
+    expect(text(p.$('.lead'))).toBe('2026-11-09에는 비트 진료가 한 건도 없어요.')
+    void p.dock.askWritten([{ j: 1, box: '환자현황', row: '신환' }])
+    expect(text(p.$('.lead'))).toBe('이미 적힌 칸 1개가 비트 값으로 바뀌어요.')
+  })
+
   it("AC-4212.5: showUis(range)는 머리 '기간 채우기' · [닫기]만이고 기간 고르기 칸이 없다", () => {
     const p = openUis()
     p.dock.showUis({ kind: 'range' })

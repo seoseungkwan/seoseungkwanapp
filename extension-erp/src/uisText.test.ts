@@ -217,25 +217,26 @@ describe('AC-4212.6 멈춤 안내 글(design.md 10-1)', () => {
     expect(t.patientDeleted).toBe('환자별 엑셀(4 · 6번)은 날짜가 달라도 읽은 뒤 바로 지웠어요.')
   })
 
-  it("AC-4212.6: ⑩ 조건 — 외/입 구분 글, 라벨이 다르면 {라벨}{이/가}(받침 두 갈래)", async () => {
+  it("AC-4212.6 AC-4212.7: ⑩ 조건 — 늘 외/입 구분 글 하나(답에 라벨 이름 칸이 없어 라벨 이름을 받는 글이 없다, 고침 1)", async () => {
     const { UIS_TEXT } = await loadText()
     const t = UIS_TEXT.cond
     expectText(t.lead('기간별처방통계', '외래'), "{보고서} 엑셀의 외/입 구분이 '{값}'예요.", '기간별처방통계', '외래')
-    const label = "{보고서} 엑셀의 {라벨}{이/가} '{값}'예요."
-    expectText(t.leadLabel('일일수입통계', '진료구분', '외래'), label, '일일수입통계', '진료구분', '이', '외래')
-    expectText(t.leadLabel('일일수입통계', '진료과', '정형외과'), label, '일일수입통계', '진료과', '가', '정형외과')
+    expect(Object.keys(t).sort()).toEqual(['how', 'lead'])
     expect(t.how).toBe("의사랑 통계에서 외/입 구분을 '전체'로 바꿔 [검색]한 뒤 다시 엑셀로 저장해 주세요.")
   })
 
-  it('AC-4212.6: ⑪ 같은 엑셀 둘 — 2개(셋 이상이면 그 수) · {폴더}에서 하나만 · 환자별이면 둘 다 지움', async () => {
+  it("AC-4212.6 AC-4212.7: ⑪ 같은 엑셀 여럿 — 수 없이 '{보고서} 엑셀이 여러 개 있어요.' · {폴더}에서 하나만 · 환자별이면 모두 지움(고침 1)", async () => {
     const { UIS_TEXT } = await loadText()
     const t = UIS_TEXT.dup
-    expectText(t.lead('일일수입통계', 2), '{보고서} 엑셀이 2개 있어요.', '일일수입통계')
-    expect(t.lead('일일수입통계', 3)).toBe('일일수입통계 엑셀이 3개 있어요.')
+    // 답에 파일 수 칸이 없어 보고서 이름만 받는다
+    expect(t.lead).toHaveLength(1)
+    expectText(t.lead('일일수입통계'), '{보고서} 엑셀이 여러 개 있어요.', '일일수입통계')
+    expect(t.lead('예약환자통계 아래쪽 표')).toBe('예약환자통계 아래쪽 표 엑셀이 여러 개 있어요.')
     expectText(t.how(DESKTOP), '{폴더}에서 하나만 남기고 지운 뒤 다시 눌러 주세요.', DESKTOP)
     expect(MOCKUP).toContain(t.how(DESKTOP))
     expect(t.why).toBe('어느 것이 맞는지 몰라 아무 칸도 바꾸지 않았어요.')
-    expect(t.patient).toBe('환자별 엑셀은 둘 다 지웠어요. 하나만 다시 저장해 주세요.')
+    expect(t.patient).toBe('환자별 엑셀은 모두 지웠어요. 하나만 다시 저장해 주세요.')
+    for (const line of [t.lead('일일수입통계'), t.why, t.patient]) expect(line).not.toMatch(/\d|둘/)
   })
 
   it('AC-4212.6: ⑫ 한셀에 열림 — {보고서}{이/가}(받침 두 갈래) · 모르면 ERP마감 폴더의 엑셀 · 번호 E-UIS-FILE-OPEN', async () => {
@@ -249,6 +250,15 @@ describe('AC-4212.6 멈춤 안내 글(design.md 10-1)', () => {
     expect(t.howUnknown).toBe('ERP마감 폴더의 엑셀이 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.')
     expect(t.why).toBe('환자별 엑셀은 읽은 뒤 바로 지워야 해서, 열려 있으면 읽지 않아요.')
     expect(t.code).toBe('아무 칸도 바꾸지 않았어요. (번호 E-UIS-FILE-OPEN)')
+  })
+})
+
+describe('AC-4212.7 채우기 전 묻기 첫 줄(design.md 10-1 ★, 고침 7)', () => {
+  it("AC-4212.7: 진료 0건 묻기 '{날짜}에는 의사랑 진료가 한 건도 없어요.' · 이미 적힌 칸 묻기 '이미 적힌 칸 {N}개가 의사랑 값으로 바뀌어요.'", async () => {
+    const { UIS_TEXT } = await loadText()
+    expectText(UIS_TEXT.zero(DAY), '{날짜}에는 의사랑 진료가 한 건도 없어요.', DAY)
+    expectText(UIS_TEXT.ask(3), '이미 적힌 칸 {N}개가 의사랑 값으로 바뀌어요.', 3)
+    expect(UIS_TEXT.ask(1234)).toBe('이미 적힌 칸 1,234개가 의사랑 값으로 바뀌어요.')
   })
 })
 
@@ -422,12 +432,27 @@ describe('AC-4212.6 설정 화면 글 UIS_OPTIONS_TEXT(design.md 10-6, 시안 �
     expect([c.readButton, c.rereadButton]).toEqual(['코드 목록 읽기', '코드 목록 다시 읽기'])
   })
 
-  it('AC-4212.6: [코드 목록 읽기] 결과 missing · notAll · twice · open(design.md 10-6 ★)', async () => {
-    const { UIS_OPTIONS_TEXT: o } = await loadText()
+  it("AC-4214.6: 설정 화면 폴더 글은 UIS_OPTIONS_FOLDER 'ERP마감 폴더'이고 맨 위 상자 뒤에 자리 설명을 붙인다(design.md 10-6 ★ 폴더 글, 고침 10)", async () => {
+    const { UIS_OPTIONS_FOLDER, UIS_OPTIONS_TEXT: o } = await loadText()
+    expect(UIS_OPTIONS_FOLDER).toBe('ERP마감 폴더')
+    expect(DESIGN).toContain(`\`UIS_OPTIONS_FOLDER = '${UIS_OPTIONS_FOLDER}'\``)
+    expect(DESIGN).toContain(`맨 위 상자 뒤 글은 '${o.source.rest(UIS_OPTIONS_FOLDER)} ${o.source.where}'다.`)
+    expect(o.source.where).toBe(
+      "ERP마감 폴더는 보통 바탕화면에 있고, 바탕화면이 OneDrive와 이어진 PC에서는 사용자 폴더에 있어요(설치할 때 알려 준 자리 · ERP 화면 안내의 '저장할 곳').",
+    )
+    // 3단계 · missing · 표 앞 글의 폴더도 'ERP마감 폴더'
+    expect(o.codes.steps(UIS_OPTIONS_FOLDER)[2]).toBe('표 오른쪽 위 초록 엑셀 단추로 ERP마감 폴더에 저장해 주세요.')
+    expect(o.reports.intro(UIS_OPTIONS_FOLDER)).toBe('마감할 때마다 의사랑 통계(FStat)에서 아래 6개를 엑셀로 저장해 ERP마감 폴더에 두세요.')
+  })
+
+  it('AC-4212.6 AC-4214.3 AC-4214.6: [코드 목록 읽기] 결과 missing · notAll · twice · open(design.md 10-6 ★, twice는 수 없이)', async () => {
+    const { UIS_OPTIONS_FOLDER, UIS_OPTIONS_TEXT: o } = await loadText()
     const c = o.codes
-    expectText(c.missing(DESKTOP), '{폴더}에 기간별처방통계 엑셀이 없어요.', DESKTOP)
+    expect(DESIGN).toContain(`★missing '${c.missing(UIS_OPTIONS_FOLDER)}'`)
+    expect(c.missing(UIS_OPTIONS_FOLDER)).toBe('ERP마감 폴더에 기간별처방통계 엑셀이 없어요.')
     expectText(c.notAll('외래'), "기간별처방통계 엑셀의 외/입 구분이 '{값}'예요. '전체'로 다시 저장해 주세요.", '외래')
-    expect(c.twice).toBe('기간별처방통계 엑셀이 2개 있어요. 하나만 남겨 주세요.')
+    expect(c.twice).toBe('기간별처방통계 엑셀이 여러 개 있어요. 하나만 남겨 주세요.')
+    expect(DESIGN).toContain(`★twice '${c.twice}'`)
     expect(c.open).toBe('기간별처방통계 엑셀이 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.')
   })
 
@@ -484,7 +509,7 @@ describe('AC-4212.6 설정 화면 글 UIS_OPTIONS_TEXT(design.md 10-6, 시안 �
     }
   })
 
-  it("AC-4212.6: '매일 저장할 엑셀 6개' 표 — 줄은 UIS_KINDS 차례, '꼭' 열(1 · 2 · 4 · 6번 꼭, 3 · 5번 있으면 좋음), 저장법·환자별 안내", async () => {
+  it("AC-4212.6 AC-4214.6: '매일 저장할 엑셀 6개' 표 — 줄은 UIS_KINDS 차례, '꼭' 열(1 · 2 · 4 · 6번 꼭, 3 · 5번 있으면 좋음), 저장법·환자별 안내", async () => {
     const { UIS_OPTIONS_TEXT: o, UIS_REPORT_NAMES } = await loadText()
     const { UIS_KINDS, UIS_REQUIRED, UIS_PATIENT } = await loadTypes()
     const r = o.reports
@@ -510,8 +535,15 @@ describe('AC-4212.6 설정 화면 글 UIS_OPTIONS_TEXT(design.md 10-6, 시안 �
       )
     }
     expect(r.howTo).toHaveLength(3)
-    for (const line of r.howTo) expect(MOCKUP).toContain(`<p>${line}</p>`)
-    expect(r.suffix).toBe('아래쪽 표는 저장할 때 이름 끝에 -환자별을 붙여 주세요.')
+    // 앞 두 줄은 시안 그대로, 셋째 줄은 실제 지우기 규칙(design.md 10-6 ★ 저장법 셋째 줄, 고침 2)
+    for (const line of r.howTo.slice(0, 2)) expect(MOCKUP).toContain(`<p>${line}</p>`)
+    expect(r.howTo[2]).toBe(
+      '이 폴더에는 마감 엑셀만 두세요. 읽은 엑셀은 지워요. 환자 정보가 든 4 · 6번은 날짜가 달라도 늘 바로 지우고, 의사랑 통계 엑셀이 아닌 엑셀도 지워요. 날짜가 다르거나 같은 보고서가 여럿인 합계 엑셀은 그대로 둬요.',
+    )
+    expect(DESIGN).toContain(`'${r.howTo[2]}'`)
+    // '-환자별' 안내는 저장법 둘째 줄 하나만(표 밑 줄 글은 없다, 고침 9)
+    expect('suffix' in r).toBe(false)
+    expect(leaves(o).filter(([, t]) => t.includes('-환자별') && !t.endsWith('.xls')).map(([at]) => at)).toEqual(['reports.howTo[1]'])
     expect(NOTES).toContain(`'${r.privacy.strong} ${r.privacy.rest}'`)
     expect(o.foot).toBe(
       '환자 이름 · 차트번호 · 주민번호는 이 PC의 도우미 밖으로 나가지 않아요. ERP 화면에는 숫자만 넣고, 저장은 ERP에서 직접 눌러요.',

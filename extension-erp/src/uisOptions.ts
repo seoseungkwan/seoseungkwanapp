@@ -10,24 +10,21 @@ import { E_BRIDGE_BAD_REPLY, E_HELPER_MISSING, explainFor } from './errors.js'
 import { SHARED_TEXT } from './options.js'
 import { cleanCode, ETC_KEYS, MAX_CODES } from './settings.js'
 import { GROUP_NAMES } from './types.js'
-import type { ClosingCommand, EtcKey } from './types.js'
-import { UIS_FOLDER_TEXT, UIS_OPTIONS_TEXT } from './uisText.js'
+import type { EtcKey } from './types.js'
+import { UIS_OPTIONS_FOLDER, UIS_OPTIONS_TEXT } from './uisText.js'
 import { loadUis, loadUisCodes, normalizeCodes, saveUis, saveUisCodes, searchUis, uisEmpty } from './uisSettings.js'
 import { UIS_COUNT_KEYS, UIS_KINDS, UIS_PATIENT, UIS_REQUIRED, UIS_SALES_KEYS } from './uisTypes.js'
-import type { UisCodeRow, UisCodes, UisCodesAnswer, UisCountKey, UisSalesKey, UisSettings } from './uisTypes.js'
-
-/** 도우미 명령 하나를 묻는다(서비스 워커 { cmd, args }). 받은 답 그대로({ type: 'result', data } | { type: 'error', code }), 끊기면 던진다 */
-export type Send = (cmd: ClosingCommand, args: Record<string, unknown>) => Promise<unknown>
+import type { Send, UisCodeRow, UisCodes, UisCodesAnswer, UisCountKey, UisSalesKey, UisSettings } from './uisTypes.js'
 
 /** 줄마다 따로 고르는 두 목록: 건수로 셀 코드 · 매출로 셀 코드 */
 type Kind = 'counts' | 'sales'
 type RowKey = UisCountKey | UisSalesKey
 
 /**
- * 엑셀 폴더 글. closing.uisCodes 답에는 폴더 자리가 없어(design.md 3-3) 시안처럼 바탕화면 글을 쓴다
- * (바탕화면이 OneDrive 안인 PC의 실제 폴더는 설치 글 · ERP 화면 안내가 알려 준다)
+ * 엑셀 폴더 글. closing.uisCodes 답에는 폴더 자리가 없어(design.md 3-3) 바탕화면 · 사용자 폴더를 가리지 못하므로
+ * 늘 'ERP마감 폴더'이고, 자리는 맨 위 상자 뒤 글이 설명한다(design.md 10-6 ★ 폴더 글, 고침 10)
  */
-const FOLDER = UIS_FOLDER_TEXT.desktop
+const FOLDER = UIS_OPTIONS_FOLDER
 
 /** [코드 목록 읽기] 결과 줄(ok는 코드 목록 줄 자체라 없다) */
 type Said = { state: 'missing' | 'notAll' | 'twice' | 'open'; value: string | null } | { state: 'error'; code: string }
@@ -292,7 +289,10 @@ function codesBox(p: Page): HTMLElement {
   return h('div', { class: 'notice codes' }, h('p', {}, read), h('p', {}, T.again), said, steps, button(T.rereadButton, 'btn-2'))
 }
 
-/** '매일 저장할 엑셀 6개' 표 · 표 밑 줄 · 저장법 · 환자별 표 안내(시안 + design.md 10-6 ★ '꼭' 열) */
+/**
+ * '매일 저장할 엑셀 6개' 표 · 저장법 · 환자별 표 안내(시안 + design.md 10-6 ★ '꼭' 열 · 저장법 셋째 줄).
+ * '-환자별' 안내는 저장법 둘째 줄 하나뿐이라 표 밑 줄은 없다(고침 9)
+ */
 function reportsSection(): HTMLElement {
   const R = UIS_OPTIONS_TEXT.reports
   const C = R.columns
@@ -324,7 +324,6 @@ function reportsSection(): HTMLElement {
     h('h2', {}, R.title),
     h('p', {}, R.intro(FOLDER)),
     h('table', { class: 'rtable' }, h('thead', {}, head), h('tbody', {}, ...lines)),
-    h('p', { class: 'hint' }, R.suffix),
     h('div', { class: 'howto' }, ...R.howTo.map((line) => h('p', {}, line))),
     h('p', { class: 'priv' }, h('b', {}, R.privacy.strong), ` ${R.privacy.rest}`),
   )
@@ -334,7 +333,7 @@ function reportsSection(): HTMLElement {
 function render(p: Page, focus?: string) {
   const T = UIS_OPTIONS_TEXT
   const parts: Child[] = [
-    h('p', { class: 'notice src' }, h('b', {}, T.source.strong), ` ${T.source.rest(FOLDER)}`),
+    h('p', { class: 'notice src' }, h('b', {}, T.source.strong), ` ${T.source.rest(FOLDER)} ${T.source.where}`),
     !p.everSaved && h('p', { class: 'notice first' }, h('b', {}, T.first.strong), ` ${T.first.rest}`),
     h('p', { class: 'lead-p' }, T.lead),
     codesBox(p),

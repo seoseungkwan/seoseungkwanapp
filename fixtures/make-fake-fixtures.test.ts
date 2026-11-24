@@ -12,6 +12,7 @@ import {
   toCsvBytes,
   writeAllFixtures,
 } from './make-fake-fixtures'
+import { UIS_FIXTURE_NAMES } from './make-fake-uisarang'
 
 // 사용자가 준 실제 첫 줄(docs/DATA_RULES.md 1절)
 const EXPECTED_HEADER = [
@@ -473,12 +474,19 @@ describe('AC-005.2 저장소의 가짜 파일 폴더 · .gitignore 되살리기 
     expect(readdirSync(join(root, 'public', 'fake-sample'))).toEqual(['bit-sample.csv'])
   })
 
-  it('.gitignore가 되살리는 것은 생성기 파일 이름 그대로뿐이다(글롭 없음)', () => {
+  // 되살리는 줄은 두 생성기 이름뿐: make-fake-fixtures의 FILES → fake-bit, make-fake-uisarang의 UIS_FIXTURE_NAMES → fake-uisarang
+  // (spec erp-uisarang design.md 12-4, AC-4203.5)
+  it('AC-005.2 AC-4203.5: .gitignore가 되살리는 것은 두 생성기 파일 이름 그대로뿐이다(글롭 없음)', () => {
     const allowed = readFileSync(join(root, '.gitignore'), 'utf8')
       .split(/\r?\n/) // Windows에서 받은 저장소는 줄 끝이 CRLF다
       .filter((line) => line.startsWith('!') && line !== '!.env.example')
     expect(allowed.sort()).toEqual(
-      [...FILES.map((name) => `!fixtures/fake-bit/${name}`), '!public/fake-sample/bit-sample.csv'].sort(),
+      [
+        ...FILES.map((name) => `!fixtures/fake-bit/${name}`),
+        ...UIS_FIXTURE_NAMES.map((name) => `!fixtures/fake-uisarang/${name}`),
+        '!public/fake-sample/bit-sample.csv',
+      ].sort(),
     )
+    for (const line of allowed) expect(line, line).not.toMatch(/[*?[\]]/)
   })
 })

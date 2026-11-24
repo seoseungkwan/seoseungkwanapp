@@ -1,6 +1,6 @@
 // 의사랑판(spec erp-uisarang) 공용 이름표와 도우미 답 모양(design.md 8-1·3-2·3-3). 도우미 C# 모델 칸 이름도 같다.
 // 비트 이름표(types.ts)는 그대로 두고 여기서 더하기만 한다. 글자만 두고 types.ts는 type으로만 부른다
-import type { AgeBand, EtcKey } from './types.js'
+import type { AgeBand, ClosingCommand, EtcKey } from './types.js'
 
 /** 의사랑 설정을 두는 chrome.storage.local 칸(비트 erpClosing과 따로, design.md 9-2) */
 export const UIS_SETTINGS_KEY = 'erpClosingUis'
@@ -164,6 +164,12 @@ export type UisCodesAnswer = {
 
 /** 이 PC의 ERP 도우미가 읽는 곳(closing.source 답, design.md 3-4) */
 export type Source = 'bit' | 'uisarang'
+
+/**
+ * 도우미 명령 하나를 묻는다(서비스 워커 { cmd, args }). 받은 답 그대로({ type: 'result', data } | { type: 'error', code }), 끊기면 던진다.
+ * 이 한 곳에서 내보내고 uisOptions.ts·uisFlow.ts·options.ts가 가져다 쓴다(design.md 8-1, 고침 12)
+ */
+export type Send = (cmd: ClosingCommand, args: Record<string, unknown>) => Promise<unknown>
 
 /** ⑫ 한셀 열림 안내 끝 번호(오류가 아니라 보일 번호, design.md 11절 16) */
 export const UIS_OPEN_CODE = 'E-UIS-FILE-OPEN'

@@ -28,9 +28,9 @@ function kindTable(): { kind: string; required: boolean; patient: boolean }[] {
   return rows
 }
 
-/** design.md 3-1 `sales` key enum */
+/** design.md 3-1 `sales` key enum(명세 고침 8 뒤 commands.json 꼴 `"type": "enum", "values": [...]`, 앞 꼴 `"enum": [...]`도 읽는다) */
 function salesEnum(): string[] {
-  const m = /"key":\s*\{[^}]*"enum":\s*\[([^\]]*)\]/.exec(DESIGN)
+  const m = /"key":\s*\{[^}]*"(?:enum|values)":\s*\[([^\]]*)\]/.exec(DESIGN)
   expect(m, 'design.md 3-1 sales key enum을 찾지 못했다').not.toBeNull()
   return [...(m?.[1] ?? '').matchAll(/"([^"]+)"/g)].map((x) => x[1])
 }

@@ -44,7 +44,7 @@ import type { Conflict, RuleProblem } from './settings.js'
 import { AMOUNT_KEYS, EXCLUDE_KEYS, GROUP_NAMES, RSV_NAMES, RSV_ROWS } from './types.js'
 import type { AmountKey, ClosingCodes, ClosingCommand, EtcKey, ExcludeRule, FoundCodes, GroupKey, RsvRow, Settings } from './types.js'
 import { startUisOptions, stopUisOptions } from './uisOptions.js'
-import type { Send } from './uisOptions.js'
+import type { Send } from './uisTypes.js'
 import { savedSources } from './uisSettings.js'
 
 /**

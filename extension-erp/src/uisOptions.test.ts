@@ -2,15 +2,14 @@
 // 의사랑 설정 화면(spec erp-uisarang TASK-12, design.md 8-8·9-5·10-6·11절 1·10·18)을 가짜 chrome.storage.local과 가짜 send로 시험한다.
 // 글은 승인된 시안 docs/mockups/erp-uisarang/(?s=optNoFile·optFirst·optSearch·optSaved)과 design.md 10-6 그대로다.
 // 코드·처방명칭·숫자는 시안 예시처럼 지은 값이다(환자 정보 없음)
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SETTINGS_KEY } from './types'
 import { startUisOptions, stopUisOptions } from './uisOptions'
-import type { Send } from './uisOptions'
 import { UIS_CODES_KEY, UIS_SETTINGS_KEY } from './uisTypes'
-import type { UisCodeRow, UisCodes, UisSettings } from './uisTypes'
+import type { Send, UisCodeRow, UisCodes, UisSettings } from './uisTypes'
 
 const EXT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -175,11 +174,11 @@ afterEach(() => {
 })
 
 describe('AC-4214.2 화면 차례와 글(design.md 9-5·10-6, 시안 ⑯)', () => {
-  it('AC-4214.2: 맨 위 상자·처음 안내·첫 줄·맨 아래 줄이 시안 글 그대로이고 [처음 값으로]는 없다', async () => {
+  it('AC-4214.2 AC-4214.6: 맨 위 상자(폴더 자리 설명까지)·처음 안내·첫 줄·맨 아래 줄이 글 그대로이고 [처음 값으로]는 없다', async () => {
     const { send } = await open({ codes: CODES })
     expect(text($('h1'))).toBe('ERP 마감일지 채우기 · 설정')
     expect(text($('.notice.src'))).toBe(
-      '의사랑 통계 엑셀에서 읽어요. 이 PC의 ERP 도우미는 바탕화면 › ERP마감 폴더에 저장한 의사랑 통계 엑셀을 읽어 ERP 칸을 채워요.',
+      "의사랑 통계 엑셀에서 읽어요. 이 PC의 ERP 도우미는 ERP마감 폴더에 저장한 의사랑 통계 엑셀을 읽어 ERP 칸을 채워요. ERP마감 폴더는 보통 바탕화면에 있고, 바탕화면이 OneDrive와 이어진 PC에서는 사용자 폴더에 있어요(설치할 때 알려 준 자리 · ERP 화면 안내의 '저장할 곳').",
     )
     expect(text($('.notice.src b'))).toBe('의사랑 통계 엑셀에서 읽어요.')
     expect(text($('.notice.first'))).toBe(
@@ -297,7 +296,7 @@ describe("AC-4214.2 '매일 저장할 엑셀 6개' 표(design.md 10-6 ★ '꼭' 
     const sec = $$('.osec').find((s) => text(s.querySelector('h2')) === '매일 저장할 엑셀 6개')
     if (!sec) throw new Error('엑셀 표 묶음 없음')
     expect(text(sec.querySelector(':scope > p'))).toBe(
-      '마감할 때마다 의사랑 통계(FStat)에서 아래 6개를 엑셀로 저장해 바탕화면 › ERP마감 폴더에 두세요.',
+      '마감할 때마다 의사랑 통계(FStat)에서 아래 6개를 엑셀로 저장해 ERP마감 폴더에 두세요.',
     )
     expect($$('.rtable th', sec).map(text)).toEqual(['', '의사랑 통계 메뉴', '표', '이름 예', '채우는 칸', '꼭'])
     const lines = $$('.rtable tbody tr', sec).map((tr) => [...tr.children].map(cellText))
@@ -328,16 +327,19 @@ describe("AC-4214.2 '매일 저장할 엑셀 6개' 표(design.md 10-6 ★ '꼭' 
     expect($$('.rtable .pi', sec).map(text)).toEqual(['환자 정보 있음', '환자 정보 있음'])
   })
 
-  it('AC-4214.2: 표 밑 줄 · 저장법 세 줄 · 환자별 표 안내가 글 그대로다', async () => {
+  it("AC-4214.2 AC-4214.6: 표 밑 줄은 없고(표 바로 뒤가 저장법) · 저장법 세 줄(셋째 줄은 실제 지우기 규칙) · '-환자별' 안내는 저장법 둘째 줄 한 번뿐 · 환자별 표 안내", async () => {
     await open({ codes: CODES })
     const sec = $$('.osec').find((s) => text(s.querySelector('h2')) === '매일 저장할 엑셀 6개')
     if (!sec) throw new Error('엑셀 표 묶음 없음')
-    expect(text($('.rtable + p', sec))).toBe('아래쪽 표는 저장할 때 이름 끝에 -환자별을 붙여 주세요.')
+    expect($$('.rtable + p', sec)).toHaveLength(0)
+    expect($('.rtable', sec).nextElementSibling?.className).toBe('howto')
+    expect($$('.hint', sec).filter((el) => el.tagName === 'P')).toHaveLength(0)
     expect($$('.howto p', sec).map(text)).toEqual([
       "조회일은 마감 일자 하루로, 외/입 구분은 '전체'로 두고 [검색]한 뒤 표 오른쪽 위 초록 엑셀 단추를 눌러 저장해요.",
       "이름은 바꿔도 돼요(도우미가 표 머리글로 어느 보고서인지 알아봐요). 아래쪽 표는 위쪽 표와 이름이 겹치지 않게 끝에 '-환자별'을 붙여 주세요.",
-      '이 폴더에는 마감 엑셀만 두세요. 다 읽은 뒤 폴더 안 엑셀을 모두 지워요.',
+      '이 폴더에는 마감 엑셀만 두세요. 읽은 엑셀은 지워요. 환자 정보가 든 4 · 6번은 날짜가 달라도 늘 바로 지우고, 의사랑 통계 엑셀이 아닌 엑셀도 지워요. 날짜가 다르거나 같은 보고서가 여럿인 합계 엑셀은 그대로 둬요.',
     ])
+    expect($$('p', sec).filter((el) => text(el).includes('-환자별')).map(text)).toEqual([$$('.howto p', sec).map(text)[1]])
     expect(text($('.priv', sec))).toBe(
       '4 · 6번 환자별 표에는 환자 이름 · 주민번호가 들어 있어요. ERP 도우미가 이 PC 안에서만 읽고 바로 지워요. 주민번호로는 나이만 셈하고, ERP에는 숫자만 넣어요.',
     )
@@ -346,14 +348,14 @@ describe("AC-4214.2 '매일 저장할 엑셀 6개' 표(design.md 10-6 ★ '꼭' 
 })
 
 describe('AC-4214.2 코드 목록 줄(시안 ⑮ ⑯)', () => {
-  it('AC-4214.2: 코드 목록이 없으면 주황 상자 · 3단계 · [코드 목록 읽기]이고 찾기 칸은 막혀 있다', async () => {
+  it('AC-4214.2 AC-4214.6: 코드 목록이 없으면 주황 상자 · 3단계(폴더는 ERP마감 폴더) · [코드 목록 읽기]이고 찾기 칸은 막혀 있다', async () => {
     await open()
     const box = $('.notice.nofile')
     expect(text($('b', box))).toBe('처방 코드 목록이 아직 없어요.')
     expect($$('ol li', box).map(text)).toEqual([
       '의사랑 통계 › 진료통계 › 기간별처방통계를 열어 주세요.',
       "조회일을 최근 석 달로, 외/입 구분을 '전체'로 두고 [검색]을 눌러 주세요.",
-      '표 오른쪽 위 초록 엑셀 단추로 바탕화면 › ERP마감 폴더에 저장해 주세요.',
+      '표 오른쪽 위 초록 엑셀 단추로 ERP마감 폴더에 저장해 주세요.',
     ])
     expect(text($(':scope > p', box))).toBe('그다음 [코드 목록 읽기]를 눌러 주세요.')
     const button = $<HTMLButtonElement>('[data-reread]', box)
@@ -608,18 +610,18 @@ describe('AC-4214.3 AC-4206.5 [코드 목록 읽기](design.md 10-6 다섯 결�
     expect(text($('.notice.codes p'))).toContain('처방 코드 2,000개를 읽었어요.')
   })
 
-  it('AC-4214.3: missing이면 목록은 그대로이고 폴더에 엑셀이 없다는 글 + 3단계다', async () => {
+  it('AC-4214.3 AC-4214.6: missing이면 목록은 그대로이고 ERP마감 폴더에 엑셀이 없다는 글 + 3단계다', async () => {
     const { local, data } = await open({ codes: CODES, reply: answer({ state: 'missing', from: null, to: null, value: null, codes: [] }) })
     $<HTMLButtonElement>('[data-reread]').click()
     await flush()
     expect(local.set).not.toHaveBeenCalled()
     expect(data[UIS_CODES_KEY]).toEqual(CODES)
     const box = $('.notice.codes')
-    expect(text($('.said', box))).toBe('바탕화면 › ERP마감 폴더에 기간별처방통계 엑셀이 없어요.')
+    expect(text($('.said', box))).toBe('ERP마감 폴더에 기간별처방통계 엑셀이 없어요.')
     expect($$('ol li', box).map(text)).toEqual([
       '의사랑 통계 › 진료통계 › 기간별처방통계를 열어 주세요.',
       "조회일을 최근 석 달로, 외/입 구분을 '전체'로 두고 [검색]을 눌러 주세요.",
-      '표 오른쪽 위 초록 엑셀 단추로 바탕화면 › ERP마감 폴더에 저장해 주세요.',
+      '표 오른쪽 위 초록 엑셀 단추로 ERP마감 폴더에 저장해 주세요.',
     ])
     // 앞서 읽은 목록 줄은 그대로 보인다
     expect(text($('p', box))).toBe(
@@ -627,21 +629,21 @@ describe('AC-4214.3 AC-4206.5 [코드 목록 읽기](design.md 10-6 다섯 결�
     )
   })
 
-  it('AC-4214.3: 목록이 없을 때 missing이면 주황 상자에 그 글이 더해진다(3단계는 한 벌)', async () => {
+  it('AC-4214.3 AC-4214.6: 목록이 없을 때 missing이면 주황 상자에 그 글이 더해진다(3단계는 한 벌)', async () => {
     await open({ reply: answer({ state: 'missing', from: null, to: null, value: null, codes: [] }) })
     $<HTMLButtonElement>('[data-reread]').click()
     await flush()
     const box = $('.notice.nofile')
     expect(text($('b', box))).toBe('처방 코드 목록이 아직 없어요.')
-    expect(text($('.said', box))).toBe('바탕화면 › ERP마감 폴더에 기간별처방통계 엑셀이 없어요.')
+    expect(text($('.said', box))).toBe('ERP마감 폴더에 기간별처방통계 엑셀이 없어요.')
     expect($$('ol', box)).toHaveLength(1)
   })
 
   it.each([
     ['notAll', { state: 'notAll', from: '2026-09-01', to: '2026-11-23', value: '외래' }, "기간별처방통계 엑셀의 외/입 구분이 '외래'예요. '전체'로 다시 저장해 주세요."],
-    ['twice', { state: 'twice', from: null, to: null, value: null }, '기간별처방통계 엑셀이 2개 있어요. 하나만 남겨 주세요.'],
+    ['twice', { state: 'twice', from: null, to: null, value: null }, '기간별처방통계 엑셀이 여러 개 있어요. 하나만 남겨 주세요.'],
     ['open', { state: 'open', from: null, to: null, value: null }, '기간별처방통계 엑셀이 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.'],
-  ])('AC-4214.3 AC-4206.5: %s면 목록은 그대로(답에 코드가 있어도 받지 않음)이고 design.md 10-6 글이다', async (_, got, line) => {
+  ])('AC-4214.3 AC-4214.6 AC-4206.5: %s면 목록은 그대로(답에 코드가 있어도 받지 않음)이고 design.md 10-6 글이다(twice는 수 없이)', async (_, got, line) => {
     const { local, data } = await open({ codes: CODES, reply: answer({ ...got, codes: NEW.codes }) })
     $<HTMLButtonElement>('[data-reread]').click()
     await flush()
@@ -854,5 +856,39 @@ describe('AC-4214.2 화면 모양(시안에만 있는 모양은 의사랑 화면
       expect(css, sel).toContain(sel)
     }
     expect(css).toContain('--warning-soft')
+  })
+})
+
+describe("AC-4214.6 설정 화면 폴더 글은 모두 'ERP마감 폴더'(design.md 10-6 ★ 폴더 글, 고침 10)", () => {
+  it("AC-4214.6: 맨 위 상자 · 3단계 · missing · 표 앞 글 어디에도 '바탕화면 ›' · '사용자 폴더 ›' 글이 없다(코드 목록 답에 폴더 자리가 없어서)", async () => {
+    await open({ reply: answer({ state: 'missing', from: null, to: null, value: null, codes: [] }) })
+    $<HTMLButtonElement>('[data-reread]').click()
+    await flush()
+    const all = text($('#optMain'))
+    expect(all).toContain('ERP마감 폴더에 기간별처방통계 엑셀이 없어요.')
+    expect(all).not.toMatch(/›\s*ERP마감/)
+    expect(all.match(/ERP마감 폴더에 저장해 주세요\./g)).toHaveLength(1)
+  })
+})
+
+describe('AC-4211.6 도우미 부르기 타입 Send는 uisTypes.ts 한 곳(design.md 8-1, 고침 12)', () => {
+  const SRC = path.join(EXT, 'src')
+  const sources = () => readdirSync(SRC).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.endsWith('.d.ts'))
+  const code = (f: string) => readFileSync(path.join(SRC, f), 'utf8')
+
+  it("AC-4211.6: 확장 소스에서 'type Send' 정의는 uisTypes.ts 한 곳뿐이고 그곳이 내보낸다", () => {
+    expect(sources().filter((f) => /\btype\s+Send\b/.test(code(f)))).toEqual(['uisTypes.ts'])
+    expect(code('uisTypes.ts')).toMatch(/^export type Send = \(cmd: ClosingCommand, args: Record<string, unknown>\) => Promise<unknown>$/m)
+  })
+
+  it('AC-4211.6: Send를 쓰는 소스(uisOptions.ts · options.ts · uisFlow.ts가 있으면 그것도)는 모두 uisTypes.js에서 가져온다', () => {
+    const users = sources().filter((f) => f !== 'uisTypes.ts' && /\bSend\b/.test(code(f)))
+    expect(users).toEqual(expect.arrayContaining(['options.ts', 'uisOptions.ts']))
+    for (const f of users) {
+      const from = [...code(f).matchAll(/^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/gm)]
+        .filter(([, names]) => names.split(',').some((n) => n.trim().replace(/^type\s+/, '') === 'Send'))
+        .map(([, , spec]) => spec)
+      expect(from, f).toEqual(['./uisTypes.js'])
+    }
   })
 })
