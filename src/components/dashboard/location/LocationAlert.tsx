@@ -1,3 +1,4 @@
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { distText } from '@/lib/location/coords'
 import type { AlertLine } from './alertLines'
@@ -85,9 +86,12 @@ export function LocationAlert({ events, onClose }: { events: readonly AlertLine[
             </span>
             <Go />
           </a>
-          <button type="button" className={CLOSE} aria-label={`${e.candidateName ?? e.clinicName} 알림 닫기`} onClick={() => onClose(e.id)}>
-            닫기
-          </button>
+          {/* 다른 의원을 보는 중(admin-view AC-8008.3)이면 [닫기](본 것으로 적기)가 없다 */}
+          <WriteOnly>
+            <button type="button" className={CLOSE} aria-label={`${e.candidateName ?? e.clinicName} 알림 닫기`} onClick={() => onClose(e.id)}>
+              닫기
+            </button>
+          </WriteOnly>
         </div>
       ))}
       {rest > 0 && (

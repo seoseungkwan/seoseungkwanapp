@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useId, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { TAG_LABEL } from '@/lib/ai/markdown'
 import { briefGroups, compareMonths, longMonth, madeAtText, modelBasis, partialNotice, shortMonth } from '@/lib/ai/reportScreen'
@@ -155,18 +156,21 @@ function MakeBlock({
           ))}
         </ul>
       )}
-      <div className={ACTIONS}>
-        {/* 기다림은 disabled가 아니라 aria-busy다. 누름 처리가 없고 useAiBrief도 막아 다시 눌러도 POST는 하나다 */}
-        <button
-          type="button"
-          aria-busy={busy ? 'true' : undefined}
-          onClick={busy ? undefined : onCreate}
-          className={`${ds.button.primary} max-md:w-full`}
-        >
-          {busy ? '만드는 중' : code !== null ? '다시 분석' : 'AI 리포트 만들기'}
-        </button>
-        <span className={SMALL_NOTE}>{busy ? `지금까지 ${seconds}초` : SENDS_ONLY}</span>
-      </div>
+      {/* 다른 의원을 보는 중(admin-view AC-8008.3)이면 [AI 리포트 만들기]·[다시 분석]과 그 옆 글이 없다 */}
+      <WriteOnly>
+        <div className={ACTIONS}>
+          {/* 기다림은 disabled가 아니라 aria-busy다. 누름 처리가 없고 useAiBrief도 막아 다시 눌러도 POST는 하나다 */}
+          <button
+            type="button"
+            aria-busy={busy ? 'true' : undefined}
+            onClick={busy ? undefined : onCreate}
+            className={`${ds.button.primary} max-md:w-full`}
+          >
+            {busy ? '만드는 중' : code !== null ? '다시 분석' : 'AI 리포트 만들기'}
+          </button>
+          <span className={SMALL_NOTE}>{busy ? `지금까지 ${seconds}초` : SENDS_ONLY}</span>
+        </div>
+      </WriteOnly>
     </>
   )
 }

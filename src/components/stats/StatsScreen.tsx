@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useViewing, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { addDays, compareYmd, monthRange, todayInKorea } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
@@ -223,7 +224,9 @@ function SourceSummary({ data, today, notSaved }: { data: StatsData; today: stri
   )
 }
 
-export function StatsScreen({ hospitalName, today }: { hospitalName: string; today: string }) {
+export function StatsScreen({ hospitalName: myName, today }: { hospitalName: string; today: string }) {
+  // 다른 의원을 보는 중(admin-view AC-8008.1)이면 칸 복사 글·보고 문장의 이름은 보는 의원 이름이다
+  const hospitalName = useViewing()?.name ?? myName
   const [choice, setChoice] = useState<StatsChoice>(DEFAULT_STATS_PERIOD)
   const data = useStatsData(choice, today)
   const { todayDone } = data
@@ -446,27 +449,30 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   return (
     <div data-st-canvas="">
       <h1 className="text-title font-semibold text-ink">통계</h1>
+      {/* 다른 의원을 보는 중(admin-view AC-8008.1)이면 불러오기 상자 전체·[이어서 불러오기]·[매출만 다시 읽기]·[다시 저장]이 없다(읽기만) */}
       {/* 끊김 카드는 끊겨 있는 동안만 참이라 [다시 확인]을 누를 때 지운다(AC-514.12) */}
-      <SourcePicker
-        state={state}
-        helloError={helloError}
-        today={today}
-        range={range}
-        job={job}
-        progress={job === 'bit' ? (revenueLine ?? partLine) : null}
-        onRetry={() => {
-          setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
-          retry()
-        }}
-        onLoad={loadFromBit}
-        onFiles={takeFiles}
-        canFold={canFold}
-        summary={showSections && (!readFailed || unsaved !== null) ? <SourceSummary data={data} today={today} notSaved={incomplete !== null} /> : null}
-      />
-      {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10). 개인정보 줄은 불러오기 상자 펼칠 칸 안이다(AC-4001.1) */}
-      {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null || state !== 'ready'} onResume={resumeLoad} />}
-      {/* 매출만 실패 상자(stats-revenue AC-4108.5): 나눠 읽기 상자 다음. [매출만 다시 읽기]도 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다 */}
-      {revenueFailure !== null && revenueRun !== null && <RevenueFailBox failure={revenueFailure} busy={job !== null || state !== 'ready'} onRetry={rereadRevenue} />}
+      <WriteOnly>
+        <SourcePicker
+          state={state}
+          helloError={helloError}
+          today={today}
+          range={range}
+          job={job}
+          progress={job === 'bit' ? (revenueLine ?? partLine) : null}
+          onRetry={() => {
+            setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
+            retry()
+          }}
+          onLoad={loadFromBit}
+          onFiles={takeFiles}
+          canFold={canFold}
+          summary={showSections && (!readFailed || unsaved !== null) ? <SourceSummary data={data} today={today} notSaved={incomplete !== null} /> : null}
+        />
+        {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10). 개인정보 줄은 불러오기 상자 펼칠 칸 안이다(AC-4001.1) */}
+        {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null || state !== 'ready'} onResume={resumeLoad} />}
+        {/* 매출만 실패 상자(stats-revenue AC-4108.5): 나눠 읽기 상자 다음. [매출만 다시 읽기]도 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다 */}
+        {revenueFailure !== null && revenueRun !== null && <RevenueFailBox failure={revenueFailure} busy={job !== null || state !== 'ready'} onRetry={rereadRevenue} />}
+      </WriteOnly>
 
       {/* 세 칸 답의 오류는 처방별 답과 번호가 다를 때만 더한다(같은 번호 카드가 둘이지 않게) */}
       {[actionError, answered?.error ?? null, bitAnswered?.error != null && bitAnswered.error !== answered?.error ? bitAnswered.error : null].map(
@@ -484,15 +490,17 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         </div>
       ))}
       {unsaved !== null && (
-        <ErrorWithAction
-          code="E-STATS-SAVE-FAILED"
-          note="방금 불러온 숫자는 화면에 그대로 있어요."
-          action={
-            <button type="button" aria-disabled={job !== null || undefined} className={`${ds.button.secondarySmall} max-md:w-full`} onClick={retrySave}>
-              {saving ? '저장하는 중' : '다시 저장'}
-            </button>
-          }
-        />
+        <WriteOnly>
+          <ErrorWithAction
+            code="E-STATS-SAVE-FAILED"
+            note="방금 불러온 숫자는 화면에 그대로 있어요."
+            action={
+              <button type="button" aria-disabled={job !== null || undefined} className={`${ds.button.secondarySmall} max-md:w-full`} onClick={retrySave}>
+                {saving ? '저장하는 중' : '다시 저장'}
+              </button>
+            }
+          />
+        </WriteOnly>
       )}
       {readFailed && (
         <ErrorWithAction

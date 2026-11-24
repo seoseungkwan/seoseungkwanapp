@@ -3,6 +3,7 @@ import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { DayPayload } from '@/types/payload'
 import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
+import { enterBackground } from '@/components/claim/bitLane'
 import { requestLoad } from '@/workers/statsClient'
 import { LOOKBACK_DAYS, READ_TIMEOUT_MS, readBitDays, type StatsWorkerLike } from './readBitDays'
 
@@ -600,5 +601,83 @@ describe('readBitDays', () => {
       })
       expect(connect).not.toHaveBeenCalled()
     })
+  })
+})
+
+// ── admin-view: 비트 통로 차례(AC-8021.8). 앱이 쓰는 bitLane 하나를 시험이 저절로 올리기처럼 잡는다 — 시험마다 놓는다 ──
+describe('readBitDays: 비트 통로 차례 (admin-view AC-8021.8)', () => {
+  it('AC-8021.8: 쥔 쪽이 없으면 지금처럼 바로 읽고, 읽는 동안만 통로를 쥔다(그동안 저절로 올리기는 잡지 못함)', async () => {
+    const t = setup({ 'stats.rows': 'silent' })
+    const reading = t.read()
+    await vi.waitFor(() => expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows']))
+    expect(enterBackground(vi.fn())).toBeNull()
+    for (const reply of chunkEnd(t.port.sent[2].id)) t.port.reply(reply)
+    await expect(reading).resolves.toEqual({ kind: 'days', days: [DAY] })
+    const release = enterBackground(vi.fn())
+    expect(release).toEqual(expect.any(Function))
+    release!()
+  })
+
+  it('AC-8021.8: 저절로 올리기가 쥐고 있으면 끊기를 알리고(stop 한 번) Worker·통로를 만들지 않고 기다렸다가, 놓인 뒤에 지금 차례대로 읽는다', async () => {
+    const t = setup()
+    const stop = vi.fn()
+    const release = enterBackground(stop)!
+    let answer: unknown = null
+    void t.read().then((r) => (answer = r))
+    await Promise.resolve()
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(t.createWorker).not.toHaveBeenCalled()
+    expect(t.commands()).toEqual([])
+
+    release()
+    await vi.waitFor(() => expect(answer).toEqual({ kind: 'days', days: [DAY] }))
+    expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
+    expect(stop).toHaveBeenCalledTimes(1)
+    t.expectClosed()
+    const again = enterBackground(vi.fn())
+    expect(again).toEqual(expect.any(Function))
+    again!()
+  })
+
+  it('AC-8021.8: 기다리는 중에 화면을 떠나면 not-ready이고 놓여도 읽지 않으며 차례에서 빠진다', async () => {
+    const t = setup()
+    const release = enterBackground(vi.fn())!
+    const leaving = new AbortController()
+    const reading = t.read(undefined, leaving.signal)
+    leaving.abort()
+    await expect(reading).resolves.toEqual({ kind: 'not-ready' })
+    release()
+    await Promise.resolve()
+    expect(t.createWorker).not.toHaveBeenCalled()
+    expect(t.commands()).toEqual([])
+    const again = enterBackground(vi.fn())
+    expect(again).toEqual(expect.any(Function))
+    again!()
+  })
+
+  it('AC-8021.8: 기다리는 시간도 읽기 전체 3분 안이다(놓이지 않으면 E-BIT-READ-FAILED, 차례에서 빠짐)', async () => {
+    vi.useFakeTimers()
+    const t = setup()
+    const release = enterBackground(vi.fn())!
+    let answer: unknown = null
+    void t.read().then((r) => (answer = r))
+    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS)
+    expect(answer).toEqual({ kind: 'failed', code: 'E-BIT-READ-FAILED' })
+    expect(t.createWorker).not.toHaveBeenCalled()
+    release()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.createWorker).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    const again = enterBackground(vi.fn())
+    expect(again).toEqual(expect.any(Function))
+    again!()
+  })
+
+  it('AC-8021.8: 실패해도(확장에 붙지 못함) 통로 차례에서 빠진다', async () => {
+    const t = setup({ hello: error('E-BRIDGE-BAD-REPLY') })
+    await t.read()
+    const release = enterBackground(vi.fn())
+    expect(release).toEqual(expect.any(Function))
+    release!()
   })
 })

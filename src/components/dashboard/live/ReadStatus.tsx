@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Icon } from '@/components/common/Icon'
 import { NOTE } from '@/components/dashboard/briefing/layout'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import type { ErrorCode } from '@/types/errors'
@@ -146,7 +147,10 @@ export function StatusHeader({
   const refreshing = savedRefresh?.refreshing === true
   const busy = reading || refreshing
   const showSaved = savedRefresh !== null && readAt === null && !savedRefresh.failed
-  const showBit = bitReadable && !failed
+  // 다른 의원을 보는 중(admin-view AC-8008.3)이면 이 PC 비트 단추·연결 안내가 없고 [저장된 숫자 새로고침]만이다
+  const readOnly = useReadOnly()
+  const showBit = bitReadable && !failed && !readOnly
+  const showConnect = !bitReadable && !readOnly
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-heading-m font-semibold text-ink max-md:text-title">대시보드</h1>
@@ -157,13 +161,13 @@ export function StatusHeader({
           <span>{when}</span>
         </p>
       )}
-      {(showSaved || showBit || !bitReadable) && (
+      {(showSaved || showBit || showConnect) && (
         <div className="ml-auto flex flex-wrap gap-2 max-md:ml-0 max-md:grid max-md:w-full">
           {showSaved && (
             <ReadButton label="저장된 숫자 새로고침" busyLabel="저장된 숫자 읽는 중" busy={refreshing} disabled={busy} onClick={savedRefresh.onRefresh} />
           )}
           {showBit && <ReadButton label="비트에서 다시 읽기" busyLabel="비트에서 읽는 중" busy={reading} disabled={busy} onClick={onReread} />}
-          {!bitReadable && (
+          {showConnect && (
             <Link href={CONNECT_CHECK} className={`${ds.button.secondarySmall} no-underline max-md:w-full`}>
               비트 PC 연결 안내
             </Link>
