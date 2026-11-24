@@ -253,6 +253,7 @@ describe('AC-034.5: 합친 뒤 설정 파일', () => {
         'helper-erp/tests/*.test.ts',
         'extension/**/*.test.ts',
         'extension-erp/**/*.test.ts',
+        'extension-erp-list/**/*.test.ts',
         'scripts/**/*.test.ts',
       ].sort(),
     )

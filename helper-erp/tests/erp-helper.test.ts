@@ -545,8 +545,8 @@ describe('AC-3801.4 청구 도우미 쪽은 갈래 시작(6754571c) 그대로', 
     return { status: result.status, output: `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}` }
   }
 
-  it('AC-3801.4: git diff --quiet 6754571c -- helper src extension 가 0으로 끝난다(Precheck.Core·Precheck.Windows·웹·기존 확장 한 글자도 안 바뀜)', () => {
-    const run = gitDiffQuiet(['helper', 'src', 'extension'])
+  it('AC-3801.4: git diff --quiet 6754571c -- helper src extension 가 0으로 끝난다(Precheck.Core·Precheck.Windows·웹·기존 확장 한 글자도 안 바뀜)(src/b2b-merge.test.ts는 spec erp-copy-list AC-3901.6이 따로 봄)', () => {
+    const run = gitDiffQuiet(['helper', 'src', 'extension', ':(exclude)src/b2b-merge.test.ts'])
     expect(run.status, run.output).toBe(0)
   })
 

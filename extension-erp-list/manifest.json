@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ERP 마감일지 입력 목록",
+  "version": "0.1.0",
+  "description": "이 PC의 ERP 도우미가 비트에서 센 마감일지 숫자를 날짜별 목록으로 보여 줍니다. 숫자를 누르면 복사되고 엑셀로도 받을 수 있습니다. ERP 화면은 건드리지 않습니다.",
+  "permissions": [
+    "nativeMessaging",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "extension-erp-list/src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "ERP 마감일지 입력 목록"
+  },
+  "options_page": "options.html",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzfxiT02Z+sy/5XkkLLplc9FgD5glkTKILJSePxTg7wYNZFA+9IATnnjFgJlPAkkv5uioN+ba3As/1bMQUuPoWpmsk7jcWUGuWhtUTEUcnVW/VadsCt4ha4ekfPAkW4aA296fkZ5XH/HzjALw7D6C58QC7lPrwGi7yp2QFPh92VKsZri00RvZi6KGTOQYo/EwAtm5KLulidUrXw/EN5I2l9NlH3wjT2s7NzgXVnZkA55p1vlOz80lt9DSVTAdi8GPSHM8G9YEdeCMGP4XegZzT8V9b0OhHToz/6YC1tHewjlsww28q2ulkw4orbThIN52HLLVO/R60c2gCodhCFiY+wIDAQAB"
+}

@@ -327,7 +327,17 @@ function bridgeSyntax({ declaresExtensionId }) {
 
 const eslintConfig = [
   {
-    ignores: ['.next/', 'node_modules/', '.claude/', 'scripts/', 'phases/', 'next-env.d.ts', 'extension/dist/', 'extension-erp/dist/'],
+    ignores: [
+      '.next/',
+      'node_modules/',
+      '.claude/',
+      'scripts/',
+      'phases/',
+      'next-env.d.ts',
+      'extension/dist/',
+      'extension-erp/dist/',
+      'extension-erp-list/dist/',
+    ],
   },
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
@@ -437,7 +447,8 @@ const eslintConfig = [
   },
   {
     // ERP 마감일지 확장(AC-3601.5): 시험 파일·하위 폴더도 같은 규칙 아래. chrome.storage(설정)는 된다
-    files: ['extension-erp/src/**'],
+    // ERP 마감일지 입력 목록 확장(spec erp-copy-list AC-3901.4)도 같은 규칙 아래(새 코드에 chrome.storage가 없는지는 그 시험이 글자로 본다)
+    files: ['extension-erp/src/**', 'extension-erp-list/src/**'],
     rules: {
       'no-restricted-globals': [
         'error',
