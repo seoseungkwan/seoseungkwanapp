@@ -1232,3 +1232,137 @@ describe('AC-8018.4 DB 제약: 새 열쇠가 있는 줄도 옛 줄도 stats_days
     30_000,
   )
 })
+
+// 데스크 계정 올리기(admin-view REQ-8024 AC-8024.6): saveStats(입력, { desk: true })는 같은 검사·크기 줄이기·200줄 묶음 뒤
+// 표 대신 정의자 함수 셋(desk_upsert_stats_months·desk_upsert_stats_days·desk_add_stats_coverage)을 부른다. 출처는 비트만(DB가 'bit'로 넣는다)
+describe('AC-8024.6 saveStats(입력, { desk: true })', () => {
+  type RpcCall = { fn: string; args: Record<string, unknown> }
+
+  function deskClient(fail: (call: RpcCall) => 'error' | 'throw' | null = () => null) {
+    const rpcs: RpcCall[] = []
+    const tables: string[] = []
+    const client = {
+      from(table: string) {
+        tables.push(table)
+        throw new Error(`데스크는 표를 바로 쓰지 않는다: ${table}`)
+      },
+      rpc(fn: string, args: Record<string, unknown>) {
+        const call = { fn, args }
+        return {
+          then(ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) {
+            return Promise.resolve()
+              .then(() => {
+                rpcs.push(call)
+                const how = fail(call)
+                if (how === 'throw') throw new Error(RAW)
+                return how === 'error' ? { data: null, error: { message: RAW } } : { data: null, error: null }
+              })
+              .then(ok, no)
+          },
+        }
+      },
+    }
+    return { client: client as unknown as SupabaseLike, rpcs, tables }
+  }
+
+  const withoutSource = (rows: Stored[]) =>
+    rows.map((row) => {
+      const rest = { ...row }
+      delete rest.source
+      return rest
+    })
+
+  it('AC-8024.6 달 → 일 → 덮은 기간 차례로 rpc 셋만 부르고(표 없음) 저장한 줄 수를 준다', async () => {
+    const { client, rpcs, tables } = deskClient()
+    const result = await saveStats(saveInput(), { client, desk: true })
+    expect(rpcs.map((call) => call.fn)).toEqual(['desk_upsert_stats_months', 'desk_upsert_stats_days', 'desk_add_stats_coverage'])
+    expect(Object.keys(rpcs[0].args)).toEqual(['p_rows'])
+    expect(Object.keys(rpcs[1].args)).toEqual(['p_rows'])
+    expect(rpcs[2].args).toEqual({ p_from: '2026-09-01', p_to: '2026-09-30' })
+    expect(tables).toEqual([])
+    expect(result).toEqual({ saved: 2 })
+  })
+
+  it('AC-8024.6 보내는 줄은 원장 upsert 줄에서 source만 뺀 것과 같다(같은 검사·sections 고르기·hospital_id 없음)', async () => {
+    const sections = [{ month: '2026-09', partial: false }]
+    const input = saveInput({ sections })
+    const owner = fakeClient()
+    const desk = deskClient()
+    await saveStats(input, { client: owner.client })
+    await saveStats(input, { client: desk.client, desk: true })
+    expect(desk.rpcs[0].args.p_rows).toEqual(withoutSource(writesTo(owner.calls, 'stats_months')[0].rows))
+    expect(desk.rpcs[1].args.p_rows).toEqual(withoutSource(writesTo(owner.calls, 'stats_days')[0].rows))
+    const [month] = desk.rpcs[0].args.p_rows as Stored[]
+    expect(Object.keys(month).sort()).toEqual(['month', 'partial', 'payload', 'sections'])
+    expect(month.payload).toEqual(validateMonthPayload(monthPayload('2026-09')))
+    expect(JSON.stringify(desk.rpcs)).not.toContain('hospital_id')
+  })
+
+  it('AC-8024.6 크기 줄이기도 같다: again을 넣으면 한도를 넘는 날은 again 없이 보낸다', async () => {
+    const big = dayPayload('2026-09-30', {
+      rx: Array.from({ length: 500 }, (_, i) => ({ ...rxRow(i, 'a'.repeat(30)), patients: 1 })),
+    })
+    const again = { ready: [true, true, true] as [boolean, boolean, boolean], rx: big.rx.map((line) => ({ code: line.code, starts: 1, back: [1, 1, 1], more: [1, 2, 3] })) }
+    const day = { ...big, again } as DayPayload
+    expect(tableBytes(day)).toBeGreaterThan(65_536)
+    expect(tableBytes(big)).toBeLessThanOrEqual(65_536)
+    const owner = fakeClient()
+    const desk = deskClient()
+    await saveStats(saveInput({ days: [day] }), { client: owner.client })
+    await saveStats(saveInput({ days: [day] }), { client: desk.client, desk: true })
+    const [sent] = desk.rpcs[1].args.p_rows as Stored[]
+    expect(sent.payload).not.toHaveProperty('again')
+    expect(desk.rpcs[1].args.p_rows).toEqual(withoutSource(writesTo(owner.calls, 'stats_days')[0].rows))
+  })
+
+  it('AC-8024.6 200줄씩 나눠 보낸다(450일 → 날 rpc 셋: 200·200·50)', async () => {
+    const days = eachDay({ from: '2025-01-01', to: addDays('2025-01-01', 449) }).map((day) => dayPayload(day))
+    const months = Array.from({ length: 15 }, (_, i) => monthPayload(addMonths('2025-01', i)))
+    const { client, rpcs } = deskClient()
+    const result = await saveStats(saveInput({ days, months, covered: { from: '2025-01-01', to: addDays('2025-01-01', 449) } }), { client, desk: true })
+    expect(rpcs.map((call) => [call.fn, (call.args.p_rows as unknown[] | undefined)?.length ?? null])).toEqual([
+      ['desk_upsert_stats_months', 15],
+      ['desk_upsert_stats_days', 200],
+      ['desk_upsert_stats_days', 200],
+      ['desk_upsert_stats_days', 50],
+      ['desk_add_stats_coverage', null],
+    ])
+    expect(result).toEqual({ saved: 465 })
+  })
+
+  it('AC-8024.6 덮은 기간이 없으면 덮음 rpc를 부르지 않는다', async () => {
+    const { client, rpcs } = deskClient()
+    await saveStats(saveInput({ covered: null }), { client, desk: true })
+    expect(rpcs.map((call) => call.fn)).toEqual(['desk_upsert_stats_months', 'desk_upsert_stats_days'])
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['파일 출처(데스크는 비트만)', { source: 'file' }],
+    ['검사를 못 지나는 날 줄', { days: [{ ...dayPayload('2026-09-30'), schemaVersion: 1 }] }],
+    ['표가 받지 않는 기간(800일)', { covered: { from: '2024-01-01', to: addDays('2024-01-01', 800) } }],
+  ])('AC-8024.6 %s이면 아무것도 보내지 않고 E-STATS-SAVE-FAILED', async (_name, over) => {
+    const { client, rpcs, tables } = deskClient()
+    const error = await failure(saveStats(saveInput(over), { client, desk: true }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(rpcs).toEqual([])
+    expect(tables).toEqual([])
+  })
+
+  it.each(['error', 'throw'] as const)('AC-8024.6 rpc가 %s이면 거기서 멈추고 E-STATS-SAVE-FAILED(서버 글 없음)', async (how) => {
+    const { client, rpcs } = deskClient((call) => (call.fn === 'desk_upsert_stats_days' ? how : null))
+    const error = await failure(saveStats(saveInput(), { client, desk: true }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(error.message).not.toContain('secret')
+    expect(rpcs.map((call) => call.fn)).toEqual(['desk_upsert_stats_months', 'desk_upsert_stats_days'])
+  })
+
+  it('AC-8024.6 desk가 없거나 거짓이면 지금 표 길 그대로다', async () => {
+    const { client, calls } = fakeClient()
+    await saveStats(saveInput(), { client, desk: false })
+    expect(calls.map((c) => [c.table, c.op])).toEqual([
+      ['stats_months', 'upsert'],
+      ['stats_days', 'upsert'],
+      ['stats_coverage', 'insert'],
+    ])
+  })
+})

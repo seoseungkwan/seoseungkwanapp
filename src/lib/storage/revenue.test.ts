@@ -515,3 +515,42 @@ describe('AC-4406.3 참고 금액 저장·읽기', () => {
     expect(row).toHaveProperty('roughTotal', null)
   })
 })
+
+// 데스크 계정 올리기(admin-view REQ-8024 AC-8024.6): 데스크는 같은 인자로 정의자 함수 desk_save_revenue_range만 부른다. 원장 부르기는 위 그대로다
+describe('AC-8024.6 createRevenueStore(client, { desk: true }).saveRange', () => {
+  it('AC-8024.6 desk_save_revenue_range 하나만 부르고, 인자는 원장 save_revenue_range와 글자 그대로 같다(표에 직접 쓰지 않는다)', async () => {
+    for (const result of [withCodes(), september(), { ...september(), dayCodes: [] }]) {
+      const owner = fakeClient()
+      const desk = fakeClient()
+      await createRevenueStore(owner.client).saveRange(RANGE, result)
+      await createRevenueStore(desk.client, { desk: true }).saveRange(RANGE, result)
+      expect(steps(desk.calls)).toEqual([['desk_save_revenue_range', 'rpc']])
+      expect(desk.calls[0].args).toEqual(owner.calls[0].args)
+      expect(Object.keys(desk.calls[0].args ?? {}).sort()).toEqual(RPC_KEYS)
+    }
+  })
+
+  it('AC-8024.6 데스크 저장 실패(오류 답·네트워크 예외)도 원장과 같은 E-REVENUE-SAVE-FAILED이고 서버 글을 옮기지 않는다', async () => {
+    const replies: ((call: Recorded) => Reply)[] = [
+      () => ({ error: { message: RAW } }),
+      () => {
+        throw new Error(RAW)
+      },
+    ]
+    for (const reply of replies) {
+      const { client } = fakeClient(reply)
+      expectFailure(await failure(() => createRevenueStore(client, { desk: true }).saveRange(RANGE, withCodes())), 'E-REVENUE-SAVE-FAILED')
+    }
+  })
+
+  it('AC-8024.6 데스크 가게도 열쇠 넷은 같고, { desk: false }·옵션 없음은 지금 save_revenue_range다', async () => {
+    const { client, calls } = fakeClient()
+    expect(Object.keys(createRevenueStore(client, { desk: true })).sort()).toEqual(['codeTotals', 'loadDays', 'monthCodes', 'saveRange'])
+    await createRevenueStore(client, { desk: false }).saveRange(RANGE, withCodes())
+    await createRevenueStore(client, {}).saveRange(RANGE, withCodes())
+    expect(steps(calls)).toEqual([
+      ['save_revenue_range', 'rpc'],
+      ['save_revenue_range', 'rpc'],
+    ])
+  })
+})

@@ -90,7 +90,8 @@ export function planLoad(today: string, range: StatsRange, span: LoadSpan): Load
 // 조각이 하나(save = read)면 거르는 것이 없어 Worker 값 그대로다. sections 열쇠가 없으면(옛 도우미) 넘기지 않는다.
 // read가 save 끝 뒤까지 읽은 조각(조각이 둘 이상일 때 가장 새 조각이 아닌 것)은 달·날 줄의 after30을 null로 보낸다(AC-3302.7):
 // '30일 넘어 다시 옴'은 read 끝날까지 센 수라 오늘보다 앞에서 끝나는 read로는 다 셀 수 없다. 같은 까닭으로 날 줄 처방 줄의 once(1회 신환)도 뺀다
-// (first90 AC-4409.3, 달 줄 처방 줄에는 once가 없다). 날 줄 sunap·달 줄 dropoff(통계 합계 저장 admin-view AC-8018.4)도 그 조각 read로 센 값이라 뺀다
+// (first90 AC-4409.3, 달 줄 처방 줄에는 once가 없다). 통계 합계(admin-view AC-8018.4를 AC-8021.10이 바꿈): 날 줄 sunap은 그날 접수만으로 세는
+// 수라 read 끝과 상관없이 남기고, 달 줄 dropoff는 그 달 + 석 달의 끝 ≤ read 끝인 달(석 달 넘게 지켜본 값)만 남기고 다른 달은 뺀다
 // (열쇠 없음 = '못 셈'). 다른 칸은 그대로다
 export function partSave(view: StatsLoaded, { save, read }: LoadPart): SaveInput {
   const firstMonth = monthOf(save.from)
@@ -100,8 +101,13 @@ export function partSave(view: StatsLoaded, { save, read }: LoadPart): SaveInput
   const sections = view.sections === undefined ? {} : { sections: view.sections === null ? null : view.sections.filter((row) => inMonths(row.month)) }
   const unsure = compareYmd(read.to, save.to) > 0
   const after30 = <T extends MonthPayload | DayPayload>(row: T): T => (unsure ? { ...row, revisit: { ...row.revisit, after30: null } } : row)
-  const dayRow = (row: DayPayload): DayPayload => (unsure ? without({ ...after30(row), rx: row.rx.map(withoutOnce) }, 'sunap') : row)
-  const monthRow = (row: MonthPayload): MonthPayload => (unsure ? without(after30(row), 'dropoff') : row)
+  const dayRow = (row: DayPayload): DayPayload => (unsure ? { ...after30(row), rx: row.rx.map(withoutOnce) } : row)
+  const watched = (month: string) => compareYmd(monthRange(addMonths(month, 3)).to, read.to) <= 0
+  const monthRow = (row: MonthPayload): MonthPayload => {
+    if (!unsure) return row
+    const kept = after30(row)
+    return watched(row.month) ? kept : without(kept, 'dropoff')
+  }
   return {
     months: (view.months ?? []).filter((row) => inMonths(row.month)).map(monthRow),
     days: (view.days ?? []).filter((row) => inDays(row.day)).map(dayRow),
