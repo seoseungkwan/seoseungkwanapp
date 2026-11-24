@@ -356,3 +356,44 @@ describe('IdleLogout — 1분 전 안내', () => {
     for (const spy of touched) expect(spy).not.toHaveBeenCalled()
   })
 })
+
+// admin-view REQ-8006 AC-8006.5: 오래 안 씀 로그아웃도 보기 쿠키(ssk_view)를 지운다 — 로그아웃을 부르기 전에
+describe('AC-8006.5 IdleLogout — 보기 쿠키 지우기', () => {
+  const CLEAR = 'ssk_view=; Path=/; SameSite=Lax; Secure; Max-Age=0'
+  let writes: string[] = []
+
+  beforeEach(() => {
+    writes = []
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => 'ssk_view=33333333-3333-4333-8333-333333333333',
+      set: (text: string) => void writes.push(text),
+    })
+  })
+  afterEach(() => {
+    delete (document as unknown as Record<string, unknown>).cookie
+  })
+
+  it('AC-8006.5: 30분이 되면 signOut()을 부르기 전에 보기 쿠키를 지우고, 그 뒤 /login으로 간다', async () => {
+    const seen: string[][] = []
+    signOut.mockImplementation(async () => {
+      seen.push([...writes])
+      return { error: null }
+    })
+    render(<IdleLogout />)
+    vi.advanceTimersByTime(TIMEOUT - 1)
+    expect(writes).toEqual([])
+    vi.advanceTimersByTime(1)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(seen).toEqual([[CLEAR]])
+    expect(writes).toEqual([CLEAR])
+  })
+
+  it('AC-8006.5: signOut()이 던져도 쿠키는 지웠고 /login으로 간다', async () => {
+    signOut.mockRejectedValue(new Error('network'))
+    render(<IdleLogout />)
+    vi.advanceTimersByTime(TIMEOUT)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(writes).toEqual([CLEAR])
+  })
+})

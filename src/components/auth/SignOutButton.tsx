@@ -2,9 +2,12 @@
 
 import type { ReactNode } from 'react'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import { dropViewKey } from '@/lib/supabase/viewKey'
 
-// 세션을 끊고 /login을 새로 연다(AC-003.6) → 메모리에 있던 화면 상태까지 사라진다. 파일럿 SignOutButton 이식
+// 세션을 끊고 /login을 새로 연다(AC-003.6) → 메모리에 있던 화면 상태까지 사라진다. 파일럿 SignOutButton 이식.
+// 끊기 전에 다른 의원 보기 쿠키(ssk_view)를 지운다(admin-view AC-8006.5 — 다음 로그인이 보던 의원으로 이어지지 않게)
 async function signOutAndLeave() {
+  dropViewKey()
   try {
     await supabaseBrowser().auth.signOut() // 기본(전역) → 갱신 토큰까지 끊는다. 돌려준 오류도 보지 않는다
   } catch {
