@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-uisarang",
-  "approved_at": "2026-11-24T05:32:09Z",
+  "approved_at": "2026-11-24T05:56:32Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "af418b004dd510fa01f901a78d872c547b151a28a3167ce23befcbe5e69c15db",
+  "spec_sha256": "7adb26be55e81b9bb2d170eb134195d8060111d7320f13c4eae3f96ecbf9664e",
   "scope": [
     ".gitignore",
     "extension-erp/README.md",
