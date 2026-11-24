@@ -6,6 +6,9 @@
 //   갈래 시작 커밋 6754571c 그대로다(AC-3801.4, git diff)
 // - spec erp-bit-anywhere TASK-2(REQ-3802): install.cmd 여섯 줄(PowerShell 전체 경로, 끝 번호 그대로, 0·1·2 밖이면 pause)을
 //   글자로 보고, 윈도우에서는 한글·괄호·&가 든 임시 폴더에서 PATH를 망가뜨린 채 실제로 돌려 본다(가짜 install.ps1만)
+// - spec erp-copy-list TASK-4(REQ-3902): ERP 도우미가 목록 확장('ERP 마감일지 입력 목록')도 받는다. Program 메시지 고리 줄이
+//   MessageLoop.Run(ErpCallers.ForMessageLoop(args, table), …)로, 등록 틀 allowed_origins가 [지금 확장, 목록 확장]으로 바뀐다(AC-3902.4,
+//   지금 AC-3611.3·AC-3601.2 시험의 그 두 기대값만 바꿈, 까닭: 이 명세). 판은 그대로(AC-3902.5)
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -41,6 +44,11 @@ const COMMANDS = 'helper-erp/commands.json'
 
 const HOST_NAME = 'com.seoseungkwan.erp_helper'
 const EXTENSION_ID = 'lkancaiekmoieooheifdimahhkejfmjc'
+/** spec erp-copy-list AC-3902.4: 목록 확장 manifest(ID는 그 key로 계산) */
+const LIST_MANIFEST = 'extension-erp-list/manifest.json'
+/** spec erp-copy-list AC-3902.4: Program 메시지 고리 줄(앞 = 이 기능 전, 뒤 = 지금) */
+const LOOP_BEFORE = 'return MessageLoop.Run(args, input, output, table, dispatcher, log.Write);'
+const LOOP_LINE = 'return MessageLoop.Run(ErpCallers.ForMessageLoop(args, table), input, output, table, dispatcher, log.Write);'
 const EXE = 'SeoseungkwanErpHelper'
 const REG_KEY = 'HKCU:\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.seoseungkwan.erp_helper'
 const REGISTER_MESSAGES = {
@@ -141,6 +149,20 @@ function readJson(rel: string): Record<string, unknown> {
 
 function sha256(rel: string): string {
   return createHash('sha256').update(readBytes(rel).toString('utf8').replace(/\r\n/g, '\n')).digest('hex')
+}
+
+/** 크롬 규칙: 공개키(DER) SHA-256 앞 16바이트를 16진수로 쓰고 0-f를 a-p로 바꾼 것이 확장 ID (spec erp-copy-list AC-3902.4) */
+function listExtensionId(): string {
+  const key = String(readJson(LIST_MANIFEST).key)
+  const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32)
+  return [...hex].map((c) => String.fromCharCode('a'.charCodeAt(0) + parseInt(c, 16))).join('')
+}
+
+/** 커밋 base의 파일 글자(git show) */
+function readAt(base: string, rel: string): string {
+  const run = spawnSync('git', ['show', `${base}:${rel}`], { cwd: ROOT, encoding: 'utf8' })
+  expect(run.status, `${run.stderr ?? ''}${run.error?.message ?? ''}`).toBe(0)
+  return run.stdout.replace(/^﻿/, '')
 }
 
 /** C# 글에서 // 주석과 /// 문서 주석을 지운다(코드 줄만 본다) */
@@ -372,7 +394,7 @@ describe('AC-3611.3 Program: --register 하나일 때만 등록, 아니면 ERP �
     expect(writes).toEqual(['WriteRegister(null)', 'WriteRegister(e.Code)', 'WriteRegister(ErrorCodes.Disconnected)'])
   })
 
-  it('AC-3611.3: 등록 모드가 아니면 기존 Program과 같은 차례: 표준 출력·오류 버림 → ErpCommandTable.Load → Dispatcher → ClosingCommands → 표준 입력 펌프 → MessageLoop.Run', () => {
+  it('AC-3611.3: 등록 모드가 아니면 기존 Program과 같은 차례: 표준 출력·오류 버림 → ErpCommandTable.Load → Dispatcher → ClosingCommands → 표준 입력 펌프 → MessageLoop.Run(인자는 spec erp-copy-list AC-3902.4로 ErpCallers.ForMessageLoop를 거침)', () => {
     const main = methodBody(program(), /static int Main\(string\[\] args\)/)
     expectOrder(
       main,
@@ -383,7 +405,7 @@ describe('AC-3611.3 Program: --register 하나일 때만 등록, 아니면 ERP �
         'var dispatcher = new Dispatcher(table, log.Write);',
         'ClosingCommands.Register(dispatcher, ErpServices.Create());',
         'new StdinPump(stdin, signal)',
-        'return MessageLoop.Run(args, input, output, table, dispatcher, log.Write);',
+        LOOP_LINE,
       ],
       'Main',
     )
@@ -658,7 +680,7 @@ describe('AC-3606.3 ERP 도우미 진단 기록: 시각·명령 이름·오류 �
 })
 
 describe('AC-3601.2 ERP 도우미 등록 틀 host-manifest.json', () => {
-  it('AC-3601.2: name은 com.seoseungkwan.erp_helper(ERP 명령 표 hostName)이고 allowed_origins는 새 확장 하나뿐이다', () => {
+  it('AC-3601.2 AC-3902.4: name은 com.seoseungkwan.erp_helper(ERP 명령 표 hostName)이고 allowed_origins는 지금 확장과 목록 확장 둘뿐이다(spec erp-copy-list로 목록 확장이 더해짐)', () => {
     const manifest = readJson(MANIFEST)
     const table = readJson(COMMANDS)
     expect(table.hostName).toBe(HOST_NAME)
@@ -668,7 +690,7 @@ describe('AC-3601.2 ERP 도우미 등록 틀 host-manifest.json', () => {
       description: 'ERP 마감일지 도우미',
       path: '__HELPER_EXE__',
       type: 'stdio',
-      allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+      allowed_origins: [`chrome-extension://${EXTENSION_ID}/`, `chrome-extension://${listExtensionId()}/`],
     })
     expect(read(MANIFEST)).not.toContain('*')
   })
@@ -678,6 +700,52 @@ describe('AC-3601.2 ERP 도우미 등록 틀 host-manifest.json', () => {
     const live = readJson('helper/install/host-manifest.json')
     expect(live.allowed_origins).toHaveLength(1)
     expect(live.allowed_origins).not.toContain(`chrome-extension://${EXTENSION_ID}/`)
+    expect(live.allowed_origins).not.toContain(`chrome-extension://${listExtensionId()}/`)
+  })
+})
+
+describe('AC-3902.4·AC-3902.5 ERP 도우미 하나가 목록 확장도 받는다(spec erp-copy-list TASK-4)', () => {
+  /** 이 갈래의 시안 커밋(spec erp-copy-list 기준) */
+  const BASE = 'ec536578'
+
+  it('AC-3902.4: Program은 메시지 고리 줄만 MessageLoop.Run(ErpCallers.ForMessageLoop(args, table), …)로 바뀌고(주석 spec erp-copy-list AC-3902.4) 등록 모드·차례·기록은 ec536578 그대로다', () => {
+    const now = read(PROGRAM)
+    const text = code(now)
+    expect(text.match(/MessageLoop\.Run\(/g)).toHaveLength(1)
+    expect(text).toContain(LOOP_LINE)
+    expect(text).not.toContain(LOOP_BEFORE)
+    expect(text.match(/ErpCallers\.ForMessageLoop\(/g)).toHaveLength(1)
+    expect(now).toContain('spec erp-copy-list AC-3902.4')
+    // 주석을 뺀 코드는 이 기능 전 Program에서 그 한 줄만 바꾼 것과 같다
+    const before = csBody(readAt(BASE, PROGRAM))
+    expect(before).toContain(LOOP_BEFORE)
+    expect(csBody(now)).toBe(before.replace(LOOP_BEFORE, LOOP_LINE))
+  })
+
+  it('AC-3902.4: 등록 틀 allowed_origins는 정확히 [지금 확장, 목록 확장](목록 확장 ID는 extension-erp-list/manifest.json key로 계산)이고 *가 없으며 다른 칸은 ec536578 그대로다', () => {
+    const listId = listExtensionId()
+    expect(listId).toMatch(/^[a-p]{32}$/)
+    expect(listId).not.toBe(EXTENSION_ID)
+    const manifest = readJson(MANIFEST)
+    expect(manifest.allowed_origins).toEqual([`chrome-extension://${EXTENSION_ID}/`, `chrome-extension://${listId}/`])
+    expect(JSON.stringify(manifest.allowed_origins)).not.toContain('*')
+    expect(read(MANIFEST)).not.toContain('*')
+    const before = JSON.parse(readAt(BASE, MANIFEST)) as Record<string, unknown>
+    expect(before.allowed_origins).toEqual([`chrome-extension://${EXTENSION_ID}/`])
+    expect(Object.keys(manifest)).toEqual(Object.keys(before))
+    expect({ ...manifest, allowed_origins: null }).toEqual({ ...before, allowed_origins: null })
+  })
+
+  it('AC-3902.4: commands.json·Directory.Build.props·install.ps1·install.cmd·uninstall.ps1·install/README.md는 ec536578 그대로다(git diff --quiet)', () => {
+    const files = [COMMANDS, 'helper-erp/Directory.Build.props', INSTALL_PS1, INSTALL_CMD, UNINSTALL_PS1, `${INSTALL}/README.md`]
+    const run = spawnSync('git', ['diff', '--quiet', BASE, '--', ...files], { cwd: ROOT, encoding: 'utf8' })
+    expect(run.status, `${run.stdout ?? ''}${run.stderr ?? ''}${run.error?.message ?? ''}`).toBe(0)
+  })
+
+  it('AC-3902.5: 판은 ERP 도우미 0.3.0·지금 확장 0.3.0 그대로, 목록 확장은 0.1.0이다', () => {
+    expect(/<Version>([^<]*)<\/Version>/.exec(read('helper-erp/Directory.Build.props'))?.[1]).toBe('0.3.0')
+    expect(readJson('extension-erp/manifest.json').version).toBe('0.3.0')
+    expect(readJson(LIST_MANIFEST).version).toBe('0.1.0')
   })
 })
 

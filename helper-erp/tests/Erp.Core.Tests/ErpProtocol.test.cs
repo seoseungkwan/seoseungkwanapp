@@ -188,4 +188,74 @@ public class ErpProtocolTests
         Assert.Equal(LogLine.Format(at, Fake.Chart, "x"), ErpLogLine.Format(at, Fake.Chart, "x"));
         Assert.Equal("2026-11-10T09:00:00.000+09:00 unknown -", LogLine.Format(at, "closing.day", null));
     }
+
+    // ---- 목록 확장도 받는다(spec erp-copy-list AC-3902.2): ERP 도우미처럼 MessageLoop.Run(ErpCallers.ForMessageLoop(args, table), …) ----
+
+    /// <summary>목록 확장 'ERP 마감일지 입력 목록' origin(extension-erp-list/manifest.json key로 계산, AC-3902.3).</summary>
+    private const string ListExtension = "chrome-extension://gaipapghcaabmmnldghknjmjkknahdae/";
+
+    [Fact(DisplayName = "AC-3902.2 목록 확장이 켜면(ForMessageLoop를 거쳐) 지금 확장과 똑같이 closing.codes·closing.day는 result, hello·claim.month·revenue.days는 E-HELPER-UNKNOWN-COMMAND로 답하고 계속, 입력이 닫히면 0")]
+    public void ListExtensionGetsSameAsNewExtension()
+    {
+        // 기존 OriginGuard(helper/, 고치지 않음)는 목록 확장 origin을 그대로는 모른다
+        Assert.False(OriginGuard.IsAllowed(new[] { ListExtension, "--parent-window=0" }, Table));
+
+        var outputs = new List<byte[]>();
+        foreach (var origin in new[] { ListExtension, NewExtension })
+        {
+            using var rig = Ready();
+            var outcome = Run(
+                rig,
+                ErpCallers.ForMessageLoop(new[] { origin, "--parent-window=0" }, Table),
+                Frame("closing.codes", "{}", "c-1"),
+                Frame("hello", "{}", "h-1"),
+                Frame("claim.month", "{\"month\":\"2026-10\"}", "m-1"),
+                Frame("revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}", "r-1"),
+                Frame("closing.day", "{\"date\":\"2026-11-09\",\"groups\":[{\"key\":\"carm\",\"codes\":[\"CARM1\"]}]}", "d-1"));
+
+            Assert.Equal(MessageLoop.ExitOk, outcome.Code);
+            Assert.Equal(new[] { "c-1", "h-1", "m-1", "r-1", "d-1" }, outcome.Replies.Select(reply => reply.GetProperty("id").GetString()));
+            Assert.Equal(new[] { "result", "error", "error", "error", "result" }, outcome.Replies.Select(Type));
+            foreach (var reply in outcome.Replies.Skip(1).Take(3)) Assert.Equal(ErrorCodes.UnknownCommand, reply.GetProperty("code").GetString());
+            Assert.Equal(ClosingFake.DayText, outcome.Replies[4].GetProperty("data").GetProperty("date").GetString());
+            Assert.Equal(
+                new (string?, string?)[]
+                {
+                    ("closing.codes", null),
+                    ("unknown", ErrorCodes.UnknownCommand),
+                    ("unknown", ErrorCodes.UnknownCommand),
+                    ("unknown", ErrorCodes.UnknownCommand),
+                    ("closing.day", null),
+                },
+                outcome.Log);
+            outputs.Add(outcome.Output);
+        }
+
+        // 두 확장이 받은 답은 바이트까지 같다
+        Assert.Equal(outputs[1], outputs[0]);
+    }
+
+    [Fact(DisplayName = "AC-3902.2 다른 origin(청구 확장·모르는 ID·대문자 목록 origin·끝 / 없음·인자 없음)은 ForMessageLoop를 거쳐도 하나도 읽지 않고 기록 하나(E-BRIDGE-REJECTED)만 남기고 ExitRejected, 비트를 열지 않는다")]
+    public void OtherOriginsStillRejected()
+    {
+        foreach (var args in new[]
+        {
+            new[] { OldExtension, "--parent-window=0" },
+            new[] { "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/", "--parent-window=0" },
+            new[] { ListExtension.ToUpperInvariant(), "--parent-window=0" },
+            new[] { ListExtension.TrimEnd('/'), "--parent-window=0" },
+            new string[0],
+        })
+        {
+            using var rig = Ready();
+            var outcome = Run(rig, ErpCallers.ForMessageLoop(args, Table), Frame("closing.codes", "{}", "c-1"), Frame("hello", "{}", "h-1"));
+
+            var label = string.Join(" ", args);
+            Assert.True(outcome.Code == MessageLoop.ExitRejected, label);
+            Assert.True(outcome.InputPosition == 0, label);
+            Assert.True(outcome.Output.Length == 0, label);
+            Assert.Equal(((string?)null, (string?)ErrorCodes.Rejected), Assert.Single(outcome.Log));
+            Assert.Empty(rig.Connector.Opened);
+        }
+    }
 }
