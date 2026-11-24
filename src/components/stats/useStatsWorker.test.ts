@@ -849,3 +849,46 @@ describe('first90 AC-4407.1 도우미 판', () => {
     await waitFor(() => expect(view.result.current.helperVersion).toBe('0.7.0'))
   })
 })
+
+// 통계 합계 저장(admin-view REQ-8018 AC-8018.4): 불러오기에 수납일지 Block·물리치료 묶음 정의를 실으면 Worker load 메시지의 sunap으로 간다(도우미 요청에는 안 감)
+describe('AC-8018.4 load의 sunap', () => {
+  const NOW = { type: 'load', from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: false, groups: [] }
+  const SUNAP = {
+    block: { id: 't00000000000000a1', codes: ['MM042'], name: '가짜 블록', sortOrder: 0 },
+    pt: { id: 't00000000000000a2', codes: ['B4001'], out: ['ZZ999'], name: '가짜 물리치료', sortOrder: 1 },
+  }
+
+  async function loadMessage(over: { sunap?: typeof SUNAP | null }) {
+    const { fake, view, port } = drawReady()
+    act(() => {
+      void view.result.current.load({ range: RANGE, today: TODAY, closeToday: false, ...over })
+    })
+    const request = port.last()
+    expect(request.cmd).toBe('stats.rows')
+    expect(request.args).toEqual(RANGE) // 도우미 요청에는 묶음 정의가 가지 않는다
+    act(() => port.reply({ v: 1, id: request.id, type: 'end', count: 0, bytes: 0, sha256: SHA }))
+    await waitFor(() => expect(fake.sent.some((message) => message.type === 'load')).toBe(true))
+    const message = fake.sent.at(-1)
+    fake.reply({ type: 'loaded', streamId: request.id as string, view: VIEW })
+    return { message, streamId: request.id as string }
+  }
+
+  it('AC-8018.4: sunap을 주면 Worker load 메시지에 열쇠·코드(빼는 처방)만 실린다(이름·차례 없음)', async () => {
+    const { message, streamId } = await loadMessage({ sunap: SUNAP })
+    expect(message).toEqual({
+      ...NOW,
+      streamId,
+      sunap: { block: { id: SUNAP.block.id, codes: ['MM042'] }, pt: { id: SUNAP.pt.id, codes: ['B4001'], out: ['ZZ999'] } },
+    })
+    expect(JSON.stringify(message)).not.toContain('가짜')
+  })
+
+  it.each([
+    ['sunap: null', { sunap: null }],
+    ['sunap 없음', {}],
+  ])('AC-8018.4: %s이면 Worker load 메시지에 sunap 칸이 없다(지금 모양 그대로)', async (_name, over) => {
+    const { message, streamId } = await loadMessage(over)
+    expect(message).toEqual({ ...NOW, streamId })
+    expect('sunap' in message!).toBe(false)
+  })
+})

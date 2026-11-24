@@ -337,6 +337,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   // 모든 조각을 저장했을 때만 참이다(그때만 매출을 읽는다, stats-revenue AC-4108.4)
   async function readParts(plan: LoadPlan, start: number, closeToday: boolean, savedTo: string): Promise<boolean> {
     const groupDefs = groups.forLoad()
+    // 수납일지 Block·물리치료 묶음 정의(누를 때 값, 없으면 null)도 실어 Worker가 날 저장 줄마다 그날 Block 전환을 센다(admin-view REQ-8018). 화면 글은 그대로다
+    const sunapAtLoad = sunapDefs
     const stop = (done: number, reason: string) => {
       setRun({ plan, done, savedTo, closeToday, stop: reason })
       return false
@@ -348,7 +350,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         let view: StatsLoaded
         try {
           // keep은 keepAt 조각만 참이라 메시지에 칸이 없다: 그 조각의 진료 줄이 Worker 메모리에 남아 처방별·세 칸이 그것으로 답한다
-          view = await load({ range: part.read, today, closeToday: i === 0 && closeToday, keep: i === plan.keepAt, groups: groupDefs })
+          view = await load({ range: part.read, today, closeToday: i === 0 && closeToday, keep: i === plan.keepAt, groups: groupDefs, sunap: sunapAtLoad })
         } catch (error) {
           if (i === 0) throw error
           return stop(i, `(오류 번호 ${errorCodeOf(error)})`)

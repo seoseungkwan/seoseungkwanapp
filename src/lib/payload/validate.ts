@@ -1,7 +1,18 @@
-import { isMonth, isYmd } from '@/lib/analytics/dates'
+import { compareYmd, isMonth, isYmd, monthRange } from '@/lib/analytics/dates'
 import type { FollowUp, Totals } from '@/types/analysis'
-import { AGAIN_WINDOWS, type AgainCounts, type DayAgainPayload, type DayPayload, type MonthPayload, type MonthSections, type RevisitPayload } from '@/types/payload'
+import {
+  AGAIN_WINDOWS,
+  type AgainCounts,
+  type DayAgainPayload,
+  type DayPayload,
+  type MonthDropoff,
+  type MonthPayload,
+  type MonthSections,
+  type RevisitPayload,
+} from '@/types/payload'
 import type { RxPick } from '@/types/rxPicks'
+import type { DropoffLine } from '@/types/stats'
+import type { SunapRates } from '@/types/sunap'
 
 // 저장 전·읽은 뒤에 쓰는 검사. 병원 계정(서버)에 들어가는 모양의 기준이다.
 // 하나라도 어긋나면 null — 고쳐 쓰지 않는다(비트가 원본이라 다시 넣으면 된다).
@@ -38,6 +49,12 @@ const REGION_KEYS = ['name', 'patients']
 const AGAIN_KEYS = ['ready', 'rx']
 const AGAIN_RX_KEYS = ['code', 'starts', 'back', 'more']
 const RX_PICK_KEYS = ['code', 'name']
+// 통계 합계 저장(admin-view REQ-8018): 날 줄 sunap(Block 전환 아홉 칸) · 달 줄 dropoff(몇 번까지 받나)
+const SUNAP_KEYS = ['visits', 'first_n', 'd90_n', 'ret_n', 'block_n', 'pt_n', 'first_block', 'd90_block', 'ret_block'] as const
+const DROPOFF_KEYS = ['asOf', 'lines']
+const DROPOFF_LINE_KEYS = ['group', 'n', 'atLeast', 'ten', 'once', 'average', 'drop']
+const DROPOFF_STEPS = 6 // atLeast = 1~6회 이상
+const MAX_DROP = 5 // 가장 많이 빠지는 곳 k는 1~5
 
 type Fields = Record<string, unknown>
 
@@ -238,8 +255,48 @@ function regionOf(value: unknown): MonthPayload['regions'][number] | null {
   return isText(name, true) && isCount(patients) && patients >= MIN_REGION_PATIENTS ? { name, patients } : null
 }
 
+// 날 줄 sunap(admin-view REQ-8018): 아홉 칸 모두 0 이상 정수이고 통계 탭 Block 전환과 같은 규칙으로 맞는다 —
+// 내원 = 초진 + 90일초진 + 재진, 구분별 Block ≤ 그 구분, Block = 구분별 Block의 합, 물리치료 ≤ 내원. 그 밖은 null
+function sunapOf(value: unknown): SunapRates | null {
+  const o = exactly(value, SUNAP_KEYS)
+  if (o === null || !SUNAP_KEYS.every((key) => isCount(o[key]))) return null
+  const rates = Object.fromEntries(SUNAP_KEYS.map((key) => [key, o[key] as number])) as SunapRates
+  const { visits, first_n, d90_n, ret_n, block_n, pt_n, first_block, d90_block, ret_block } = rates
+  if (visits !== first_n + d90_n + ret_n || block_n !== first_block + d90_block + ret_block) return null
+  if (first_block > first_n || d90_block > d90_n || ret_block > ret_n || pt_n > visits) return null
+  return rates
+}
+
+// 몇 번까지 받나 한 줄: 대상 1명 이상, 1회 이상 = 대상이고 k회 이상은 늘지 않는다, 10회 이상 ≤ 6회 이상, 1회만 = 1회 이상 − 2회 이상,
+// 평균은 1 이상 소수 1자리, 가장 많이 빠지는 곳은 1~5 정수. 묶음 열쇠와 숫자뿐이다
+function dropoffLineOf(value: unknown): DropoffLine | null {
+  const o = exactly(value, DROPOFF_LINE_KEYS)
+  if (o === null) return null
+  const { group, n, ten, once, average, drop } = o
+  if (typeof group !== 'string' || !GROUP_ID.test(group) || !isCount(n) || n < 1) return null
+  if (!Array.isArray(o.atLeast) || o.atLeast.length !== DROPOFF_STEPS || !o.atLeast.every(isCount)) return null
+  const atLeast = [...o.atLeast] as DropoffLine['atLeast']
+  if (atLeast[0] !== n || atLeast.some((count, k) => k > 0 && count > atLeast[k - 1]!)) return null
+  if (!isCount(ten) || ten > atLeast[DROPOFF_STEPS - 1] || !isCount(once) || once !== atLeast[0] - atLeast[1]) return null
+  if (typeof average !== 'number' || !Number.isFinite(average) || average < 1 || Math.round(average * 10) / 10 !== average) return null
+  if (!Number.isSafeInteger(drop) || (drop as number) < 1 || (drop as number) > MAX_DROP) return null
+  return { group, n, atLeast, ten, once, average, drop: drop as number }
+}
+
+// 달 줄 dropoff: 자료 끝 날(asOf)은 그 달 말일이거나 뒤(그 달 전체를 불러왔을 때만 센다), 같은 묶음 줄은 한 번만. 대상이 없는 달은 빈 목록
+function dropoffOf(value: unknown, month: string): MonthDropoff | null {
+  const o = exactly(value, DROPOFF_KEYS)
+  if (o === null) return null
+  const { asOf } = o
+  if (typeof asOf !== 'string' || !isYmd(asOf) || compareYmd(asOf, monthRange(month).to) < 0) return null
+  const lines = listOf(o.lines, MAX_GROUPS, dropoffLineOf)
+  if (lines === null || new Set(lines.map((line) => line.group)).size !== lines.length) return null
+  return { asOf, lines }
+}
+
+// dropoff는 선택 칸(admin-view REQ-8018): 없으면(이 기능 전에 저장한 줄) 돌려주는 객체에도 없다. undefined는 없는 것과 같다
 export function validateMonthPayload(value: unknown): MonthPayload | null {
-  const o = exactly(value, MONTH_KEYS)
+  const o = exactly(value, MONTH_KEYS, ['dropoff'])
   if (o === null || o.schemaVersion !== 2 || o.quality !== 'valid') return null
   const { month, partial } = o
   if (typeof month !== 'string' || !isMonth(month) || typeof partial !== 'boolean') return null
@@ -250,12 +307,15 @@ export function validateMonthPayload(value: unknown): MonthPayload | null {
   if (totals === null || rx === null || groups === null || regions === null) return null
   const revisit = revisitOf(o.revisit, totals.newPatients)
   if (revisit === null) return null
-  return { schemaVersion: 2, quality: 'valid', month, partial, totals, rx, groups, revisit, regions }
+  const payload: MonthPayload = { schemaVersion: 2, quality: 'valid', month, partial, totals, rx, groups, revisit, regions }
+  if (o.dropoff === undefined) return payload
+  const dropoff = dropoffOf(o.dropoff, month)
+  return dropoff === null ? null : { ...payload, dropoff }
 }
 
-// again은 선택 칸: 없으면(이 기능 전에 저장한 줄) 돌려주는 객체에도 없다. undefined는 없는 것과 같다(JSON에 남지 않는 값)
+// again·sunap은 선택 칸: 없으면(이 기능 전에 저장한 줄) 돌려주는 객체에도 없다. undefined는 없는 것과 같다(JSON에 남지 않는 값)
 export function validateDayPayload(value: unknown): DayPayload | null {
-  const o = exactly(value, DAY_KEYS, ['again'])
+  const o = exactly(value, DAY_KEYS, ['again', 'sunap'])
   if (o === null || o.schemaVersion !== 2 || o.quality !== 'valid') return null
   const { day, partial } = o
   if (typeof day !== 'string' || !isYmd(day) || typeof partial !== 'boolean') return null
@@ -266,9 +326,17 @@ export function validateDayPayload(value: unknown): DayPayload | null {
   const revisit = revisitOf(o.revisit, totals.newPatients)
   if (revisit === null) return null
   const payload: DayPayload = { schemaVersion: 2, quality: 'valid', day, partial, totals, rx, groups, revisit }
-  if (o.again === undefined) return payload
-  const again = againOf(o.again, rx, partial)
-  return again === null ? null : { ...payload, again }
+  if (o.again !== undefined) {
+    const again = againOf(o.again, rx, partial)
+    if (again === null) return null
+    payload.again = again
+  }
+  if (o.sunap !== undefined) {
+    const sunap = sunapOf(o.sunap)
+    if (sunap === null) return null
+    payload.sunap = sunap
+  }
+  return payload
 }
 
 /** 통계 탭에서 고른 처방 한 줄(AC-811.1). 코드는 isCode, 이름은 isText를 지나고 둘 다 제어 문자가 없어야 한다 */

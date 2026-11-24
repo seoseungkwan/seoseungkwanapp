@@ -56,12 +56,14 @@ export function useStatsWorker() {
       closeToday,
       groups,
       keep,
+      sunap,
     }: {
       range: DateRange
       today: string
       closeToday: boolean
       groups?: Promise<readonly RxGroupDef[]> // 처방별 추세 묶음 다시 읽기(treatment-trend AC-1205.7). 없으면 []
       keep?: boolean // false = 이 조각으로 Worker 메모리를 바꾸지 않는다(stats-load-range AC-3304.2). 도우미 요청에는 가지 않는다
+      sunap?: StatsSunapGroups | null // 수납일지 Block·물리치료 묶음 정의: Worker가 날 저장 줄마다 그날 Block 전환을 센다(admin-view REQ-8018). 도우미 요청에는 가지 않는다
     }) => {
       const { from, to } = range
       // 묶음은 비트 요청과 함께 읽고, 비트 요청(stats.rows)은 그것을 기다리지 않는다. 거절이면 묶음 없이 센다.
@@ -70,7 +72,7 @@ export function useStatsWorker() {
       // 시계는 이 요청이 끝날 때 멈춘다. 화면을 떠나면 useBridge가 연결을 닫아 요청이 끝나므로 시계가 남지 않는다
       const clock = setTimeout(close, STREAM_LIMIT_MS)
       const { id } = await stream('stats.rows', { from, to }).finally(() => clearTimeout(clock))
-      return requestLoad(worker.current(), { streamId: id, from, to, today, closeToday, groups: await defs, keep })
+      return requestLoad(worker.current(), { streamId: id, from, to, today, closeToday, groups: await defs, keep, sunap })
     },
     [close, stream, worker],
   )

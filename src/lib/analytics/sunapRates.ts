@@ -75,8 +75,8 @@ export function doctorBreakdown(visits: Iterable<DoctorVisit>, names: ReadonlyMa
   return { rows, total }
 }
 
-// 기간 안 환자·날마다 구분·Block·물리치료를 정해 하나씩 넘긴다
-function eachVisit(
+// 기간 안 환자·날마다 구분·Block·물리치료를 정해 하나씩 넘긴다. 통계 합계 저장(admin-view AC-8018.1)이 날마다 나눠 셀 때도 쓴다
+export function eachVisit(
   { from, to, days, rows, block, pt }: SunapRatesInput,
   visit: (line: { patient: number; date: string; kind: VisitKind; block: boolean; pt: boolean }) => void,
 ): void {

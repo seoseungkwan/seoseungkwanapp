@@ -4432,3 +4432,36 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
 
   const wideCallsOf = (span: DateRange) => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === span.from && range.to === span.to).length
 })
+
+// ── 통계 합계 저장(admin-view REQ-8018 AC-8018.4): 비트에서 불러올 때 수납일지 Block·물리치료 묶음 정의(열쇠·코드만)를 load에도 실어
+// Worker가 날 줄마다 sunap을 센다. 화면 글은 바뀌지 않는다. 묶음 이름은 지어낸 것이다 ──
+describe('AC-8018.4 비트 불러오기에 Block·물리치료 묶음 정의를 싣는다', () => {
+  const PT: RxGroup = { id: 'g1', name: '가짜 물리치료', codes: ['B200'], sortOrder: 1 }
+  const BIT_NOTE = '비트 PC에서 불러오면 보여요'
+  const loadSent = (sent: StatsWorkerRequest[]) => sent.find((message) => message.type === 'load') as StatsLoadRequest | undefined
+  // 수납일지 설정을 다 읽어 Block 전환 칸이 '불러오면 보여요'가 될 때까지 기다린다(묶음 정의가 준비된 때)
+  const sunapReady = () => waitFor(() => expect(within(card('stats-sunap')).queryAllByText(BIT_NOTE).length).toBeGreaterThan(0))
+
+  it('AC-8018.4: 수납일지 설정에서 두 묶음을 골랐으면 load 메시지의 sunap에 그 정의(열쇠·코드만)가 가고, 저장은 Worker 답 그대로다', async () => {
+    vi.mocked(listStatsRxGroups).mockResolvedValue([SAVED_GROUP, PT])
+    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: 'g0', ptGroup: 'g1', kinds: DEFAULT_RSV_KINDS })
+    const { port, fake } = await drawReady()
+    await sunapReady()
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    const load = loadSent(fake.sent)
+    expect(load?.sunap).toEqual({ block: defsOf(SAVED_GROUP)[0], pt: defsOf(PT)[0] })
+    expect(JSON.stringify(load)).not.toContain('가짜 물리치료')
+    expect(saveStats).toHaveBeenCalledWith({ months: LOADED.months, days: LOADED.days, covered: LOADED.covered, source: 'bit' })
+  })
+
+  it('AC-8018.4: 묶음을 안 골랐거나 고른 묶음이 지워졌으면 load 메시지에 sunap 칸이 없다(지금 모양 그대로)', async () => {
+    vi.mocked(listStatsRxGroups).mockResolvedValue([SAVED_GROUP, PT])
+    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: 'g0', ptGroup: 'g9-지워짐', kinds: DEFAULT_RSV_KINDS })
+    const { port, fake } = await drawReady()
+    await waitFor(() => expect(within(card('stats-sunap')).queryAllByText('수납일지 설정에서 Block·물리치료 묶음을 고르면 보여요').length).toBe(1))
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect('sunap' in loadSent(fake.sent)!).toBe(false)
+  })
+})

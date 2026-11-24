@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { addDays, addMonths, monthOf } from '@/lib/analytics/dates'
+import { addDays, addMonths, compareYmd, monthOf, monthRange } from '@/lib/analytics/dates'
 import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { Totals } from '@/types/analysis'
 import type {
@@ -2189,5 +2189,298 @@ describe('AC-6911.1·AC-6911.3 sectionsJob·sections: 금액 줄이 있는 답�
     for (const id of [...CHARTS, ...FIVE]) expect(json).not.toContain(id)
     for (const key of [...SECTIONS_FORBIDDEN_KEYS, ...FORBIDDEN_KEYS, 'amount', 'sum', 'pays']) expect(keysIn(period)).not.toContain(key)
     expect(valuesIn(period).every((text) => text === HEAT.id || DATE_TEXT.test(text))).toBe(true)
+  })
+})
+
+
+// ── 통계 합계 저장(admin-view REQ-8018): 불러올 때 날 줄에 그날 Block 전환 아홉 칸(sunap), 달 줄에 첫 진료가 그달인 신환의 몇 번까지 받나(dropoff) ──
+// 묶음 열쇠는 지어낸 값이다. Block = MM042, 물리치료 = B4001(위 AC-4906.3과 같은 정의)
+const SUM_SUNAP = { block: { id: 't00000000000000a1', codes: ['MM042'] }, pt: { id: 't00000000000000a2', codes: ['B4001'] } }
+const SUM_HEAT = { id: 't00000000000000b1', codes: ['MM042'] }
+const SUM_BLOOD = { id: 't00000000000000b2', codes: ['B4001'] }
+const SUM_GROUPS = [SUM_HEAT, SUM_BLOOD]
+const SUM_RATE_KEYS = ['block_n', 'd90_block', 'd90_n', 'first_block', 'first_n', 'pt_n', 'ret_block', 'ret_n', 'visits']
+const NO_RATES: SunapRates = { visits: 0, first_n: 0, d90_n: 0, ret_n: 0, block_n: 0, pt_n: 0, first_block: 0, d90_block: 0, ret_block: 0 }
+function sumRates(list: readonly SunapRates[]): SunapRates {
+  const total = { ...NO_RATES }
+  for (const rates of list) for (const key of SUM_RATE_KEYS as (keyof SunapRates)[]) total[key] += rates[key]
+  return total
+}
+function tabRates(view: BitSectionsView): SunapRates {
+  const rates = readyIn(view).sunap
+  if (rates === undefined) throw new Error('sunap이 없다')
+  return rates
+}
+function daySunap(view: StatsLoaded, day: string): SunapRates {
+  const rates = dayOf(view, day)?.sunap
+  if (rates === undefined) throw new Error(`${day} 날 줄에 sunap이 없다`)
+  return rates
+}
+const inSpan = (day: string, span: { from: string; to: string }) => compareYmd(day, span.from) >= 0 && compareYmd(day, span.to) <= 0
+// 그 달과 불러온 범위가 겹치는 기간(통계 탭에서 그 달을 고른 것과 같다)
+function monthSpan(month: string, range: { from: string; to: string }) {
+  const span = monthRange(month)
+  return { from: compareYmd(span.from, range.from) >= 0 ? span.from : range.from, to: compareYmd(span.to, range.to) <= 0 ? span.to : range.to }
+}
+type SumLine = { group: string; n: number; atLeast: number[]; ten: number; once: number }
+const additive = ({ group, n, atLeast, ten, once }: SumLine): SumLine => ({ group, n, atLeast, ten, once })
+// 묶음마다 대상·k회 이상·10회 이상·1회만을 더한다(평균은 반올림한 값이라 더하지 않는다)
+function summedLines(lines: readonly SumLine[]): SumLine[] {
+  return SUM_GROUPS.flatMap(({ id }) => {
+    const mine = lines.filter((line) => line.group === id)
+    if (mine.length === 0) return []
+    const sum = (pick: (line: SumLine) => number) => mine.reduce((total, line) => total + pick(line), 0)
+    return [{ group: id, n: sum((line) => line.n), atLeast: [0, 1, 2, 3, 4, 5].map((k) => sum((line) => line.atLeast[k]!)), ten: sum((line) => line.ten), once: sum((line) => line.once) }]
+  })
+}
+
+// 여러 달(6/1~11/1) v3 답. 첫 내원일은 넷째 칸이다. 자료 끝 날 11/1 − 30일 = 10/2
+// 1번 6월(MM042 2날) · 2번 7월(MM042 1날) · 3번 7월(MM042 3날, B4001 1날) · 4번 8월(B4001 1날)
+// 5번 9월(MM042 9/20·10/20 — 아직 다니는 중) · 6번 옛 환자(첫 내원 2025년)
+const MONTHS_FROM = '2026-06-01'
+const MONTHS_ROWS = [
+  [CHARTS[0], '20260601', 'MM042', '20260601'],
+  [CHARTS[0], '20260615', 'MM042', '20260601'],
+  [CHARTS[1], '20260703', 'MM042', '20260703'],
+  [CHARTS[2], '20260710', 'MM042', '20260710'],
+  [CHARTS[2], '20260710', 'B4001', '20260710'],
+  [CHARTS[2], '20260717', 'MM042', '20260710'],
+  [CHARTS[2], '20260724', 'MM042', '20260710'],
+  [CHARTS[3], '20260805', 'B4001', '20260805'],
+  [CHARTS[4], '20260920', 'MM042', '20260920'],
+  [CHARTS[4], '20261020', 'MM042', '20260920'],
+  [CHARTS[5], '20260602', 'MM042', '20250101'],
+  [CHARTS[5], '20261101', 'MM042', '20250101'],
+]
+const monthsJson = (from = MONTHS_FROM) => {
+  const rows = MONTHS_ROWS.filter(([, day]) => day! >= from.replaceAll('-', ''))
+  return v3Json({ from, rows, patientDays: receptionsOf(rows), days: [], doctorDays: [], visits: [] })
+}
+const MONTHS_OPTS = { ...OPTS, from: MONTHS_FROM, groups: SUM_GROUPS }
+const MONTHS_WHOLE = { from: MONTHS_FROM, to: TODAY }
+const GROUPED = { ...OPTS, groups: SUM_GROUPS }
+
+describe('AC-8018.1 loadJob: 묶음 정의를 실어 불러오면 날 줄마다 그날 Block 전환 아홉 칸(sunap)', () => {
+  it('AC-8018.1: 날 줄마다 sunap이 있고 그날 하루를 고른 통계 탭 Block 전환과 같다(9/2 · 10/5는 손으로 센 값)', () => {
+    const { view, bit } = loadJob(v4Json(), { ...OPTS, sunap: SUM_SUNAP })
+    expect(view.days?.map((day) => day.day)).toEqual(['2026-09-01', '2026-09-02', '2026-09-03', '2026-10-05', '2026-11-01'])
+    for (const day of view.days ?? []) {
+      expect(Object.keys(day.sunap ?? {}).sort()).toEqual(SUM_RATE_KEYS)
+      expect(day.sunap).toEqual(tabRates(sectionsJob(bit, { from: day.day, to: day.day, sunap: SUM_SUNAP })))
+      expect(validateDayPayload(day)).toStrictEqual(day)
+    }
+    // 9/2: 3번(신환·물리치료) · 4번(신환·Block)
+    expect(daySunap(view, '2026-09-02')).toEqual({ visits: 2, first_n: 2, d90_n: 0, ret_n: 0, block_n: 1, pt_n: 1, first_block: 1, d90_block: 0, ret_block: 0 })
+    // 10/5: 1번 90일초진 · Block
+    expect(daySunap(view, '2026-10-05')).toEqual({ visits: 1, first_n: 0, d90_n: 1, ret_n: 0, block_n: 1, pt_n: 0, first_block: 0, d90_block: 1, ret_block: 0 })
+  })
+
+  it('AC-8018.1: 날 sunap을 더하면 통계 탭 Block 전환 숫자와 같다(불러온 범위 전체 · 일부 기간, v3·v4·v5 답)', () => {
+    for (const text of [v3Json(), v4Json(), v5Json()]) {
+      const { view, bit } = loadJob(text, { ...OPTS, sunap: SUM_SUNAP })
+      for (const span of [WHOLE, OCTOBER_ON, SEPTEMBER]) {
+        const days = (view.days ?? []).filter((day) => inSpan(day.day, span)).map((day) => day.sunap!)
+        expect(sumRates(days)).toEqual(tabRates(sectionsJob(bit, { ...span, sunap: SUM_SUNAP })))
+      }
+    }
+    const whole = loadJob(v4Json(), { ...OPTS, sunap: SUM_SUNAP }).view
+    expect(sumRates((whole.days ?? []).map((day) => day.sunap!))).toEqual({ visits: 7, first_n: 5, d90_n: 1, ret_n: 1, block_n: 6, pt_n: 1, first_block: 4, d90_block: 1, ret_block: 1 })
+  })
+
+  it('AC-8018.1: 처방 없는 접수만 있는 환자도 그날 sunap 내원에 든다(Block·물리치료는 아님)', () => {
+    const patientDays = [...receptionsOf(ROWS), [NO_RX_CHART, '20261005', 1, '20250101']]
+    const { view } = loadJob(v3Json({ patientDays, people: [...PEOPLE, [NO_RX_CHART, null, null]] }), { ...OPTS, sunap: SUM_SUNAP })
+    expect(daySunap(view, '2026-10-05')).toEqual({ visits: 2, first_n: 0, d90_n: 0, ret_n: 2, block_n: 1, pt_n: 0, first_block: 0, d90_block: 0, ret_block: 1 })
+  })
+
+  it('AC-8018.1: 묶음 정의 없이 불러오면 날 줄에 sunap 열쇠가 없고 지금 화면 값과 같다. v2 답(옛 도우미)·달 줄은 정의가 있어도 열쇠가 없다', () => {
+    const plain = loadJob(v4Json(), OPTS).view
+    for (const day of plain.days ?? []) expect('sunap' in day).toBe(false)
+    const withSunap = loadJob(v4Json(), { ...OPTS, sunap: SUM_SUNAP }).view
+    const withoutSunap = (day: NonNullable<StatsLoaded['days']>[number]) => {
+      const copy = { ...day }
+      delete copy.sunap
+      return copy
+    }
+    expect({ ...withSunap, days: withSunap.days?.map(withoutSunap) }).toEqual(plain)
+    for (const day of loadJob(helperJson(), { ...OPTS, sunap: SUM_SUNAP }).view.days ?? []) expect('sunap' in day).toBe(false)
+    for (const month of withSunap.months ?? []) expect('sunap' in month).toBe(false)
+  })
+
+  it('AC-8018.1: 확인 건수가 있어 날 줄이 없으면(incomplete) 그대로 null이다', () => {
+    const summary = { visits: 7, patients: 6, newPatients: 5, noChart: 1, duplicate: 0, noFirst: 0 }
+    expect(loadJob(v3Json({ summary }), { ...OPTS, sunap: SUM_SUNAP }).view.days).toBeNull()
+  })
+})
+
+describe('AC-8018.2 loadJob: 묶음을 실어 불러오면 달 줄에 첫 진료가 그달인 신환의 몇 번까지 받나(dropoff)', () => {
+  it('AC-8018.2: 여러 달 — 달 전체가 불러온 범위 안인 달마다 asOf = 불러온 끝 날, 첫 진료가 그달인 신환만 센다(손으로 센 값)', () => {
+    const { view } = loadJob(monthsJson(), MONTHS_OPTS)
+    expect(view.months?.map((month) => month.month)).toEqual(['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'])
+    const dropoffOn = (month: string) => monthIn(view, month)?.dropoff
+    for (const month of ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10']) expect(dropoffOn(month)?.asOf).toBe(TODAY)
+    expect(dropoffOn('2026-06')?.lines).toEqual([{ group: SUM_HEAT.id, n: 1, atLeast: [1, 1, 0, 0, 0, 0], ten: 0, once: 0, average: 2, drop: 2 }])
+    expect(dropoffOn('2026-07')?.lines).toEqual([
+      { group: SUM_HEAT.id, n: 2, atLeast: [2, 1, 1, 0, 0, 0], ten: 0, once: 1, average: 2, drop: 1 },
+      { group: SUM_BLOOD.id, n: 1, atLeast: [1, 0, 0, 0, 0, 0], ten: 0, once: 1, average: 1, drop: 1 },
+    ])
+    expect(dropoffOn('2026-08')?.lines).toEqual([{ group: SUM_BLOOD.id, n: 1, atLeast: [1, 0, 0, 0, 0, 0], ten: 0, once: 1, average: 1, drop: 1 }])
+    expect(dropoffOn('2026-09')?.lines).toEqual([]) // 5번은 10/20에도 받아 아직 다니는 중
+    expect(dropoffOn('2026-10')?.lines).toEqual([])
+    expect('dropoff' in monthIn(view, '2026-11')!).toBe(false) // 11월은 11/1까지만 불러와 그달 신환을 다 보지 못했다
+    for (const month of view.months ?? []) expect(validateMonthPayload(month)).toStrictEqual(month)
+  })
+
+  it('AC-8018.2: 달 dropoff 줄을 묶음마다 더하면 통계 탭 몇 번까지 받나와 같다(대상·k회 이상·10회 이상·1회만, v3·v4·v5 답과 여러 달)', () => {
+    const cases: [string, typeof GROUPED, { from: string; to: string }][] = [
+      [monthsJson(), MONTHS_OPTS, MONTHS_WHOLE],
+      [v3Json(), GROUPED, WHOLE],
+      [v4Json(), GROUPED, WHOLE],
+      [v5Json(), GROUPED, WHOLE],
+    ]
+    for (const [text, opts, whole] of cases) {
+      const { view, bit } = loadJob(text, opts)
+      const tab = readyIn(sectionsJob(bit, whole)).dropoff ?? []
+      expect(tab.length).toBeGreaterThan(0)
+      expect(summedLines((view.months ?? []).flatMap((month) => month.dropoff?.lines ?? []))).toEqual(tab.map(additive))
+    }
+    // 한 달에 대상이 모두 들면 그달 줄이 통계 탭 줄 그대로다(평균·빠지는 곳까지)
+    const { view, bit } = loadJob(v3Json(), GROUPED)
+    expect(monthIn(view, '2026-09')?.dropoff).toEqual({ asOf: TODAY, lines: readyIn(sectionsJob(bit, WHOLE)).dropoff })
+    expect(monthIn(view, '2026-10')?.dropoff).toEqual({ asOf: TODAY, lines: [] })
+  })
+
+  it('AC-8018.2: 범위 첫날이 달 중간이면 그 첫 달에는 열쇠가 없다', () => {
+    const { view } = loadJob(monthsJson('2026-06-02'), { ...MONTHS_OPTS, from: '2026-06-02' })
+    expect(view.months?.[0]?.month).toBe('2026-06')
+    expect('dropoff' in view.months![0]!).toBe(false)
+    expect(monthIn(view, '2026-07')?.dropoff?.lines).toHaveLength(2)
+  })
+
+  it('AC-8018.2: 묶음 없이 불러오면(없음·빈 목록) 달 줄에 dropoff 열쇠가 없다. v2 답은 묶음이 있어도 없고, 날 줄에는 두지 않으며, 다른 칸은 묶음 없이 부른 값과 같다', () => {
+    const plain = loadJob(v3Json(), OPTS).view
+    for (const view of [plain, loadJob(v3Json(), { ...OPTS, groups: [] }).view]) for (const month of view.months ?? []) expect('dropoff' in month).toBe(false)
+    for (const month of loadJob(helperJson(), GROUPED).view.months ?? []) expect('dropoff' in month).toBe(false)
+    const grouped = loadJob(v3Json(), GROUPED).view
+    for (const day of grouped.days ?? []) expect('dropoff' in day).toBe(false)
+    const keysOf = (month: object) => Object.keys(month).filter((key) => key !== 'dropoff').sort()
+    for (const month of grouped.months ?? []) expect(keysOf(month)).toEqual(keysOf(plain.months![0]!))
+  })
+})
+
+describe('AC-8018.3 이미 저장하는 달 줄 rx·sections.mix는 통계 탭 숫자와 같다(새 열쇠 없이)', () => {
+  const byCode = <T extends { code: string }>(lines: readonly T[]) => [...lines].sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+  const counts = (lines: readonly { code: string; patients: number; newPatients: number; returning: number }[]) =>
+    lines.map(({ code, patients, newPatients, returning }) => [code, patients, newPatients, returning])
+
+  it('AC-8018.3: 달 줄 payload.rx의 처방마다 환자·신환·재진 = 그달을 고른 처방별 신환·재진(splitJob) 줄의 합계·신환·재진(v2~v5 답과 여러 달)', () => {
+    const cases: [string, typeof OPTS][] = [
+      [helperJson(), OPTS],
+      [v3Json(), OPTS],
+      [v4Json(), OPTS],
+      [v5Json(), OPTS],
+      [monthsJson(), MONTHS_OPTS],
+    ]
+    for (const [text, opts] of cases) {
+      const { view, memory } = loadJob(text, opts)
+      expect(view.months?.length).toBeGreaterThan(0)
+      for (const month of view.months ?? []) {
+        const split = splitIn(splitJob(memory, monthSpan(month.month, view.range))).split
+        expect(byCode(month.rx).map(({ code, patients, newPatients, returning }) => ({ code, total: patients, newPatients, returning }))).toEqual(
+          byCode(split.lines).map(({ code, total, newPatients, returning }) => ({ code, total, newPatients, returning })),
+        )
+      }
+    }
+    // 손으로 본 값: 9월 MM042 = 1·2·4·5번 신환, B4001 = 3번 신환. v5 답이면 신환 표시가 있는 1·4번(MM042)·3번(B4001)만 신환이다
+    expect(counts(monthIn(loadJob(v4Json(), OPTS).view, '2026-09')?.rx ?? [])).toEqual([
+      ['B4001', 1, 1, 0],
+      ['MM042', 4, 4, 0],
+    ])
+    expect(counts(monthIn(loadJob(v5Json(), OPTS).view, '2026-09')?.rx ?? [])).toEqual([
+      ['B4001', 1, 1, 0],
+      ['MM042', 4, 2, 2],
+    ])
+  })
+
+  it('AC-8018.3: 달 줄 sections.mix = 그달을 고른 통계 탭 환자 구성 [전체] — 명·연령대는 그대로, 보험·동네는 5명 이상 보통 줄만(보험 모름 빼고)', () => {
+    for (const text of [v3Json(), v4Json(), v5Json(), monthsJson()]) {
+      const { view, bit } = loadJob(text, text === monthsJson() ? MONTHS_OPTS : OPTS)
+      expect(view.sections?.length).toBeGreaterThan(0)
+      for (const sections of view.sections ?? []) {
+        const tab = readyIn(sectionsJob(bit, monthSpan(sections.month, view.range))).mix.all
+        const large = (rows: typeof tab.insurance) =>
+          rows.filter((row) => row.kind === 'row' && row.people >= 5 && row.label !== '보험 모름').map((row) => ({ name: row.label, people: row.people }))
+        expect(sections.mix.people).toBe(tab.total.people)
+        expect(sections.mix.age).toEqual(tab.age.map((row) => ({ name: row.label, people: row.people })))
+        expect(sections.mix.insurance).toEqual(large(tab.insurance))
+        expect(sections.mix.town).toEqual(large(tab.town))
+      }
+    }
+  })
+})
+
+describe('AC-8018.4 Worker 입구: load에 실은 묶음 정의로 날 줄 sunap, 묶음으로 달 줄 dropoff', () => {
+  it('AC-8018.4: host.load({ …, sunap, groups })의 loaded 답에 새 열쇠가 실리고 loadJob과 같다. 없으면 지금 답 그대로다', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', v4Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', { groups: SUM_GROUPS, sunap: SUM_SUNAP }))
+    const [reply] = sent
+    if (reply?.type !== 'loaded') throw new Error('loaded가 아니다')
+    expect(reply.view).toEqual(loadJob(v4Json(), { ...GROUPED, sunap: SUM_SUNAP }).view)
+    expect(reply.view.days?.every((day) => day.sunap !== undefined)).toBe(true)
+    expect(monthIn(reply.view, '2026-09')?.dropoff).toBeDefined()
+
+    const plain = hostUnderTest()
+    bridgeMessages('s2', v4Json()).forEach((m) => plain.host.fromBridge(m))
+    await plain.host.load(loadRequest('s2'))
+    const [first] = plain.sent
+    if (first?.type !== 'loaded') throw new Error('loaded가 아니다')
+    expect(first.view).toEqual(loadJob(v4Json(), OPTS).view)
+    expect(keysIn(first.view)).not.toContain('sunap')
+    expect(keysIn(first.view)).not.toContain('dropoff')
+  })
+
+  it('AC-8018.4: 화면 입구 requestLoad → (구조화 복제) → Worker 입구로 이어도 같은 숫자다(묶음 이름·차례는 가지 않는다)', async () => {
+    const received: StatsLoadRequest[] = []
+    const worker = {
+      onmessage: null as ((event: MessageEvent<StatsWorkerMessage>) => void) | null,
+      onerror: null,
+      onmessageerror: null,
+      postMessage: (request: StatsLoadRequest) => {
+        const copy = structuredClone(request)
+        received.push(copy)
+        void host.load(copy)
+      },
+    }
+    const host = createStatsHost((message) => worker.onmessage?.({ data: structuredClone(message) } as MessageEvent<StatsWorkerMessage>))
+    bridgeMessages('s1', v4Json()).forEach((m) => host.fromBridge(m))
+    const block = { ...SUM_SUNAP.block, name: '가짜 블록', sortOrder: 0 }
+    const pt = { ...SUM_SUNAP.pt, name: '가짜 물리치료', sortOrder: 1 }
+    const view = await requestLoad(worker as unknown as WorkerLike, { streamId: 's1', ...GROUPED, sunap: { block, pt } })
+    expect(received.at(-1)?.sunap).toEqual(SUM_SUNAP)
+    expect(JSON.stringify(received)).not.toContain('가짜')
+    expect(view).toEqual(loadJob(v4Json(), { ...GROUPED, sunap: SUM_SUNAP }).view)
+  })
+})
+
+describe('AC-8018.5 새 열쇠에는 차트번호·생년월일·주소·접수 시각·진료의 코드·처방 코드가 없다', () => {
+  it('AC-8018.5: 날 sunap은 숫자 아홉 칸, 달 dropoff는 자료 끝 날·묶음 열쇠·숫자뿐이다', () => {
+    const cases: [string, typeof GROUPED][] = [
+      [v4Json(), GROUPED],
+      [v5Json(), GROUPED],
+      [monthsJson(), MONTHS_OPTS],
+    ]
+    for (const [text, opts] of cases) {
+      const { view } = loadJob(text, { ...opts, sunap: SUM_SUNAP })
+      const added = [...(view.days ?? []).map((day) => day.sunap), ...(view.months ?? []).flatMap((month) => (month.dropoff ? [month.dropoff] : []))]
+      expect(added.length).toBeGreaterThan(0)
+      const json = JSON.stringify(added)
+      for (const word of [...CHARTS, ...DOCTOR_CODES, ...RECEIPT_TIMES, '19800505', '1980-05-05', '수원시', '매탄동', 'MM042', 'B4001', '표층열치료', '2026-09-01']) {
+        expect(json).not.toContain(word)
+      }
+      for (const key of [...SECTIONS_FORBIDDEN_KEYS, ...SPLIT_FORBIDDEN_KEYS]) expect(keysIn(added)).not.toContain(key)
+      expect(valuesIn(added).every((value) => value === TODAY || value === SUM_HEAT.id || value === SUM_BLOOD.id)).toBe(true)
+      for (const day of view.days ?? []) expect(Object.values(day.sunap!).every((value) => Number.isSafeInteger(value))).toBe(true)
+    }
   })
 })

@@ -1254,3 +1254,140 @@ describe('AC-4409.2 날 처방 줄 once: 선택 열쇠, 0 이상 newPatients 이
     expect(payload.rx[0].once).toBe(2)
   })
 })
+
+// ── 통계 합계 저장(admin-view REQ-8018): 날 줄 sunap(그날 Block 전환 아홉 칸) · 달 줄 dropoff(첫 진료가 그달인 신환의 몇 번까지 받나).
+// 둘 다 있어도 되고 없어도 되는 열쇠다(schemaVersion 2 그대로). 숫자는 모두 지어낸 값이다
+const DAY_SUNAP = { visits: 10, first_n: 3, d90_n: 2, ret_n: 5, block_n: 4, pt_n: 6, first_block: 1, d90_block: 1, ret_block: 2 }
+const sunapDay = (over: Record<string, unknown> = {}): DayPayload => ({ ...goodDay(), sunap: { ...DAY_SUNAP, ...over } }) as DayPayload
+// 4명이 1·2·3·5번 받음: 평균 11/4 = 2.75 → 2.8, 가장 많이 빠지는 곳 1(1·1·1·0·1 가운데 같으면 작은 k)
+const DROP_LINE = { group: 'g-manual', n: 4, atLeast: [4, 3, 2, 1, 1, 0], ten: 0, once: 1, average: 2.8, drop: 1 }
+const monthDropoff = (over: Record<string, unknown> = {}) => ({ asOf: '2026-10-31', lines: [DROP_LINE], ...over })
+const dropoffMonth = (over: Record<string, unknown> = {}): MonthPayload => ({ ...good(), dropoff: monthDropoff(over) }) as MonthPayload
+const dropLine = (over: Record<string, unknown>) => dropoffMonth({ lines: [{ ...DROP_LINE, ...over }] })
+
+describe('AC-8018.4 날 줄 sunap: 없는 옛 줄은 지금 그대로, 있으면 검사한 새 객체로 담는다', () => {
+  it('AC-8018.4: sunap이 없는 옛 날 줄은 지금처럼 통과하고 돌려준 객체에 열쇠가 없다. undefined는 없는 것과 같다', () => {
+    expect(validateDayPayload(goodDay())).toStrictEqual(goodDay())
+    expect(Object.keys(validateDayPayload(goodDay())!)).not.toContain('sunap')
+    expect(validateDayPayload({ ...goodDay(), sunap: undefined })).toStrictEqual(goodDay())
+  })
+
+  it('AC-8018.4: sunap이 있으면 같은 내용으로 담고, 저장했다 읽어도(JSON) 그대로다. schemaVersion은 2 그대로다', () => {
+    expect(validateDayPayload(sunapDay())).toStrictEqual(sunapDay())
+    expect(validateDayPayload(JSON.parse(JSON.stringify(sunapDay())))).toStrictEqual(sunapDay())
+    expect(validateDayPayload({ ...sunapDay(), schemaVersion: 3 })).toBeNull()
+    expect(validateDayPayload({ ...goodAgainDay(), sunap: DAY_SUNAP })).toStrictEqual({ ...goodAgainDay(), sunap: DAY_SUNAP })
+  })
+
+  it('AC-8018.4: 새 객체 — 돌려준 sunap을 고쳐도 넣은 값은 그대로다', () => {
+    const input = sunapDay()
+    const output = validateDayPayload(input)!
+    expect(output.sunap).not.toBe(input.sunap)
+    output.sunap!.visits = 99
+    expect(input).toStrictEqual(sunapDay())
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['모두 0', { visits: 0, first_n: 0, d90_n: 0, ret_n: 0, block_n: 0, pt_n: 0, first_block: 0, d90_block: 0, ret_block: 0 }],
+    ['물리치료 = 내원', { pt_n: 10 }],
+    ['구분마다 모두 Block', { block_n: 10, first_block: 3, d90_block: 2, ret_block: 5 }],
+  ])('AC-8018.4: 경계 %s → 통과', (_name, over) => {
+    expect(validateDayPayload(sunapDay(over))).toStrictEqual(sunapDay(over))
+  })
+
+  it.each<[string, unknown]>([
+    ['null', null],
+    ['배열', [10, 3, 2, 5, 4, 6, 1, 1, 2]],
+    ['열쇠 빠짐', Object.fromEntries(Object.entries(DAY_SUNAP).filter(([key]) => key !== 'pt_n'))],
+    ['모르는 열쇠(장부 칸)', { ...DAY_SUNAP, rsv_first: 1 }],
+    ['음수', { ...DAY_SUNAP, pt_n: -1 }],
+    ['소수', { ...DAY_SUNAP, pt_n: 1.5 }],
+    ['글자', { ...DAY_SUNAP, pt_n: '6' }],
+    ['내원 ≠ 초진 + 90일초진 + 재진', { ...DAY_SUNAP, visits: 11 }],
+    ['Block ≠ 구분별 Block 합', { ...DAY_SUNAP, block_n: 5 }],
+    ['초진 Block > 초진', { ...DAY_SUNAP, first_n: 0, ret_n: 8, first_block: 1 }],
+    ['90일 Block > 90일초진', { ...DAY_SUNAP, d90_n: 0, ret_n: 7, d90_block: 1 }],
+    ['재진 Block > 재진', { ...DAY_SUNAP, ret_n: 1, first_n: 7, ret_block: 2 }],
+    ['물리치료 > 내원', { ...DAY_SUNAP, pt_n: 11 }],
+  ])('AC-8018.4: sunap이 %s이면 날 줄 전체가 null', (_name, sunap) => {
+    expect(validateDayPayload({ ...goodDay(), sunap })).toBeNull()
+  })
+
+  it('AC-8018.4: 달 줄에는 sunap을 받지 않는다(정해진 열쇠 밖)', () => {
+    expect(validateMonthPayload({ ...good(), sunap: DAY_SUNAP })).toBeNull()
+  })
+})
+
+describe('AC-8018.4 달 줄 dropoff: 없는 옛 줄은 지금 그대로, 있으면 검사한 새 객체로 담는다', () => {
+  it('AC-8018.4: dropoff가 없는 옛 달 줄은 지금처럼 통과하고 돌려준 객체에 열쇠가 없다. undefined는 없는 것과 같다', () => {
+    expect(validateMonthPayload(good())).toStrictEqual(good())
+    expect(Object.keys(validateMonthPayload(good())!)).not.toContain('dropoff')
+    expect(validateMonthPayload({ ...good(), dropoff: undefined })).toStrictEqual(good())
+  })
+
+  it('AC-8018.4: dropoff가 있으면 같은 내용으로 담고, 저장했다 읽어도(JSON) 그대로다. schemaVersion은 2 그대로다', () => {
+    expect(validateMonthPayload(dropoffMonth())).toStrictEqual(dropoffMonth())
+    expect(validateMonthPayload(JSON.parse(JSON.stringify(dropoffMonth())))).toStrictEqual(dropoffMonth())
+    expect(validateMonthPayload({ ...dropoffMonth(), schemaVersion: 3 })).toBeNull()
+  })
+
+  it('AC-8018.4: 새 객체 — 돌려준 dropoff를 고쳐도 넣은 값은 그대로다', () => {
+    const input = dropoffMonth()
+    const output = validateMonthPayload(input)!
+    expect(output.dropoff).not.toBe(input.dropoff)
+    expect(output.dropoff!.lines[0]).not.toBe(input.dropoff!.lines[0])
+    output.dropoff!.lines[0].atLeast[0] = 99
+    output.dropoff!.lines.pop()
+    expect(input).toStrictEqual(dropoffMonth())
+  })
+
+  it.each<[string, MonthPayload]>([
+    ['대상이 없는 달(빈 목록)', dropoffMonth({ lines: [] })],
+    ['자료 끝 날 = 그달 말일', dropoffMonth({ asOf: '2026-09-30' })],
+    ['묶음 둘(묶음 차례 그대로)', dropoffMonth({ lines: [{ ...DROP_LINE, group: 'tb' }, { ...DROP_LINE, group: 'ta' }] })],
+    ['1명이 1번만', dropLine({ n: 1, atLeast: [1, 0, 0, 0, 0, 0], once: 1, average: 1 })],
+    ['10번 이상', dropLine({ n: 2, atLeast: [2, 2, 2, 2, 2, 2], ten: 2, once: 0, average: 12.5, drop: 1 })],
+    ['가장 많이 빠지는 곳 5', dropLine({ drop: 5 })],
+  ])('AC-8018.4: 경계 %s → 통과', (_name, payload) => {
+    expect(validateMonthPayload(payload)).toStrictEqual(payload)
+  })
+
+  it.each<[string, unknown]>([
+    ['null', null],
+    ['배열', [DROP_LINE]],
+    ['열쇠 빠짐', { lines: [DROP_LINE] }],
+    ['모르는 열쇠', { ...monthDropoff(), patients: [1] }],
+    ['자료 끝 날이 날짜가 아님', monthDropoff({ asOf: '2026-10-32' })],
+    ['자료 끝 날이 그달 말일보다 앞', monthDropoff({ asOf: '2026-09-29' })],
+    ['목록이 아님', monthDropoff({ lines: DROP_LINE })],
+    ['같은 묶음 두 줄', monthDropoff({ lines: [DROP_LINE, DROP_LINE] })],
+  ])('AC-8018.4: dropoff가 %s이면 달 줄 전체가 null', (_name, dropoff) => {
+    expect(validateMonthPayload({ ...good(), dropoff })).toBeNull()
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['묶음 열쇠 모양이 틀림', { group: 'g manual' }],
+    ['묶음 열쇠가 65자', { group: 'g'.repeat(65) }],
+    ['대상 0명(0명 줄은 내지 않는다)', { n: 0, atLeast: [0, 0, 0, 0, 0, 0], once: 0 }],
+    ['1회 이상 ≠ 대상', { atLeast: [3, 3, 2, 1, 1, 0], once: 0 }],
+    ['k회 이상이 늘어남', { atLeast: [4, 3, 2, 1, 2, 0], once: 1 }],
+    ['다섯 칸', { atLeast: [4, 3, 2, 1, 1] }],
+    ['10회 이상 > 6회 이상', { ten: 1 }],
+    ['1회만 ≠ 1회 이상 − 2회 이상', { once: 2 }],
+    ['평균 1보다 작음', { average: 0.9 }],
+    ['평균 소수 둘째 자리', { average: 2.75 }],
+    ['평균 글자', { average: '2.8' }],
+    ['평균 무한', { average: Number.POSITIVE_INFINITY }],
+    ['빠지는 곳 0', { drop: 0 }],
+    ['빠지는 곳 6', { drop: 6 }],
+    ['빠지는 곳 소수', { drop: 1.5 }],
+    ['음수', { ten: -1 }],
+    ['환자 번호 열쇠', { patients: [1, 2] }],
+  ])('AC-8018.4: dropoff 줄이 %s이면 달 줄 전체가 null', (_name, over) => {
+    expect(validateMonthPayload(dropLine(over))).toBeNull()
+  })
+
+  it('AC-8018.4: 날 줄에는 dropoff를 받지 않는다(정해진 열쇠 밖)', () => {
+    expect(validateDayPayload({ ...goodDay(), dropoff: monthDropoff() })).toBeNull()
+  })
+})

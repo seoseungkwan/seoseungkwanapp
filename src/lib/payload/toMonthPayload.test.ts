@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
-import { eachDay } from '@/lib/analytics/dates'
+import { eachDay, monthRange } from '@/lib/analytics/dates'
+import { rxVisitSplit, type VisitRow } from '@/lib/analytics/rxVisitSplit'
 import type { PatientDay, RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { ConsumptionRow } from '@/types/consumption'
@@ -386,5 +387,78 @@ describe('AC-4402.4 달 payload의 first90', () => {
     for (const payload of [...toMonthPayload(result)!, ...toMonthPayload(tainted)!]) {
       for (const x of payload.rx) expect('once' in x).toBe(false)
     }
+  })
+})
+
+// 통계 합계 저장(admin-view REQ-8018 AC-8018.3): 의원 비교는 '처방별 신환·재진'을 새 열쇠 없이 달 줄 payload.rx로 읽는다.
+// 같은 진료 줄로 통계 탭 처방별 신환·재진(rxVisitSplit, 그달 기간)이 세는 수와 같은지 못 박는다. 환자·날·처방은 지어낸 값이다
+describe('AC-8018.3 달 줄 payload.rx = 그달 기간의 처방별 신환·재진(rxVisitSplit)', () => {
+  const CODES = ['A100', 'B200', 'C300', 'D400']
+  const SPAN = r('2026-09-01', '2026-10-31')
+  const days = eachDay(SPAN)
+
+  // 같은 자료를 두 모양으로: 진료 줄(aggregate) · 처방별 줄(rxVisitSplit). 신환 = 그 줄의 진료일이 첫 내원일(도우미 길과 같은 규칙)
+  function sameRows() {
+    // 정해진 차례의 가짜 수(Park–Miller). 시험마다 같은 자료다
+    let seed = 7
+    const next = (n: number) => {
+      seed = (seed * 48_271) % 2_147_483_647
+      return Math.floor((seed / 2_147_483_647) * n)
+    }
+    const consumption: ConsumptionRow[] = []
+    const visits: VisitRow[] = []
+    const add = (patient: number, date: string, code: string, first: string) => {
+      consumption.push(row({ patient, date, rxCode: code, rxName: `가짜 ${code}`, firstVisit: date === first, region: null }))
+      visits.push({ p: patient, d: date, c: code, f: first })
+    }
+    for (let patient = 1; patient <= 40; patient++) {
+      // 첫 내원일: 앞 10명은 기간 전(옛 환자), 나머지는 기간 안 어느 날
+      const first = patient <= 10 ? '2026-03-02' : days[next(days.length)]!
+      const visitDays = new Set<string>(patient <= 10 ? [] : [first])
+      for (let k = next(5); k > 0; k--) visitDays.add(days[next(days.length)]!)
+      for (const date of [...visitDays].filter((date) => date >= first)) {
+        const codes = new Set([CODES[next(CODES.length)]!, CODES[next(CODES.length)]!])
+        for (const code of codes) add(patient, date, code, first)
+        if (next(4) === 0) add(patient, date, [...codes][0]!, first) // 같은 날 같은 처방 두 줄
+      }
+    }
+    return { consumption, visits }
+  }
+
+  it('AC-8018.3: 달마다 처방 줄의 환자·신환·재진이 그달 rxVisitSplit 줄의 합계·신환·재진과 같다(9월·10월)', () => {
+    const { consumption, visits } = sameRows()
+    const months = toMonthPayload(analyze(consumption, [SPAN], '2026-11-05'))!
+    expect(months.map((month) => month.month)).toEqual(['2026-09', '2026-10'])
+    for (const month of months) {
+      const span = monthRange(month.month)
+      const inMonth = visits.filter((line) => line.d >= span.from && line.d <= span.to)
+      const codes = [...new Set(inMonth.map((line) => line.c))]
+      const split = rxVisitSplit(visits, { visits: 0, patients: 0, newPatients: 0 }, codes, span, new Map())
+      const byCode = <T extends { code: string }>(lines: readonly T[]) => [...lines].sort((a, b) => (a.code < b.code ? -1 : 1))
+      expect(month.rx.length).toBeGreaterThan(1)
+      expect(byCode(month.rx).map(({ code, patients, newPatients, returning }) => ({ code, patients, newPatients, returning }))).toEqual(
+        byCode(split.lines.filter((line) => line.code !== '')).map(({ code, total, newPatients, returning }) => ({ code, patients: total, newPatients, returning })),
+      )
+      expect(month.rx.some((line) => line.newPatients > 0 && line.returning > 0)).toBe(true)
+    }
+  })
+
+  it('AC-8018.3: 첫 내원일에 받은 처방은 그달 다시 와서 또 받아도 신환이고, 다시 온 날에만 받은 처방은 재진이다(두 셈 모두)', () => {
+    const consumption = [
+      row({ patient: 1, date: '2026-09-01', rxCode: 'A100', firstVisit: true, region: null }),
+      row({ patient: 1, date: '2026-09-15', rxCode: 'A100', firstVisit: false, region: null }),
+      row({ patient: 1, date: '2026-09-15', rxCode: 'B200', firstVisit: false, region: null }),
+    ]
+    const visits: VisitRow[] = consumption.map((line) => ({ p: 1, d: line.date, c: line.rxCode, f: '2026-09-01' }))
+    const [september] = toMonthPayload(analyze(consumption, [SEPTEMBER]))!
+    expect(september.rx.map(({ code, patients, newPatients, returning }) => [code, patients, newPatients, returning])).toEqual([
+      ['A100', 1, 1, 0],
+      ['B200', 1, 0, 1],
+    ])
+    const split = rxVisitSplit(visits, { visits: 0, patients: 0, newPatients: 0 }, ['A100', 'B200'], SEPTEMBER, new Map())
+    expect(split.lines.filter((line) => line.code !== '').map(({ code, total, newPatients, returning }) => [code, total, newPatients, returning])).toEqual([
+      ['A100', 1, 1, 0],
+      ['B200', 1, 0, 1],
+    ])
   })
 })

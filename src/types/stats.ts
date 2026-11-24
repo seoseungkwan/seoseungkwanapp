@@ -143,6 +143,8 @@ export type StatsLoadRequest = {
   groups?: RxGroupDef[]
   // false면 이 답의 진료 줄·접수 줄을 메모리에 남기지 않는다(나눠 읽기의 다른 조각, stats-load-range AC-3304.1). 없거나 true면 지금처럼 바꾼다
   keep?: boolean
+  // 수납일지 Block·물리치료 묶음 정의(열쇠·코드만). 있으면 날 저장 줄마다 그날 Block 전환 아홉 칸(sunap)을 싣는다(admin-view REQ-8018). 없으면 열쇠가 없다
+  sunap?: StatsSunapGroups
 }
 // split의 streamId는 통로 요청이 아니라 requestSplit이 정한 일 번호다. 답을 가려 받는 쓰임은 같다
 export type StatsSplitRequest = { type: 'split'; streamId: string; from: string; to: string }
