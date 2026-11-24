@@ -11,6 +11,7 @@ import { ds } from '@/components/ui/classes'
 import { SIDO_LIST } from '@/lib/admin/region'
 import { AdminError } from '@/lib/auth/admin'
 import { AdminViewError } from '@/lib/auth/adminView'
+import { AdminSyncError } from '@/lib/auth/adminSync'
 import { errorInfo } from '@/lib/errors'
 import { nestedBoxes } from '@/testing/boxes'
 import { AdminApplications } from './AdminApplications'
@@ -18,19 +19,19 @@ import { AdminApplications } from './AdminApplications'
 // 관리자 · 가입 승인 (REQ-007, ui-90 REQ-417, design.md '관리자', UI_GUIDE '관리자' 화면 안 탭·표·칩·확인 창·폰).
 // 순서는 목업 docs/mockups/auth/Admin.dc.html, 이름·문구(~요)는 ui-90 시안 docs/mockups/ui-90/app/gen.py admin_body. 실제 Supabase에 붙지 않는다 — 진짜 listApplications·setHospitalStatus를 거쳐
 // hospitals 읽기와 set_hospital_status 호출이 어떤 값으로 몇 번 나가는지만 본다. jsdom은 CSS를 계산하지 않는다 → 모양은 클래스로 본다
-const { from, select, order, rpc, marksRpc, viewRpc, setViewKey } = vi.hoisted(() => {
+const { from, select, order, rpc, marksRpc, viewRpc, uploadRpc, setViewKey } = vi.hoisted(() => {
   const order = vi.fn()
   const select = vi.fn(() => ({ order }))
-  return { order, select, from: vi.fn(() => ({ select })), rpc: vi.fn(), marksRpc: vi.fn(), viewRpc: vi.fn(), setViewKey: vi.fn() }
+  return { order, select, from: vi.fn(() => ({ select })), rpc: vi.fn(), marksRpc: vi.fn(), viewRpc: vi.fn(), uploadRpc: vi.fn(), setViewKey: vi.fn() }
 })
 // rpc 흉내는 이름으로 나눠 답한다(multi-admin design.md '시험 계획'): 관리자 표시 읽기 admin_hospitals → marksRpc,
-// 보기 목록 읽기 admin_view_hospitals → viewRpc(admin-view AC-8012.5),
-// 바꾸기(set_hospital_status·set_admin·set_hospital_region)와 보기 시작(start_admin_view) → rpc. 그래서 rpc를 세는 시험은 바꾸기·시작 부르기만 센다
+// 보기 목록 읽기 admin_view_hospitals → viewRpc(admin-view AC-8012.5), 저절로 올림 상태 읽기 admin_auto_upload_list → uploadRpc(AC-8022.5),
+// 바꾸기(set_hospital_status·set_admin·set_hospital_region·set_auto_upload_months)와 보기 시작(start_admin_view) → rpc. 그래서 rpc를 세는 시험은 바꾸기·시작 부르기만 센다
+const READS: Record<string, typeof rpc> = { admin_hospitals: marksRpc, admin_view_hospitals: viewRpc, admin_auto_upload_list: uploadRpc }
 vi.mock('@/lib/supabase/browser', () => ({
   supabaseBrowser: () => ({
     from,
-    rpc: (name: string, ...args: unknown[]) =>
-      name === 'admin_hospitals' ? marksRpc(name, ...args) : name === 'admin_view_hospitals' ? viewRpc(name, ...args) : rpc(name, ...args),
+    rpc: (name: string, ...args: unknown[]) => (READS[name] ?? rpc)(name, ...args),
   }),
 }))
 // 보기 열쇠 쿠키 쓰기는 흉내로 센다(쿠키 글 모양은 src/lib/supabase/viewKey.test.ts 몫)
@@ -49,8 +50,9 @@ const DB_ROWS = [
 ]
 // 대기·거절 탭 칸. 신청자·이메일은 한 칸 두 줄 '신청자 · 이메일'(admin-view AC-8022.1)
 const COLUMNS = ['신청일', '의원 이름', 'EMR', '신청자 · 이메일', '연락처', '동작']
-// '승인' 탭은 의원 이름 다음에 '지역'(admin-view AC-8012.2)
-const APPROVED_COLUMNS = ['신청일', '의원 이름', '지역', 'EMR', '신청자 · 이메일', '연락처', '동작']
+// '승인' 탭은 의원 이름 다음에 '지역'(admin-view AC-8012.2), 그 다음 '채울 기간'·'저절로 올림'(2차 AC-8022.2 — 시안 칸 차례
+// 신청일 · 의원 이름 · 지역 · 채울 기간 · 저절로 올림 · EMR · 신청자 · 이메일 · 연락처 · 동작, 신청자·이메일은 한 칸)
+const APPROVED_COLUMNS = ['신청일', '의원 이름', '지역', '채울 기간', '저절로 올림', 'EMR', '신청자 · 이메일', '연락처', '동작']
 // multi-admin requirements.md '화면 글자' INTRO 전체(지금 두 문장 끝에 한 문장을 더함)
 const MULTI_ADMIN_INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요.'
 // admin-view AC-8012.1: 그 끝에 한 문장 더(시안 T.adminIntro 그대로)
@@ -119,6 +121,8 @@ beforeEach(() => {
   marksRpc.mockResolvedValue({ data: [], error: null, status: 200 })
   viewRpc.mockReset()
   viewRpc.mockResolvedValue({ data: DB_VIEWS, error: null, status: 200 })
+  uploadRpc.mockReset()
+  uploadRpc.mockResolvedValue({ data: [], error: null, status: 200 })
   setViewKey.mockReset()
 })
 
@@ -206,9 +210,9 @@ describe('AdminApplications: 처음 그리기', () => {
     expect(tabNamed('승인').getAttribute('aria-selected')).toBe('true')
     expect(tabNamed('대기').getAttribute('aria-selected')).toBe('false')
     expect(table().getAttribute('aria-label')).toBe('승인 신청')
-    // '승인' 탭은 의원 이름 다음에 지역 칸(주소에서 읽은 시·도, admin-view AC-8012.2)
-    expect(bodyRows().map((tr) => cellTexts(tr).slice(0, 6))).toEqual([
-      ['2026-10-20', '마바 정형외과의원', '서울', '비트', '이영희younghee@example.com', '02-1234-5678'],
+    // '승인' 탭은 의원 이름 다음에 지역 칸(주소에서 읽은 시·도, admin-view AC-8012.2), 그 다음 채울 기간·저절로 올림(상태 줄 없음 → 2달·아직 없음, 2차 AC-8022.2)
+    expect(bodyRows().map((tr) => cellTexts(tr).slice(0, 8))).toEqual([
+      ['2026-10-20', '마바 정형외과의원', '서울', '2달', '아직 없음', '비트', '이영희younghee@example.com', '02-1234-5678'],
     ])
     await user.click(tabNamed('거절'))
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['사아 의원'])
@@ -1240,19 +1244,21 @@ describe('AC-7703.3·AC-7703.4 승인 탭 줄의 관리자 표시·단추 (multi
     expect(add.frame.cancel).toEqual(tokens(`${ds.button.secondary} max-md:flex-1`))
   })
 
-  it('AC-7703.4·AC-8012.2·AC-8022.1: 동작 칸은 1023px 이하에서도 150px(w-37.5만, max-lg:·max-md: 폭 없음), 지역 칸 120px, 다른 칸 폭은 그대로(신청자·이메일 한 칸)', async () => {
+  it('AC-7703.4·AC-8012.2·AC-8022.1·AC-8022.2: 승인 탭 칸 폭은 2차 시안 — 동작 144px(w-36만, max-lg:·max-md: 폭 없음 → [관리자로 정하기]가 들어간다), 지역 108px, 신청자·이메일 한 칸은 남은 폭', async () => {
     await renderApproved(MARKS_OWNER)
     const heads = within(table()).getAllByRole('columnheader')
-    expect(classesOf(heads[6]).filter((t) => /(?:^|:)w-/.test(t))).toEqual(['w-37.5'])
-    hasAll(heads[6], 'md:text-right')
+    expect(classesOf(heads[8]).filter((t) => /(?:^|:)w-/.test(t))).toEqual(['w-36'])
+    hasAll(heads[8], 'md:text-right')
     expect(heads.map((th) => classesOf(th).filter((t) => /(?:^|:)w-/.test(t)))).toEqual([
-      ['w-30', 'max-lg:w-29'],
+      ['w-28'],
+      ['w-46'],
+      ['w-27'],
+      ['w-22'],
+      ['w-62'],
+      ['w-15'],
       [],
-      ['w-30'],
-      ['w-28', 'max-lg:w-24'],
-      [],
-      ['w-37.5', 'max-lg:w-34'],
-      ['w-37.5'],
+      ['w-33'],
+      ['w-36'],
     ])
   })
 })
@@ -1648,11 +1654,11 @@ describe('AC-8012.1 승인 줄 의원 이름 눌러 보기', () => {
 })
 
 describe('AC-8012.2 승인 탭 지역 칸', () => {
-  it('AC-8012.2: 승인 탭만 의원 이름 다음에 새 칸 `지역`(120px) — 대기·거절 탭에는 없다', async () => {
+  it('AC-8012.2·AC-8022.2: 승인 탭만 의원 이름 다음에 새 칸 `지역`(2차 폭 108px) — 대기·거절 탭에는 없다', async () => {
     const user = await renderAdminView()
     const heads = () => within(table()).getAllByRole('columnheader').map((th) => th.textContent)
     expect(heads()).toEqual(APPROVED_COLUMNS)
-    hasAll(within(table()).getByRole('columnheader', { name: '지역' }), `${ds.table.th} w-30`)
+    hasAll(within(table()).getByRole('columnheader', { name: '지역' }), `${ds.table.th} w-27`)
     await user.click(tabNamed('대기'))
     expect(heads()).toEqual(COLUMNS)
     expect(within(table()).queryAllByRole('combobox')).toEqual([])
@@ -1755,9 +1761,9 @@ describe('AC-8012.2 승인 탭 지역 칸', () => {
     expect(chosen(regionBox('버서 정형외과의원'))).toBe('대구')
   })
 
-  it('AC-8012.2: 지역 칸이 늘어난 승인 표는 PC에서 1120px보다 좁으면 옆으로 밀린다(md:min-w-280) — 대기·거절 표에는 최소 폭이 없다', async () => {
+  it('AC-8012.2·AC-8022.2: 칸이 늘어난 승인 표는 PC에서 1232px보다 좁으면 옆으로 밀린다(2차 md:min-w-308) — 대기·거절 표에는 최소 폭이 없다', async () => {
     const user = await renderAdminView()
-    expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual(['md:min-w-280'])
+    expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual(['md:min-w-308'])
     hasAll(table().parentElement as Element, ds.table.wrap)
     await user.click(tabNamed('대기'))
     expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual([])
@@ -1930,5 +1936,355 @@ describe('AC-8022.1 신청자 · 이메일 한 칸 두 줄', () => {
     expect(within(who).queryAllByRole('combobox')).toEqual([])
     hasAll(who, `${ds.table.td} md:text-body`)
     expect(who.getAttribute('title')).toBeNull() // 마우스 글은 줄마다
+  })
+})
+
+// ── admin-view 2차: '승인' 표 채울 기간 · 저절로 올림 칸 (REQ-8022 AC-8022.2~AC-8022.5, design.md '가입 승인 표 2차',
+// 시안 docs/mockups/admin-view ?s=admin-list 2차 — .tnote · .sel · .au · 칸 폭). 오늘은 한국 2026-11-24(화) 낮으로 둔다(Date만 가짜 —
+// 채우는 중인지는 오늘의 채울 기간 첫날로 센다). admin_auto_upload_list() 답은 시안 AUTO와 같은 모양의 지어낸 값
+const UPLOAD_RAW = 'permission denied for function admin_auto_upload_list secret-detail'
+const AV_UPLOADS = [
+  { hospital_id: 'h-dara', months: 2, through_day: '2026-11-23', filled_from: '2026-09-01', last_ok_at: '2026-11-23T23:52:00+00:00', error_code: null, error_at: null }, // 다 올라옴
+  { hospital_id: 'h-kata', months: 12, through_day: '2026-11-23', filled_from: '2026-02-01', last_ok_at: '2026-11-24T00:30:00+00:00', error_code: null, error_at: null }, // 채우는 중
+  { hospital_id: 'h-saa', months: 3, through_day: '2026-11-20', filled_from: '2026-08-01', last_ok_at: '2026-11-20T23:47:00+00:00', error_code: 'E-HELPER-OLD', error_at: '2026-11-21T00:10:00+00:00' }, // 실패
+  { hospital_id: 'h-reomeo', months: 2, through_day: null, filled_from: null, last_ok_at: null, error_code: null, error_at: null }, // 아직 없음
+  { hospital_id: 'h-gana', months: 120, through_day: '2026-11-23', filled_from: '2024-03-01', last_ok_at: '2026-11-23T23:05:00+00:00', error_code: null, error_at: null }, // 10년 채우는 중
+]
+// 시안 '화면 글자' 2차 표 위 안내 줄(T.autoNoteB · T.autoNote)
+const AUTO_NOTE =
+  '저절로 올림 · 의원 비트 PC에서 그날 처음 앱을 열면, 어제까지 아직 안 올라온 날의 매출·통계 숫자를 사이트에 올려요. 채울 기간이 길면 최근 달부터 한 번에 5분쯤씩 나눠 채우고, 다음에 열 때 이어서 채워요. 의원 화면에는 아무것도 보이지 않아요.'
+const ALL_APPROVED = [...NOT_MINE, '가나 정형외과의원']
+
+const fillBox = (clinic: string) => within(cellUnder(rowOf(clinic), '채울 기간')).getByRole<HTMLSelectElement>('combobox')
+// 저절로 올림 칸: 칸 안 두 줄 묶음과 그 줄 글
+const autoBox = (clinic: string) => cellUnder(rowOf(clinic), '저절로 올림').firstElementChild as HTMLElement
+const autoLines = (clinic: string) => Array.from(autoBox(clinic).children) as HTMLElement[]
+const autoTexts = (clinic: string) => autoLines(clinic).map((el) => el.textContent)
+const isNote = (_: string, el: Element | null) => el?.tagName === 'P' && el.textContent === AUTO_NOTE
+const autoNote = () => screen.getByText(isNote)
+
+async function renderUploads(uploads: readonly object[] = AV_UPLOADS) {
+  uploadRpc.mockResolvedValue({ data: uploads, error: null, status: 200 })
+  return renderAdminView()
+}
+
+describe('AC-8022.2~AC-8022.5 승인 표 채울 기간 · 저절로 올림 (2차)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-24T03:00:00+00:00')) // 한국 11월 24일 (화) 12:00
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe('AC-8022.2 칸 차례 · 폭 · 안내 줄', () => {
+    it('AC-8022.2: 승인 탭 칸 차례 — 신청일 · 의원 이름 · 지역 · 채울 기간 · 저절로 올림 · EMR · 신청자 · 이메일 · 연락처 · 동작. 대기·거절 탭에는 새 두 칸이 없다', async () => {
+      const user = await renderUploads()
+      const heads = () => within(table()).getAllByRole('columnheader').map((th) => th.textContent)
+      expect(heads()).toEqual(['신청일', '의원 이름', '지역', '채울 기간', '저절로 올림', 'EMR', '신청자 · 이메일', '연락처', '동작'])
+      for (const clinic of ALL_APPROVED) expect(within(rowOf(clinic)).getAllByRole('cell'), clinic).toHaveLength(9)
+      expect(cellTexts(rowOf('다라 정형외과의원'))).toEqual([
+        '2026-11-20',
+        '다라 정형외과의원',
+        '서울',
+        '2달',
+        '11월 23일까지',
+        '비트',
+        '이다라dara@fake.test',
+        '02-5550-2345',
+        '관리자로 정하기',
+      ])
+      for (const label of ['대기', '거절'] as const) {
+        await user.click(tabNamed(label))
+        expect(heads(), label).toEqual(COLUMNS)
+        expect(within(table()).queryAllByRole('combobox'), label).toEqual([])
+      }
+    })
+
+    it('AC-8022.2: 칸 폭은 시안 — 신청일 112 · 이름 184 · 지역 108 · 채울 기간 88 · 저절로 올림 248 · EMR 60 · 신청자·이메일(남은 폭) · 연락처 132 · 동작 144, 표 최소 폭 1232px(1440은 다 보이고 더 좁으면 표만 옆으로 밀림)', async () => {
+      const user = await renderUploads()
+      const widths = () => within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /(?:^|:)w-/.test(t)))
+      // 4px 단위: 28×4 = 112 · 46×4 = 184 · 27×4 = 108 · 22×4 = 88 · 62×4 = 248 · 15×4 = 60 · 33×4 = 132 · 36×4 = 144, 308×4 = 1232
+      expect(widths()).toEqual([['w-28'], ['w-46'], ['w-27'], ['w-22'], ['w-62'], ['w-15'], [], ['w-33'], ['w-36']])
+      hasAll(table(), 'md:table-fixed md:min-w-308')
+      // 승인 표는 폭마다 다른 칸 폭이 없다(더 좁으면 표 전체가 옆으로 밀린다) — 대기·거절 표의 768~1023px 폭(max-lg:)은 그대로
+      for (const th of within(table()).getAllByRole('columnheader')) expect(classesOf(th).filter((t) => /^max-(?:lg|md):w-/.test(t))).toEqual([])
+      hasAll(table().parentElement as Element, ds.table.wrap)
+      await user.click(tabNamed('대기'))
+      expect(widths()).toEqual([['w-30', 'max-lg:w-29'], [], ['w-28', 'max-lg:w-24'], [], ['w-37.5', 'max-lg:w-34'], ['w-37.5']])
+      expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual([])
+    })
+
+    it('AC-8022.2: 표 위 안내 줄 — 올림 아이콘(16, 꾸밈, muted) + `저절로 올림`(600 ink) · 안내 글(시안 그대로), small ink-2, 최대 폭 920px', async () => {
+      await renderUploads()
+      const note = autoNote()
+      expect(note.textContent).toBe(AUTO_NOTE)
+      hasAll(note, 'flex max-w-230 items-start gap-2 text-small text-ink-2')
+      const icon = note.querySelector('svg') as SVGElement
+      expect(note.firstElementChild).toBe(icon)
+      expect(icon.getAttribute('aria-hidden')).toBe('true')
+      expect(icon.getAttribute('width')).toBe('16')
+      hasAll(icon, 'mt-0.5 shrink-0 text-muted')
+      const upload = render(<Icon name="upload" size={16} />).container.querySelector('svg')
+      expect(icon.innerHTML).toBe(upload?.innerHTML)
+      const bold = note.querySelector('b') as HTMLElement
+      expect(bold.textContent).toBe('저절로 올림')
+      hasAll(bold, 'font-semibold text-ink')
+      for (const el of [note, icon, bold]) expect(classesOf(el).filter((t) => t.startsWith('max-md:'))).toEqual([])
+    })
+
+    it('AC-8022.2: 안내 줄 자리는 탭 줄 다음 · 완료 줄과 표 앞(시안 차례). 대기·거절 탭에는 없다', async () => {
+      const user = await renderUploads()
+      const note = autoNote()
+      expect(note.parentElement).toBe(tablist().parentElement)
+      expect(tablist().nextElementSibling).toBe(note)
+      expect(note.compareDocumentPosition(status()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(status().compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      await user.click(tabNamed('대기'))
+      expect(screen.queryByText(isNote)).toBeNull()
+      expect(tablist().nextElementSibling).toBe(status())
+      await user.click(tabNamed('거절'))
+      expect(screen.queryByText(isNote)).toBeNull()
+    })
+  })
+
+  describe('AC-8022.3 채울 기간 칸', () => {
+    it('AC-8022.3: 값 = 그 의원 months(목록에 없으면 2달), 고르기 = FILL_CHOICES 아홉 — 지역 고르기와 같은 32px 상자', async () => {
+      await renderUploads(AV_UPLOADS.filter((u) => u.hospital_id !== 'h-dara'))
+      expect(ALL_APPROVED.map((c) => fillBox(c).selectedOptions[0]?.textContent)).toEqual(['2달', '2달', '1년', '3달', '10년'])
+      const box = fillBox('카타 통증의학과의원')
+      expect(Array.from(box.options).map((o) => o.textContent)).toEqual(['1달', '2달', '3달', '6달', '1년', '2년', '3년', '5년', '10년'])
+      expect(box.getAttribute('aria-label')).toBe('카타 통증의학과의원 채울 기간')
+      // 같은 모양: 아는 지역 상자(ink)와 클래스가 같다
+      expect([...classesOf(box)].sort()).toEqual([...classesOf(regionBox('다라 정형외과의원'))].sort())
+      hasAll(box, `h-8 cursor-pointer rounded-control border border-line-strong bg-surface px-1.5 text-small text-ink ${ds.focusRing}`)
+      hasAll(cellUnder(rowOf('카타 통증의학과의원'), '채울 기간'), ds.table.td)
+    })
+
+    it('AC-8022.3: 늘리면 확인 창 없이 set_auto_upload_months 한 번 → 그 줄 값만 바뀌고 완료 줄 `{의원} 채울 기간을 {기간}로/으로 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.` — 다시 읽지 않고 초점은 그 상자', async () => {
+      const user = await renderUploads()
+      await user.selectOptions(fillBox('다라 정형외과의원'), '1년')
+      await waitFor(() => expect(status().textContent).toBe('다라 정형외과의원 채울 기간을 1년으로 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.'))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(rpc).toHaveBeenCalledExactlyOnceWith('set_auto_upload_months', { p_hospital_id: 'h-dara', p_months: 12 })
+      expect(ALL_APPROVED.map((c) => fillBox(c).selectedOptions[0]?.textContent)).toEqual(['1년', '2달', '1년', '3달', '10년'])
+      expect(order).toHaveBeenCalledTimes(1)
+      expect(marksRpc).toHaveBeenCalledTimes(1)
+      expect(viewRpc).toHaveBeenCalledTimes(1)
+      expect(uploadRpc).toHaveBeenCalledTimes(1)
+      expect(document.activeElement).toBe(fillBox('다라 정형외과의원'))
+      hasAll(status(), 'text-small text-positive')
+    })
+
+    it('AC-8022.3: 줄이면 `… 바꿨어요. 이미 올라온 숫자는 지우지 않아요.` — 받침 규칙은 지역과 같음(`2달`→`로`, `1년`·`10년`→`으로`, `1달`→`로`)', async () => {
+      const user = await renderUploads()
+      await user.selectOptions(fillBox('가나 정형외과의원'), '2달')
+      await waitFor(() => expect(status().textContent).toBe('가나 정형외과의원 채울 기간을 2달로 바꿨어요. 이미 올라온 숫자는 지우지 않아요.'))
+      expect(rpc).toHaveBeenLastCalledWith('set_auto_upload_months', { p_hospital_id: 'h-gana', p_months: 2 })
+      await user.selectOptions(fillBox('카타 통증의학과의원'), '10년')
+      await waitFor(() => expect(status().textContent).toBe('카타 통증의학과의원 채울 기간을 10년으로 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.'))
+      await user.selectOptions(fillBox('카타 통증의학과의원'), '1년')
+      await waitFor(() => expect(status().textContent).toBe('카타 통증의학과의원 채울 기간을 1년으로 바꿨어요. 이미 올라온 숫자는 지우지 않아요.'))
+      await user.selectOptions(fillBox('사아 재활의학과의원'), '1달')
+      await waitFor(() => expect(status().textContent).toBe('사아 재활의학과의원 채울 기간을 1달로 바꿨어요. 이미 올라온 숫자는 지우지 않아요.'))
+      expect(rpc).toHaveBeenCalledTimes(4)
+      expect(uploadRpc).toHaveBeenCalledTimes(1)
+    })
+
+    it('AC-8022.3: 실패하면 그 자리(탭 줄과 표 사이) E-AUTO-MONTHS 카드이고 값은 그대로 — 완료 줄 없음, 원래 오류 글 없음, 저절로 다시 보내지 않음, 초점은 그 상자', async () => {
+      rpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'invalid months secret-detail' }, status: 400 })
+      const user = await renderUploads()
+      await user.selectOptions(fillBox('다라 정형외과의원'), '5년')
+      const card = await screen.findByRole('alert')
+      expect(card.textContent).toContain(errorInfo('E-AUTO-MONTHS').what)
+      expect(card.textContent).toContain('오류 번호 E-AUTO-MONTHS')
+      expect(tablist().compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(card.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(fillBox('다라 정형외과의원').selectedOptions[0]?.textContent).toBe('2달')
+      expect(autoTexts('다라 정형외과의원')).toEqual(['11월 23일까지'])
+      expect(status().textContent).toBe('')
+      expect(rpc).toHaveBeenCalledTimes(1)
+      expect(document.body.textContent).not.toContain('secret-detail')
+      await waitFor(() => expect(document.activeElement).toBe(fillBox('다라 정형외과의원')))
+      // 다시 골라 되면 카드가 완료 줄로 바뀐다
+      rpc.mockResolvedValue({ data: null, error: null, status: 204 })
+      await user.selectOptions(fillBox('다라 정형외과의원'), '5년')
+      await waitFor(() => expect(status().textContent).toBe('다라 정형외과의원 채울 기간을 5년으로 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.'))
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(fillBox('다라 정형외과의원').selectedOptions[0]?.textContent).toBe('5년')
+    })
+
+    it('AC-8022.3: 연결이 끊겨 던져도 E-AUTO-MONTHS 카드(값 그대로), 탭을 바꾸면 카드가 지워진다', async () => {
+      rpc.mockRejectedValueOnce(new TypeError('Failed to fetch secret-detail'))
+      const user = await renderUploads()
+      await user.selectOptions(fillBox('러머 정형외과의원'), '3달')
+      expect((await screen.findByRole('alert')).textContent).toContain('오류 번호 E-AUTO-MONTHS')
+      expect(fillBox('러머 정형외과의원').selectedOptions[0]?.textContent).toBe('2달')
+      expect(document.body.textContent).not.toContain('secret-detail')
+      await user.click(tabNamed('대기'))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('AC-8022.3: 보내는 동안 표의 단추·지역·채울 기간 상자는 모두 막히고(두 번 보내지 않음), 끝나면 풀린다', async () => {
+      let resolve: (v: unknown) => void = () => {}
+      rpc.mockReturnValueOnce(new Promise((r) => (resolve = r)))
+      const user = await renderUploads()
+      await user.selectOptions(fillBox('다라 정형외과의원'), '6달')
+      for (const b of within(table()).getAllByRole<HTMLButtonElement>('button')) expect(b.disabled, b.textContent ?? '').toBe(true)
+      for (const box of within(table()).getAllByRole<HTMLSelectElement>('combobox')) expect(box.disabled, box.getAttribute('aria-label') ?? '').toBe(true)
+      await user.selectOptions(fillBox('카타 통증의학과의원'), '6달')
+      expect(rpc).toHaveBeenCalledTimes(1)
+      await act(async () => resolve({ data: null, error: null, status: 204 }))
+      expect(status().textContent).toBe('다라 정형외과의원 채울 기간을 6달로 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.')
+      for (const box of within(table()).getAllByRole<HTMLSelectElement>('combobox')) expect(box.disabled).toBe(false)
+    })
+
+    it('AC-8022.3: 상태 목록에 없는 승인 줄(이 화면에서 막 승인한 줄)은 `2달` · `아직 없음`, 바꾸면 그 값으로 바뀐다', async () => {
+      rpc.mockResolvedValue({ data: null, error: null, status: 204 })
+      const user = await renderUploads()
+      await user.click(tabNamed('대기'))
+      await user.click(within(rowOf('버서 정형외과의원')).getByRole('button', { name: '승인' }))
+      await user.click(tabNamed('승인'))
+      expect(fillBox('버서 정형외과의원').selectedOptions[0]?.textContent).toBe('2달')
+      expect(autoTexts('버서 정형외과의원')).toEqual(['아직 없음'])
+      await user.selectOptions(fillBox('버서 정형외과의원'), '2년')
+      await waitFor(() => expect(status().textContent).toBe('버서 정형외과의원 채울 기간을 2년으로 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.'))
+      expect(rpc).toHaveBeenLastCalledWith('set_auto_upload_months', { p_hospital_id: 'p-beoseo', p_months: 24 })
+      expect(fillBox('버서 정형외과의원').selectedOptions[0]?.textContent).toBe('2년')
+      expect(autoTexts('버서 정형외과의원')).toEqual(['아직 없음'])
+    })
+  })
+
+  describe('AC-8022.4 저절로 올림 칸', () => {
+    it('AC-8022.4: 값은 uploadStatus 글 — 다 올라옴·채우는 중·실패·아직 없음, 색 보통 ink · 채우는 중 둘째 줄 accent-strong · 실패 첫 줄 negative 500 · 아직 없음 muted, 마우스 글', async () => {
+      await renderUploads()
+      expect(ALL_APPROVED.map(autoTexts)).toEqual([
+        ['11월 23일까지'],
+        ['아직 없음'],
+        ['11월 23일까지', '2026년 2월까지 채움'],
+        ['도우미를 업데이트하세요', 'E-HELPER-OLD · 11월 20일까지'],
+        ['11월 23일까지', '2024년 3월까지 채움'],
+      ])
+      hasAll(autoLines('다라 정형외과의원')[0], 'text-small text-ink')
+      hasAll(autoLines('카타 통증의학과의원')[1], 'text-caption text-accent-strong')
+      hasAll(autoLines('사아 재활의학과의원')[0], 'font-medium text-negative')
+      hasAll(autoLines('사아 재활의학과의원')[1], 'text-caption text-muted')
+      hasAll(autoLines('러머 정형외과의원')[0], 'text-muted')
+      expect(ALL_APPROVED.map((c) => autoBox(c).getAttribute('title'))).toEqual([
+        '마지막으로 올린 때 11월 24일 (화) 08:52',
+        '이 의원 비트 PC에서 아직 올라온 날이 없어요.',
+        '마지막으로 올린 때 11월 24일 (화) 09:30 · 채울 기간 1년 가운데 2026년 2월까지 채웠어요. 앱을 열 때마다 5분쯤씩 더 채워요.',
+        '마지막으로 올린 때 11월 21일 (토) 08:47',
+        '마지막으로 올린 때 11월 24일 (화) 08:05 · 채울 기간 10년 가운데 2024년 3월까지 채웠어요. 앱을 열 때마다 5분쯤씩 더 채워요.',
+      ])
+      hasAll(cellUnder(rowOf('다라 정형외과의원'), '저절로 올림'), ds.table.td)
+    })
+
+    it('AC-8022.4: 채울 기간을 바꾸면 다시 읽지 않고 손에 든 값으로 글이 바로 바뀐다 — 카타 1년(채우는 중) → 6달(다 올라옴), 다라 2달(다 올라옴) → 1년(채우는 중)', async () => {
+      rpc.mockResolvedValue({ data: null, error: null, status: 204 })
+      const user = await renderUploads()
+      await user.selectOptions(fillBox('카타 통증의학과의원'), '6달')
+      await waitFor(() => expect(autoTexts('카타 통증의학과의원')).toEqual(['11월 23일까지']))
+      expect(autoBox('카타 통증의학과의원').getAttribute('title')).toBe('마지막으로 올린 때 11월 24일 (화) 09:30')
+      // 다라는 9월부터 채웠다 → 1년(2025년 11월 1일부터)이면 다시 채우는 중
+      await user.selectOptions(fillBox('다라 정형외과의원'), '1년')
+      await waitFor(() => expect(autoTexts('다라 정형외과의원')).toEqual(['11월 23일까지', '2026년 9월까지 채움']))
+      hasAll(autoLines('다라 정형외과의원')[1], 'text-accent-strong')
+      expect(autoBox('다라 정형외과의원').getAttribute('title')).toContain('채울 기간 1년 가운데 2026년 9월까지 채웠어요.')
+      // 다른 줄 글은 그대로, 상태 목록은 다시 읽지 않는다
+      expect(autoTexts('가나 정형외과의원')).toEqual(['11월 23일까지', '2024년 3월까지 채움'])
+      expect(uploadRpc).toHaveBeenCalledExactlyOnceWith('admin_auto_upload_list')
+    })
+
+    it('AC-8022.4·AC-204.7: 새 두 칸은 몸 칸(ds.table.td)이고 줄마다 칸 클래스가 같다, 상자 안 상자 없음, 칸 안 새 요소에 폰 전용 클래스 없음', async () => {
+      await renderUploads()
+      expect(nestedBoxes(document.body)).toEqual([])
+      const first = rowOf('다라 정형외과의원')
+      for (const clinic of ALL_APPROVED.slice(1)) {
+        within(rowOf(clinic))
+          .getAllByRole('cell')
+          .forEach((c, i) => expect(classesOf(c), `${clinic} ${i}`).toEqual(classesOf(within(first).getAllByRole('cell')[i])))
+      }
+      for (const clinic of ALL_APPROVED) {
+        for (const el of [fillBox(clinic), autoBox(clinic), ...autoLines(clinic)]) {
+          expect(classesOf(el).filter((t) => t.startsWith('max-md:')), clinic).toEqual([])
+        }
+      }
+    })
+  })
+
+  describe('AC-8022.5 네 목록을 한 번에', () => {
+    it('AC-8022.5: listApplications·listAdminHospitals·listViewHospitals·listUploadStatus(admin_auto_upload_list, 인자 없음)를 한 번씩 — 넷이 다 온 뒤에 탭·표를 그린다', async () => {
+      let resolve: (v: unknown) => void = () => {}
+      uploadRpc.mockReturnValue(new Promise((r) => (resolve = r)))
+      const { container } = render(<AdminApplications />)
+      await waitFor(() => expect(uploadRpc).toHaveBeenCalledTimes(1))
+      await act(async () => {})
+      expect(order).toHaveBeenCalledTimes(1)
+      expect(marksRpc).toHaveBeenCalledTimes(1)
+      expect(viewRpc).toHaveBeenCalledTimes(1)
+      expect(screen.queryByRole('tablist')).toBeNull()
+      expect(screen.queryByRole('table')).toBeNull()
+      expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('true')
+      await act(async () => resolve({ data: [], error: null, status: 200 }))
+      expect(tablist()).toBeTruthy()
+      expect(uploadRpc).toHaveBeenCalledExactlyOnceWith('admin_auto_upload_list')
+      expect(from).toHaveBeenCalledExactlyOnceWith('hospitals')
+      expect(marksRpc).toHaveBeenCalledExactlyOnceWith('admin_hospitals')
+      expect(viewRpc).toHaveBeenCalledExactlyOnceWith('admin_view_hospitals')
+      expect(rpc).not.toHaveBeenCalled()
+    })
+
+    it('AC-8022.5: 다른 목록이 늦게 와도 넷 다 온 뒤에 그린다(상태 목록만 먼저 와도 탭·표 없음)', async () => {
+      let resolve: (v: unknown) => void = () => {}
+      viewRpc.mockReturnValue(new Promise((r) => (resolve = r)))
+      render(<AdminApplications />)
+      await waitFor(() => expect(uploadRpc).toHaveBeenCalledTimes(1))
+      await act(async () => {})
+      expect(screen.queryByRole('tablist')).toBeNull()
+      await act(async () => resolve({ data: DB_VIEWS, error: null, status: 200 }))
+      expect(tablist()).toBeTruthy()
+    })
+
+    it.each([
+      ['답 오류', { data: null, error: { code: '42501', message: UPLOAD_RAW }, status: 403 }],
+      ['목록이 아님', { data: { hospital_id: 'h-dara' }, error: null, status: 200 }],
+      ['줄 모양 틀림', { data: [{ hospital_id: 'h-dara', months: 7 }], error: null, status: 200 }],
+    ])('AC-8022.5: 상태 목록을 읽지 못하면(%s) 다른 목록 실패와 같이 던진다 → 화면 오류(지금처럼 E-PAGE-FAILED + [다시 시도])', async (_label, answer) => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      uploadRpc.mockResolvedValue(answer)
+      let caught: unknown = null
+      class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+        state = { failed: false }
+        static getDerivedStateFromError() {
+          return { failed: true }
+        }
+        componentDidCatch(error: unknown) {
+          caught = error
+        }
+        render() {
+          return this.state.failed ? <p>오류 화면</p> : this.props.children
+        }
+      }
+      render(
+        <Boundary>
+          <AdminApplications />
+        </Boundary>,
+      )
+      expect(await screen.findByText('오류 화면')).toBeTruthy()
+      expect(caught).toBeInstanceOf(AdminSyncError)
+      expect(document.body.textContent).not.toContain('secret-detail')
+    })
+
+    it('AC-8022.5: 화면을 떠난 뒤 상태 목록이 와도 오류 없이 버린다', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      let resolve: (v: unknown) => void = () => {}
+      uploadRpc.mockReturnValue(new Promise((r) => (resolve = r)))
+      const { unmount } = render(<AdminApplications />)
+      await waitFor(() => expect(uploadRpc).toHaveBeenCalledTimes(1))
+      unmount()
+      await act(async () => resolve({ data: AV_UPLOADS, error: null, status: 200 }))
+      expect(error).not.toHaveBeenCalled()
+    })
   })
 })

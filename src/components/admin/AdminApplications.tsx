@@ -4,11 +4,15 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, ty
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
+import { todayInKorea } from '@/lib/analytics/dates'
 import { EMR_LABEL } from '@/lib/clinic/emrText'
 import { listAdminHospitals, listApplications, setAdmin, setHospitalStatus, type AdminMark, type Application } from '@/lib/auth/admin'
+import { listUploadStatus, setUploadMonths, type UploadRow } from '@/lib/auth/adminSync'
 import { listViewHospitals, setHospitalRegion, startAdminView, type ViewHospital } from '@/lib/auth/adminView'
+import { DEFAULT_FILL_MONTHS, fillChangedText } from '@/lib/autoUpload/range'
 import { setViewKey } from '@/lib/supabase/viewKey'
 import { AdminNav } from './AdminNav'
+import { FillSelect, selectBox, UploadState } from './UploadCells'
 import {
   adminBadgeOf,
   adminDoneMessage,
@@ -38,6 +42,8 @@ import {
 // 바꾸기는 DB 함수 set_admin으로만 하고 성공한 뒤에만 손에 든 표시를 고친다(목록을 다시 읽지 않는다).
 // 안쪽 메뉴·'승인' 탭 이름 눌러 보기·지역 칸·본 기록 자리(bottom)·신청자 · 이메일 한 칸은 spec admin-view(REQ-8012·REQ-8022, design.md '관리자 화면',
 // 시안 docs/mockups/admin-view ?s=admin-list). 관리자 화면은 다른 의원을 보는 중이어도 숨김이 없다(읽기만 바탕을 쓰지 않는다, AC-8012.4).
+// '승인' 탭의 채울 기간·저절로 올림 칸·표 위 안내 줄·2차 칸 폭은 admin-view 2차(REQ-8022 AC-8022.2~8022.5, design.md '가입 승인 표 2차',
+// 시안 ?s=admin-list 2차): 상태는 admin_auto_upload_list()로 함께 읽고, 채울 기간은 DB 함수 set_auto_upload_months로만 바꾼 뒤 손에 든 값만 고친다.
 // 앱 틀(위쪽 띠·탭 띠·<main>)은 (app)/layout의 AppShell이 준다
 
 // multi-admin requirements.md '화면 글자' INTRO 전체(지금 두 문장 끝에 한 문장을 더함) + admin-view 한 문장(시안 T.adminIntro)
@@ -45,6 +51,10 @@ const INTRO =
   '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요. 의원 이름을 누르면 그 의원 화면을 읽기만 할 수 있어요.'
 // 지역 모름 고르기 상자의 마우스 글(admin-view design.md '화면 글자')
 const REGION_UNKNOWN_TIP = '병원 정보에 주소가 없어 지역을 몰라요. 골라 주세요.'
+// '승인' 탭 표 위 안내 줄(admin-view design.md '화면 글자' 2차, 시안 T.autoNoteB · T.autoNote)
+const AUTO_NOTE_TITLE = '저절로 올림'
+const AUTO_NOTE =
+  '의원 비트 PC에서 그날 처음 앱을 열면, 어제까지 아직 안 올라온 날의 매출·통계 숫자를 사이트에 올려요. 채울 기간이 길면 최근 달부터 한 번에 5분쯤씩 나눠 채우고, 다음에 열 때 이어서 채워요. 의원 화면에는 아무것도 보이지 않아요.'
 
 // 확인 창 셋: 제목·본문·확인 단추 글자·확인 단추 모양만 다르다(multi-admin design.md 기본값 12).
 // 거절 창 문구는 시안에 없어 말끝만 "~요"로 바꾼다(ui-90 design.md '시안과 다른 점' 11). 정하기·빼기는 multi-admin '화면 글자' 그대로
@@ -71,8 +81,9 @@ const CONFIRM: Record<ConfirmKind, { title: string; body: string; confirmLabel: 
 }
 
 // 실패 카드 번호: 가입 상태 바꾸기(승인·거절·되돌리기)는 E-ADMIN-FAILED, 관리자 정하기·빼기는 E-ADMIN-ROLE(multi-admin 기본값 11),
-// 다른 의원 보기 시작은 E-VIEW-START, 지역 고치기는 E-REGION-SAVE(admin-view AC-8012.1·AC-8012.2). 모두 같은 자리(탭 줄과 표 사이)
-type FailCode = 'E-ADMIN-FAILED' | 'E-ADMIN-ROLE' | 'E-VIEW-START' | 'E-REGION-SAVE'
+// 다른 의원 보기 시작은 E-VIEW-START, 지역 고치기는 E-REGION-SAVE(admin-view AC-8012.1·AC-8012.2), 채울 기간 바꾸기는 E-AUTO-MONTHS(AC-8022.3).
+// 모두 같은 자리(탭 줄과 표 사이)
+type FailCode = 'E-ADMIN-FAILED' | 'E-ADMIN-ROLE' | 'E-VIEW-START' | 'E-REGION-SAVE' | 'E-AUTO-MONTHS'
 
 // 화면 안 탭: 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 첫 탭은 왼쪽 12px을 당겨 글자를 제목 끝에 맞춘다.
 // 키보드 초점은 탭 안쪽 2px accent 고리
@@ -108,6 +119,9 @@ const cell = {
   who: `${ds.table.td} ${cellPhone} md:text-body max-md:col-start-1 max-md:col-end-4 max-md:row-start-3 max-md:self-start max-md:whitespace-normal max-md:text-ink-2`,
   // 지역 칸(admin-view AC-8012.2, '승인' 탭만): 고르기 상자 하나
   region: `${ds.table.td} ${cellPhone}`,
+  // 채울 기간 칸(고르기 상자 하나)·저절로 올림 칸(두 줄, admin-view AC-8022.3·AC-8022.4, '승인' 탭만): 지역 칸과 같은 몸 칸(새 폰 모양 없음)
+  fill: `${ds.table.td} ${cellPhone}`,
+  upload: `${ds.table.td} ${cellPhone}`,
   phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-4 max-md:mt-1.5 max-md:text-muted`,
   action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-4 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
@@ -116,8 +130,8 @@ const whoName = `md:truncate ${wrapTablet} wrap-anywhere`
 const whoEmail = `text-small text-ink-2 md:truncate ${wrapEmail}`
 // 승인 줄 의원 이름 단추(시안 .vlink): 눈 14 + accent-strong 600 글자, 올리면 밑줄. 이름만 말줄임
 const viewLink = `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-control font-semibold text-accent-strong underline-offset-3 not-disabled:hover:underline disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
-// 지역 고르기 상자(시안 .sel, 설정 예약 칸 SELECT와 같은 32px 모양). 지역 모름은 주황 글자 500(시안 .sel.unknown)
-const regionSelect = `h-8 cursor-pointer rounded-control border border-line-strong bg-surface px-1.5 text-small not-disabled:hover:border-muted disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
+// 지역 고르기 상자(시안 .sel, 설정 예약 칸 SELECT와 같은 32px 모양 — 채울 기간 고르기와 같은 selectBox). 지역 모름은 주황 글자 500(시안 .sel.unknown)
+const regionSelect = selectBox
 // 빈 탭 안내: 제목과 설명을 따로 줄로(목업 <p> 둘). 두 줄이라 위아래 여백을 둔다
 const emptyClass = `${ds.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:px-4`
 // PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
@@ -134,9 +148,31 @@ const COLUMNS: readonly { label: string; width: string }[] = [
   { label: '연락처', width: 'w-37.5 max-lg:w-34' },
   { label: '동작', width: 'w-37.5 md:text-right' },
 ]
-// '승인' 탭은 의원 이름 다음에 지역 칸 120px(admin-view AC-8012.2). 칸이 늘어 표가 1120px보다 좁으면 옆으로 밀린다(design.md 기본값 25)
-const APPROVED_COLUMNS: readonly { label: string; width: string }[] = [...COLUMNS.slice(0, 2), { label: '지역', width: 'w-30' }, ...COLUMNS.slice(2)]
-const APPROVED_MIN = 'md:min-w-280'
+// '승인' 탭(admin-view 2차 AC-8022.2, 시안 notes.md '2차 모양 결정'): 칸 차례 신청일 · 의원 이름 · 지역 · 채울 기간 · 저절로 올림 · EMR ·
+// 신청자 · 이메일(한 칸) · 연락처 · 동작, 폭 112 · 184 · 108 · 88 · 248 · 60 · (남은 폭) · 132 · 144. 표 최소 폭 1232px — 1440은 다 보이고,
+// 더 좁으면 표만 옆으로 밀린다(그래서 폭마다 다른 칸 폭이 없다). 동작 144px에도 [관리자로 정하기]가 들어간다(140px이면 겨우 들어감)
+const APPROVED_COLUMNS: readonly { label: string; width: string }[] = [
+  { label: '신청일', width: 'w-28' },
+  { label: '의원 이름', width: 'w-46' },
+  { label: '지역', width: 'w-27' },
+  { label: '채울 기간', width: 'w-22' },
+  { label: '저절로 올림', width: 'w-62' },
+  { label: 'EMR', width: 'w-15' },
+  { label: '신청자 · 이메일', width: '' },
+  { label: '연락처', width: 'w-33' },
+  { label: '동작', width: 'w-36 md:text-right' },
+]
+const APPROVED_MIN = 'md:min-w-308'
+
+// 그 병원의 채울 기간: 상태 목록의 months, 목록에 없는 줄(이 화면에서 막 승인한 줄)은 DB 기본값과 같은 2달
+const uploadMonthsOf = (uploads: ReadonlyMap<string, UploadRow>, hospitalId: string) => uploads.get(hospitalId)?.months ?? DEFAULT_FILL_MONTHS
+// 채울 기간을 바꾼 뒤 손에 든 상태: 그 줄 months만 바꾼 새 목록(다른 줄·받은 목록은 그대로). 목록에 없던 줄은 올라온 것 없는 줄로 더한다
+function withUploadMonths(uploads: ReadonlyMap<string, UploadRow>, hospitalId: string, months: number): ReadonlyMap<string, UploadRow> {
+  const next = new Map(uploads)
+  const before = uploads.get(hospitalId)
+  next.set(hospitalId, before === undefined ? { months, throughDay: null, filledFrom: null, lastOkAt: null, errorCode: null, errorAt: null } : { ...before, months })
+  return next
+}
 
 // 이메일 글자: "@" 바로 뒤에 줄을 바꿀 자리(<wbr>). 글자(textContent)·복사한 글자는 그대로다.
 // 크롬은 nowrap 안에서도 <wbr>에서 줄을 바꾼다 → 말줄임하는 1024px 이상에서는 <wbr>을 뺀다(lg:hidden)
@@ -262,6 +298,8 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
   const [marks, setMarks] = useState<AdminMark[]>([])
   // 보기 목록(admin_view_hospitals: 주소·정한 지역·내 의원): 이것도 같이 온다(admin-view AC-8012.5)
   const [views, setViews] = useState<ViewHospital[]>([])
+  // 저절로 올림 상태(admin_auto_upload_list: 병원 id마다 채울 기간·올라온 날·오류): 이것도 같이 온다(admin-view AC-8022.5)
+  const [uploads, setUploads] = useState<ReadonlyMap<string, UploadRow>>(new Map())
   const [loadError, setLoadError] = useState<{ error: unknown } | null>(null)
   const [tab, setTab] = useState<Tab>('pending')
   const [message, setMessage] = useState('')
@@ -280,12 +318,13 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
 
   useEffect(() => {
     let alive = true // 떠난 뒤 온 결과는 버린다
-    // 신청 목록·관리자 표시·보기 목록을 한 번씩 읽고, 셋 다 온 뒤에 탭·표를 그린다(틀린 단추·지역을 잠깐이라도 보이지 않게)
-    Promise.all([listApplications(), listAdminHospitals(), listViewHospitals()]).then(
-      ([list, adminMarks, viewList]) => {
+    // 신청 목록·관리자 표시·보기 목록·저절로 올림 상태를 한 번씩 읽고, 넷 다 온 뒤에 탭·표를 그린다(틀린 단추·지역·채울 기간을 잠깐이라도 보이지 않게)
+    Promise.all([listApplications(), listAdminHospitals(), listViewHospitals(), listUploadStatus()]).then(
+      ([list, adminMarks, viewList, uploadList]) => {
         if (!alive) return
         setMarks(adminMarks)
         setViews(viewList)
+        setUploads(uploadList)
         setRows(list)
       },
       (error: unknown) => {
@@ -297,7 +336,7 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
     }
   }, [])
 
-  // 셋 중 하나라도 읽지 못하면 그리기를 멈춘다 → 화면 오류(app/error.tsx: E-PAGE-FAILED + [다시 시도]·[로그아웃])가 안내한다
+  // 넷 중 하나라도 읽지 못하면 그리기를 멈춘다 → 화면 오류(app/error.tsx: E-PAGE-FAILED + [다시 시도]·[로그아웃])가 안내한다
   if (loadError !== null) throw loadError.error
 
   const select = (key: Tab) => {
@@ -386,6 +425,18 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
     )
   }
 
+  // 채울 기간 바꾸기(admin-view AC-8022.3): 확인 창 없이 setUploadMonths 한 번 → 되면 손에 든 상태의 그 줄 months만 고친다(저절로 올림 글은
+  // 그 값으로 다시 센다, 목록을 다시 읽지 않는다). 늘림·줄임 완료 줄은 fillChangedText. 실패는 E-AUTO-MONTHS, 값은 그대로, 초점은 그 상자
+  const changeFill = (row: Application, months: number, origin: HTMLElement) =>
+    send(
+      () => setUploadMonths(row.id, months),
+      () => setUploads((prev) => withUploadMonths(prev, row.id, months)),
+      fillChangedText(row.name, uploadMonthsOf(uploads, row.id), months),
+      'E-AUTO-MONTHS',
+      origin,
+      'origin',
+    )
+
   // 다른 의원 보기(admin-view AC-8012.1): 확인 창 없이 startAdminView → 보기 열쇠 쿠키(setViewKey) → /dashboard를 새로 연다
   // (ViewPicker와 같은 흐름을 이 파일이 스스로 쓴다). 여는 동안 표는 막히고, 실패하면 E-VIEW-START 카드 + 초점은 누른 이름
   const startView = async (row: Application, origin: HTMLElement) => {
@@ -448,6 +499,7 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
   const label = TABS.find((t) => t.key === tab)?.label ?? ''
   const approvedTab = tab === 'approved'
   const columns = approvedTab ? APPROVED_COLUMNS : COLUMNS
+  const today = todayInKorea() // 저절로 올림 칸의 채울 기간 첫날을 세는 한국 오늘
 
   return (
     <div aria-busy={rows === null} className="flex flex-col gap-4 max-md:gap-3">
@@ -500,6 +552,16 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
               )
             })}
           </div>
+
+          {/* '승인' 탭만 표 위 안내 줄(시안 .tnote): 올림 아이콘 16(꾸밈, muted, 첫 줄에 맞춰 위 2px) + 굵은 `저절로 올림` · 안내 글, small ink-2, 최대 폭 920px */}
+          {approvedTab && (
+            <p className="flex max-w-230 items-start gap-2 text-small text-ink-2">
+              <Icon name="upload" size={16} className="mt-0.5 shrink-0 text-muted" />
+              <span>
+                <b className="font-semibold text-ink">{AUTO_NOTE_TITLE}</b> · {AUTO_NOTE}
+              </span>
+            </p>
+          )}
 
           {/* 완료 줄과 오류 카드는 같은 자리(탭 줄과 표 사이). 완료 줄 자리(role=status)는 늘 두고 글만 바꾼다 —
               새로 붙은 알림 자리는 화면 읽기가 놓칠 수 있다. 비면(:empty) 화면 밖으로 빼 자리를 차지하지 않는다(sr-only) */}
@@ -590,6 +652,21 @@ export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: R
                                   </option>
                                 ))}
                               </select>
+                            </td>
+                          )}
+                          {approvedTab && (
+                            <td className={cell.fill}>
+                              <FillSelect
+                                name={row.name}
+                                months={uploadMonthsOf(uploads, row.id)}
+                                disabled={busy}
+                                onChange={(months, box) => void changeFill(row, months, box)}
+                              />
+                            </td>
+                          )}
+                          {approvedTab && (
+                            <td className={cell.upload}>
+                              <UploadState row={uploads.get(row.id)} months={uploadMonthsOf(uploads, row.id)} today={today} />
                             </td>
                           )}
                           <td className={cell.emr}>{EMR_LABEL[row.emr]}</td>
