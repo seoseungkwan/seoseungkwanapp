@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 // copy·userCheck는 docs/mockups/dashboard-home/index.html의 [복사]·[가입 승인] 단추(tab-frame REQ-315), logout은 docs/mockups/ui-90/app/gen.py의 ICONS(ui-90 AC-416.7),
 // info·reload는 docs/mockups/worklog/bitfill.html의 ICON_INFO·ICON_LOAD(viewBox 24)를 16 칸으로 ×2/3 한 것(worklog AC-017.9, design.md 20-5절).
 // alert는 docs/mockups/worklog/memo-font.html의 ICON_WARN을 info와 같은 원(반지름 6)에 맞춘 것(worklog-memo-font AC-1507.3, 업무일지 잘림 안내).
+// eye는 docs/mockups/admin-view/index.html의 I.eye 그대로(admin-view, 보는 의원 단추·맨 위 띠·승인 목록 이름).
 // 늘 꾸밈이다(aria-hidden). 아이콘만 있는 단추는 단추에 aria-label을 준다. 색은 글자색을 따른다(currentColor) → 놓는 자리가 text-* 토큰 클래스로 정한다.
 // 크기는 size(12·14·16)가 너비·높이이고 viewBox·선 굵기 1.5는 그대로다. 서버에서 그대로 그린다(훅 없음)
 
@@ -34,6 +35,8 @@ export const ICON_NAMES = [
   'reload',
   // worklog-memo-font AC-1507.3: 업무일지 잘림 안내. 그림은 시안 docs/mockups/worklog/memo-font.html의 ICON_WARN(원은 info와 같게)
   'alert',
+  // admin-view AC-8006.2·AC-8006.4·AC-8012.1: 다른 의원 보기(보는 의원 단추·띠·승인 목록 이름). 그림은 시안 docs/mockups/admin-view/index.html의 I.eye 그대로다
+  'eye',
 ] as const
 
 export type IconName = (typeof ICON_NAMES)[number]
@@ -138,6 +141,12 @@ const SHAPES: Record<IconName, ReactNode> = {
       <circle cx="8" cy="8" r="6" />
       <path d="M8 4.67v3.66" />
       <path d="M8 11h.01" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M1.5 8s2.4-4.75 6.5-4.75S14.5 8 14.5 8 12.1 12.75 8 12.75 1.5 8 1.5 8z" />
+      <circle cx="8" cy="8" r="2" />
     </>
   ),
 }
