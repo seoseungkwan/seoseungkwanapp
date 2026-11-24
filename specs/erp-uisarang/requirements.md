@@ -2,7 +2,7 @@
 
 > 기능 ID: `erp-uisarang` · 형식: `### REQ-4201: 제목`, 수용 기준 `- AC-4201.1: Given/When/Then`. 시험 이름에 AC ID를 넣는다.
 > REQ 번호: 39xx는 다른 갈래(feat-erp-copy-list)가 쓴다. 42xx는 어느 갈래·일꾼 폴더의 명세에도 없어 이것을 쓴다(2026-11-24 확인).
-> 근거: 의사랑 PC 조사 노트(2026-11-24, 사용자 결정 포함. PC 이름·내부 주소가 있어 저장소에 옮기지 않음 — 필요한 파일 모양만 design.md 5절에 옮김), 화면 시안 `docs/mockups/erp-uisarang/`(6f3de65e, 승인 전), 조정자 결정 2026-11-24(design.md 2절 표). 화면 글은 시안이 이기고, 시안과 다른 곳은 design.md 11절에 모았다.
+> 근거: 의사랑 PC 조사 노트(2026-11-24, 사용자 결정 포함. PC 이름·내부 주소가 있어 저장소에 옮기지 않음 — 필요한 파일 모양만 design.md 5절에 옮김), 화면 시안 `docs/mockups/erp-uisarang/`(6f3de65e, 승인 전), 조정자 결정 2026-11-24(design.md 2절 표), 승인 뒤 일꾼 지적으로 고친 곳(design.md 2-1). 화면 글은 시안이 이기고, 시안과 다른 곳은 design.md 11절에 모았다.
 > 예시 마감 일자는 2026-11-23. 숫자는 모두 지은 값이다.
 
 ## 배경 / 목표
@@ -27,9 +27,9 @@
 
 ### REQ-4201: 자료원 판별과 의사랑 PC 등록
 - AC-4201.1: Given 가짜 드라이브 뿌리 목록·파일 있음 함수, When `UisRules.FindUisarang(roots, fileExists)`, Then `<뿌리>\ysr2000\Exe\FStat.exe`가 있는 첫 뿌리의 `<뿌리>\ysr2000`이고 없으면 null이다. 넘겨받은 뿌리만 보고(도우미는 로컬 고정 드라이브만 넘긴다), 경로 대소문자는 가리지 않는다.
-- AC-4201.2: Given 등록 모드(`--register`), When 비트를 찾으면, Then 지금 비트 등록 흐름 그대로이고 저장(0)이면 자료원 파일 `data\source.json`이 있을 때 지운다. When 비트를 못 찾았고(`E-BIT-NOT-FOUND`) 의사랑이 있으면, Then 비트 로그인 창·PC 확인 창 없이 엑셀 폴더(REQ-4202)를 만들고 `data\source.json`(`{ "v": 1, "source": "uisarang", "folder": "desktop" | "profile" }`)을 쓴 뒤 표준 출력에 `SOURCE-UISARANG`과 `FOLDER-DESKTOP` 또는 `FOLDER-PROFILE`을 한 줄씩(ASCII) 쓰고 0으로 끝난다. 폴더를 못 만들면 `E-UIS-FOLDER`·`STEP-UIS`로 2다. 둘 다 없으면 지금처럼 `E-BIT-NOT-FOUND`·`STEP-FIND`로 2다.
+- AC-4201.2: Given 등록 모드(`--register`), When 비트를 찾으면, Then 지금 비트 등록 흐름 그대로이고 저장(0)이면 자료원 파일 `data\source.json`이 있을 때 지운다. When 비트를 못 찾았고(`E-BIT-NOT-FOUND`) 의사랑이 있으면, Then 비트 로그인 창·PC 확인 창 없이 엑셀 폴더(REQ-4202)를 만들고 `data\source.json`(`{ "v": 1, "source": "uisarang", "folder": "desktop" | "profile" }`)을 쓴 뒤 표준 출력에 `SOURCE-UISARANG`과 `FOLDER-DESKTOP` 또는 `FOLDER-PROFILE`을 한 줄씩(ASCII) 쓰고 0으로 끝난다. 폴더를 못 만들면 `E-UIS-FOLDER`·`STEP-UIS`로 2다. 자료원 파일을 쓰거나(의사랑) 지우지(비트 저장 뒤) 못하면(`IOException`·`UnauthorizedAccessException`) 예외로 끝나지 않고 `E-STORE-FAILED`·`STEP-UIS`로 2다(design.md 4-3). 둘 다 없으면 지금처럼 `E-BIT-NOT-FOUND`·`STEP-FIND`로 2다.
 - AC-4201.3: Given 자료원 파일, When `UisSource.Read(dataDir)`, Then 모양이 맞으면 의사랑(폴더 종류 포함), 없거나 틀리면 null(= 비트)이다. 도우미는 켤 때 한 번 읽어 자료원을 정한다(비트 PC는 이 파일이 없어 지금 그대로).
-- AC-4201.4: Given `install.ps1`, When 등록 끝 번호 0이고 출력에 `SOURCE-UISARANG`이 있으면, Then design.md 10-5의 의사랑 등록 글(폴더 두 갈래)을 보이고, 없으면 지금 글 그대로다. 등록 앞 글은 design.md 10-5 글이다. 멈춘 단계 `UIS`는 '의사랑 엑셀 폴더 만들기'로 보인다.
+- AC-4201.4: Given `install.ps1`, When 등록 끝 번호 0이고 출력에 `SOURCE-UISARANG`이 있으면, Then design.md 10-5의 의사랑 등록 글(폴더 두 갈래)을 보이고, 없으면 지금 글 그대로다. 등록 앞 글은 design.md 10-5 글이다. 멈춘 단계 `UIS`는 '의사랑 등록(엑셀 폴더·자료원 파일)'로 보이고, `E-UIS-FOLDER`와 단계 `UIS`의 `E-STORE-FAILED`는 design.md 10-5 ★ 실패 글이다. 그 밖 번호의 글은 지금 그대로다.
 
 ### REQ-4202: 엑셀 폴더와 지우기·남기기
 - AC-4202.1: Given 가짜 경로 값, When `UisRules.ChooseFolder(desktop, profile, cloudRoots)`, Then 바탕화면이 클라우드 폴더(`OneDrive`·`OneDriveCommercial`·`OneDriveConsumer` 환경 값) 가운데 하나의 안이면 Profile(`<사용자 폴더>\ERP마감`), 아니면 Desktop(`<바탕화면>\ERP마감`)이다. 바탕화면 값이 비었으면 Profile이다.
@@ -42,6 +42,7 @@
 - AC-4203.2: Given 깨진 바이트·`.xlsx`(zip)를 `.xls` 이름으로·HTML을 `.xls` 이름으로·빈 파일, When `XlsRows.Read`, Then `UisFileException` 하나이고 그 글에는 파일의 칸 글자가 없다. 20,000줄 또는 64칸을 넘는 시트도 같다.
 - AC-4203.3: Given csproj, Then `Erp.Core.csproj`는 `ExcelDataReader` 3.9.0을, `Erp.Core.Tests.csproj`는 net10.0에서만 `System.Text.Encoding.CodePages` 10.0.14를 정확한 판으로 참조한다(ADR-050). AC-3611.1 판 시험은 '기존 도우미에 있는 패키지는 같은 판, 없는 패키지는 ADR-050 목록의 판'으로 본다. 다른 새 패키지는 없다.
 - AC-4203.4: Given `fixtures/make-fake-uisarang.ts`(저장소의 SheetJS `xlsx` 0.20.3, `bookType: 'biff8'`), When 다시 만들면, Then 커밋된 가짜 파일과 바이트가 같고 `.gitignore`에 만드는 파일마다 되살리는 줄이 있다. 가짜 파일의 이름·전화·주소·주민번호·차트번호는 design.md 12-2의 표시 글자만 쓴다(실제 의원 파일·숫자 없음).
+- AC-4203.5: Given 지금 시험 `fixtures/make-fake-fixtures.test.ts`의 '.gitignore 되살리기' 시험(AC-005.2), Then 되살리는 줄은 두 생성기가 만드는 파일 이름 그대로뿐이고(`make-fake-fixtures`의 `FILES` → `fixtures/fake-bit/`, `make-fake-uisarang`의 `UIS_FIXTURE_NAMES` → `fixtures/fake-uisarang/`, 글롭 없음) 시험이 통과한다(design.md 12-4).
 
 ### REQ-4204: 보고서 알아보기·날짜·조건·칸 찾기
 - AC-4204.1: Given 시트 줄, When `UisReport.Read(rows)`, Then 위에서 30줄 안의 머리글 줄을 design.md 5-1 표(있어야 하는 칸·없어야 하는 칸)로 찾아 여섯 종류 가운데 하나로 정한다. 머리글 글자는 빈칸을 모두 빼고 견준다. 맞는 종류가 없거나 둘이면 종류 모름이다.
@@ -92,6 +93,7 @@
 - AC-4211.3: Given 의사랑 답과 설정, When `uisCells`·`planUisCells`, Then design.md 6-1 표 그대로다. 계획(`Planned[]`, 지금 `fillAll`이 받는 모양)에는 값 칸·unpicked·unknown·noName만 있고 의사랑에 없는 칸(none 75칸)과 엑셀이 없어 빈 칸(missing)은 없다. 계획의 칸 자리는 모두 지금 `planCells`(비트, 처음 값 설정)가 내는 칸 자리 가운데 하나다.
 - AC-4211.4: Given 의사랑 답, When `readUisDay(data, date)`, Then design.md 3-2 모양(숫자 칸은 0 이상 정수 또는 정해진 null, `source` = 'uisarang', `uis.reports` 6개가 `UIS_KINDS` 차례, `ages` 10개)일 때만 받고 아니면 null(= E-BRIDGE-BAD-REPLY)이다. 비트 `readDay`는 바뀌지 않는다.
 - AC-4211.5: Given 의사랑 흐름, Then 같은 화면·같은 마감 일자 동안 마지막 답을 화면 기억에만 들고 있어(저장하지 않음) 안내 안의 [있는 엑셀로 채우기]·[엑셀로 받기]·[의사랑 값 채우기]는 다시 읽지 않고 그 답을 쓴다. 단추 줄의 [의사랑 값 채우기]·[엑셀로 받기]는 늘 다시 읽는다(새로 저장한 엑셀을 읽고 지우려고. 지운 엑셀 값은 도우미가 모아 둔다, AC-4210.4). 마감 일자가 바뀌거나 화면을 떠나면 버린다.
+- AC-4211.6: Given 확장 코드, Then 도우미 부르기 타입 `Send`는 `uisTypes.ts` 한 곳에서만 내보내고 `uisOptions.ts`·`uisFlow.ts`는 그것을 가져다 쓴다(같은 뜻의 타입을 따로 정하지 않음, design.md 8-1).
 
 ### REQ-4212: 확장 — 의사랑 안내
 - AC-4212.1: Given 답의 `uis.open`이 비지 않으면, Then 다른 판정보다 먼저 시안 ⑫ 안내(design.md 10-1)이고 아무 칸도 바꾸지 않는다.
@@ -100,6 +102,7 @@
 - AC-4212.4: Given 채운 뒤, Then 결과 안내는 design.md 10-2의 1~10 차례다(맞춰 볼 숫자 · 채움 줄 · 지움·모아 둔 값·남김·못 지움 줄 · 엑셀이 없어 비워 둔 칸 · 의사랑에서 읽지 못한 칸과 까닭 · 건너뛴 칸 · 의사랑에 없어 비워 둔 칸 · 맞춰 보기 경고 · 예약 참고 줄 · 끝 줄과 [되돌리기] [엑셀로 받기] [설정 열기]). 해당하는 것만 보인다.
 - AC-4212.5: Given 의사랑 단추 줄, When [기간 채우기], Then 시안 ⑬ 안내(머리 '기간 채우기', 하루씩만, [닫기])만 보이고 기간 고르기·도우미 부름은 없다.
 - AC-4212.6: Given 의사랑 자료원의 오류, Then `errors.ts`의 `explainFor(code, 'uisarang')`가 `E-UIS-FOLDER`·`E-CLOSING-WRONG-SOURCE`·표에 없는 번호를 design.md 10-4 글로, 나머지는 지금 `ERRORS` 글로 준다. `explain(code)`(비트)는 지금 그대로다. 모든 의사랑 안내는 숫자·날짜·칸 이름·보고서 이름만 textContent로 넣는다.
+- AC-4212.7: Given 의사랑 자료원, When '진료 0건' 묻기·이미 적힌 칸 묻기를 보이면, Then 첫 줄은 design.md 10-1 ★ 의사랑 글('{날짜}에는 의사랑 진료가 한 건도 없어요.' · '이미 적힌 칸 {N}개가 의사랑 값으로 바뀌어요.')이고 뒤 줄·단추는 지금 그대로다. 비트 자료원의 두 묻기는 지금 글 그대로다. ⑩·⑪ 안내는 답에 없는 라벨 이름·파일 수를 말하지 않는다(⑪ '{보고서} 엑셀이 여러 개 있어요.', design.md 10-1).
 
 ### REQ-4213: 확장 — [엑셀로 받기]
 - AC-4213.1: Given 의사랑 답과 설정, When `uisSheetRows(day, settings)`, Then design.md 7-1 모양이다: 1행 ['항목', '{M/D} ({요일})', '빈 칸 까닭'], 머리 줄과 숫자 줄 149줄(ERP 화면 차례, `UIS_SHEET_FIELDS`), 값은 숫자 칸 또는 빈 칸, 빈 칸이면 끝 열에 까닭 하나('직접 입력' · '의사랑에 없음' · '코드 안 고름' · '못 읽음' · '못 읽음 ({보고서} 없음)'). 값이 있는 칸은 `uisCells` 값과 같다(기타 이름이 빈 줄도 값을 쓴다). 환자 정보는 없다.
@@ -113,6 +116,7 @@
 - AC-4214.3: Given [코드 목록 읽기]·[코드 목록 다시 읽기], When 누르면, Then `closing.uisCodes`를 부르고 ok면 목록을 `chrome.storage.local` `erpClosingUisCodes`에 곧바로 쓰고(설정 [저장]과 따로) design.md 10-6 ok 글을 보인다. missing·notAll·twice·open·오류는 design.md 10-6 글이고 목록은 그대로다.
 - AC-4214.4: Given [저장], Then `erpClosingUis` 한 열쇠에 design.md 9-2 모양으로 쓴다(코드 꼴 정리·겹침 뺌·20개까지, 기타 이름 1~20자 정리). 비트 설정 `erpClosing`은 읽지도 쓰지도 않는다. 저장하지 않은 바꿈이 있으면 지금처럼 나가기 확인 창이 뜬다.
 - AC-4214.5: Given 예약 묶음, Then 의사랑 설정에 '예약 합계를 넣을 줄'이 없고 design.md 10-6 예약 안내 한 줄만 있다.
+- AC-4214.6: Given 의사랑 설정 화면, Then 폴더를 가리키는 글은 모두 'ERP마감 폴더'이고(코드 목록 답에 폴더 자리가 없어서) 맨 위 상자에 design.md 10-6 ★ 폴더 글(자리 설명)이 있다. '매일 저장할 엑셀 6개'의 저장법 셋째 줄은 design.md 10-6 ★ 글(실제 지우기 규칙)이고, '-환자별' 안내는 저장법 둘째 줄 한 번뿐이다. [코드 목록 읽기] twice 글은 수를 말하지 않는다.
 
 ### REQ-4215: 비트판 그대로
 - AC-4215.1: Given 이 기능의 바뀐 곳, Then `git diff efe60061 -- helper src extension helper-erp/src/Erp.Core/Closing extension-erp/src/cells.ts extension-erp/src/fill.ts extension-erp/src/settings.ts extension-erp/src/range.ts extension-erp/src/rangeView.ts extension-erp/src/rangeTypes.ts extension-erp/src/erpday.ts extension-erp/src/__tests__`가 비어 있다.

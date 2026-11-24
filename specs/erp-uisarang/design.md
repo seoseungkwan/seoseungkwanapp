@@ -40,6 +40,22 @@
 | 13 | 환자 줄 = 차트번호 칸이 숫자(1~12자리)인 줄 | Claude 판단(표 끝 합계·쪽 머리 줄을 환자로 세지 않게) | 새것 — 실제 PC 확인 |
 | 14 | CodePages 패키지는 시험(net10.0)에만 | ADR-050(.NET Framework 4.8은 코드 페이지가 기본으로 있음) | 새것 |
 
+#### 2-1. 명세 고침 (2026-11-24, 승인 뒤 일꾼 지적 반영 — 본문의 '고침 N')
+| 고침 | 무엇 | 고친 곳 | 코드 고침 |
+|---|---|---|---|
+| 1 | 답에 라벨 이름 칸·파일 수 칸이 없다. ⑩은 '외/입 구분' 글 하나, ⑪과 설정 twice는 수 없이 '여러 개' | 5-2 · 10-1 · 10-6 · 11절 15·24 | TASK-17 |
+| 2 | 설정 저장법 셋째 줄을 실제 지우기 규칙(5-5, 2절 4)대로 | 10-6 · 11절 20 | TASK-17 |
+| 3 | 6-3 예약 참고 줄은 결과 안내에만, 받기 시트에는 없음(7-1과 같게) | 6-3 | 없음(TASK-10이 이미 그렇게 함) |
+| 4 | 지금 실패하는 시험 두 개를 12-4에 넣음: erp-helper.test.ts AC-3801.4(TASK-15), make-fake-fixtures.test.ts AC-005.2(TASK-17) | 12-4 | TASK-15 · TASK-17 |
+| 5 | 의사랑 등록 때 자료원 파일 쓰기·지우기 실패 → `E-STORE-FAILED` · `STEP-UIS` · 2, 설치 글 | 4-3 · 10-5 | TASK-15 |
+| 6 | `josa.js`도 manifest 목록·모듈 목록에 | 8-9 · 12-4 | TASK-14 |
+| 7 | 진료 0건 묻기·이미 적힌 칸 묻기 첫 줄을 의사랑이면 '의사랑' | 10-1 · 11절 22 | TASK-17 |
+| 8 | 일꾼이 정한 것 가운데 뜻이 바뀌는 것 기록: `E-UIS-FOLDER` 상수는 `UisDiskFolder.FolderFailed` · `UisCache.Save`는 bool · 모아 둔 값 최대 약 48시간 · 날짜·조건 둘 다 틀린 파일은 notAll · 차트번호 수로 견줌 · `fractional` 타입 · `sales` 명령 표 꼴 · 확장 크기 실측 · E-UIS-FOLDER 글 | 3-1 · 3-2 · 4-1 · 4-4 · 5-2 · 5-3 · 7-2 · 10-4 | 없음(이미 그렇게 됨) |
+| 9 | '-환자별' 안내는 저장법 둘째 줄 하나만(표 밑 줄 뺌) | 10-6 | TASK-17 |
+| 10 | 설정 화면 폴더 글은 늘 'ERP마감 폴더' + 맨 위 상자에 자리 설명(코드 목록 답에 폴더 칸을 더하지 않음) | 10-6 · 11절 21 | TASK-17 |
+| 11 | TASK-12가 정한 것 기록: 기간 없는 코드 목록 ok 글 · 기타 이름 빈 채 저장 | 10-6 · 11절 23 | 없음(이미 그렇게 됨) |
+| 12 | `Send` 타입은 `uisTypes.ts` 한 곳(uisOptions.ts·uisFlow.ts가 가져다 씀) | 8-1 | TASK-17 |
+
 ### 3. 도우미 명령과 답 모양
 
 #### 3-1. `helper-erp/commands.json` (더하는 것만)
@@ -49,7 +65,7 @@
 // closing.day args에 더함(나머지 칸·groups 꼴은 그대로)
 "sales": { "type": "array", "optional": true, "min": 0, "max": 10,
            "items": { "type": "object", "fields": {
-             "key":   { "type": "string", "enum": ["carm","sono","arthro","manual","eswt","pt","etc1","etc2","etc3","etc4"] },
+             "key":   { "type": "enum", "values": ["carm","sono","arthro","manual","eswt","pt","etc1","etc2","etc3","etc4"] },
              "codes": { "type": "array", "min": 1, "max": 20, "items": { "type": "string", "min": 1, "max": 20, "pattern": "^\\S(?: ?\\S)*$" } } } } }
 ```
 - 명령 차례: `closing.codes`·`closing.day`·`closing.findCodes`·`closing.source`·`closing.uisCodes`. 비트 처리기는 `sales`를 읽지 않는다(지금 `Groups(request)`는 `groups`만 본다).
@@ -80,7 +96,7 @@
     deleteFailed: number,
     unknownFiles: number,           // 종류 모름·깨짐·20MB 넘음으로 지운 파일 수
     checks: { totalFee, received, headcount, rxTotal, visitRows, visitNew, rsvRows, rsvVisited: [number, number] | null, noDate: boolean },
-    fractional: string[],           // 소수 총투여량 때문에 null로 둔 건수 묶음 key
+    fractional: UisCountKey[],      // 소수 총투여량 때문에 null로 둔 건수 묶음 key
     negative: ('return' | 'noExamFee')[],
     reservations: { total: number, visited: number } | null   // 예약 참고 숫자(6-1)
   }
@@ -157,16 +173,16 @@ public static class UisVisits { public static VisitsFacts Read(UisSheet s, DateT
 public static class UisPatients { public static VisitPatientFacts ReadVisits(UisSheet s, DateTime day); public static RsvPatientFacts ReadRsv(UisSheet s, DateTime day); }
 
 // UisDiskFolder.cs·UisCache.cs (TASK-9)
-public sealed class UisDiskFolder : IUisFolder { public UisDiskFolder(string path); }   // 없으면 만듦, 연결 폴더면 E-UIS-FOLDER
+public sealed class UisDiskFolder : IUisFolder { public const string FolderFailed = "E-UIS-FOLDER"; public UisDiskFolder(string path); }   // 없으면 만듦, 연결 폴더면 FolderFailed. Read 실패는 UisFileException(고정 글)
 public sealed class UisCache { public UisCache(string dataDir, IProtector protector, Func<DateTime> now);
-  public UisFactsSet? Load(DateTime day); public void Save(DateTime day, UisFactsSet facts); }   // 파일 data\uis-cache.bin
+  public UisFactsSet? Load(DateTime day); public bool Save(DateTime day, UisFactsSet facts); }   // 파일 data\uis-cache.bin, 못 쓰면 false(예외 없음)
 
 // UisDay.cs·UisCodes.cs·UisCommands.cs (TASK-13)
 public static class UisDay { public static UisDayResult Read(IUisFolder folder, UisCache cache, DateTime day, UisArgs args, UisFolderKind folderKind); }
 public static class UisCodes { public static UisCodesResult Read(IUisFolder folder); }
 public static class UisCommands {
   public const string SourceName = "closing.source", CodesName = "closing.uisCodes";
-  public const string WrongSource = "E-CLOSING-WRONG-SOURCE", FolderFailed = "E-UIS-FOLDER";
+  public const string WrongSource = "E-CLOSING-WRONG-SOURCE";   // E-UIS-FOLDER는 UisDiskFolder.FolderFailed
   public static void RegisterUisarang(Dispatcher d, UisServices s);   // closing.source·closing.day·closing.uisCodes + codes·findCodes = WrongSource
   public static void RegisterBitExtras(Dispatcher d);                 // closing.source(bit)·closing.uisCodes = WrongSource
 }
@@ -193,13 +209,14 @@ public sealed class UisServices { Func<IUisFolder> Folder; UisFolderKind FolderK
   - 있으면 `ErpStage.Set(Uis)` → `ChooseFolder(바탕화면, %USERPROFILE%, [%OneDrive%, %OneDriveCommercial%, %OneDriveConsumer%])` → 폴더 만들기 → `UisSource.WriteUisarang` → 표준 출력 `SOURCE-UISARANG`·`FOLDER-DESKTOP|FOLDER-PROFILE`(ASCII 두 줄) → 0. 폴더를 못 만들면 `E-UIS-FOLDER`·`STEP-UIS` → 2.
   - 없으면 지금 그대로(`E-BIT-NOT-FOUND`·`STEP-FIND` → 2).
   - 비트 저장(0)이면 `UisSource.Delete`(있을 때만).
+  - **파일 오류**(고침 5): `UisSource.WriteUisarang`·`UisSource.Delete`가 던지는 `IOException`·`UnauthorizedAccessException`은 등록 흐름에서 잡아 `E-STORE-FAILED`(지금 '등록 파일을 읽거나 쓰지 못함' 번호)·`STEP-UIS`로 2다. 비트 저장 뒤 `Delete`가 실패해도 2다(의사랑 표시 파일이 남으면 다음에 도우미가 의사랑으로 켜지므로 '등록함'으로 끝내지 않는다. 비트 등록 파일은 이미 저장돼 있어 다시 실행하면 된다). 폴더 만들기 실패는 `E-UIS-FOLDER`·`STEP-UIS`로 2. 기록엔 지금처럼 register와 번호만. 설치 글은 10-5
 - 크롬이 켤 때: `UisSource.Read(DataDirectory())`가 맞으면 `UisCommands.RegisterUisarang(dispatcher, UisHelperServices.Create(sourceFile))`, 아니면 지금 줄 `ClosingCommands.Register(dispatcher, ErpServices.Create())` 뒤에 `UisCommands.RegisterBitExtras(dispatcher)`. 비트 갈래는 지금 줄을 그대로 두고 한 줄만 더한다(AC-4215.4).
 - `UisHelperServices.Create`(Erp.Helper, Erp.Core `UisServices`를 만든다): 폴더 경로 = 그때 다시 `ChooseFolder`로 셈(등록 뒤 OneDrive가 켜졌으면 사용자 폴더로 옮겨 감 — 안전 쪽), `UisCache(DataDirectory(), new DpapiProtector(), () => DateTime.Now)`, `Today = DateTime.Today`.
-- `ErpStage.Uis = "UIS"`. install.ps1 멈춘 단계 글 '의사랑 엑셀 폴더 만들기'.
+- `ErpStage.Uis = "UIS"`. install.ps1 멈춘 단계 글 '의사랑 등록(엑셀 폴더·자료원 파일)'.
 
 #### 4-4. 모아 둔 값 (`UisCache`)
 - 파일 `data\uis-cache.bin` = `IProtector.Protect(UTF-8 JSON { v: 1, day: 'YYYY-MM-DD', savedAt: 'ISO', reports: { kind: facts } })`. facts는 4-1 `*Facts`(숫자·칸 이름·코드별 합만).
-- `Load(day)`: 날짜가 다르거나 `savedAt`이 24시간 넘었거나 풀 수 없으면 null. `Save`는 그날 값에 보고서별로 덮어 쓴다(다른 날이면 새로).
+- `Load(day)`: 날짜가 다르거나 `savedAt`이 24시간 넘었거나 풀 수 없으면 null. `Save`는 그날 값에 보고서별로 덮어 쓴다(다른 날이면 새로). `savedAt`은 마지막 저장 시각(이 PC 시각)이라, 같은 날을 이어 읽으면 앞서 읽은 보고서 값이 24시간보다 오래(최대 약 48시간) 남을 수 있다 — 그날 값만 쓰므로 틀린 날 값은 섞이지 않는다(TASK-9).
 - 처방통계 값은 묶음 합이 아니라 **코드별 합**으로 둔다(설정에서 코드를 바꾼 뒤 다시 눌러도 맞게).
 
 #### 4-5. 진단 기록
@@ -224,7 +241,9 @@ public sealed class UisServices { Func<IUisFolder> Folder; UisFolderKind FolderK
 - 칸 글자가 `[`로 시작하고 `]`가 있는 칸이 라벨. 이름 = 괄호 안 빈칸 뺀 글자(`[조 회 일]` → `조회일`, `[외/입 구분]` → `외/입구분`). 값 = 같은 칸 `]` 뒤 글자(앞뒤 빈칸 뗌), 비었으면 같은 줄 오른쪽 첫 글자 칸.
 - 조회일 값: `YYYY-MM-DD` 또는 `YYYY-MM-DD ~ YYYY-MM-DD`(구분 `-`·`.`·`/`, 물결 앞뒤 빈칸 상관없음) → from·to. 아니면 from·to = null.
 - 합계 엑셀(1·2·3·5): 조회일이 없거나 from = to = 마감 일자가 아니면 otherDate(`closing.uisCodes`는 기간을 보지 않음). 환자별 엑셀(4): 조회일 라벨이 있으면 같은 규칙, 없으면 날짜를 보지 않고 `checks.noDate = true`. 환자별 엑셀(6): 예약일 칸으로 본다(AC-4208.1).
-- 조건: 조회일이 아닌 라벨 가운데 값이 날짜 꼴이 아니고 '전체'도 아니면 notAll(`value` = 그 값, 여럿이면 첫 것). 라벨이 없으면 조건은 보지 않는다(실제 PC 확인 13절 2).
+- 조건: 조회일이 아닌 라벨 가운데 값이 날짜 꼴이 아니고 '전체'도 아니면 notAll(`value` = 그 값, 여럿이면 첫 것). 값이 빈 라벨은 조건이 아니다. 라벨이 없으면 조건은 보지 않는다(실제 PC 확인 13절 2).
+- 한 파일이 날짜도 다르고 조건도 '전체'가 아니면 notAll(지우는 쪽, TASK-3).
+- 답에는 라벨 이름 칸이 없다(`reports[].value`만). 그래서 ⑩ 글은 늘 '외/입 구분' 글 하나다(10-1).
 
 #### 5-3. 보고서마다 찾는 칸 (머리글 글자, 빈칸 뺌)
 | kind | 찾는 칸 | 줄 |
@@ -239,6 +258,7 @@ public sealed class UisServices { Func<IUisFolder> Folder; UisFolderKind FolderK
 - 칸이 없거나 같은 이름이 둘이면 그 칸 이름을 `columns`에 담고, 그 칸에 기대는 값만 null이다. 숫자 칸 값: 숫자 칸은 그 값, 글자 칸은 쉼표·빈칸을 떼고 숫자 꼴이면 그 값, 빈 칸은 0이 아니라 '없음'(합계 줄의 빈 칸은 null).
 - income 총진료비: 합계 줄 칸이 숫자면 그것, 비었으면 바로 아래 줄 같은 칸(병합 칸), 둘 다 아니면 null.
 - rx 총투여량: 소수 그대로 더한다. 총액: 줄마다 원 미만 버림(`Math.Truncate`) 뒤 더한다.
+- 차트번호는 수로 견준다('09000001' = 9000001, 메모리에도 수로만, TASK-8).
 
 #### 5-4. 파일 이름 짐작 (열림 안내에만)
 - 의사랑 기본 저장 이름 `통계-{보고서}.xls`. 이름(빈칸 뺌)에 '일일수입' → income, '처방' → rx, '내원일별' + ('환자별' 또는 '아래') → visitPatients, '내원일별' → visits, '예약' + ('환자별' 또는 '아래') → rsvPatients, '예약' → rsv, 그 밖 'unknown'. 파일 이름은 답·기록에 넣지 않는다.
@@ -299,7 +319,7 @@ public sealed class UisServices { Func<IUisFolder> Folder; UisFolderKind FolderK
 - 두 값 가운데 하나라도 null이면 그 칸은 null(견주지 않음). `noDate` = 아래쪽 내원 표에 조회일 라벨이 없음.
 
 #### 6-3. 예약 총갯수 줄 확인 (조정자 결정 5)
-- `specs/erp-closing-fill/notes/erp-closing-fields.md` 4-1절: "굵은 '총갯수' 줄 = 자동 합계·칸 없음". 지금 `cells.ts` `RSV_COLS`도 종류 6줄 × 4열과 실예약환자수만 계획하고 합계 줄은 없다. → ERP가 더하는 칸이라 넣을 자리가 없다. 그래서 실예약환자수만 채우고, 시안의 '예약 합계를 넣을 줄' 설정을 뺀다(11절). 예약건수·이행건수는 결과 안내·엑셀의 참고 줄로만 보인다.
+- `specs/erp-closing-fill/notes/erp-closing-fields.md` 4-1절: "굵은 '총갯수' 줄 = 자동 합계·칸 없음". 지금 `cells.ts` `RSV_COLS`도 종류 6줄 × 4열과 실예약환자수만 계획하고 합계 줄은 없다. → ERP가 더하는 칸이라 넣을 자리가 없다. 그래서 실예약환자수만 채우고, 시안의 '예약 합계를 넣을 줄' 설정을 뺀다(11절). 예약건수·이행건수는 결과 안내의 참고 줄(10-2의 9)로만 보인다. [엑셀로 받기] 시트에는 넣지 않는다(7-1 숫자 줄 149줄 그대로, 고침 3).
 
 #### 6-4. 만 나이 (`UisAge`)
 - 주민번호 글자에서 빈칸·'-'를 빼고 앞 7글자가 모두 숫자일 때만. 7번째 1·2·5·6 → 1900, 3·4·7·8 → 2000, 9·0 → 1800. 생년월일이 달력에 없거나 마감 일자보다 뒤면 null. 만 나이 = (마감 일자 yyyymmdd − 생년월일 yyyymmdd) / 10000(정수). 구간 = min(나이 / 10 × 10, 90).
@@ -328,7 +348,7 @@ export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsh
 export function workbookBytes(rows: readonly SheetValue[][], opts: { sheetName: string; widths: readonly number[] }, when: Date): Uint8Array
 ```
 - 파일 안·XML 꼴은 erp-copy-list design.md 5절 그대로(`[Content_Types].xml`·`_rels/.rels`·`xl/workbook.xml`·`xl/_rels/workbook.xml.rels`·가장 작은 `xl/styles.xml`·`xl/worksheets/sheet1.xml`, 글 칸 `inlineStr`, 빈 칸은 안 씀, XML 특수 글자 바꿈·제어 글자 뗌).
-- **확장 묶음 크기**: 지금 `extension-erp/dist` 213,301바이트(17파일, 2026-11-24 `npm run ext-erp:build`). 직접 쓰는 zip·xlsx 두 파일은 컴파일 뒤 약 8KB, 의사랑 모듈 전체는 약 70KB로 어림 → 약 285KB. SheetJS를 싣는다면 `xlsx.mini.min.js` 279,523바이트(+131%, ES 모듈이 아니라 내용 스크립트 목록에 따로 실어야 함) · `xlsx.mjs` 1,008,308바이트 · `xlsx.full.min.js` 951,904바이트가 더해진다(결정 3).
+- **확장 묶음 크기**: 지금 `extension-erp/dist` 213,301바이트(17파일, 2026-11-24 `npm run ext-erp:build`). 직접 쓰는 zip·xlsx 두 파일은 컴파일 뒤 약 8KB, 의사랑 모듈 전체는 약 70KB로 어림 → 약 285KB(TASK-6 뒤 실제 252,930바이트, 그 가운데 두 파일 11,005바이트). SheetJS를 싣는다면 `xlsx.mini.min.js` 279,523바이트(+131%, ES 모듈이 아니라 내용 스크립트 목록에 따로 실어야 함) · `xlsx.mjs` 1,008,308바이트 · `xlsx.full.min.js` 951,904바이트가 더해진다(결정 3).
 
 ### 8. 확장 구조
 
@@ -352,13 +372,15 @@ export type UisCodeRow = { code: string; name: string | null; qty: number; amoun
 export type UisCodes = { v: 1; from: string; to: string; codes: UisCodeRow[] }
 export type UisCodesAnswer = { state: 'ok' | 'missing' | 'notAll' | 'twice' | 'open'; from: string | null; to: string | null; value: string | null; codes: UisCodeRow[] }
 export type Source = 'bit' | 'uisarang'
+/** 도우미 부르기(서비스 워커 통로). 이 한 곳에서 내보내고 uisOptions.ts·uisFlow.ts가 같이 쓴다(TASK-17이 하나로 맞춤, 고침 12) */
+export type Send = (cmd: ClosingCommand, args: Record<string, unknown>) => Promise<unknown>
 export const UIS_OPEN_CODE = 'E-UIS-FILE-OPEN'   // ⑫ 안내 끝 번호(오류가 아니라 보일 번호)
 ```
 - `types.ts`(더하기만): `ClosingCommand`에 `'closing.source' | 'closing.uisCodes'`, `ClosingDayArgs`에 `sales?: { key: GroupKey; codes: string[] }[]`.
 
 #### 8-2. `uisText.ts` (TASK-2) — 의사랑 화면 글 한 곳(10절 글 그대로)
 - `UIS_REPORT_NAMES: Record<UisKind, string>` = 일일수입통계 · 기간별처방통계 · 내원일별환자현황 위쪽 표 · 내원일별환자현황 아래쪽 표 · 예약환자통계 위쪽 표 · 예약환자통계 아래쪽 표.
-- `UIS_TEXT`(안내·단추·까닭·경고 글, 함수 글은 숫자·날짜·이름만 받음), `UIS_OPTIONS_TEXT`(설정 화면), `UIS_FOLDER_TEXT = { desktop: '바탕화면 › ERP마감 폴더', profile: '사용자 폴더 › ERP마감 폴더' }`.
+- `UIS_TEXT`(안내·단추·까닭·경고 글, 함수 글은 숫자·날짜·이름만 받음), `UIS_OPTIONS_TEXT`(설정 화면), `UIS_FOLDER_TEXT = { desktop: '바탕화면 › ERP마감 폴더', profile: '사용자 폴더 › ERP마감 폴더' }`(ERP 화면 안내, 답 `uis.folder`로 고름), ★`UIS_OPTIONS_FOLDER = 'ERP마감 폴더'`(설정 화면, 10-6 ★ 폴더 글, 고침 10). 진료 0건·이미 적힌 칸 묻기 첫 줄(10-1 ★, 고침 7)도 여기.
 - 조사(을/를·이/가·으로/로·와/과·은/는)는 지금 `josa.ts`로 붙인다.
 
 #### 8-3. `uisSettings.ts` (TASK-5)
@@ -432,7 +454,7 @@ export async function startUisOptions(doc: Document, deps: { send: Send }): Prom
 - `panel.ts`(Dock에 더함): `setSource('uisarang')`(큰 단추 글 '의사랑 값 채우기', [엑셀로 받기] 끼움) · `setUisReading(which: 'fill' | 'export' | null)` · `showUis(view: UisView)` · `setLastUis(view: UisView | null)` · handlers `onExport?()`·`onUisAction?(a)`. 비트 상태에서는 그리는 DOM이 지금과 같다.
 - `main.ts`: `startPage`에서 Dock을 붙인 뒤 `decideSource` → 'uisarang'이면 `dock.setSource` + 단추 셋을 `createUisFlow`로 잇는다. 정해지기 전 누름은 정해질 때까지 기다린다. 비트면 지금 줄 그대로.
 - `options.ts`: `startOptions` 맨 앞 — `erpClosingUis`만 저장돼 있으면 `startUisOptions` 하고 끝. 그 밖은 지금 그대로이고, `closing.codes`가 `E-CLOSING-WRONG-SOURCE`면 `startUisOptions`(오류 글 없이).
-- `manifest.json`: `web_accessible_resources`에 내용 스크립트가 부르는 새 모듈(`uisTypes`·`uisText`·`uisSettings`·`uisCells`·`uisSheet`·`zip`·`xlsxWrite`·`uisView`·`uisFlow`)·판 0.4.0. 권한은 그대로(`nativeMessaging`·`storage`).
+- `manifest.json`: `web_accessible_resources`에 내용 스크립트가 부르는 새 모듈 아홉(`uisTypes`·`uisText`·`uisSettings`·`uisCells`·`uisSheet`·`zip`·`xlsxWrite`·`uisView`·`uisFlow`)과 `josa`(지금은 설정 화면만 불러 목록에 없었고, panel → uisView → uisText가 부르게 됨, 고침 6) 모두 열·판 0.4.0. 권한은 그대로(`nativeMessaging`·`storage`).
 
 ### 9. 화면
 
@@ -470,10 +492,11 @@ export async function startUisOptions(doc: Document, deps: { send: Send }): Prom
 - ⑥ 엑셀 없음: '의사랑 통계에서 아래 보고서 6개를 엑셀로 저장해 주세요.' · 목록 머리 '저장할 엑셀' · 줄마다 '{번호}. {보고서}' + '있음'/'없음' · ★ '3 · 5번(위쪽 표)은 없어도 채울 수 있어요. 있으면 아래쪽 표와 숫자를 한 번 더 맞춰 봐요.' · "조회일은 {날짜} 하루, 외/입 구분은 '전체'로 두고 [검색]한 뒤 표 오른쪽 위 초록 엑셀 단추로 저장해 주세요." · '저장할 곳: {폴더}' · '4 · 6번은 환자별 표예요. ERP 도우미가 이 PC 안에서만 읽고 바로 지워요.' · '아무 칸도 바꾸지 않았어요.' · [설정 열기]
 - ⑦ 일부 없음(꼭 4개 가운데): 하나면 '의사랑 통계에서 {보고서}{을/를} 엑셀로 저장해 주세요.', 여럿이면 '의사랑 통계에서 아래 보고서 {N}개를 엑셀로 저장해 주세요.' · 목록(있음 · ★ '있음 (앞서 읽음)' · 없음) · 저장할 곳 · '저장한 뒤 [의사랑 값 채우기]를 다시 눌러 주세요. [있는 엑셀로 채우기]를 누르면 없는 엑셀의 칸만 비우고 채워요.' · [안내 닫기] ★[엑셀로 받기] [있는 엑셀로 채우기]
 - ⑨ 날짜 다름: '엑셀 날짜가 마감 일자와 달라요.' · 목록 머리 '마감 일자 {날짜}' / '엑셀 조회일' · 줄 '{보고서}' + '{from}' 또는 '{from} ~ {to}'(다르면 빨강, 없으면 ★'찾지 못함') · '날짜가 다른 엑셀 {N}개를 조회일 {날짜}{으로/로} 다시 [검색]해 저장한 뒤 다시 눌러 주세요.' · ★ '아무 칸도 바꾸지 않았어요. 날짜가 다른 합계 엑셀은 지우지 않고 그대로 두었어요.' · ★(환자별 엑셀이 날짜 다름일 때) '환자별 엑셀(4 · 6번)은 날짜가 달라도 읽은 뒤 바로 지웠어요.'
-- ⑩ 조건: "{보고서} 엑셀의 외/입 구분이 '{값}'예요." (라벨 이름이 외/입 구분이 아니면 ★"{보고서} 엑셀의 {라벨}{이/가} '{값}'예요.") · "의사랑 통계에서 외/입 구분을 '전체'로 바꿔 [검색]한 뒤 다시 엑셀로 저장해 주세요." · '아무 칸도 바꾸지 않았어요.'
-- ⑪ 같은 엑셀 둘: '{보고서} 엑셀이 2개 있어요.'(셋 이상이면 그 수) · '{폴더}에서 하나만 남기고 지운 뒤 다시 눌러 주세요.' · '어느 것이 맞는지 몰라 아무 칸도 바꾸지 않았어요.' · ★(환자별이면) '환자별 엑셀은 둘 다 지웠어요. 하나만 다시 저장해 주세요.'
+- ⑩ 조건: "{보고서} 엑셀의 외/입 구분이 '{값}'예요." · "의사랑 통계에서 외/입 구분을 '전체'로 바꿔 [검색]한 뒤 다시 엑셀로 저장해 주세요." · '아무 칸도 바꾸지 않았어요.' (답에 라벨 이름 칸이 없어 늘 이 글, 5-2. 고침 1)
+- ⑪ 같은 엑셀 여럿: ★'{보고서} 엑셀이 여러 개 있어요.'(답에 파일 수 칸이 없어 수를 말하지 않음, 고침 1) · '{폴더}에서 하나만 남기고 지운 뒤 다시 눌러 주세요.' · '어느 것이 맞는지 몰라 아무 칸도 바꾸지 않았어요.' · ★(환자별이면) '환자별 엑셀은 모두 지웠어요. 하나만 다시 저장해 주세요.'
 - ⑫ 한셀에 열림(빨강): '한셀에 열려 있는 엑셀이 있어 읽지 못했어요.' · '{보고서}{이/가} 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.'(보고서를 모르면 ★'ERP마감 폴더의 엑셀이 한셀에 열려 있어요. …') · '환자별 엑셀은 읽은 뒤 바로 지워야 해서, 열려 있으면 읽지 않아요.' · '아무 칸도 바꾸지 않았어요. (번호 E-UIS-FILE-OPEN)'
 - 멈춤 안내에도 지우지 못한 파일이 있으면 10-2의 빨강 줄을 더한다.
+- ★ 채우기 전 묻기(고침 7): 의사랑 자료원이면 '진료 0건' 묻기 첫 줄 '{날짜}에는 의사랑 진료가 한 건도 없어요.', 이미 적힌 칸 묻기 첫 줄 '이미 적힌 칸 {N}개가 의사랑 값으로 바뀌어요.'. 뒤 줄·단추는 지금 그대로이고, 비트 자료원 글(`FLOW_TEXT.zero`·`ask`)도 그대로다. 글은 `uisText.ts`, 고르는 곳은 `panel.ts` `askZero`·`askWritten`(자료원으로).
 
 #### 10-2. 결과 안내 (③④⑤⑧, 이 차례)
 1. '의사랑과 맞춰 볼 숫자' · '외래 총매출 {N}원' · '진료수납액 {N}원' · '환자 합계 {N}명'(null인 줄은 뺌) · '의사랑 일일수입통계 화면의 같은 숫자와 먼저 견주어 보세요.'
@@ -493,7 +516,7 @@ export async function startUisOptions(doc: Document, deps: { send: Send }): Prom
 #### 10-4. ★ 의사랑 오류 글 (`UIS_ERRORS`, '무엇이 · 어떻게 · 번호')
 | 번호 | 무엇이 | 어떻게 |
 |---|---|---|
-| E-UIS-FOLDER | '{폴더}를 만들거나 열지 못했어요.' | 'ERP 도우미 설치 파일(install.cmd)을 다시 실행해 주세요. 계속되면 이 번호를 알려 주세요.' |
+| E-UIS-FOLDER | 'ERP마감 폴더를 만들거나 열지 못했어요.'(오류 답에는 폴더 자리가 없어 늘 이 글, TASK-2) | 'ERP 도우미 설치 파일(install.cmd)을 다시 실행해 주세요. 계속되면 이 번호를 알려 주세요.' |
 | E-CLOSING-WRONG-SOURCE | '이 PC의 ERP 도우미가 다른 차트 프로그램으로 등록되어 있어요.' | '이 PC가 쓰는 차트 프로그램(비트·의사랑)이 맞는지 확인하고 ERP 도우미 설치 파일을 다시 실행해 주세요.' |
 | 그 밖 | '의사랑 엑셀을 읽지 못했어요.' | '잠시 뒤 다시 해 주세요. 계속되면 이 번호를 알려 주세요.' |
 
@@ -501,13 +524,16 @@ export async function startUisOptions(doc: Document, deps: { send: Send }): Prom
 - 등록 앞 글: '이 PC를 등록합니다. 비트 PC면 비트 로그인 창이 뜨니 로그인하고, 병원을 확인한 뒤 [확인]을 누르세요. 의사랑 PC면 창 없이 끝나요.'
 - 0 + `SOURCE-UISARANG` + `FOLDER-DESKTOP`: '의사랑 PC로 등록했어요. 의사랑 통계 엑셀은 바탕화면 › ERP마감 폴더에 저장해 주세요.'
 - 0 + `SOURCE-UISARANG` + `FOLDER-PROFILE`: '의사랑 PC로 등록했어요. 바탕화면이 OneDrive와 이어져 있어, 환자 엑셀이 인터넷으로 올라가지 않게 엑셀 폴더를 {실제 경로}에 만들었어요. 의사랑 통계 엑셀은 이 폴더에 저장해 주세요.'
-- 멈춘 단계 `UIS` → '의사랑 엑셀 폴더 만들기'.
+- 멈춘 단계 `UIS` → '의사랑 등록(엑셀 폴더·자료원 파일)'.
+- ★ 실패 글(고침 5, 지금 '등록하지 못했어요.' 다음 줄 자리, 그 밖 번호는 지금 글 그대로이고 뒤에 멈춘 단계·오류 번호·사진 줄): `E-UIS-FOLDER` → 'ERP마감 엑셀 폴더를 만들지 못했어요. 같은 이름의 파일이 있거나 폴더 만들기가 막혔는지 확인하세요.' · `E-STORE-FAILED`이고 단계가 `UIS` → '도우미 설정 파일(의사랑 표시)을 쓰거나 지우지 못했어요. 크롬을 모두 닫고, 백신이 막지 않는지 확인한 뒤 install.cmd를 다시 실행하세요.'
 
 #### 10-6. 설정 화면 글
 - 시안 notes.md '설정 화면' 글 그대로. 다만 ★ 예약 묶음은 '의사랑 예약에는 종류가 없어 실예약환자수만 채워요. 종류별 줄과 변경 · 취소는 직접 넣어 주세요. 예약건수 · 내원 수는 채운 뒤 안내에 보여요.' 한 줄만(줄 고르기 없음).
-- ★ '매일 저장할 엑셀 6개' 표에 열 '꼭'(1 · 2 · 4 · 6번 '꼭', 3 · 5번 '있으면 좋음') 을 더하고, 표 밑에 '아래쪽 표는 저장할 때 이름 끝에 -환자별을 붙여 주세요.'
-- [코드 목록 읽기] 결과: ok '의사랑 기간별처방통계({기간})에서 처방 코드 {N}개를 읽었어요. 목록만 기억하고 엑셀은 지웠어요.' · ★missing '{폴더}에 기간별처방통계 엑셀이 없어요.' + 3단계 · ★notAll "기간별처방통계 엑셀의 외/입 구분이 '{값}'예요. '전체'로 다시 저장해 주세요." · ★twice '기간별처방통계 엑셀이 2개 있어요. 하나만 남겨 주세요.' · ★open '기간별처방통계 엑셀이 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.' · 오류는 `explainFor` 글.
-- 저장 막기: ★ 기타 줄에 매출 코드를 골랐는데 이름이 비면 지금 비트 설정처럼 저장은 되고(그 줄은 noName으로 건너뜀) 이름 칸 옆에 지금 글을 보인다.
+- ★ '매일 저장할 엑셀 6개' 표에 열 '꼭'(1 · 2 · 4 · 6번 '꼭', 3 · 5번 '있으면 좋음')을 더한다. '-환자별' 안내는 저장법 둘째 줄(시안 글) 하나만 둔다(표 밑 줄은 두지 않음 — 같은 말 두 번, 고침 9).
+- ★ 저장법 셋째 줄(고침 2, 시안 '이 폴더에는 마감 엑셀만 두세요. 다 읽은 뒤 폴더 안 엑셀을 모두 지워요.'를 실제 동작 5-5대로): '이 폴더에는 마감 엑셀만 두세요. 읽은 엑셀은 지워요. 환자 정보가 든 4 · 6번은 날짜가 달라도 늘 바로 지우고, 의사랑 통계 엑셀이 아닌 엑셀도 지워요. 날짜가 다르거나 같은 보고서가 여럿인 합계 엑셀은 그대로 둬요.'
+- ★ 폴더 글(고침 10): 코드 목록 답에는 폴더 자리가 없어 설정 화면은 바탕화면·사용자 폴더를 가리지 못한다(답에 칸을 더하지 않음). 그래서 설정 화면의 `{폴더}`는 늘 'ERP마감 폴더'(`UIS_OPTIONS_FOLDER`)이고, 맨 위 상자 뒤 글은 '이 PC의 ERP 도우미는 ERP마감 폴더에 저장한 의사랑 통계 엑셀을 읽어 ERP 칸을 채워요. ERP마감 폴더는 보통 바탕화면에 있고, 바탕화면이 OneDrive와 이어진 PC에서는 사용자 폴더에 있어요(설치할 때 알려 준 자리 · ERP 화면 안내의 '저장할 곳').'다. 3단계 · missing · 표 앞 글의 폴더도 'ERP마감 폴더'. ERP 화면 안내(10-1·10-2)는 지금처럼 답 `uis.folder`로 고른다.
+- [코드 목록 읽기] 결과: ok '의사랑 기간별처방통계({기간})에서 처방 코드 {N}개를 읽었어요. 목록만 기억하고 엑셀은 지웠어요.'(기간을 못 읽어 from·to가 null이면 괄호 없이 '의사랑 기간별처방통계에서 처방 코드 {N}개를 …', TASK-12) · ★missing 'ERP마감 폴더에 기간별처방통계 엑셀이 없어요.' + 3단계 · ★notAll "기간별처방통계 엑셀의 외/입 구분이 '{값}'예요. '전체'로 다시 저장해 주세요." · ★twice '기간별처방통계 엑셀이 여러 개 있어요. 하나만 남겨 주세요.' · ★open '기간별처방통계 엑셀이 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.' · 오류는 `explainFor` 글.
+- 기타 줄 이름(TASK-12가 정한 대로): 매출 코드를 골랐는데 이름이 비어도 [저장]은 되고 막는 글은 없다(그 줄은 ERP 화면에서 noName으로 건너뛰고, [엑셀로 받기]에는 값이 나옴). 이름 칸 자리 글은 지금 설정 화면 글 '업무일지 2 줄 이름과 똑같이'.
 
 ### 11. 시안과 다른 곳 (시안 6f3de65e를 고칠 것)
 | # | 시안 | 명세 | 까닭 |
@@ -526,11 +552,16 @@ export async function startUisOptions(doc: Document, deps: { send: Send }): Prom
 | 12 | ⑤ 경고 셋 | 6-2 경고 아홉 + 조회일 없음 · 나이 못 셈 줄, 아래쪽이 많으면 '많을 수 있어요' | 맞춰 보기 넓힘 |
 | 13 | ④ 까닭 줄 "{보고서}에 '{칸}' 칸이 없어요."만 | + 소수 총투여량 · 재진 음수 · 산정안함 음수 까닭 줄 | 6-1 |
 | 14 | (없음) | 결과 끝에 예약 참고 줄 '예약환자통계: 예약 {N}건 · 내원 {N}건. …' | 조정자 결정 5 |
-| 15 | ⑪ 같은 엑셀 둘 | + 환자별이면 '환자별 엑셀은 둘 다 지웠어요. 하나만 다시 저장해 주세요.' | 5-5 |
+| 15 | ⑪ '{보고서} 엑셀이 2개 있어요.' | '{보고서} 엑셀이 여러 개 있어요.' + 환자별이면 '환자별 엑셀은 모두 지웠어요. 하나만 다시 저장해 주세요.' | 답에 파일 수 칸 없음(고침 1) · 5-5 |
 | 16 | ⑫ 번호 'E-UIS-FILE-OPEN'(자리 표시) | 그 번호로 정함(오류가 아니라 보일 번호), 보고서 모르면 'ERP마감 폴더의 엑셀이 …' | 5-4 |
-| 17 | '저장할 곳: 바탕화면 › ERP마감 폴더' 고정 | 도우미 답 `uis.folder`로 '바탕화면 › ERP마감 폴더' / '사용자 폴더 › ERP마감 폴더' | 2절 8 |
+| 17 | '저장할 곳: 바탕화면 › ERP마감 폴더' 고정 | ERP 화면은 도우미 답 `uis.folder`로 '바탕화면 › ERP마감 폴더' / '사용자 폴더 › ERP마감 폴더'. 설정 화면은 21 | 2절 8 |
 | 18 | 설정 [코드 목록 읽기] 실패 글 없음 | missing · notAll · twice · open 글(10-6) | 3-3 |
 | 19 | 단추 이름은 도우미가 알려 준 곳으로 | 저장된 설정으로 먼저 정하고, 둘 다 없거나 둘 다 있을 때만 도우미에 묻는다(5초, 실패는 비트) | 비트 PC에 새 부름을 만들지 않으려고(AC-4215.3) |
+| 20 | 설정 저장법 셋째 줄 '…다 읽은 뒤 폴더 안 엑셀을 모두 지워요.' | 10-6 ★ 저장법 셋째 줄(실제 지우기 규칙) | 고침 2 · 2절 4 |
+| 21 | 설정 화면 폴더 글 '바탕화면 › ERP마감 폴더' | 'ERP마감 폴더' + 맨 위 상자에 자리 설명(10-6 ★ 폴더 글) | 코드 목록 답에 폴더 자리 없음(고침 10) |
+| 22 | 진료 0건 묻기 · 이미 적힌 칸 묻기는 '지금 그대로'(비트 글) | 의사랑이면 첫 줄만 '의사랑' 글(10-1 ★) | 고침 7 |
+| 23 | 설정 [코드 목록 읽기] ok '…({기간})에서…' | 기간을 못 읽으면 괄호 없이 | 고침 11(TASK-12) |
+| 24 | 설정 [코드 목록 읽기] twice(없음) | '기간별처방통계 엑셀이 여러 개 있어요. 하나만 남겨 주세요.' | 답에 파일 수 칸 없음(고침 1) |
 
 ### 12. 시험
 
@@ -564,11 +595,14 @@ export async function startUisOptions(doc: Document, deps: { send: Send }): Prom
 | 같은 파일 AC-3601.4 명령 표 | 명령 다섯 · `expectedTable`에 3-1 더함 | 1 |
 | `helper-erp/tests/Erp.Core.Tests/ErpCommandTable.test.cs` AC-3601.4 | 명령 다섯, `sales` 받기·거절 시험 더함 | 1 |
 | `extension-erp/src/background.test.ts` | (기대값은 그대로 — 표와 `COMMANDS`가 같은지 보는 시험) | 1 |
-| `extension-erp/src/main.test.ts` AC-3609.1 모듈 목록 | 새 모듈 아홉 더함 | 14 |
-| `extension-erp/src/manifest.test.ts` AC-3601.1·AC-3706.1 `web_accessible_resources` | 새 모듈 아홉 더함 | 14 |
+| `extension-erp/src/main.test.ts` AC-3609.1 모듈 목록 | 새 모듈 아홉 + `josa.js` 더함(8-9) | 14 |
+| `extension-erp/src/manifest.test.ts` AC-3601.1·AC-3706.1 `web_accessible_resources` | 새 모듈 아홉 + `josa.js` 더함 | 14 |
 | `extension-erp/src/manifest.test.ts`·`readme.test.ts` 판 0.3.0 | 0.4.0, 짝 문장 | 16 |
 | `helper-erp/tests/erp-core.dotnet.test.ts` AC-3610.1 판 | 0.4.0 | 16 |
 | `helper-erp/tests/erp-helper.test.ts` AC-3802.3 `README.md` 그대로 | `helper-erp/install/README.md`는 '의사랑 의원' 절만 더해짐(그 절 밖 글자는 6754571c 그대로) · install.ps1 글 | 15·16 |
+| `helper-erp/tests/erp-helper.test.ts` AC-3801.4 'ERP 명령 표·확장도 6754571c 그대로' | `commands.json`은 6754571c와 견주어 3-1에서 더한 것만 다름(JSON으로 견줌), `extension-erp/`는 AC-4215.1 목록(비트 파일)만 6754571c 그대로 | 15 |
+| 같은 파일 AC-3801.4 'ERP 도우미 판 0.3.0' | 0.4.0 | 16 |
+| `fixtures/make-fake-fixtures.test.ts` AC-005.2 '.gitignore 되살림은 생성기 파일 이름 그대로뿐' | 두 생성기 이름뿐(`make-fake-fixtures`의 `FILES` + `make-fake-uisarang`의 `UIS_FIXTURE_NAMES`, 글롭 없음은 그대로) | 17 |
 
 ### 13. 실제 의사랑 PC 확인 목록 (AC-4216.4, 사용자와 함께)
 1. 두 아래쪽 표 머리글 글자(5-1·5-3)와 기본 저장 이름(5-4), 환자 줄 차트번호 꼴(숫자 1~12자리)

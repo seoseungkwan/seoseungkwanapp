@@ -5,8 +5,8 @@
 > - Phase 1 — Step 1: TASK-1(리드, 도우미 바탕·명령 표) ‖ TASK-2(확장 공용 타입·글) → Step 2: TASK-3 ‖ TASK-4 ‖ TASK-5 ‖ TASK-6
 > - Phase 2 — TASK-7 ‖ TASK-8 ‖ TASK-9 ‖ TASK-10 ‖ TASK-11 ‖ TASK-12 (화면 TASK-11·12는 시안 승인 뒤에만)
 > - Phase 3 — TASK-13 ‖ TASK-14
-> - Phase 4 — TASK-15
-> - 마지막 — TASK-16(합치기·판·안내서·설치 묶음·전체 시험·실제 의사랑 PC 확인)
+> - Phase 4 — TASK-15 ‖ TASK-17(명세 고침 반영, design.md 2-1. TASK-12·14 뒤, Files 안 겹침)
+> - 마지막 — TASK-16(합치기·판·안내서·설치 묶음·전체 시험·실제 의사랑 PC 확인, TASK-15·17 뒤)
 > - 검토는 TASK-16의 전체 시험 뒤 한 번.
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 지금 시험은 design.md 12-4 표에 적은 것만 기대값을 고친다(그 밖을 고쳐야 하면 그 TASK 보고에 까닭).
 > C# 시험은 TASK마다 따로 감싸개·FILTER(design.md 12-3)를 쓴다. 가짜 엑셀은 TASK-1이 만든 `fixtures/fake-uisarang/`만 쓴다(실제 의원 파일·숫자 없음). 모자라면 그 TASK가 생성기에 더하지 않고 C# 시험 안에서 줄을 만들어 `UisReport.Read`에 넣는다(엑셀 바이트가 꼭 필요한 시험만 가짜 파일).
@@ -133,13 +133,21 @@
 - AC: AC-4201.2, AC-4201.4, AC-4215.4
 - Files: helper-erp/src/Erp.Helper/Program.cs, helper-erp/src/Erp.Helper/UisHelperServices.cs, helper-erp/src/Erp.Helper/ErpStage.cs, helper-erp/install/install.ps1, helper-erp/tests/erp-helper-uis.test.ts, helper-erp/tests/erp-helper.test.ts
 - Tests: helper-erp/tests/erp-helper-uis.test.ts, helper-erp/tests/erp-helper.test.ts
-- TDD: required — design.md 4-3·10-5. 코드 글자 시험(지금 erp-helper.test.ts 꼴): 비트 갈래 `ClosingCommands.Register(dispatcher, ErpServices.Create())` 줄 그대로 + `RegisterBitExtras` 한 줄, `E-BIT-NOT-FOUND`일 때만 의사랑, 출력 두 줄 ASCII, 비트 저장 뒤 `UisSource.Delete`, `ErpStage.Uis`. install.ps1: 앞 글·의사랑 두 글·`STEP-UIS` 글(윈도우에서 가짜 exe로 출력 줄을 주어 확인). 지금 install.ps1 시험(AC-3806.3)의 비트 글 기대값은 그대로
-- 차례: Phase 4 (TASK-13 뒤)
+- TDD: required — design.md 4-3·10-5. 코드 글자 시험(지금 erp-helper.test.ts 꼴): 비트 갈래 `ClosingCommands.Register(dispatcher, ErpServices.Create())` 줄 그대로 + `RegisterBitExtras` 한 줄, `E-BIT-NOT-FOUND`일 때만 의사랑, 출력 두 줄 ASCII, 비트 저장 뒤 `UisSource.Delete`, `ErpStage.Uis`. 자료원 파일 오류(design.md 4-3 고침 5): `UisSource.WriteUisarang`·비트 저장 뒤 `UisSource.Delete`의 `IOException`·`UnauthorizedAccessException`을 잡아 `E-STORE-FAILED`·`STEP-UIS`·2(예외로 끝나지 않음), 폴더 실패는 `UisDiskFolder.FolderFailed`. install.ps1: 앞 글·의사랑 두 글·`STEP-UIS` 단계 글·10-5 ★ 실패 글 둘(윈도우에서 가짜 exe로 출력 줄을 주어 확인). 지금 install.ps1 시험(AC-3806.3)의 비트 글 기대값은 그대로. erp-helper.test.ts AC-3801.4 '명령 표·확장 그대로'는 design.md 12-4대로 고침
+- 차례: Phase 4 (TASK-13 뒤, TASK-17과 함께)
 
 ## TASK-16: 합치기·판 0.4.0·안내서·설치 묶음·전체 시험·실제 의사랑 PC 확인
 - REQ: REQ-4215, REQ-4216
 - AC: AC-4215.1, AC-4215.2, AC-4216.1, AC-4216.2, AC-4216.3, AC-4216.4
 - Files: helper-erp/Directory.Build.props, extension-erp/manifest.json, extension-erp/README.md, helper-erp/install/README.md, extension-erp/src/readme.test.ts, extension-erp/src/manifest.test.ts, helper-erp/tests/erp-core.dotnet.test.ts, helper-erp/tests/erp-helper.test.ts, helper-erp/tests/erp-helper-build.dotnet.test.ts, helper-erp/tests/uis-whole.test.ts, specs/erp-uisarang/notes/uisarang-pc-check.md
 - Tests: helper-erp/tests/uis-whole.test.ts, extension-erp/src/readme.test.ts, extension-erp/src/manifest.test.ts, helper-erp/tests/erp-core.dotnet.test.ts, helper-erp/tests/erp-helper-build.dotnet.test.ts
-- TDD: required — design.md 12-4 뒤 네 줄·13절. `uis-whole.test.ts`: AC-4215.1 `git diff efe60061 --` 목록이 빔, AC-4215.2 12-4 밖 기대값 바뀜 없음(지금 시험 파일 diff가 12-4 줄 안). 판 0.4.0·짝 문장·'의사랑 의원' 절. Release net48 빌드 출력에 ExcelDataReader.dll(과 요구 dll). 그다음 `npm test`·`npm run lint`·`npm run ext-erp:build`·도우미 시험(net48 포함) 전체 → 마지막 검토 한 번 → 사용자가 말하면 설치 파일. AC-4216.4는 시험이 아니라 사용자와 실제 PC에서 13절 목록(결과 노트엔 숫자 없이)
-- 차례: 마지막 (모든 TASK 뒤)
+- TDD: required — design.md 12-4에서 TASK 칸에 16이 든 줄·13절. `uis-whole.test.ts`: AC-4215.1 `git diff efe60061 --` 목록이 빔, AC-4215.2 12-4 밖 기대값 바뀜 없음(지금 시험 파일 diff가 12-4 줄 안). 판 0.4.0·짝 문장·'의사랑 의원' 절. Release net48 빌드 출력에 ExcelDataReader.dll(과 요구 dll). 그다음 `npm test`·`npm run lint`·`npm run ext-erp:build`·도우미 시험(net48 포함) 전체 → 마지막 검토 한 번 → 사용자가 말하면 설치 파일. AC-4216.4는 시험이 아니라 사용자와 실제 PC에서 13절 목록(결과 노트엔 숫자 없이)
+- 차례: 마지막 (TASK-15·TASK-17 뒤 = 모든 TASK 뒤)
+
+## TASK-17: 명세 고침 반영 — 의사랑 글·설정 저장법·폴더 글·Send 한 곳·가짜 파일 되살리기 시험
+- REQ: REQ-4203, REQ-4211, REQ-4212, REQ-4214
+- AC: AC-4203.5, AC-4211.6, AC-4212.2, AC-4212.7, AC-4214.3, AC-4214.6
+- Files: extension-erp/src/uisTypes.ts, extension-erp/src/uisTypes.test.ts, extension-erp/src/uisText.ts, extension-erp/src/uisText.test.ts, extension-erp/src/uisView.ts, extension-erp/src/uisView.test.ts, extension-erp/src/panel.ts, extension-erp/src/panel.test.ts, extension-erp/src/uisOptions.ts, extension-erp/src/uisOptions.test.ts, extension-erp/src/options.ts, extension-erp/src/uisFlow.ts, extension-erp/src/uisFlow.test.ts, fixtures/make-fake-fixtures.test.ts
+- Tests: extension-erp/src/uisText.test.ts, extension-erp/src/uisView.test.ts, extension-erp/src/panel.test.ts, extension-erp/src/uisOptions.test.ts, extension-erp/src/uisFlow.test.ts, fixtures/make-fake-fixtures.test.ts
+- TDD: required — design.md 2-1 고침 1·2·4②·7·9·10·12, 10-1·10-6. (1) `uisText.ts`: ⑩ `cond.leadLabel` 뺌(`cond.lead`만), ⑪ `dup.lead(report)` 수 없이 '{보고서} 엑셀이 여러 개 있어요.'·환자별 '모두 지웠어요', 설정 `codes.twice` 수 없이, 저장법 `reports.howTo[2]`를 10-6 ★ 셋째 줄로, `reports.suffix` 뺌, `UIS_OPTIONS_FOLDER = 'ERP마감 폴더'`와 맨 위 상자 자리 설명, 진료 0건·이미 적힌 칸 의사랑 첫 줄 두 글 더함. `uisView.ts`는 `dup.lead`에 수를 넘기지 않음. (2) `panel.ts` `askZero`·`askWritten`: 자료원이 의사랑이면 첫 줄만 의사랑 글, 비트는 `FLOW_TEXT` 그대로(지금 panel 시험 기대값 그대로 + 의사랑 새 시험). (3) `uisOptions.ts`: `FOLDER = UIS_FOLDER_TEXT.desktop` 대신 `UIS_OPTIONS_FOLDER`, 표 밑 '-환자별' 줄 뺌, `Send` 정의 뺌. (4) `Send`는 `uisTypes.ts`에서만 내보내고 `uisOptions.ts`·`uisFlow.ts`·`options.ts`가 가져다 씀(uisFlow에 따로 정한 것이 있으면 뺌. 시험은 소스 글자로 'type Send' 한 곳). (5) `fixtures/make-fake-fixtures.test.ts` AC-005.2: 되살림 기대값에 `UIS_FIXTURE_NAMES` → `!fixtures/fake-uisarang/{이름}` 더함(design.md 12-4, 글롭 없음은 그대로). 기능 TASK가 만든 시험(uisText·uisView·uisOptions·uisFlow)의 옛 글 기대값은 새 글로 고친다. 비트 글·비트 시험 기대값은 바꾸지 않는다. 끝에 `npm test -- extension-erp fixtures`·`npm run lint`
+- 차례: Phase 4 (TASK-12·TASK-14 뒤, TASK-15와 함께 — Files 안 겹침)
