@@ -9,6 +9,8 @@
 // - TASK-14(AC-3709.2): 묶음 exclude가 코드 배열에서 규칙 { code, with 1~5개, all? } 0~20개로 바뀜(design.md 11절)
 // - spec erp-bit-anywhere TASK-1(REQ-3801): ERP 비트 찾기 규칙 ErpInstallRules(AC-3801.1·AC-3801.2)의 C# 시험 ErpInstallRulesTests를 감싸고,
 //   Erp.Core 파일 목록에 ErpInstallRules.cs를 더한다
+// - spec erp-copy-list TASK-4(REQ-3902): ERP 도우미가 목록 확장('ERP 마감일지 입력 목록')도 받는 ErpCallers(AC-3902.1·AC-3902.3)와
+//   그것을 거친 MessageLoop(AC-3902.2)의 C# 시험 ErpCallersTests·ErpProtocolTests를 감싸고, Erp.Core 파일 목록에 ErpCallers.cs를 더한다
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -158,6 +160,19 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
 
   it('AC-3804.2 ErpServerRules.Require는 막을 때 E-BIT-DB-FAILED', () => {
     expectAc('AC-3804.2')
+  })
+
+  // spec erp-copy-list AC-3902.1~3: C# ErpCallersTests·ErpProtocolTests(namespace Erp.Core.Tests, 거르기 Erp.Core.Tests.Erp에 든다)
+  it('AC-3902.1 ErpCallers.ForMessageLoop: 첫 인자가 목록 확장 origin(글자 그대로)일 때만 첫 인자를 명령 표 확장 origin으로 바꾼 새 배열, 그 밖(명령 표 확장·청구 확장·모르는 ID·대문자·끝 / 없음·빈 글자·인자 없음·--register)은 받은 배열 그대로, null은 ArgumentNullException', () => {
+    expectAc('AC-3902.1')
+  })
+
+  it('AC-3902.2 MessageLoop.Run(ErpCallers.ForMessageLoop(args, table), …): 목록 확장은 지금 확장과 똑같이 답하고, 다른 origin은 하나도 읽지 않고 E-BRIDGE-REJECTED 하나로 ExitRejected, 비트를 열지 않음', () => {
+    expectAc('AC-3902.2')
+  })
+
+  it('AC-3902.3 ErpCallers.ListExtensionId는 extension-erp-list/manifest.json key로 계산한 ID(32자 a~p)이고 명령 표 extensionId·청구 확장 ID와 다르다', () => {
+    expectAc('AC-3902.3')
   })
 })
 
@@ -347,6 +362,7 @@ describe('AC-3611.1 Erp.Core 틀', () => {
       'Closing/ClosingCommands.cs',
       'Closing/ClosingDay.cs',
       'Closing/ClosingSql.cs',
+      'ErpCallers.cs', // spec erp-copy-list AC-3902.1
       'ErpCommandTable.cs',
       'ErpInstallRules.cs',
       'ErpLogLine.cs',

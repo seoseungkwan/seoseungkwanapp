@@ -3,5 +3,5 @@
   "description": "ERP 마감일지 도우미",
   "path": "__HELPER_EXE__",
   "type": "stdio",
-  "allowed_origins": ["chrome-extension://lkancaiekmoieooheifdimahhkejfmjc/"]
+  "allowed_origins": ["chrome-extension://lkancaiekmoieooheifdimahhkejfmjc/", "chrome-extension://gaipapghcaabmmnldghknjmjkknahdae/"]
 }

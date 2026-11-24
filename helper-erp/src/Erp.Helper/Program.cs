@@ -48,7 +48,8 @@ internal static class Program
             using var stdin = Console.OpenStandardInput();
             using var input = new StdinPump(stdin, signal);
             using var output = Console.OpenStandardOutput();
-            return MessageLoop.Run(args, input, output, table, dispatcher, log.Write);
+            // 목록 확장('ERP 마감일지 입력 목록')이 켜면 첫 인자만 명령 표 확장 origin으로 바꿔 넘긴다. 그 밖은 그대로(spec erp-copy-list AC-3902.4)
+            return MessageLoop.Run(ErpCallers.ForMessageLoop(args, table), input, output, table, dispatcher, log.Write);
         }
         catch (Exception)
         {
