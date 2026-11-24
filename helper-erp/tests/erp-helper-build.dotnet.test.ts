@@ -150,4 +150,36 @@ describe('AC-3611.6 Erp.Helper Release 만들기(workflow zip의 app\\ 자리)',
     expect(startup).toMatch(/<supportedRuntime\s+version="v4\.0"\s+sku="\.NETFramework,Version=v4\.8"\s*\/>/)
     expect(config).toMatch(/<assemblyIdentity\s+name="System\.Text\.Json"[^>]*\/>\s*<bindingRedirect\b/)
   }, 580_000)
+
+  // spec erp-uisarang AC-4216.3(TASK-16): 의사랑 엑셀 읽기 패키지(ExcelDataReader 3.9.0, ADR-050)와 그 판이 net48에서 요구하는 dll이
+  // exe 옆에 있어야 설치 묶음(workflow가 bin/Release/net48의 *.dll을 모두 싣고 install.ps1이 app 파일을 모두 옮김)에 들어간다.
+  // 요구 dll = obj/project.assets.json의 net48 목록에서 ExcelDataReader와 그 의존 패키지의 runtime 파일('_._'는 .NET Framework에 들어 있음)
+  it('AC-4216.3: bin/Release/net48에 ExcelDataReader.dll과 그 판이 요구하는 dll이 exe 옆에 있고, CodePages dll은 없다', () => {
+    const run = build()
+    expect(run.code, tail(run.output)).toBe(0)
+    expect(existsSync(path.join(OUT_DIR, 'ExcelDataReader.dll')), `ExcelDataReader.dll이 ${OUT_DIR}에 없다`).toBe(true)
+    type Lib = { dependencies?: Record<string, string>; runtime?: Record<string, unknown> }
+    const assets = JSON.parse(read('helper-erp/src/Erp.Helper/obj/project.assets.json')) as { targets: Record<string, Record<string, Lib>> }
+    const net48 = assets.targets['.NETFramework,Version=v4.8'] ?? assets.targets.net48
+    expect(net48, 'project.assets.json에 net48 목록이 없다').toBeDefined()
+    const key = (name: string) => Object.keys(net48).find((k) => k.toLowerCase().startsWith(`${name.toLowerCase()}/`))
+    expect(key('ExcelDataReader')).toBe('ExcelDataReader/3.9.0')
+    const needed = new Set<string>()
+    const seen = new Set<string>()
+    const walk = (name: string) => {
+      const k = key(name)
+      if (!k || seen.has(k)) return
+      seen.add(k)
+      for (const file of Object.keys(net48[k].runtime ?? {})) if (!file.endsWith('/_._')) needed.add(path.posix.basename(file))
+      for (const dep of Object.keys(net48[k].dependencies ?? {})) walk(dep)
+    }
+    walk('ExcelDataReader')
+    expect([...needed]).toContain('ExcelDataReader.dll')
+    for (const dll of needed) expect(existsSync(path.join(OUT_DIR, dll)), `${dll}이 ${OUT_DIR}에 없다`).toBe(true)
+    // .NET Framework 4.8은 코드 페이지가 기본으로 있어 CodePages 패키지는 시험(net10.0)에만 쓴다(ADR-050)
+    expect(existsSync(path.join(OUT_DIR, 'System.Text.Encoding.CodePages.dll'))).toBe(false)
+    // 설치 묶음: workflow가 그 자리의 *.dll을 모두 싣고, install.ps1은 app 폴더 파일을 모두 옮긴다(지금 그대로)
+    expect(read('.github/workflows/helper-erp.yml')).toContain(`Copy-Item -Path "$bin/*.exe", "$bin/*.exe.config", "$bin/*.dll" -Destination $app`)
+    expect(read('helper-erp/install/install.ps1')).toContain('Get-ChildItem -LiteralPath $appSource -File | Copy-Item -Destination $installDir -Force')
+  }, 580_000)
 })

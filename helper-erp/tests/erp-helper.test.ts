@@ -586,8 +586,9 @@ describe('AC-3801.4 청구 도우미 쪽은 갈래 시작(6754571c) 그대로', 
     expect(run.status, run.output).toBe(0)
   })
 
-  it('AC-3801.4: ERP 도우미 판은 그대로 0.3.0이다(helper-erp/Directory.Build.props)', () => {
-    expect(/<Version>([^<]*)<\/Version>/.exec(read('helper-erp/Directory.Build.props'))?.[1]).toBe('0.3.0')
+  // spec erp-uisarang design.md 12-4(TASK-16) AC-4216.1: 의사랑판으로 0.3.0에서 0.4.0으로
+  it('AC-3801.4 AC-4216.1: ERP 도우미 판은 0.4.0이다(helper-erp/Directory.Build.props)', () => {
+    expect(/<Version>([^<]*)<\/Version>/.exec(read('helper-erp/Directory.Build.props'))?.[1]).toBe('0.4.0')
   })
 
   it('AC-3801.4: 기존 BitInstallRules.SupportedRoot는 그대로 C:\\DrBIT50이고 기존 MatchesEnvironment는 그 위치만 받는다(글자)', () => {
@@ -744,13 +745,25 @@ describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실�
     expect(text.match(/"%SystemRoot%[^"\r\n]*"/g)).toHaveLength(1)
     // 지연 확장을 꺼서 폴더 이름의 !가 바뀌지 않는다
     expect(cmdLines()[1]).toBe('setlocal DisableDelayedExpansion')
-    // 설치 파일 목록과 uninstall.ps1·README.md는 그대로(갈래 시작 6754571c와 글자가 같다). install.ps1은 AC-3806.3으로 등록 결과 글만 바뀐다
+    // 설치 파일 목록과 uninstall.ps1은 그대로(갈래 시작 6754571c와 글자가 같다). install.ps1은 AC-3806.3으로 등록 결과 글만 바뀐다
     expect(filesUnder(INSTALL).sort()).toEqual([INSTALL_CMD, INSTALL_PS1, MANIFEST, UNINSTALL_PS1, `${INSTALL}/README.md`].sort())
-    const diff = spawnSync('git', ['diff', '--quiet', '6754571c', '--', UNINSTALL_PS1, `${INSTALL}/README.md`], {
+    const diff = spawnSync('git', ['diff', '--quiet', '6754571c', '--', UNINSTALL_PS1], {
       cwd: ROOT,
       encoding: 'utf8',
     })
     expect(diff.status, `${diff.stdout ?? ''}${diff.stderr ?? ''}${diff.error?.message ?? ''}`).toBe(0)
+    // spec erp-uisarang design.md 12-4(TASK-15·16) AC-4216.2: README.md는 '의사랑 의원' 절만 더해지고, 그 절 밖은
+    // 판 번호(0.3.0·0.4.0)가 든 줄(AC-4216.1 짝 문장·zip 예시·판 번호 줄·새 판으로 바꾸기 글)만 빼면 6754571c 글자 그대로다
+    const show = spawnSync('git', ['show', `6754571c:${INSTALL}/README.md`], { cwd: ROOT, encoding: 'utf8' })
+    expect(show.status, `${show.stderr ?? ''}${show.error?.message ?? ''}`).toBe(0)
+    const lines = read(`${INSTALL}/README.md`).replace(/\r\n/g, '\n').split('\n')
+    const heads = lines.flatMap((line, i) => (line.startsWith('## 의사랑 의원') ? [i] : []))
+    expect(heads).toHaveLength(1)
+    const next = lines.slice(heads[0] + 1).findIndex((line) => line.startsWith('## '))
+    const end = next === -1 ? lines.length : heads[0] + 1 + next
+    const outside = [...lines.slice(0, heads[0]), ...lines.slice(end)]
+    const noVersion = (text: string[]) => text.filter((line) => !/0\.[34]\.0/.test(line))
+    expect(noVersion(outside)).toEqual(noVersion(show.stdout.replace(/\r\n/g, '\n').split('\n')))
   })
 
   it.runIf(process.platform === 'win32')('AC-3802.2: (윈도우) PATH가 망가져도 가짜 install.ps1 exit 2 → 끝 번호 2, 멈춤 없음', () => {

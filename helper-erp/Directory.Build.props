@@ -1,9 +1,9 @@
 <Project>
-  <!-- ERP 도우미 전체가 같이 쓰는 설정(spec erp-closing-fill design.md 3-1). ERP 도우미 판(Version)은 이 한 곳에서만 정한다 (AC-3610.1, 0.1.0에서 시작해 TASK-15~19 묶음에서 0.2.0 — AC-3610.4, spec erp-closing-range TASK-12에서 0.3.0 — AC-3708.4).
+  <!-- ERP 도우미 전체가 같이 쓰는 설정(spec erp-closing-fill design.md 3-1). ERP 도우미 판(Version)은 이 한 곳에서만 정한다 (AC-3610.1, 0.1.0에서 시작해 TASK-15~19 묶음에서 0.2.0 — AC-3610.4, spec erp-closing-range TASK-12에서 0.3.0 — AC-3708.4, spec erp-uisarang TASK-16에서 0.4.0 — AC-4216.1).
        기존 도우미 판(helper/Directory.Build.props)과는 따로다. 참조하는 기존 Precheck.Core는 자기 helper/Directory.Build.props로 만들어진다.
        나머지 설정은 helper/Directory.Build.props와 같다 -->
   <PropertyGroup>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Product>Seoseungkwan ERP Helper</Product>
     <Company>Seoseungkwan</Company>
     <LangVersion>12.0</LangVersion>

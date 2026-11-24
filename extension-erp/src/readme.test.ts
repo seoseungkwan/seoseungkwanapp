@@ -225,15 +225,17 @@ describe("AC-3706.1 안내서 '확장이 건드리지 않는 것'과 판 번호"
   })
 
   // spec erp-closing-range AC-3708.4(TASK-12): ERP 도우미가 0.2.0에서 0.3.0으로 바뀌어(closing.findCodes·읽지 않을 처방 규칙) 짝 문장도 바뀐다
-  it('AC-3706.1 AC-3708.4: 판 번호 글은 확장 0.3.0 ↔ ERP 도우미 0.3.0이고, 둘이 같은 판이라는 옛 글·도우미는 0.2.0 그대로라는 옛 글은 없다', () => {
+  // spec erp-uisarang AC-4216.1(design.md 12-4, TASK-16): 의사랑판으로 확장·ERP 도우미 둘 다 0.4.0이 되어 짝 문장도 바뀐다
+  it('AC-3706.1 AC-3708.4 AC-4216.1: 판 번호 글은 확장 0.4.0 ↔ ERP 도우미 0.4.0이고, 둘이 같은 판이라는 옛 글·도우미는 0.2.0 그대로라는 옛 글·0.3.0 짝 글은 없다', () => {
     const helper = /<Version>([^<]+)<\/Version>/.exec(HELPER_PROPS)?.[1]
-    expect(MANIFEST.version).toBe('0.3.0')
-    expect(helper).toBe('0.3.0')
+    expect(MANIFEST.version).toBe('0.4.0')
+    expect(helper).toBe('0.4.0')
     expect(README).toContain(`확장 ${MANIFEST.version} ↔ ERP 도우미 ${helper}`)
     expect(README).toContain(`\`version\`(지금 ${MANIFEST.version})`)
     for (const old of [
       '지금 둘 다 0.2.0', '확장 0.2.0', '(지금 0.2.0)', '같은 판끼리', '판 번호가 같은 것끼리',
       '↔ ERP 도우미 0.2.0', 'ERP 도우미는 바뀌지 않았습니다', 'ERP 도우미 0.2.0은 그대로', '확장만 바뀌어', '0.2.0 그대로',
+      '확장 0.3.0 ↔', '↔ ERP 도우미 0.3.0', '(지금 0.3.0)',
     ]) {
       expect(README, old).not.toContain(old)
     }
@@ -288,13 +290,25 @@ describe("AC-3707.3 안내서 '매출로 셀 코드' — 화면 글(options.ts A
     }
   })
 
-  it("AC-3707.3: '새 판으로 바꾸기'에 새 판으로 바꾼 뒤 씨암·SONO 셀 코드를 확인하라는 문장이 있고, 확장 판 번호는 0.3.0 그대로다", () => {
+  // spec erp-uisarang AC-4216.1(TASK-16): 확장 판 번호는 0.4.0으로 바뀐다(이 시험의 나머지 기대값은 그대로)
+  it("AC-3707.3 AC-4216.1: '새 판으로 바꾸기'에 새 판으로 바꾼 뒤 씨암·SONO 셀 코드를 확인하라는 문장이 있고, 확장 판 번호는 0.4.0이다", () => {
     const update = chapter('7. 새 판으로 바꾸기')
     expect(update).toContain("씨암·SONO **'셀 코드'**를 꼭 확인합니다")
     expect(update).toContain('직접 더한 셀 코드만 셉니다')
     expect(update).toContain('줄어듭니다')
     expect(part(README, '4-2.')).toContain("'7. 새 판으로 바꾸기'")
-    expect(MANIFEST.version).toBe('0.3.0')
+    expect(MANIFEST.version).toBe('0.4.0')
+  })
+
+  it("AC-4216.1: '7. 새 판으로 바꾸기'에 0.3.0 → 0.4.0 글(의사랑 의원 판 · ERP 도우미도 0.4.0 · 1·2·3 모두 · 비트 의원은 그대로)이 0.2.0 → 0.3.0 글 앞에 있다", () => {
+    const update = chapter('7. 새 판으로 바꾸기')
+    const line = update.split('\n').find((l) => l.startsWith('**이 확장을 판 0.3.0에서 0.4.0으로 바꿀 때**'))
+    expect(line).toBeDefined()
+    expect(line).toContain("'의사랑 의원'")
+    expect(line).toContain('ERP 도우미도 0.4.0으로 바뀌었습니다')
+    expect(line).toContain('아래 1·2·3을 모두 합니다')
+    expect(line).toContain('비트 의원은')
+    expect(update.indexOf('0.3.0에서 0.4.0으로')).toBeLessThan(update.indexOf('0.2.0에서 0.3.0으로'))
   })
 })
 
@@ -351,7 +365,8 @@ describe('AC-3711.4 안내서 함께 있는 진료 — 그날 실제로 두 번 
     expect(README).not.toContain('씨암·SONO 코드가 함께 있는 진료가 있는 기간이고 같은 코드를 씨암·SONO 둘 다에 넣었으면')
   })
 
-  it('AC-3711.4: 확장 판 번호는 0.3.0 그대로다', () => {
-    expect(MANIFEST.version).toBe('0.3.0')
+  // spec erp-uisarang AC-4216.1(TASK-16): 0.3.0에서 0.4.0으로
+  it('AC-3711.4 AC-4216.1: 확장 판 번호는 0.4.0이다', () => {
+    expect(MANIFEST.version).toBe('0.4.0')
   })
 })

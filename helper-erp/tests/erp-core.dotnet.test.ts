@@ -463,10 +463,11 @@ describe('AC-3611.1 Erp.Core 틀', () => {
 })
 
 describe('AC-3610.1 ERP 도우미 판', () => {
-  it('AC-3610.1 AC-3708.4: helper-erp/Directory.Build.props 한 곳에서 판을 정하고(TASK-16에서 0.2.0, erp-closing-range TASK-12에서 0.3.0), Product는 ERP 도우미, 나머지 설정은 기존 도우미와 같다', () => {
+  // spec erp-uisarang AC-4216.1(design.md 12-4, TASK-16): 0.3.0에서 0.4.0으로
+  it('AC-3610.1 AC-3708.4 AC-4216.1: helper-erp/Directory.Build.props 한 곳에서 판을 정하고(TASK-16에서 0.2.0, erp-closing-range TASK-12에서 0.3.0, erp-uisarang TASK-16에서 0.4.0), Product는 ERP 도우미, 나머지 설정은 기존 도우미와 같다', () => {
     const erp = read(path.join(ERP, 'Directory.Build.props'))
     const helper = read(path.join(HELPER, 'Directory.Build.props'))
-    expect(property(erp, 'Version')).toBe('0.3.0')
+    expect(property(erp, 'Version')).toBe('0.4.0')
     expect(property(erp, 'Product')).toBe('Seoseungkwan ERP Helper')
     for (const name of ['Company', 'LangVersion', 'Nullable', 'Deterministic', 'TreatWarningsAsErrors', 'IncludeSourceRevisionInInformationalVersion']) {
       expect(property(erp, name), name).toBe(property(helper, name))
@@ -480,27 +481,32 @@ describe('AC-3610.1 ERP 도우미 판', () => {
   })
 
   // spec erp-closing-range AC-3708.4: erp-closing-fill 묶음(TASK-15~19)의 0.2.0에서 closing.findCodes·읽지 않을 처방 규칙 묶음의 0.3.0으로
-  it('AC-3610.4 AC-3708.4: ERP 도우미 판은 0.3.0(TASK-15~19 묶음 0.2.0 다음)이고, 기존 도우미 판 0.5.1·웹 LATEST_HELPER 0.5.1·MIN_HELPER 0.3.0은 그대로다', () => {
-    expect(property(read(path.join(ERP, 'Directory.Build.props')), 'Version')).toBe('0.3.0')
+  // spec erp-uisarang AC-4216.1(TASK-16): 그다음 의사랑판 0.4.0으로(기존 도우미·웹 판은 그대로)
+  it('AC-3610.4 AC-3708.4 AC-4216.1: ERP 도우미 판은 0.4.0(0.2.0 · 0.3.0 다음)이고, 기존 도우미 판 0.5.1·웹 LATEST_HELPER 0.5.1·MIN_HELPER 0.3.0은 그대로다', () => {
+    expect(property(read(path.join(ERP, 'Directory.Build.props')), 'Version')).toBe('0.4.0')
     expect(property(read(path.join(HELPER, 'Directory.Build.props')), 'Version')).toBe('0.5.1')
     const versions = read(path.join(ROOT, 'src', 'lib', 'bridge', 'versions.ts'))
     expect(versions).toMatch(/export const LATEST_HELPER = '0\.5\.1'/)
     expect(versions).toMatch(/export const MIN_HELPER = '0\.3\.0'/)
   })
 
-  it("AC-3708.4: 도우미 설치 안내(helper-erp/install/README.md)의 짝 문장은 '확장 0.3.0 ↔ ERP 도우미 0.3.0'이고, '새 판으로 바꾸기'는 다시 설치해야 '등록된 코드 전부' 찾기·읽지 않을 처방 규칙이 된다·0.2.0이어도 나머지는 그대로라고 적는다", () => {
+  // spec erp-uisarang AC-4216.1(TASK-16): 짝 문장·zip 예시·판 번호 줄이 0.4.0으로(0.2.0 → 0.3.0 글은 그대로 남는다)
+  it("AC-3708.4 AC-4216.1: 도우미 설치 안내(helper-erp/install/README.md)의 짝 문장은 '확장 0.4.0 ↔ ERP 도우미 0.4.0'이고, '새 판으로 바꾸기'는 다시 설치해야 '등록된 코드 전부' 찾기·읽지 않을 처방 규칙이 된다·0.2.0이어도 나머지는 그대로라고 적는다", () => {
     const guide = read(path.join(ERP, 'install', 'README.md'))
     const ext = (JSON.parse(read(path.join(ROOT, 'extension-erp', 'manifest.json'))) as { version: string }).version
     const erp = property(read(path.join(ERP, 'Directory.Build.props')), 'Version')
-    expect(`확장 ${ext} ↔ ERP 도우미 ${erp}`).toBe('확장 0.3.0 ↔ ERP 도우미 0.3.0')
-    expect(guide).toContain('(지금 확장 0.3.0 ↔ ERP 도우미 0.3.0)')
-    expect(guide).toContain('`seoseungkwan-erp-helper-0.3.0.zip`')
-    expect(guide).toContain('(0.1.0부터 시작해 지금 0.3.0)')
+    expect(`확장 ${ext} ↔ ERP 도우미 ${erp}`).toBe('확장 0.4.0 ↔ ERP 도우미 0.4.0')
+    expect(guide).toContain('(지금 확장 0.4.0 ↔ ERP 도우미 0.4.0)')
+    expect(guide).toContain('`seoseungkwan-erp-helper-0.4.0.zip`')
+    expect(guide).toContain('(0.1.0부터 시작해 지금 0.4.0)')
     const update = guide.slice(guide.indexOf('## 새 판으로 바꾸기'), guide.indexOf('## 지우기'))
     expect(update).toContain('**ERP 도우미를 0.2.0에서 0.3.0으로 바꿀 때**')
     expect(update).toContain("다시 설치해야 확장 설정 화면의 '셀 코드' 찾기가 **비트에 등록된 코드 전부**에서 찾고, **'읽지 않을 처방'** 규칙이 셈에 들어갑니다")
     expect(update).toContain('ERP 도우미 0.2.0이어도 나머지는 그대로 됩니다')
-    for (const old of ['↔ ERP 도우미 0.2.0', '확장만 바뀐 판이라', 'ERP 도우미 0.2.0은 다시 설치하지 않아도', '지금 0.2.0', 'helper-0.2.0.zip']) {
+    for (const old of [
+      '↔ ERP 도우미 0.2.0', '확장만 바뀐 판이라', 'ERP 도우미 0.2.0은 다시 설치하지 않아도', '지금 0.2.0', 'helper-0.2.0.zip',
+      '↔ ERP 도우미 0.3.0', '지금 0.3.0', 'helper-0.3.0.zip',
+    ]) {
       expect(guide, old).not.toContain(old)
     }
   })
