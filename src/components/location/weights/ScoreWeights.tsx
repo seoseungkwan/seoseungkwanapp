@@ -8,8 +8,11 @@
 //   onChange — 고칠 때마다 바로(부모가 지도 색·순위·점수를 다시 셈, 바깥 자료를 다시 부르지 않음)
 //   onSave   — 마지막으로 고친 뒤 SAVE_DELAY_MS가 지나면 한 번(saveLater.ts, 판이 사라지면 기다리던 것을 바로). 칸이 틀어지면 기다리던 저장도 버린다
 // 로 넘긴다. 틀린 칸은 그 칸 아래 RULE_TEXT 글이 보이고 둘 다 부르지 않는다.
-// 밖에서 내용이 다른 설정이 오면(불러오기 등) 그 값으로 다시 그리고, 판이 넘긴 것과 같은 설정이면 고치던 칸을 그대로 둔다
+// 밖에서 내용이 다른 설정이 오면(불러오기 등) 그 값으로 다시 그리고, 판이 넘긴 것과 같은 설정이면 고치던 칸을 그대로 둔다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 보는 의원의 값만 보인다: 막대·칸·고르기는 막히고 [기본 무게로]·[기본값으로]가 없다(저장 없음).
+// [세부 ▾] 펼치기와 [과목 고르기] 판 열기는 읽기라 그대로
 import { Fragment, useId, useState, type ReactNode } from 'react'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { AGE_BANDS, SCORE_GROUPS, type GroupId, type RuleProblem, type ScoreGroupDef, type ScoreRule, type ScoreSubDef } from '@/lib/location/score'
 import {
@@ -75,6 +78,7 @@ const textsOf = (problems: readonly RuleProblem[]) => [...new Set(problems.map((
 
 export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [], rivalShort, onPickDepts }: ScoreWeightsProps) {
   const uid = useId()
+  const readOnly = useReadOnly()
   const [draft, setDraft] = useState(() => toDraft(rule))
   const [seen, setSeen] = useState(() => ({ rule, key: ruleKey(rule) }))
   const [open, setOpen] = useState<ReadonlySet<GroupId>>(() => new Set(defaultOpen))
@@ -123,9 +127,11 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [], rivalSh
               {T.pickDepts}
             </button>
           ) : null}
-          <button type="button" className={RESET_BTN} onClick={() => apply(resetWeights(draft))}>
-            {T.resetWeights}
-          </button>
+          <WriteOnly>
+            <button type="button" className={RESET_BTN} onClick={() => apply(resetWeights(draft))}>
+              {T.resetWeights}
+            </button>
+          </WriteOnly>
         </span>
       </div>
       <p className="mt-1.5 text-caption text-muted">{T.help}</p>
@@ -147,6 +153,7 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [], rivalSh
                 max={SLIDER_MAX}
                 step={SLIDER_STEP}
                 value={draft.weights[g.id]}
+                disabled={readOnly}
                 onChange={(e) => apply(setWeight(draft, g.id, Number(e.target.value)))}
               />
               <output htmlFor={sliderId} className="text-right text-body font-semibold tabular-nums text-ink">
@@ -201,6 +208,7 @@ type DetailProps = {
 }
 
 function GroupDetail({ id, uid, group, draft, problems, apply, rivalShort, onPickDepts }: DetailProps) {
+  const readOnly = useReadOnly()
   const bandsBad = group.id === 'people' ? problems.filter((p) => p.at === 'bands') : []
   const bandsErrId = `${uid}-bands-error`
   const subSum = group.subs.reduce((a, s) => a + draft.items[s.id].w, 0)
@@ -224,7 +232,7 @@ function GroupDetail({ id, uid, group, draft, problems, apply, rivalShort, onPic
           <div className="mt-1.5 grid grid-cols-4 gap-x-2 gap-y-1">
             {AGE_BANDS.map((band, i) => (
               <label key={band} className="flex cursor-pointer items-center gap-1.5 text-caption text-ink-2">
-                <input type="checkbox" className={CHECK} checked={draft.bands.includes(i)} onChange={() => apply(toggleBand(draft, i))} />
+                <input type="checkbox" className={CHECK} checked={draft.bands.includes(i)} disabled={readOnly} onChange={() => apply(toggleBand(draft, i))} />
                 {band}
               </label>
             ))}
@@ -249,9 +257,11 @@ function GroupDetail({ id, uid, group, draft, problems, apply, rivalShort, onPic
           세부 무게 합계 <b className={SUM_NUM}>{subSum}</b>
           {T.subSumTail}
         </p>
-        <button type="button" className={RESET_BTN} aria-label={`${group.name} ${T.resetGroup}`} onClick={() => apply(resetGroup(draft, group.id))}>
-          {T.resetGroup}
-        </button>
+        <WriteOnly>
+          <button type="button" className={RESET_BTN} aria-label={`${group.name} ${T.resetGroup}`} onClick={() => apply(resetGroup(draft, group.id))}>
+            {T.resetGroup}
+          </button>
+        </WriteOnly>
       </div>
     </div>
   )
@@ -260,6 +270,7 @@ function GroupDetail({ id, uid, group, draft, problems, apply, rivalShort, onPic
 type RowProps = { uid: string; group: ScoreGroupDef; sub: ScoreSubDef; draft: Draft; problems: readonly RuleProblem[]; apply: (next: Draft) => void }
 
 function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
+  const readOnly = useReadOnly()
   const text = SUB_TEXT[sub.id]
   const name = sub.label
   const item = draft.items[sub.id]
@@ -275,6 +286,7 @@ function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
       className={BOX}
       aria-label={`${name} ${label}`}
       value={item[field]}
+      readOnly={readOnly}
       aria-invalid={bad(field) || undefined}
       aria-describedby={bad(field) ? errId : undefined}
       onChange={(e) => apply(setCriterion(draft, sub.id, field, e.target.value))}
@@ -322,14 +334,15 @@ function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
         max={SLIDER_MAX}
         step={SLIDER_STEP}
         value={item.w}
+        disabled={readOnly}
         onChange={(e) => apply(setSubWeight(draft, sub.id, Number(e.target.value)))}
       />
       {sub.flip ? (
         <div role="group" aria-label={`${name} 방향`} className={`mt-0.5 ${SEG}`}>
-          <button type="button" className={item.less ? SEG_OFF : SEG_ON} aria-pressed={!item.less} onClick={() => apply(setLess(draft, sub.id, false))}>
+          <button type="button" className={item.less ? SEG_OFF : SEG_ON} aria-pressed={!item.less} disabled={readOnly} onClick={() => apply(setLess(draft, sub.id, false))}>
             {T.more}
           </button>
-          <button type="button" className={item.less ? SEG_ON : SEG_OFF} aria-pressed={item.less} onClick={() => apply(setLess(draft, sub.id, true))}>
+          <button type="button" className={item.less ? SEG_ON : SEG_OFF} aria-pressed={item.less} disabled={readOnly} onClick={() => apply(setLess(draft, sub.id, true))}>
             {T.less}
           </button>
         </div>

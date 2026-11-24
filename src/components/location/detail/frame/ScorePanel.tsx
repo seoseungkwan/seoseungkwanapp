@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { sourceHref } from '@/components/location/common/text'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { distText } from '@/lib/location/coords'
 import type { CandidateExplain } from '@/lib/location/explain'
@@ -126,6 +127,8 @@ function noneText(id: GroupId, hasListing: boolean, noDepts: boolean): string {
 
 export function ScorePanel(props: ScorePanelProps) {
   const { score, explain, noDepts = false, weights, hasListing, candidateId, radiusM, busy, onRadius, map, onOpenSource } = props
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 범위 막대를 막는다(바꾸면 다시 받아 후보를 고쳐 쓰므로)
+  const readOnly = useReadOnly()
   const groups = SCORE_GROUPS.map((g) => ({ def: g, got: score.groups.find((x) => x.id === g.id) }))
   const usedW = groups.reduce((a, { def, got }) => (got && got.score !== null ? a + weights[def.id] : a), 0)
   const showExplain = explain != null && explain.up.length + explain.down.length > 0
@@ -193,7 +196,7 @@ export function ScorePanel(props: ScorePanelProps) {
         </p>
       </div>
       <div className="min-w-0">
-        <RangeControl candidateId={candidateId} radiusM={radiusM} disabled={busy} onRadius={onRadius} />
+        <RangeControl candidateId={candidateId} radiusM={radiusM} disabled={busy || readOnly} onRadius={onRadius} />
         {map != null && map !== false && (
           <div className="mt-2 overflow-clip rounded-control border border-line bg-canvas">
             {map}

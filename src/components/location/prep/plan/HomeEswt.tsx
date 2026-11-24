@@ -4,6 +4,7 @@
 // location_settings.home_eswt(원 정수, 비우면 없음)를 받아 칸을 떠날 때 바뀐 값만 onSave로 넘긴다. 모든 후보에 같이 쓴다.
 // 원 칸 읽기·글자는 비용 칸과 같은 범위(0~9,999,999,999원)라 costs.ts의 원 칸(perPatient) 규칙을 그대로 쓴다
 import { useId, useState } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { costFieldText, parseCostInput } from '@/lib/location/costs'
 import { look } from './look'
 import { PLAN_TEXT as T, UNIT_ERROR, UNIT_TEXT } from './text'
@@ -20,6 +21,8 @@ const textOf = (won: number | null) => costFieldText('perPatient', won ?? undefi
 
 export function HomeEswt({ value, onSave }: HomeEswtProps) {
   const uid = useId()
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 칸은 읽기만(고치지 않으니 칸을 떠나도 저장하지 않는다)
+  const readOnly = useReadOnly()
   const headId = `${uid}-head`
   const inputId = `${uid}-input`
   const unitId = `${uid}-unit`
@@ -62,6 +65,7 @@ export function HomeEswt({ value, onSave }: HomeEswtProps) {
               type="text"
               inputMode="numeric"
               autoComplete="off"
+              readOnly={readOnly}
               className={look.number}
               value={state.text}
               aria-invalid={bad || undefined}

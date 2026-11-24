@@ -5,6 +5,7 @@ import { formatCount } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { formatWon } from '@/components/revenue/money'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, compareYmd, monthOf, monthRange } from '@/lib/analytics/dates'
 import { monthlyReport, usageIntervals, type MonthlyReport, type MonthlyRow } from '@/lib/inventory/usage'
@@ -36,9 +37,10 @@ function readRange(month: string): InvRange {
   return { from: addDays(`${addMonths(month, -1)}-01`, -LOOK_BACK_DAYS), to: monthRange(month).to }
 }
 
-async function read(month: string): Promise<Loaded | 'failed'> {
+/** 다른 의원을 보는 중(읽기만, admin-view AC-8010.3)이면 처음 분류 넣기 없이(seed: false) 읽는다 */
+async function read(month: string, readOnly: boolean): Promise<Loaded | 'failed'> {
   const span = readRange(month)
-  const [inventory, counts, receipts] = await Promise.all([loadInventory(), listCountLines(span), listReceiptLines(span)])
+  const [inventory, counts, receipts] = await Promise.all([readOnly ? loadInventory({ seed: false }) : loadInventory(), listCountLines(span), listReceiptLines(span)])
   if (inventory === 'failed' || counts === 'failed' || receipts === 'failed') return 'failed'
   return { inventory, counts, receipts }
 }
@@ -327,10 +329,11 @@ export function MonthlyTool({ today }: { today: string }) {
   const [attempt, setAttempt] = useState(0)
   const key = `${month}|${attempt}`
   const [held, setHeld] = useState<Held | null>(null)
+  const readOnly = useReadOnly()
 
   useEffect(() => {
     let current = true
-    read(month).then(
+    read(month, readOnly).then(
       (value) => {
         if (current) setHeld({ key, value })
       },
@@ -341,7 +344,7 @@ export function MonthlyTool({ today }: { today: string }) {
     return () => {
       current = false
     }
-  }, [key, month])
+  }, [key, month, readOnly])
 
   const reading = held === null || held.key !== key
   return (

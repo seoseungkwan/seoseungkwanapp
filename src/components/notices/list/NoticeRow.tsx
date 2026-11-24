@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { mustSeeText } from '@/lib/notices/keywords'
 import { ruleChips, type RuleChip } from '@/lib/notices/ruleView'
@@ -9,7 +10,8 @@ import { FlagIcon, StarIcon } from './icons'
 // 글 목록 한 줄(specs/notices AC-7419.2·AC-7419.3·AC-7424.10, 시안 .item). 줄을 누르면 /notices?id=<id>로 글을 연다.
 // 규칙 칩은 연결 수가 아니라 AI 판정 수(ruleTally)로 ruleChips가 고른다(specs/rule-auto AC-7815.1, 시안 rule-auto ?v=list).
 // 제목·요약은 바깥 글과 AI 글이라 글자 노드로만 그린다(HTML로 해석하지 않음).
-// 줄 링크는 밑줄 없이(no-underline) ink로 두고 안의 글마다 시안 색을 준다 — 앱에는 a 밑줄·파랑을 지우는 바탕 규칙이 없다(시안 a { color: inherit; text-decoration: none })
+// 줄 링크는 밑줄 없이(no-underline) ink로 두고 안의 글마다 시안 색을 준다 — 앱에는 a 밑줄·파랑을 지우는 바탕 규칙이 없다(시안 a { color: inherit; text-decoration: none }).
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.1)이면 별 단추 대신 보는 의원이 별표한 글에만 별 표시(그림, 이름 '별표함')를 둔다
 
 const WAIT_LINE = '요약을 만드는 중이에요.'
 const FAILED_LINE = '요약을 만들지 못했어요. 원문에서 확인해 주세요.' // 기본값 6
@@ -52,6 +54,7 @@ function safeText(make: () => string): string {
 }
 
 export function NoticeRow({ n, onStar }: { n: NoticeView; onStar: (id: string, starred: boolean) => void }) {
+  const readOnly = useReadOnly()
   const starred = n.mark.starred
   const line = lineOf(n)
   const slot = numberSlot(n)
@@ -82,15 +85,25 @@ export function NoticeRow({ n, onStar }: { n: NoticeView; onStar: (id: string, s
           </span>
         </span>
       </Link>
-      <button
-        type="button"
-        aria-pressed={starred}
-        aria-label={starred ? '별표 빼기' : '별표 하기'}
-        onClick={() => onStar(n.id, !starred)}
-        className={`grid h-13 cursor-pointer place-items-center rounded-control transition hover:text-warning ${starred ? 'text-warning' : 'text-faint'} ${ds.focusRing}`}
-      >
-        <StarIcon on={starred} />
-      </button>
+      {readOnly ? (
+        starred ? (
+          <span role="img" aria-label="별표함" className="grid h-13 place-items-center text-warning">
+            <StarIcon on />
+          </span>
+        ) : (
+          <span />
+        )
+      ) : (
+        <button
+          type="button"
+          aria-pressed={starred}
+          aria-label={starred ? '별표 빼기' : '별표 하기'}
+          onClick={() => onStar(n.id, !starred)}
+          className={`grid h-13 cursor-pointer place-items-center rounded-control transition hover:text-warning ${starred ? 'text-warning' : 'text-faint'} ${ds.focusRing}`}
+        >
+          <StarIcon on={starred} />
+        </button>
+      )}
     </li>
   )
 }

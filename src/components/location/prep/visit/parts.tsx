@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { NO_LAW_TEXT, type CheckItem, type CheckValue } from '@/lib/location/checklist'
 import { lawOf } from '@/lib/location/sources'
 import { look } from './look'
@@ -56,12 +57,14 @@ export function CheckRow({
   onToggle: (id: string, on: boolean) => void
   onOpenLaw?: (id: string) => void
 }) {
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 체크는 보이기만(막힘)
+  const readOnly = useReadOnly()
   const on = value === 'yes'
   return (
     <div className={look.checkRow}>
       <label className={on ? look.checkLabelOn : look.checkLabel}>
         <span className={look.checkWrap}>
-          <input type="checkbox" className={look.checkbox} checked={on} onChange={(e) => onToggle(item.id, e.currentTarget.checked)} />
+          <input type="checkbox" className={look.checkbox} checked={on} disabled={readOnly} onChange={(e) => onToggle(item.id, e.currentTarget.checked)} />
           <CheckMarkIcon />
         </span>
         <span>{item.label}</span>

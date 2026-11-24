@@ -5,6 +5,7 @@ import { formatCount } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { formatWon } from '@/components/revenue/money'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea, weekdayOf } from '@/lib/analytics/dates'
 import { FIELDS, FIELD_LABELS } from '@/lib/inventory/ai'
@@ -21,7 +22,8 @@ import { ItemForm } from './ItemForm'
 // 챙길 것·엑셀 양식·엑셀 올리기·비트 코드 고르기는 다른 부품이라 props(alerts·onTemplate·onUpload·onBitPick)로만 받는다(이어 주기는 InventoryScreen).
 // [순서 바꾸기] 모드: 줄 앞 끌기 손잡이(포인터 이벤트, 라이브러리 없음)와 ▲▼로 같은 분류 안에서만 옮기고 바로 보인다.
 // [다 됐어요] = saveOrder(set_inventory_order, 숨긴 물품은 제자리), 실패면 옛 차례 + 오류 카드. 바꾼 것이 없으면 보내지 않는다.
-// 저장(판·다시 쓰기·차례)이 끝나면 스스로 다시 읽고(차례는 저장한 차례를 그대로 쓴다) onChanged로 화면에 알린다
+// 저장(판·다시 쓰기·차례)이 끝나면 스스로 다시 읽고(차례는 저장한 차례를 그대로 쓴다) onChanged로 화면에 알린다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.3)이면 처음 분류 넣기 없이(seed: false) 읽고 [양식 받기]·[보기]만 남긴다
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일'] // weekdayOf: 1=월 … 7=일
 const XLSX_ACCEPT = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -121,14 +123,15 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
   const run = useRef(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const helpId = useId()
+  const readOnly = useReadOnly()
 
   const load = useCallback(async () => {
     const mine = ++run.current
-    const [data, day] = await Promise.all([loadInventory(), lastCountDay()])
+    const [data, day] = await Promise.all([readOnly ? loadInventory({ seed: false }) : loadInventory(), lastCountDay()])
     if (mine !== run.current) return
     if (data === 'failed') setLoaded({ kind: 'failed' })
     else setLoaded({ kind: 'ready', data, lastDay: day === 'failed' ? null : day })
-  }, [])
+  }, [readOnly])
 
   useEffect(() => {
     void load()
@@ -342,22 +345,24 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                   <Icon name="arrowDown" />
                   양식 받기
                 </button>
-                <button type="button" className={ds.button.secondary} onClick={pickFile}>
-                  <Icon name="upload" />
-                  엑셀 올리기
-                </button>
-                <button type="button" className={ds.button.secondary} onClick={() => openPanel({ kind: 'cats' })}>
-                  분류 고치기
-                </button>
-                <button type="button" className={ds.button.secondary} onClick={startOrder}>
-                  순서 바꾸기
-                </button>
-                <button type="button" className={ds.button.secondary} onClick={() => onBitPick?.()}>
-                  비트 코드에서 고르기
-                </button>
-                <button type="button" className={ds.button.primary} onClick={() => openPanel({ kind: 'add' })}>
-                  물품 더하기
-                </button>
+                <WriteOnly>
+                  <button type="button" className={ds.button.secondary} onClick={pickFile}>
+                    <Icon name="upload" />
+                    엑셀 올리기
+                  </button>
+                  <button type="button" className={ds.button.secondary} onClick={() => openPanel({ kind: 'cats' })}>
+                    분류 고치기
+                  </button>
+                  <button type="button" className={ds.button.secondary} onClick={startOrder}>
+                    순서 바꾸기
+                  </button>
+                  <button type="button" className={ds.button.secondary} onClick={() => onBitPick?.()}>
+                    비트 코드에서 고르기
+                  </button>
+                  <button type="button" className={ds.button.primary} onClick={() => openPanel({ kind: 'add' })}>
+                    물품 더하기
+                  </button>
+                </WriteOnly>
               </div>
             </div>
             <p id={helpId} className={`${ds.help} text-right`}>
@@ -468,7 +473,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                             <Icon name="chev" />
                           </button>
                         </span>
-                      ) : item.hidden ? (
+                      ) : readOnly ? null : item.hidden ? (
                         <button
                           type="button"
                           className={ds.button.ghostSmall}
@@ -559,32 +564,38 @@ function EmptyState({
             <span className={number}>3</span>
             <p className={title}>엑셀 올리기</p>
             <p className={desc}>넣기 전에 미리 보기로 확인해요</p>
-            <button type="button" className={`${ds.button.primary} mt-3`} onClick={onUpload}>
-              <Icon name="upload" />
-              엑셀 올리기
-            </button>
+            <WriteOnly>
+              <button type="button" className={`${ds.button.primary} mt-3`} onClick={onUpload}>
+                <Icon name="upload" />
+                엑셀 올리기
+              </button>
+            </WriteOnly>
           </li>
         </ol>
       </div>
-      <p className="mt-3 text-small text-muted">갖고 계신 엑셀도 올릴 수 있어요(AI가 칸을 맞춰요).</p>
-      <p className="mt-2 text-small text-ink-2">
-        물품을 하나씩 더할 수도 있어요.{' '}
-        <button type="button" className={ds.textButton} onClick={onAdd}>
-          물품 더하기
-        </button>
-      </p>
-      <p className="mt-1 text-small text-ink-2">
-        비트에서 쓰던 약·재료 코드에서 골라 넣을 수도 있어요.{' '}
-        <button type="button" className={ds.textButton} onClick={onBitPick}>
-          비트 코드에서 고르기
-        </button>
-      </p>
+      <WriteOnly>
+        <p className="mt-3 text-small text-muted">갖고 계신 엑셀도 올릴 수 있어요(AI가 칸을 맞춰요).</p>
+        <p className="mt-2 text-small text-ink-2">
+          물품을 하나씩 더할 수도 있어요.{' '}
+          <button type="button" className={ds.textButton} onClick={onAdd}>
+            물품 더하기
+          </button>
+        </p>
+        <p className="mt-1 text-small text-ink-2">
+          비트에서 쓰던 약·재료 코드에서 골라 넣을 수도 있어요.{' '}
+          <button type="button" className={ds.textButton} onClick={onBitPick}>
+            비트 코드에서 고르기
+          </button>
+        </p>
+      </WriteOnly>
       <div className="mt-8 flex max-w-140 flex-col items-start gap-1 border-t border-line pt-4">
         <p className="text-small font-semibold text-muted">{categories.length === 4 ? '분류는 넷으로 시작해요' : `분류 ${categories.length}개`}</p>
         <p className="text-body text-ink-2">{categories.map((c) => c.name).join(' · ')}</p>
-        <button type="button" className={ds.textButton} onClick={onCategories}>
-          분류 고치기
-        </button>
+        <WriteOnly>
+          <button type="button" className={ds.textButton} onClick={onCategories}>
+            분류 고치기
+          </button>
+        </WriteOnly>
       </div>
     </section>
   )

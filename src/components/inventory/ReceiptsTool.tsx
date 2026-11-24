@@ -5,6 +5,7 @@ import { formatCount } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { formatWon } from '@/components/revenue/money'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { addDays, monthOf } from '@/lib/analytics/dates'
 import { listAliases, listReceipts, loadInventory, readPhoto } from '@/lib/storage/inventory'
@@ -19,7 +20,8 @@ import { ReceiptConfirm, dayText, draftFromInvoice, draftFromReceipt, manualDraf
 // 머리 [사진 없이 적기]·[사진 올리기] → 오늘까지 90일 기록을 달로 묶은 표(이번 달은 펼침, 지난달은 접힌 머리 한 줄).
 // [사진 올리기]: 브라우저가 사진을 줄이고(photo.ts) 명세서 읽기 경로를 부른 뒤(invoiceClient.ts) 맞춘 이름과 함께 "들어온 것 확인"을 연다.
 // 읽는 동안 읽는 중 표시, 실패는 목록 위 오류 카드(E-INV-PHOTO·E-INV-NO-LINES·E-AI-*). [고치기]는 같은 확인 화면을 그 기록 값으로 연다.
-// 저장하면 목록과 물품을 다시 읽고 onChanged로 알린다. 입고 줄은 차례 칸이 없어 물품 목록 차례로 그린다
+// 저장하면 목록과 물품을 다시 읽고 onChanged로 알린다. 입고 줄은 차례 칸이 없어 물품 목록 차례로 그린다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.3)이면 처음 분류 넣기 없이(seed: false) 읽고 [사진 없이 적기]·[사진 올리기]·[고치기]가 없다([사진 보기]는 그대로)
 
 export type ReceiptsToolProps = {
   today: string
@@ -74,10 +76,11 @@ export function ReceiptsTool({ today, startManual = false, onChanged }: Receipts
   const busy = useRef(false)
   const confirmKey = useRef(0)
   const dataRef = useRef<Data | null>(null)
+  const readOnly = useReadOnly()
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadInventory(), listReceipts({ from: addDays(today, 1 - DAYS), to: today })]).then(
+    void Promise.all([readOnly ? loadInventory({ seed: false }) : loadInventory(), listReceipts({ from: addDays(today, 1 - DAYS), to: today })]).then(
       ([inventory, receipts]) => {
         if (!alive) return
         if (inventory === 'failed' || receipts === 'failed') {
@@ -93,7 +96,7 @@ export function ReceiptsTool({ today, startManual = false, onChanged }: Receipts
     return () => {
       alive = false
     }
-  }, [today, reloadKey])
+  }, [today, reloadKey, readOnly])
 
   const openManual = useCallback(() => {
     const ready = dataRef.current
@@ -107,11 +110,11 @@ export function ReceiptsTool({ today, startManual = false, onChanged }: Receipts
   }, [startManual])
 
   useEffect(() => {
-    if (askManual && typeof data === 'object') {
+    if (askManual && typeof data === 'object' && !readOnly) {
       setAskManual(false)
       openManual()
     }
-  }, [askManual, data, openManual])
+  }, [askManual, data, openManual, readOnly])
 
   async function readPhotoFile(file: File) {
     if (busy.current || dataRef.current === null) return
@@ -178,7 +181,7 @@ export function ReceiptsTool({ today, startManual = false, onChanged }: Receipts
     />
   )
 
-  if (confirm !== null && typeof data === 'object') {
+  if (confirm !== null && typeof data === 'object' && !readOnly) {
     return (
       <>
         {fileInput}
@@ -211,15 +214,17 @@ export function ReceiptsTool({ today, startManual = false, onChanged }: Receipts
           </h2>
           <p className="mt-0.5 max-w-208 text-small text-muted">거래명세서·영수증·주문 화면 캡처 사진을 올리면 AI가 읽어 줘요. 사진은 기록과 함께 보관해요.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className={ds.button.secondary} disabled={!ready || reading} onClick={openManual}>
-            사진 없이 적기
-          </button>
-          <button type="button" className={ds.button.primary} disabled={!ready} aria-busy={reading || undefined} onClick={pickPhoto}>
-            <Icon name="upload" />
-            사진 올리기
-          </button>
-        </div>
+        <WriteOnly>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={ds.button.secondary} disabled={!ready || reading} onClick={openManual}>
+              사진 없이 적기
+            </button>
+            <button type="button" className={ds.button.primary} disabled={!ready} aria-busy={reading || undefined} onClick={pickPhoto}>
+              <Icon name="upload" />
+              사진 올리기
+            </button>
+          </div>
+        </WriteOnly>
       </div>
 
       {reading && (
@@ -371,9 +376,11 @@ function RecordTable({ data, today, openMonths, openRows, onMonth, onRow, onPhot
                           )}
                         </td>
                         <td className={`${TD} w-px text-right`}>
-                          <button type="button" className={ds.button.ghostSmall} onClick={() => onEdit(receipt)}>
-                            고치기
-                          </button>
+                          <WriteOnly>
+                            <button type="button" className={ds.button.ghostSmall} onClick={() => onEdit(receipt)}>
+                              고치기
+                            </button>
+                          </WriteOnly>
                         </td>
                       </tr>
                       {rowOpen && (

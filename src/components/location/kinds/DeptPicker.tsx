@@ -7,10 +7,12 @@
 //   onChange — 누를 때마다 바로(부르는 쪽이 다시 부르지 않고 점수·묶음을 다시 그림)
 //   onSave   — 마지막으로 고친 뒤 SAVE_DELAY_MS가 지나면 한 번(점수 무게 판과 같은 weights/saveLater.ts). 판을 닫거나 사라지면 기다리던 것을 바로
 // 로 넘긴다. 어디에 저장할지(saveDeptRule)는 부르는 쪽이 정한다. [기본값으로]도 처음 값을 같은 길로 넘긴다.
-// 밖에서 내용이 다른 설정이 오면 그 값으로 다시 그리고, 판이 넘긴 것과 같은 설정이면 그대로 둔다
+// 밖에서 내용이 다른 설정이 오면 그 값으로 다시 그리고, 판이 넘긴 것과 같은 설정이면 그대로 둔다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 보는 의원이 고른 값만 보인다: 고르기는 막히고 [기본값으로]가 없다(저장 없음, [닫기]는 그대로)
 import { useEffect, useId, useRef, useState } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { useSaveLater } from '@/components/location/weights/saveLater'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { DEFAULT_DEPT_RULE, DEPTS, checkDeptRule, deptRole, fillDeptRule, type Dept, type DeptRole } from '@/lib/location/depts'
 import type { DeptId, DeptRule } from '@/types/location'
@@ -160,9 +162,11 @@ export function DeptPicker({ rule, counts, letter, radiusM, open, onChange, onSa
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-3">
           <p className="flex-[1_1_200px] text-caption text-muted">{T.foot}</p>
-          <button type="button" className={BTN} onClick={() => apply(defaultRule())}>
-            {T.reset}
-          </button>
+          <WriteOnly>
+            <button type="button" className={BTN} onClick={() => apply(defaultRule())}>
+              {T.reset}
+            </button>
+          </WriteOnly>
           <button type="button" className={BTN} onClick={onClose}>
             {T.close}
           </button>
@@ -176,6 +180,7 @@ type Place = { letter: string; radiusM: number; counts: Partial<Record<DeptId, n
 type RowProps = { dept: Dept; role: DeptRole; place: Place | null; onPick: (role: DeptRole) => void }
 
 function DeptRow({ dept, role, place, onPick }: RowProps) {
+  const readOnly = useReadOnly()
   return (
     <div role="listitem" className={ROW}>
       <span className="text-body font-medium text-ink">
@@ -185,7 +190,7 @@ function DeptRow({ dept, role, place, onPick }: RowProps) {
       </span>
       <div role="group" aria-label={dept.name} className="flex gap-1.5">
         {ROLES.map((r) => (
-          <button key={r} type="button" aria-pressed={role === r} className={option(role === r)} onClick={() => onPick(r)}>
+          <button key={r} type="button" aria-pressed={role === r} disabled={readOnly} className={option(role === r)} onClick={() => onPick(r)}>
             {T.role[r]}
           </button>
         ))}

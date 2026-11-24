@@ -14,6 +14,7 @@ import { RETRY_LABEL } from '@/components/location/common/text'
 import { WhyLine } from '@/components/location/common/WhyLine'
 import { KakaoMap, type MapArea, type MapMark } from '@/components/location/map/KakaoMap'
 import { ScoreWeights } from '@/components/location/weights/ScoreWeights'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import type { ScanDong, ScanPart, ScanPartState, ScanResult } from '@/lib/location/collect'
 import { DEFAULT_DEPT_RULE, rivalShortText } from '@/lib/location/depts'
@@ -501,7 +502,9 @@ type PickedProps = {
   onAdd: (spot: ScanSpot) => void
 }
 
+/** 고른 동 자세히. 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 [{동}에서 후보 더하기]가 없다(네이버 부동산 링크는 그대로) */
 function Picked({ data, row, why, dong, chips, rule, rivalsOff, onAdd }: PickedProps) {
+  const readOnly = useReadOnly()
   const people = data.dongs.find((d) => d.code10 === row.code10)?.facts.people ?? null
   const peoplePart = data.parts.people
   const max = maxPoints(row.result, rule)
@@ -550,7 +553,7 @@ function Picked({ data, row, why, dong, chips, rule, rivalsOff, onAdd }: PickedP
       </div>
       <p className="text-small text-muted">{T.used(row.result.used)}</p>
       <div className="flex flex-wrap gap-2">
-        {at ? (
+        {at && !readOnly ? (
           <button type="button" className={look.primary} onClick={() => onAdd({ code10: row.code10, name: row.name, at })}>
             <PlusIcon />
             {T.add(row.name)}

@@ -7,8 +7,11 @@
 // 점수 설정은 손에 든 값(rule)만 바꾸고(다시 부르지 않음, 점수는 부품이 다시 센다) 저장은 saveScoreRule 하나로 한다.
 // 과목 고르기(deptRule)도 같다: 손에 든 값만 바꾸고 다시 부르지 않으며, 저장은 saveDeptRule(처음 값이면 resetDeptRule) 하나로 한다.
 // 모으기(후보 더하기·다시 받기·동네 훑기)는 그때 손에 든 과목 고르기로 부른다(바꾼 뒤 저절로 다시 부르지는 않는다).
-// 저장이 실패하면 saveError를 켠다(화면이 E-LOC-SAVE-FAILED를 보임). 매물·사진·메모처럼 부품이 오류를 직접 보이는 저장은 던진다
+// 저장이 실패하면 saveError를 켠다(화면이 E-LOC-SAVE-FAILED를 보임). 매물·사진·메모처럼 부품이 오류를 직접 보이는 저장은 던진다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 저절로 쓰기 둘을 하지 않는다: 후보를 열 때 알림 읽음(markCandidateEventsSeen),
+// 모으기의 승하차 담아 두기(saveFlowCache — 읽기 readFlowCache는 그대로). 바깥 자료 읽기(/api/ai/location/*)는 읽기라 그대로다
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { cleanText } from '@/lib/contacts/fields'
 import { collect, collectScan, industryParks, SAME_BUILDING_M, type CollectDeps, type CollectProgress, type ScanResult } from '@/lib/location/collect'
@@ -150,6 +153,7 @@ const fieldsOf = (l: Listing): ListingFields => {
 
 export function useLocation() {
   const client = useMemo(() => supabaseBrowser(), [])
+  const readOnly = useReadOnly()
 
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [data, setData] = useState<LocationData | null>(null)
@@ -265,11 +269,11 @@ export function useLocation() {
       // 같은 구 승하차는 한 번만 받기(AC-7908.5, TASK-97)
       flowCache: {
         read: (sgg, ym) => readFlowCache(client, sgg, ym),
-        save: (sgg, ym, v) => saveFlowCache(client, sgg, ym, v),
+        save: (sgg, ym, v) => (readOnly ? Promise.resolve() : saveFlowCache(client, sgg, ym, v)),
       },
       onProgress,
     }),
-    [client, dongFile],
+    [client, dongFile, readOnly],
   )
 
   // ── 후보 더하기(AC-7908.1·AC-7908.2) ──
@@ -366,7 +370,7 @@ export function useLocation() {
       if (!c) return
       const ticket = ++openTicket.current
       setViewed({ candidateId: id, address: undefined, road: undefined, pnu: undefined, near: {}, pharmacies: undefined })
-      markCandidateEventsSeen(client, id).catch(() => undefined) // 조용히(다음에 다시 읽음으로 한다)
+      if (!readOnly) markCandidateEventsSeen(client, id).catch(() => undefined) // 조용히(다음에 다시 읽음으로 한다)
       const { at, r } = placeOf(c)
       void queryLocation({ kind: 'k-point', at }).then((reply) => {
         if (ticket !== openTicket.current) return
@@ -377,7 +381,7 @@ export function useLocation() {
       })
       for (const kind of NEAR_KINDS) askNear(kind, at, r, ticket, id)
     },
-    [askNear, client],
+    [askNear, client, readOnly],
   )
   const retryNear = useCallback(
     (kind: NearKind) => {

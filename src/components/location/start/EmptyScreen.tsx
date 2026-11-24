@@ -2,6 +2,7 @@
 
 import { useState, type MouseEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { MethodCard, type MethodCardProps } from '@/components/location/method/MethodCard'
 import { METHOD } from '@/lib/location/method'
 import type { DongIndex } from '@/lib/location/regions'
@@ -130,10 +131,12 @@ export function EmptyScreen({ index, keys, mapKey, onScan, onAdd, onOpen, ...met
           </button>
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          <button type="button" className={look.button} onClick={onAdd}>
-            <PlusIcon />
-            주소로 후보 더하기
-          </button>
+          <WriteOnly>
+            <button type="button" className={look.button} onClick={onAdd}>
+              <PlusIcon />
+              주소로 후보 더하기
+            </button>
+          </WriteOnly>
           <button type="button" className={look.button} onClick={() => onOpen('listings')}>
             매물 붙여 넣기
           </button>

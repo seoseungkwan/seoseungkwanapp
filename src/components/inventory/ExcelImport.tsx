@@ -37,9 +37,10 @@ import { askColumns, type ColumnsAnswer } from './columnsClient'
 // 넣기가 실패한 뒤 [넣기]는 재고를 다시 읽어 계획을 다시 만든다(칸 맞춤·분류 맞추기 그대로, AI 다시 안 부름, AC-7509.4).
 // PC 모양 하나뿐이다. 미리 보기 표는 제 상자 안에서 옆으로 밀린다
 
-/** [양식 받기]: 지금 분류·물품(숨긴 물품 빼고)을 채운 재고-양식.xlsx를 내려받게 한다. 못 읽거나 못 만들면 거짓 */
-export async function downloadTemplate(): Promise<boolean> {
-  const inventory = await loadInventory()
+/** [양식 받기]: 지금 분류·물품(숨긴 물품 빼고)을 채운 재고-양식.xlsx를 내려받게 한다. 못 읽거나 못 만들면 거짓.
+ * 다른 의원을 보는 중(읽기만)이면 부르는 쪽이 { seed: false }를 넘긴다 — 처음 분류 넣기(쓰기) 없이 읽는다(admin-view AC-8010.3) */
+export async function downloadTemplate(options?: { seed: false }): Promise<boolean> {
+  const inventory = await (options ? loadInventory(options) : loadInventory())
   if (inventory === 'failed') return false
   try {
     XLSX.writeFile(templateWorkbook(inventory.categories, inventory.items), TEMPLATE_FILE)

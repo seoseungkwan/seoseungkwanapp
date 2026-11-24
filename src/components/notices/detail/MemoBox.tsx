@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { kindsText } from '@/lib/notices/askCheck'
 import { saveMemo } from '@/lib/storage/notices'
@@ -10,7 +11,7 @@ import { BlockedNote, helpText, safeDateTimeText, sectionTitle, textareaClass } 
 
 // 우리 병원 메모 (specs/notices AC-7420.4, 승인 시안 .memo). 칸 값은 부모(NoticeDetail)가 쥔다 — [메모에 옮기기]가 붙이게(design 10절).
 // [메모 저장]은 saveMemo 하나로 한다: 환자 정보 모양이면 saveMemo가 보내지 않고 그 종류를 돌려준다(기본값 13), 실패면 E-NOTICE-SAVE.
-// 어느 경우에도 적은 값은 그대로 둔다
+// 어느 경우에도 적은 값은 그대로 둔다. 다른 의원을 보는 중(읽기만, admin-view AC-8010.1)이면 칸은 읽기만이고 [메모 저장]이 없다
 
 export const MEMO_MAX = 500
 
@@ -31,6 +32,7 @@ export type MemoBoxProps = {
 
 export function MemoBox({ noticeId, value, onChange, savedAt: firstSavedAt }: MemoBoxProps) {
   const headId = useId()
+  const readOnly = useReadOnly()
   const [savedAt, setSavedAt] = useState(firstSavedAt)
   const [saving, setSaving] = useState(false)
   const [problem, setProblem] = useState<Problem>(null)
@@ -70,6 +72,7 @@ export function MemoBox({ noticeId, value, onChange, savedAt: firstSavedAt }: Me
           className={`${textareaClass} min-h-26`}
           placeholder="예: 12월 회의 때 원장님들께 알리기"
           maxLength={MEMO_MAX}
+          readOnly={readOnly}
           value={value}
           aria-invalid={problem?.kind === 'private' ? true : undefined}
           onChange={(event) => onChange(event.target.value)}
@@ -84,9 +87,11 @@ export function MemoBox({ noticeId, value, onChange, savedAt: firstSavedAt }: Me
       )}
       {problem?.kind === 'failed' && <ErrorCard code="E-NOTICE-SAVE" />}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <button type="button" className={ds.button.secondarySmall} aria-busy={saving ? true : undefined} onClick={() => void save()}>
-          메모 저장
-        </button>
+        <WriteOnly>
+          <button type="button" className={ds.button.secondarySmall} aria-busy={saving ? true : undefined} onClick={() => void save()}>
+            메모 저장
+          </button>
+        </WriteOnly>
         {savedAt !== null && <span className="text-caption text-muted">{`${safeDateTimeText(savedAt)} 저장됨`}</span>}
       </div>
     </section>

@@ -1,9 +1,10 @@
+import { WriteOnly } from '@/components/shell/viewing'
 import { ClockIcon, PrintIcon } from './icons'
 import { look } from './look'
 import { FRAME_TEXT as T } from './text'
 
 // 후보 머리(시안 .chead): 후보 표시·진행 상태 칩 · 이름 · 주소와 후보 매물 한 줄 · 굳혀 둔 날 + [오늘 값으로 다시 받기] · 단추 셋.
-// 글은 모두 부르는 쪽(CandidateFrame)이 만들어 넘긴다
+// 글은 모두 부르는 쪽(CandidateFrame)이 만들어 넘긴다. 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 [오늘 값으로 다시 받기]가 없다
 
 export type FrameTab = 'report' | 'prep' | 'listings'
 
@@ -39,9 +40,11 @@ export function FrameHead({ letter, status, name, line, frozen, progress, onRefr
               {progress}
             </span>
           )}
-          <button type="button" className={look.textButton} disabled={progress !== null} onClick={onRefresh}>
-            {T.refresh}
-          </button>
+          <WriteOnly>
+            <button type="button" className={look.textButton} disabled={progress !== null} onClick={onRefresh}>
+              {T.refresh}
+            </button>
+          </WriteOnly>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">

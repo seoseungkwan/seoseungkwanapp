@@ -16,10 +16,13 @@
 //   좁으면 그 감싸개 안에서만 옆으로 밀린다(폰 전용 모양 없음)
 // - 인쇄(보고서): 머리·안쪽 탭·후보 고르기는 print:hidden
 // - /location 안에서 다른 탭으로 가는 링크는 평범한 <a href>다(Next Link 없음, design.md 1절 CSP)
+// - 다른 의원을 보는 중(읽기만, admin-view AC-8010.2): [후보 더하기]·[후보로 저장]·[무게 바꾸기]가 없고 후보 더하기 판은 열리지 않는다.
+//   안쪽 부품은 저마다 useReadOnly()로 쓰기 단추를 숨기고 칸을 막는다. 보는 의원의 후보·매물·메모·사진·바깥 자료는 그대로 보인다
 import { useMemo, useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { shrinkPhoto } from '@/components/inventory/photo'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { rivalShortText } from '@/lib/location/depts'
@@ -152,6 +155,7 @@ type Adding = { way: AddWay; listingId?: string | null; center?: Point }
 export function LocationScreen({ tab: startTab, candidateId: startId, hospitalName }: LocationScreenProps) {
   const api = useLocation()
   const today = todayInKorea()
+  const readOnly = useReadOnly()
 
   // 처음 탭·후보는 표를 읽은 뒤 한 번 정한다. tab이 null이면 아직 고른 탭이 없다(처음·열쇠 없음 화면을 보일 수 있음)
   const [ready, setReady] = useState(false)
@@ -238,7 +242,7 @@ export function LocationScreen({ tab: startTab, candidateId: startId, hospitalNa
 
   const keys = api.keys ?? { data: 'failed', kakao: 'failed' }
   const mapKey = mapKeyState()
-  const panel = adding ? (
+  const panel = adding && !readOnly ? (
     <AddCandidatePanel
       today={today}
       center={adding.center ?? (selected ? pointOf(selected) : FALLBACK_CENTER)}
@@ -307,10 +311,12 @@ export function LocationScreen({ tab: startTab, candidateId: startId, hospitalNa
             <Icon name="info" />
             {METHOD.button}
           </button>
-          <button type="button" className={BUTTON} onClick={() => setAdding({ way: 'address' })}>
-            <PlusIcon />
-            {T.add}
-          </button>
+          <WriteOnly>
+            <button type="button" className={BUTTON} onClick={() => setAdding({ way: 'address' })}>
+              <PlusIcon />
+              {T.add}
+            </button>
+          </WriteOnly>
         </div>
       </header>
 
@@ -422,6 +428,7 @@ type BodyProps = {
 
 function TabBody(p: BodyProps) {
   const { api, tab, selected: sel, letters, today, homeEswt } = p
+  const readOnly = useReadOnly()
   const rule = api.rule
   const listings = api.listings
 
@@ -460,7 +467,7 @@ function TabBody(p: BodyProps) {
           onSave={api.saveListing}
           onAddBroker={api.addBroker}
           onSaveTerms={api.saveTerms}
-          onMakeCandidate={(l) => p.onAdd({ way: 'listing', listingId: l.id })}
+          onMakeCandidate={readOnly ? undefined : (l) => p.onAdd({ way: 'listing', listingId: l.id })}
         />
       </div>
     )
@@ -478,7 +485,7 @@ function TabBody(p: BodyProps) {
           today={today}
           onStatus={(id, s) => void api.setStatus(id, s)}
           onDelete={api.removeCandidate}
-          onEditWeights={() => p.go('scan')}
+          onEditWeights={readOnly ? undefined : () => p.go('scan')}
         />
       </div>
     )
@@ -497,10 +504,12 @@ function TabBody(p: BodyProps) {
     return (
       <div className="mt-6 grid justify-items-start gap-3">
         <p className="text-body text-ink-2">{T.noCandidate}</p>
-        <button type="button" className={BUTTON} onClick={() => p.onAdd({ way: 'address' })}>
-          <PlusIcon />
-          {T.add}
-        </button>
+        <WriteOnly>
+          <button type="button" className={BUTTON} onClick={() => p.onAdd({ way: 'address' })}>
+            <PlusIcon />
+            {T.add}
+          </button>
+        </WriteOnly>
       </div>
     )
   }

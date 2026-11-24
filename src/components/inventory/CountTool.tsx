@@ -5,6 +5,7 @@ import { formatCount } from '@/components/charts/format'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { compareYmd, isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { countWarning } from '@/lib/inventory/alerts'
@@ -20,7 +21,8 @@ import { CountSheet, countGroups } from './CountSheet'
 // 센 수가 지금 수량보다 많으면 그 줄 바로 아래 countWarning 글 + [입고 적기](onManualReceipt, 사진 없이 적기는 TASK-15가 잇는다). 저장은 막지 않는다.
 // [저장]은 바꾼 줄만(센 수량을 적은 줄은 qty, 기한을 바꾼 줄은 expiry — 비우면 null) saveCount로 보낸다. 성공하면 칸을 비우고 다시 읽어 새 지금 수량으로 그린다.
 // 실패하면 적은 값은 그대로 두고 오류 카드와 [다시 저장]. 센 날이 범위 밖이면 보내지 않고 E-INV-COUNT-DATE.
-// [세기 종이 인쇄]는 이 자리를 미리 보기(CountSheet)로 바꾼다 — 적던 값은 이 부품이 들고 있어 [세기로 돌아가기] 뒤에도 그대로다
+// [세기 종이 인쇄]는 이 자리를 미리 보기(CountSheet)로 바꾼다 — 적던 값은 이 부품이 들고 있어 [세기로 돌아가기] 뒤에도 그대로다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.3)이면 처음 분류 넣기 없이(seed: false) 읽고, 칸은 읽기만·[저장] 줄·[입고 적기]가 없다([세기 종이 인쇄]는 그대로)
 
 type Loaded = { inventory: InvInventory; lastDay: string | null; later: number | null }
 type Held = { key: string; value: Loaded | 'failed' }
@@ -56,8 +58,8 @@ async function lastCount(today: string): Promise<Pick<Loaded, 'lastDay' | 'later
   return { lastDay, later: lastDay === null ? null : await receiptsAfter(lastDay, today) }
 }
 
-async function read(today: string): Promise<Loaded | 'failed'> {
-  const [inventory, last] = await Promise.all([loadInventory(), lastCount(today)])
+async function read(today: string, readOnly: boolean): Promise<Loaded | 'failed'> {
+  const [inventory, last] = await Promise.all([readOnly ? loadInventory({ seed: false }) : loadInventory(), lastCount(today)])
   if (inventory === 'failed' || last === 'failed') return 'failed'
   return { inventory, ...last }
 }
@@ -90,12 +92,14 @@ const SMALL_INPUT =
 function CountRow({
   item,
   draft,
+  readOnly,
   onQty,
   onExpiry,
   onManualReceipt,
 }: {
   item: InvItem
   draft: Draft | undefined
+  readOnly: boolean
   onQty: (value: string) => void
   onExpiry: (value: string) => void
   onManualReceipt?: () => void
@@ -119,6 +123,7 @@ function CountRow({
             inputMode="numeric"
             placeholder="그대로"
             aria-label={`${item.name} 센 수량`}
+            readOnly={readOnly}
             value={draft?.qty ?? ''}
             onChange={(e) => onQty(e.target.value)}
             className={`${SMALL_INPUT} text-right ${warning === null ? 'border-line-strong' : 'border-warning'}`}
@@ -128,6 +133,7 @@ function CountRow({
           <input
             type="date"
             aria-label={`${item.name} 가장 빠른 유통기한`}
+            readOnly={readOnly}
             value={draft?.expiry ?? item.expiry ?? ''}
             onChange={(e) => onExpiry(e.target.value)}
             className={`${SMALL_INPUT} border-line-strong`}
@@ -180,10 +186,11 @@ export function CountTool({
   const [saving, setSaving] = useState(false)
   const busy = useRef(false)
   const [printing, setPrinting] = useState(false)
+  const readOnly = useReadOnly()
 
   useEffect(() => {
     let current = true
-    read(today).then(
+    read(today, readOnly).then(
       (value) => {
         if (current) setHeld({ key, value })
       },
@@ -194,7 +201,7 @@ export function CountTool({
     return () => {
       current = false
     }
-  }, [key, today])
+  }, [key, today, readOnly])
 
   const reading = held === null || held.key !== key
   // 다시 읽는 동안에도 앞서 읽은 표는 그대로 보인다(실패 카드만 읽는 중으로 바뀐다)
@@ -277,6 +284,7 @@ export function CountTool({
             value={day}
             min={lastDay ?? undefined}
             max={today}
+            readOnly={readOnly}
             onChange={(e) => {
               setDay(e.target.value)
               if (problem === 'E-INV-COUNT-DATE') setProblem(null)
@@ -316,9 +324,10 @@ export function CountTool({
                   key={it.id}
                   item={it}
                   draft={drafts[it.id]}
+                  readOnly={readOnly}
                   onQty={(value) => onQty(it.id, value)}
                   onExpiry={(value) => setDraft(it.id, { expiry: value })}
-                  onManualReceipt={onManualReceipt}
+                  onManualReceipt={readOnly ? undefined : onManualReceipt}
                 />
               ))}
             </tbody>
@@ -335,24 +344,26 @@ export function CountTool({
         </table>
       </div>
 
-      <div className="sticky bottom-0 z-4 mt-4 border-t border-line bg-surface">
-        {problem !== null && (
-          <div className="pt-3">
-            <ErrorCard code={problem} />
+      <WriteOnly>
+        <div className="sticky bottom-0 z-4 mt-4 border-t border-line bg-surface">
+          {problem !== null && (
+            <div className="pt-3">
+              <ErrorCard code={problem} />
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
+            <p data-count-fill="" className="text-small text-ink-2">
+              <b className="font-semibold text-ink">
+                {shown.length}개 가운데 {filled}개
+              </b>{' '}
+              적었어요 · 비운 {shown.length - filled}개는 그대로예요
+            </p>
+            <button type="button" disabled={lines.length === 0} aria-busy={saving || undefined} onClick={() => void onSave()} className={ds.button.primary}>
+              {failedOnce ? '다시 저장' : '저장'}
+            </button>
           </div>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
-          <p data-count-fill="" className="text-small text-ink-2">
-            <b className="font-semibold text-ink">
-              {shown.length}개 가운데 {filled}개
-            </b>{' '}
-            적었어요 · 비운 {shown.length - filled}개는 그대로예요
-          </p>
-          <button type="button" disabled={lines.length === 0} aria-busy={saving || undefined} onClick={() => void onSave()} className={ds.button.primary}>
-            {failedOnce ? '다시 저장' : '저장'}
-          </button>
         </div>
-      </div>
+      </WriteOnly>
     </>
   )
 }

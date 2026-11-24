@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { HowLine } from '@/components/location/common/HowLine'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { filledHow, type HowCtx } from '@/lib/location/method'
 import type { Got, YesNo } from '@/types/location'
@@ -89,6 +90,8 @@ export function Picks({
   onPick: (v: YesNo) => void
   children?: ReactNode
 }) {
+  // 고르면 후보 칸을 저장한다 — 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 고른 값만 보이고 막힌다
+  const readOnly = useReadOnly()
   return (
     <div className="grid min-w-0 content-start gap-1.5">
       <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-small font-semibold text-ink">
@@ -101,6 +104,7 @@ export function Picks({
             key={v}
             type="button"
             aria-pressed={value === v}
+            disabled={readOnly}
             className={PICK}
             onClick={() => {
               if (value !== v) onPick(v)
