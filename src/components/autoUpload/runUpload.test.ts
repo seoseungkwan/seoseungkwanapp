@@ -469,6 +469,68 @@ describe('AC-8021.4 한 곳만 돈다 · 통로는 스스로 붙는다 · 비트
     await run()
     expect(names(afterReads(log))).toEqual(['lock', 'open', 'hello', 'bit.check', 'claim', 'close', 'terminate'])
   })
+
+  it('AC-8021.4 번호를 못 찾은 PC(표시 null)가 이미 표시가 묶인 의원이라 잡지 못하면(false) 다른 잡기 실패처럼 아무것도 알리지 않고 닫는다', async () => {
+    const { log, run } = setup({ check: { steps: CHECK_OK.steps, registered: true }, claim: false })
+    expect(await run()).toBe('ended')
+    expect(afterReads(log)).toEqual([LOCK, ['open'], ['hello'], ['bit.check', {}], ['claim', TAB, null], ['close'], ['terminate']])
+  })
+
+  it('AC-8021.4 판 오류(E-HELPER-OLD)로 표시 없이 잡다가 false면(묶인 의원) 그 번호도 알리지 않는다', async () => {
+    const { log, run } = setup({ hello: { state: 'update-helper', helperVersion: '0.2.0', extensionVersion: '0.1.0', helperUpdateAvailable: false }, claim: false })
+    expect(await run()).toBe('ended')
+    expect(afterReads(log)).toEqual([LOCK, ['open'], ['hello'], ['claim', TAB, null], ['close'], ['terminate']])
+  })
+
+  it('AC-8021.4 할 일 없는 그날 처음 열기에 표시 없이 잡다가 false면(묶인 의원) 상태를 알리지 않는다', async () => {
+    vi.mocked(uploadPlan).mockReturnValueOnce([])
+    const { log, run, deps } = setup({ plan: { months: 2, throughDay: '2026-11-20' }, sales: savedRows(FILL), coverage: [FILL], marks: doneMarks(), claim: false })
+    expect(await run()).toBe('ended')
+    expect(afterReads(log)).toEqual([LOCK, ['claim', TAB, null]])
+    expect(deps.open).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-8021.8 통로를 못 잡았거나 화면에게 비켰으면 lane-busy를 돌려준다(통로가 풀리면 다시 해 볼 일)', () => {
+  it("AC-8021.8 비트 화면이 통로를 쓰는 중이면 붙지 않고 'lane-busy'다", async () => {
+    const { log, run, lane } = setup()
+    lane.enterScreen(() => {})
+    expect(await run()).toBe('lane-busy')
+    expect(afterReads(log)).toEqual([LOCK])
+  })
+
+  it("AC-8021.8 도는 중 비트 화면이 붙으려 해 끊었으면 'lane-busy'다", async () => {
+    const env = setup({ stream: () => new Promise<StreamResult>(() => {}) })
+    const done = env.run()
+    await vi.waitFor(() => expect(names(env.log)).toContain('stats.rows'))
+    env.lane.enterScreen(() => {})
+    expect(await done).toBe('lane-busy')
+  })
+
+  it.each<[string, Options, ((env: ReturnType<typeof setup>) => void) | null]>([
+    ['다 돌았으면', {}, null],
+    ['할 일이 없으면', { plan: { months: 2, throughDay: Y }, sales: savedRows(FILL), coverage: [FILL], marks: doneMarks() }, null],
+    ['다른 탭이 잠금을 쥐고 있으면', { locks: 'held' }, null],
+    ['비트 PC가 아니면', { hello: { state: 'no-helper', helperUpdateAvailable: false } }, null],
+    ['잡지 못하면', { claim: false }, null],
+    ['저장 표시 읽기가 실패하면', { readFail: true }, null],
+    ['도는 중 탭이 숨으면', { stream: () => new Promise<StreamResult>(() => {}) }, (env) => env.page.hide()],
+    ['도는 중 앱 틀을 떠나면', { stream: () => new Promise<StreamResult>(() => {}) }, (env) => env.controller.abort()],
+  ])("AC-8021.8 %s 'ended'다(통로 때문에 멈춘 것이 아님)", async (_name, options, interrupt) => {
+    const env = setup(options)
+    const done = env.run()
+    if (interrupt !== null) {
+      await vi.waitFor(() => expect(names(env.log)).toContain('stats.rows'))
+      interrupt(env)
+    }
+    expect(await done).toBe('ended')
+  })
+
+  it("AC-8021.8 탭이 숨어 있어 붙지 않았으면 'ended'다(보이면 다시 하는 것은 앱 틀 몫)", async () => {
+    const { run, page } = setup()
+    page.visibilityState = 'hidden'
+    expect(await run()).toBe('ended')
+  })
 })
 
 describe('AC-8021.6 5분 · 숨김 · 비트 화면 · 떠남', () => {

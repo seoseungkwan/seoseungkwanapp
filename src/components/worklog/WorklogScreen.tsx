@@ -55,8 +55,9 @@ function subscribeTouch(listener: () => void) {
 const isTouchDevice = () => window.matchMedia(TOUCH_QUERY).matches
 const notTouchOnServer = () => false
 
-// 저장·불러오기 실패 > 끊김 > 저장 중 > 불러오는 중 > 막힌 칸 > 저장됨 > 아직 안 적음(터치 기기는 보기만, AC-010.17)
-function toolbarStatus(save: SaveState, load: WorklogDayStatus, viewOnly: boolean): ToolbarStatus {
+// 저장·불러오기 실패 > 끊김 > 저장 중 > 불러오는 중 > 막힌 칸 > 저장됨 > 아직 안 적음(터치 기기는 보기만, AC-010.17).
+// 다른 의원을 보는 중이면(admin-view AC-8009.1) 휴대폰 보기만 글 대신 빈 글이다(PC에서 보는데 '휴대폰에서는'이 맞지 않음, 새 글 없음)
+function toolbarStatus(save: SaveState, load: WorklogDayStatus, viewOnly: boolean, viewing: boolean): ToolbarStatus {
   if (save === 'failed') return 'failed'
   if (load === 'error') return 'load-failed'
   if (save === 'offline') return 'offline'
@@ -64,6 +65,7 @@ function toolbarStatus(save: SaveState, load: WorklogDayStatus, viewOnly: boolea
   if (load === 'loading') return 'loading'
   if (save === 'blocked') return 'blocked'
   if (save === 'saved') return 'saved'
+  if (viewing) return 'viewing'
   return viewOnly ? 'view-only' : 'empty'
 }
 
@@ -73,7 +75,8 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
   const [ymd, setYmd] = useState(initialToday)
   const [snapshot, setSnapshot] = useState(() => autosave.snapshot())
   const touch = useSyncExternalStore(subscribeTouch, isTouchDevice, notTouchOnServer)
-  const viewOnly = useReadOnly() || touch
+  const viewing = useReadOnly()
+  const viewOnly = viewing || touch
   const sheetArea = useRef<HTMLDivElement>(null)
   const focusCell = useRef<WorklogCellKey | null>(null)
   const rolloverFrom = useRef<string | null>(null) // 초점이 나가기를 기다리는 자정 넘김의 옛 오늘
@@ -239,7 +242,7 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
       : bit.status === 'not-connected' || bit.status === 'setup-needed'
         ? { kind: 'other-pc' }
         : { kind: 'none' }
-  const toolbar = toolbarStatus(snapshot.state, status, viewOnly)
+  const toolbar = toolbarStatus(snapshot.state, status, viewOnly, viewing)
 
   return (
     <div className="mx-auto flex w-full max-w-184.25 flex-col gap-3">

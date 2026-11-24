@@ -8,9 +8,10 @@ import { IdleLogout } from './IdleLogout'
 const MIN = 60 * 1000
 const TIMEOUT = 30 * MIN
 
-// 실제 Supabase에 붙지 않는다. signOut을 부르는지와 그 뒤 어디로 가는지만 본다
-const { signOut } = vi.hoisted(() => ({ signOut: vi.fn() }))
+// 실제 Supabase에 붙지 않는다. signOut을 부르는지와 그 뒤 어디로 가는지만 본다(보기 끝 stopAdminView도 가짜)
+const { signOut, stopAdminView } = vi.hoisted(() => ({ signOut: vi.fn(), stopAdminView: vi.fn() }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { signOut } }) }))
+vi.mock('@/lib/auth/adminView', () => ({ stopAdminView }))
 
 // jsdom의 location.assign은 바꿔 끼울 수 없다 → location을 통째로 가짜로
 const assign = vi.fn()
@@ -41,6 +42,8 @@ beforeEach(() => {
   channels = []
   signOut.mockReset()
   signOut.mockResolvedValue({ error: null })
+  stopAdminView.mockReset()
+  stopAdminView.mockResolvedValue(undefined)
   assign.mockReset()
   replace.mockReset()
   vi.stubGlobal('location', { origin: 'http://localhost:3000', href: 'http://localhost:3000/dashboard', assign, replace })
@@ -395,5 +398,43 @@ describe('AC-8006.5 IdleLogout — 보기 쿠키 지우기', () => {
     vi.advanceTimersByTime(TIMEOUT)
     await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
     expect(writes).toEqual([CLEAR])
+  })
+
+  it('AC-8006.5: 보는 중이면 30분에 보기를 끝내고(stopAdminView 한 번 — 쿠키를 지우기 전) 그 뒤 쿠키를 지우고 signOut한다', async () => {
+    const order: string[] = []
+    stopAdminView.mockImplementation(async () => {
+      order.push(`stop:${writes.length}`)
+    })
+    signOut.mockImplementation(async () => {
+      order.push(`signOut:${writes.length}`)
+      return { error: null }
+    })
+    render(<IdleLogout />)
+    vi.advanceTimersByTime(TIMEOUT - 1)
+    expect(stopAdminView).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(stopAdminView).toHaveBeenCalledTimes(1)
+    expect(order).toEqual(['stop:0', 'signOut:1'])
+    expect(writes).toEqual([CLEAR])
+  })
+
+  it('AC-8006.5: 보기 끝(stopAdminView)이 실패해도 쿠키를 지우고 signOut한 뒤 /login으로 간다', async () => {
+    stopAdminView.mockRejectedValue(new Error('가짜 보기 끝 실패'))
+    render(<IdleLogout />)
+    vi.advanceTimersByTime(TIMEOUT)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(writes).toEqual([CLEAR])
+  })
+})
+
+describe('AC-8006.5 IdleLogout — 보는 중이 아니면', () => {
+  it('AC-8006.5: 보기 쿠키가 없으면 30분에 보기 끝(stopAdminView)을 부르지 않고 지금처럼 로그아웃한다', async () => {
+    render(<IdleLogout />)
+    vi.advanceTimersByTime(TIMEOUT)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(stopAdminView).not.toHaveBeenCalled()
+    expect(signOut).toHaveBeenCalledTimes(1)
   })
 })

@@ -39,8 +39,9 @@ export const SECTION = 'mt-12 min-w-0 border-t border-line-strong pt-5 max-md:mt
 export const SECTION_HEAD = 'flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1'
 export const HEADING = 'text-title font-semibold text-ink'
 // 바로가기 띠에 가리지 않는 scroll-margin(stats-pc-ux AC-4002.6, first90 AC-4411.2): 머리줄 + 띠 + 9px(시안 .s-card scroll-margin 164).
-// 넓은 화면 102 + 53(위아래 8 + 링크 36 + 아래 선 1) + 9 = 164px, 휴대폰 94 + 57(위아래 6 + 링크 44 + 선 1) + 9 = 160px
-export const TOC_SCROLL = 'scroll-mt-41 max-md:scroll-mt-40'
+// 넓은 화면 102 + 53(위아래 8 + 링크 36 + 아래 선 1) + 9 = 164px, 휴대폰 94 + 57(위아래 6 + 링크 44 + 선 1) + 9 = 160px.
+// 다른 의원 보는 중 띠(admin-view, AppShell group/app 안 data-view-band 45px)가 있으면 바로가기 띠가 45px 내려 붙으므로(StatsToc top-36.75) 카드도 164 + 45 = 209px
+export const TOC_SCROLL = 'scroll-mt-41 max-md:scroll-mt-40 group-has-[[data-view-band]]/app:scroll-mt-52.25'
 // 코드로 초점을 옮기는 제목(headingRef): Tab 차례에는 들지 않고, 붙는 머리줄·목차 띠에 가리지 않게 TOC_SCROLL, 코드로 옮긴 초점이라 고리는 그리지 않는다
 const FOCUS_HEADING = `${HEADING} ${TOC_SCROLL} focus:outline-none`
 // 탭 안 고치기 제목(h3): 탭 칸 h2 `처방` 아래라 한 단계 작다(AC-4003.6)

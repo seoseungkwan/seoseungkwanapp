@@ -6,7 +6,7 @@ import type { CellAlert, CellBar, CellColumns, CellNumber, CellTableRow, Compare
 // 의원 하나 × 통계 큰 카드 줄 하나 = 흰 작은 카드 하나(288px 칸). 안에 작은 칸을 시안 차례로 쌓는다(이름은 통계 탭 이름).
 // 숫자는 compareStatsInput이 통계 탭과 같은 순수 함수로 만든 글자 그대로이고, 여기서는 그리기만 한다(훅·네트워크 없음, 단추 없음 — 읽기만).
 // 작은 막대·띠·열 칸은 꾸밈(aria-hidden)이고 HTML 막대다: inline style은 막대 높이·폭 %뿐이다(차트 부품과 같은 방식).
-// 색은 앱 토큰으로 그린다: 90일초진 색 → cat-2, 재진 색 → chart-3, 열 칸 단계 → chart-1~5. 카드 모서리·그림자는 통계 카드와 같은 통계 토큰(rounded-st·shadow-st-card, classes.test가 이 폴더에 허용), 카드 그림자 → 1px line 테두리
+// 색은 앱 토큰으로 그린다: 90일초진 색 → cat-2, 재진 색 → chart-3, 열 칸 단계 → chart-1~5. 카드 모서리·그림자는 통계 카드와 같은 통계 토큰(rounded-st·shadow-st-card — 테두리 없음, classes.test가 이 폴더에 허용)
 
 export type SideRowKey = 'summary' | 'patients' | 'revenue' | 'sunap' | 'calendar' | 'rx' | 'ops'
 

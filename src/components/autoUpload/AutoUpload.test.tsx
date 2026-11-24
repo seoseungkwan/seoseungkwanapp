@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enterScreen, leaveScreen } from '@/components/claim/bitLane'
 import { ViewingProvider } from '@/components/shell/viewing'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload, MonthPayload } from '@/types/payload'
@@ -294,6 +295,135 @@ describe('AC-8021.1·AC-8024.7 원장 길 · 데스크 길', () => {
     for (const owner of ['claim_auto_upload', 'report_auto_upload', 'save_revenue_range']) expect(names).not.toContain(owner)
     // 표는 묶음 정의 둘(데스크가 지금도 읽는 표)만 읽는다
     expect([...new Set(tablesTouched())].sort()).toEqual(['stats_rx_groups.select', 'sunap_settings.select'])
+  })
+})
+
+describe('AC-8021.8 비트 화면이 통로를 쥐고 있으면 그만두지 않고, 풀리면 다시 해 본다', () => {
+  // 앱이 쓰는 진짜 차례 하나(bitLane 모듈)에 화면을 붙였다 뗀다. 시험마다 붙인 화면은 다 뗀다
+  const screens: (() => void)[] = []
+  const screenOn = () => {
+    const onFree = () => {}
+    expect(enterScreen(onFree)).toBe(true)
+    screens.push(onFree)
+    return () => {
+      const at = screens.indexOf(onFree)
+      if (at >= 0) screens.splice(at, 1)
+      leaveScreen(onFree)
+    }
+  }
+  afterEach(() => {
+    for (const onFree of screens.splice(0)) leaveScreen(onFree)
+  })
+  const claims = () => rpcNames().filter((name) => name === 'claim_auto_upload').length
+  const reportsDone = () =>
+    world.sent.filter((call) => call.kind === 'rpc' && call.name === 'report_auto_upload' && (call as { args: { p_done: boolean } }).args.p_done).length
+  const wait = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+    await settled()
+  }
+
+  it('AC-8021.8 15초에 화면이 통로를 쓰는 중이면 붙지 않고, 그 화면이 열려 있는 동안은 다시 하지 않는다', async () => {
+    screenOn()
+    await opened()
+    await settled()
+    expect(rpcNames()[0]).toBe('my_auto_upload_plan')
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    const sent = world.sent.length
+    await wait(START_DELAY_MS * 10)
+    expect(world.sent.length).toBe(sent)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+  })
+
+  it('AC-8021.8 그 화면이 떠나면 15초 뒤 그날 할 일을 다시 해 끝까지 올린다', async () => {
+    const leave = screenOn()
+    await opened()
+    await settled()
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    leave()
+    await wait(START_DELAY_MS - 1)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    await wait(1)
+    await untilReport()
+    expect(connectScreenBridge).toHaveBeenCalledTimes(1)
+    expect(claims()).toBe(1)
+    expect(reportsDone()).toBe(1)
+  })
+
+  it('AC-8021.8 화면이 둘이면 둘 다 떠나야 다시 하고, 탭을 옮겨 한 화면이 떠나며 다른 화면이 붙으면 풀린 것이 아니다', async () => {
+    const leaveA = screenOn()
+    const leaveB = screenOn()
+    await opened()
+    await settled()
+    leaveA()
+    await wait(START_DELAY_MS * 2)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    // 탭 옮김: B가 떠나는 같은 차례에 C가 붙는다
+    leaveB()
+    const leaveC = screenOn()
+    await wait(START_DELAY_MS * 2)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    leaveC()
+    await wait(START_DELAY_MS)
+    await untilReport()
+    expect(connectScreenBridge).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8 풀릴 때 탭이 숨어 있으면 보일 때까지 기다린다(보이는 중 조건 그대로)', async () => {
+    const leave = screenOn()
+    await opened()
+    await settled()
+    visibility = 'hidden'
+    leave()
+    await wait(START_DELAY_MS * 3)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    visibility = 'visible'
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await untilReport()
+    expect(connectScreenBridge).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8 15초를 기다리는 동안 다른 화면이 다시 쥐면 그때도 붙지 않고, 그 화면이 떠난 뒤 다시 해 본다', async () => {
+    const leave = screenOn()
+    await opened()
+    await settled()
+    leave()
+    await wait(START_DELAY_MS / 2)
+    const leaveAgain = screenOn()
+    await wait(START_DELAY_MS)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+    leaveAgain()
+    await wait(START_DELAY_MS)
+    await untilReport()
+    expect(connectScreenBridge).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8 기다리는 동안 앱 틀을 떠나면 화면이 떠나도 다시 하지 않는다', async () => {
+    const leave = screenOn()
+    const { unmount } = await opened()
+    await settled()
+    const sent = world.sent.length
+    unmount()
+    leave()
+    await wait(START_DELAY_MS * 3)
+    expect(world.sent.length).toBe(sent)
+    expect(connectScreenBridge).not.toHaveBeenCalled()
+  })
+
+  it('AC-8021.8 그날 일을 다 올린 뒤에는 화면이 붙었다 떠나도 다시 돌지 않는다(한 번에 하나, 끝난 날은 다시 안 함)', async () => {
+    await opened()
+    await untilReport()
+    expect(connectScreenBridge).toHaveBeenCalledTimes(1)
+    const sent = world.sent.length
+    const leave = screenOn()
+    await wait(START_DELAY_MS)
+    leave()
+    await wait(START_DELAY_MS * 3)
+    expect(world.sent.length).toBe(sent)
+    expect(connectScreenBridge).toHaveBeenCalledTimes(1)
   })
 })
 
