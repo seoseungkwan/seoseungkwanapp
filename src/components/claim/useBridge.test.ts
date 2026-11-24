@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ViewingProvider, type Viewing } from '@/components/shell/viewing'
 import { EXTENSION_ID } from '@/lib/bridge/extensionId'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
+import { enterBackground } from './bitLane'
 import { useBridge } from './useBridge'
 
 // 화면이 쓰는 통로 훅 (design.md 6-1, REQ-006). 진짜 connectScreenBridge·connectBridge에 가짜 chrome.runtime(Port)만 넣는다.
@@ -259,5 +262,127 @@ describe('useBridge', () => {
     expect((error as BridgeError).code).toBe('E-BRIDGE-DISCONNECTED')
     expect(fake.port().disconnected).toBe(true)
     await waitFor(() => expect(result.current.state).toBe('disconnected'))
+  })
+})
+
+// ── admin-view: 보는 중에는 이 PC 비트에 붙지 않는다(AC-8008.4) · 비트 통로 차례(AC-8021.8) ──
+// 보는 의원은 지어낸 값이다. 통로 차례는 앱이 쓰는 bitLane 모듈 하나(useBridge와 같은 차례)를 시험이 저절로 올리기처럼 잡는다 — 시험마다 놓는다
+const VIEWING: Viewing = { hospitalId: '00000000-0000-4000-8000-0000000000d2', name: '가짜다라의원' }
+const inView = (viewing: Viewing | null) =>
+  function Wrapper({ children }: { children: ReactNode }) {
+    // 이 파일은 .ts라 JSX가 없다. ViewingProvider는 훅 없이 Provider 요소만 돌려주는 함수라 그대로 부른다
+    return ViewingProvider({ viewing, children })
+  }
+
+/** chrome.runtime을 읽은 횟수를 센다(보는 중에는 건드리지도 않는다) */
+function countedChrome() {
+  const fake = fakeChrome()
+  let touched = 0
+  const runtime = (globalThis as unknown as { chrome: { runtime: ChromeRuntimeLike } }).chrome.runtime
+  vi.stubGlobal('chrome', {
+    get runtime() {
+      touched += 1
+      return runtime
+    },
+  })
+  return { ...fake, touched: () => touched }
+}
+
+describe('useBridge: 보는 중 (admin-view AC-8008.4)', () => {
+  it('AC-8008.4: 보는 중이면 chrome.runtime을 건드리지 않고 상태는 no-extension, call·stream은 보내지 않고 실패한다', async () => {
+    const fake = countedChrome()
+    const worker = { postMessage: vi.fn() }
+    const { result } = renderHook(() => useBridge({ worker }), { wrapper: inView(VIEWING) })
+    expect(result.current.state).toBe('no-extension')
+    expect(result.current.hello).toEqual({ state: 'no-extension', helperUpdateAvailable: false })
+    expect(result.current.helloError).toBeNull()
+    expect(result.current.helperUpdateAvailable).toBe(false)
+    const call = await result.current.call('bit.check', {}).catch((e: unknown) => e)
+    const stream = await result.current.stream('stats.rows', { from: '2026-09-01', to: '2026-11-13' }).catch((e: unknown) => e)
+    expect(call).toBeInstanceOf(BridgeError)
+    expect(stream).toBeInstanceOf(BridgeError)
+    act(() => result.current.retry())
+    act(() => result.current.close())
+    await act(async () => {})
+    expect(fake.touched()).toBe(0)
+    expect(fake.ports).toHaveLength(0)
+    expect(worker.postMessage).not.toHaveBeenCalled() // Worker에 통로 포트도 넘기지 않는다
+    expect(result.current.state).toBe('no-extension')
+  })
+
+  it('AC-8008.4: 보는 중 화면은 통로 차례에 들지 않는다(저절로 올리기를 막지도 끊지도 않는다)', () => {
+    countedChrome()
+    const stop = vi.fn()
+    renderHook(() => useBridge(), { wrapper: inView(VIEWING) })
+    const release = enterBackground(stop)
+    expect(release).toEqual(expect.any(Function))
+    expect(stop).not.toHaveBeenCalled()
+    release!()
+  })
+
+  it('AC-8008.4: viewing={null}이면 지금과 같다(정해 둔 확장 ID로 붙고 hello로 ready)', async () => {
+    const fake = fakeChrome()
+    const { result } = renderHook(() => useBridge(), { wrapper: inView(null) })
+    expect(result.current.state).toBe('connecting')
+    await waitFor(() => expect(fake.port().sent).toHaveLength(1))
+    expect(fake.ids).toEqual([EXTENSION_ID])
+    helloOk(fake.port())
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+  })
+})
+
+describe('useBridge: 비트 통로 차례 (admin-view AC-8021.8)', () => {
+  it('AC-8021.8: 쥔 쪽이 없으면 지금처럼 바로 붙고, 붙어 있는 동안 저절로 올리기는 통로를 잡지 못하며, 떠나면 잡을 수 있다', async () => {
+    const fake = fakeChrome()
+    const { unmount } = renderHook(() => useBridge())
+    expect(fake.ports).toHaveLength(1)
+    expect(enterBackground(vi.fn())).toBeNull()
+    unmount()
+    const release = enterBackground(vi.fn())
+    expect(release).toEqual(expect.any(Function))
+    release!()
+  })
+
+  it('AC-8021.8: 저절로 올리기가 쥐고 있으면 그쪽에 끊기를 알리고(stop 한 번) 놓인 뒤에 붙는다(그동안 connecting)', async () => {
+    const fake = fakeChrome()
+    const stop = vi.fn()
+    const release = enterBackground(stop)!
+    const { result, unmount } = renderHook(() => useBridge())
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(fake.ports).toHaveLength(0)
+    expect(result.current.state).toBe('connecting')
+
+    act(() => release())
+    expect(fake.ports).toHaveLength(1)
+    await waitFor(() => expect(fake.port().sent).toHaveLength(1))
+    expect(fake.port().last()).toMatchObject({ cmd: 'hello' })
+    helloOk(fake.port())
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(stop).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(fake.port().disconnected).toBe(true)
+  })
+
+  it('AC-8021.8: 놓이기 전에 화면을 떠나면 붙지 않고, 차례에서도 빠진다', () => {
+    const fake = fakeChrome()
+    const release = enterBackground(vi.fn())!
+    const { unmount } = renderHook(() => useBridge())
+    unmount()
+    act(() => release())
+    expect(fake.ports).toHaveLength(0)
+    const again = enterBackground(vi.fn())
+    expect(again).toEqual(expect.any(Function))
+    again!()
+  })
+
+  it('AC-8021.8: 기다리는 동안 retry()를 눌러도 한 번만 붙는다', async () => {
+    const fake = fakeChrome()
+    const release = enterBackground(vi.fn())!
+    const { result, unmount } = renderHook(() => useBridge())
+    act(() => result.current.retry())
+    expect(fake.ports).toHaveLength(0)
+    act(() => release())
+    expect(fake.ports).toHaveLength(1)
+    unmount()
   })
 })

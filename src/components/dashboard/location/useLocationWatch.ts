@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { queryLocation } from '@/components/location/clients'
+import { useReadOnly } from '@/components/shell/viewing'
 import { addDays, addMonthsToDay, compareYmd } from '@/lib/analytics/dates'
 import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
 import { placeAddr } from '@/lib/location/snapshot'
@@ -37,6 +38,8 @@ import { alertLines, type AlertLine } from './alertLines'
 // 오류를 밖으로 던지거나 글로 남기지 않는다. 다른 대시보드 숫자는 이 읽기를 기다리지 않는다(LiveDashboard가 따로 둔다).
 // 다시 그려지거나 날짜가 바뀌어도 다시 읽지 않는다(다음에 대시보드를 열 때 새로 읽음).
 // close(id)는 그 줄 하나만 바로 감추고 그 줄 하나만 본 것으로 적는다(같은 후보의 다른 줄은 그대로, 실패해도 조용히)
+// 다른 의원을 보는 중(admin-view AC-8008.3, useReadOnly — 처음 받은 값)이면 읽기만 한다: ①(바깥 자료 부르기·줄 넣기·확인 날 고치기)을 건너뛰고
+// ②(보는 의원의 안 본 줄)만 읽으며, 보는 동안 close는 본 것으로 적지 않는다([닫기]도 LocationAlert가 그리지 않는다)
 
 export const LOCATION_WATCH_TIMEOUT_MS = 20_000
 /** clinic-license 한 번에 받는 기간 한도: 끝 ≤ 앞 + 36달(query.ts checkQuery) */
@@ -122,20 +125,20 @@ const readRule = (client: LocationClient): Promise<DeptRule | null> =>
     .then(() => readDeptRule(client))
     .catch(() => null)
 
-/** ⓪ 설정 → ① 확인(설정을 못 읽으면 건너뜀) → ② 안 본 줄 읽기·줄 만들기(설정을 못 읽었으면 처음 값으로 거름) */
-async function readWatch(today: string): Promise<readonly AlertLine[]> {
+/** ⓪ 설정 → ① 확인(설정을 못 읽으면·보는 중이면 건너뜀) → ② 안 본 줄 읽기·줄 만들기(설정을 못 읽었으면 처음 값으로 거름) */
+async function readWatch(today: string, readOnly: boolean): Promise<readonly AlertLine[]> {
   const client = supabaseBrowser()
   if (!canRead(client)) return NONE
   const read = await readRule(client)
   const rule = read ?? DEFAULT_DEPT_RULE
   if (rule.rival.length === 0) return NONE
   const candidates = await listWatchCandidates(client).catch(() => null)
-  if (read !== null && candidates !== null) await checkDue(client, candidates, rule, today).catch(() => undefined)
+  if (!readOnly && read !== null && candidates !== null) await checkDue(client, candidates, rule, today).catch(() => undefined)
   return alertLines(await listUnseenEvents(client), candidates ?? [], rule)
 }
 
 /** 한 번 읽기. 한도가 먼저 오거나 무엇이든 실패하면 빈 목록이고, 한도 뒤 늦게 온 답은 버린다 */
-function readWithinLimit(today: string): Promise<readonly AlertLine[]> {
+function readWithinLimit(today: string, readOnly: boolean): Promise<readonly AlertLine[]> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(NONE), LOCATION_WATCH_TIMEOUT_MS)
     const settle = (events: readonly AlertLine[]) => {
@@ -143,7 +146,7 @@ function readWithinLimit(today: string): Promise<readonly AlertLine[]> {
       resolve(events)
     }
     Promise.resolve()
-      .then(() => readWatch(today))
+      .then(() => readWatch(today, readOnly))
       .then(settle, () => settle(NONE))
   })
 }
@@ -163,7 +166,8 @@ function markSeen(id: string): Promise<void> {
  * today: 대시보드를 연 날의 한국 날짜('YYYY-MM-DD'). 둘 다 처음 받은 값으로 한 번만 읽는다
  */
 export function useLocationWatch(isAdmin: boolean | PromiseLike<boolean>, today: string): LocationWatch {
-  const [opened] = useState(() => ({ isAdmin, today }))
+  const readOnly = useReadOnly()
+  const [opened] = useState(() => ({ isAdmin, today, readOnly }))
   const [events, setEvents] = useState<readonly AlertLine[]>(NONE)
   const [closedIds, setClosedIds] = useState<readonly string[]>([])
 
@@ -174,7 +178,7 @@ export function useLocationWatch(isAdmin: boolean | PromiseLike<boolean>, today:
         (yes) => yes === true,
         () => false,
       )
-      .then((yes) => (yes ? readWithinLimit(opened.today) : NONE))
+      .then((yes) => (yes ? readWithinLimit(opened.today, opened.readOnly) : NONE))
       .then((found) => {
         if (!gone) setEvents(found)
       })
@@ -183,10 +187,13 @@ export function useLocationWatch(isAdmin: boolean | PromiseLike<boolean>, today:
     }
   }, [opened])
 
-  const close = useCallback((id: string) => {
-    setClosedIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
-    void markSeen(id)
-  }, [])
+  const close = useCallback(
+    (id: string) => {
+      setClosedIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
+      if (!readOnly) void markSeen(id)
+    },
+    [readOnly],
+  )
 
   const shown = useMemo(() => (closedIds.length === 0 ? events : events.filter((e) => !closedIds.includes(e.id))), [events, closedIds])
   return { events: shown, close }

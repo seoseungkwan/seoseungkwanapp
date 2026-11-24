@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { rxCatalog, rxPeriodCounts, rxPickTotal } from '@/components/stats/rxPickView'
 import { useAgainDays } from '@/components/stats/useAgainDays'
 import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
@@ -25,6 +26,7 @@ import { useTabDesc } from './RxSection'
 // 훅과 상태는 빈 상태보다 위에 둔다: 기간을 읽지 못하면 saved가 잠깐 false가 되는데, 그때도 열린 줄과 모양을 잊지 않으려고
 // first90: 처방을 하나 이상 고르면 같은 처방 재방문 아래에 '신환이 그 처방을 받은 횟수' 묶음(RxPickOnce, AC-4410.1)을 둔다.
 // 처방 카드(옆 글 있음) 안이면 칸 설명은 패널 맨 위 한 줄이다(useTabDesc, AC-4413.1)
+// 다른 의원을 보는 중(admin-view AC-8008.1)이면 찾기 칸(넣기·빼기·비우기)과 [다시 저장]이 없고 그 의원이 고른 처방 표만 보인다
 
 const TITLE = '처방 골라 보기'
 const DESC = '고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요'
@@ -120,27 +122,29 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
   return (
     <Section title={TITLE} desc={head} className={className}>
       {lead}
-      <RxPickSearch
-        catalog={lines}
-        picks={shownPicks}
-        counts={counts}
-        catalogState={catalog.state}
-        disabled={state !== 'ready'}
-        onToggle={(line) => {
-          if (rows.some((row) => codeKey(row.code) === codeKey(line.code))) forget(line.code)
-          toggle(line)
-        }}
-        onRemove={(code) => {
-          forget(code)
-          remove(code)
-        }}
-        onClear={() => {
-          forgetAll()
-          clear()
-        }}
-        onOpen={catalog.open}
-        onRetryCatalog={catalog.retry}
-      />
+      <WriteOnly>
+        <RxPickSearch
+          catalog={lines}
+          picks={shownPicks}
+          counts={counts}
+          catalogState={catalog.state}
+          disabled={state !== 'ready'}
+          onToggle={(line) => {
+            if (rows.some((row) => codeKey(row.code) === codeKey(line.code))) forget(line.code)
+            toggle(line)
+          }}
+          onRemove={(code) => {
+            forget(code)
+            remove(code)
+          }}
+          onClear={() => {
+            forgetAll()
+            clear()
+          }}
+          onOpen={catalog.open}
+          onRetryCatalog={catalog.retry}
+        />
+      </WriteOnly>
       {state === 'reading' && (
         <p role="status" className="mt-3 flex items-center gap-1.5 text-body text-muted">
           <Icon name="clock" size={14} className="shrink-0" />
@@ -148,7 +152,11 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
         </p>
       )}
       {state === 'read-failed' && <ErrorWithAction code="E-STATS-PICK-READ-FAILED" action="다시 읽기" onAction={reread} />}
-      {saveFailed && <ErrorWithAction code="E-STATS-PICK-SAVE-FAILED" action="다시 저장" onAction={retrySave} note={SAVE_KEPT} />}
+      {saveFailed && (
+        <WriteOnly>
+          <ErrorWithAction code="E-STATS-PICK-SAVE-FAILED" action="다시 저장" onAction={retrySave} note={SAVE_KEPT} />
+        </WriteOnly>
+      )}
       {rows.length > 0 &&
         (anyRows ? (
           <RxPickTable input={input} rows={rows} total={total} hospitalName={hospitalName} opened={opened} onToggle={toggleOpened} renderPanel={renderPanel} />

@@ -11,6 +11,7 @@ import { DashboardAnalysis, type DashboardAnalysisProps } from '@/components/das
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import { isConnected, type OlderDays, type SummarySource } from '@/components/dashboard/summary/source'
+import { useReadOnly } from '@/components/shell/viewing'
 import type { ChromeRuntimeLike } from '@/types/bridge'
 import type { Honorific } from '@/types/clinicProfile'
 import type { ErrorCode } from '@/types/errors'
@@ -34,6 +35,7 @@ import type { DashboardGroups } from './rxGroups'
 // 재고 칸(spec inventory AC-7512.4, design.md 6절 TASK-15)은 비트 자료와 상관없이 놓는다: 숫자가 있으면 보고 문장을 InventoryAlertCard로 감싸 오른쪽(9~12)에,
 // 숫자가 없는 모양(연결 전·읽는 중·실패)이면 DashboardHome 앞(대시보드 내용 맨 위)에. 알림이 없으면 칸이 그리지 않아 지금 그대로다.
 // LiveDashboard가 저장 숫자 오류 카드 위에 이미 둔 때는 inventoryOnTop={false}로 맨 위 칸을 빼 한 화면에 하나다
+// 다른 의원을 보는 중(admin-view AC-8008.3, useReadOnly)이면 이 PC 비트를 읽지 않는다(저절로 읽기 없음) — 보는 의원의 저장 숫자로만 그린다
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
@@ -151,6 +153,7 @@ export function BitDashboard({
     setStatus((current) => adoptSaved(current, initial))
   }
   const bitReadable = useSyncExternalStore(noSubscribe, hasRuntime, serverHasRuntime)
+  const readOnly = useReadOnly()
   const clinic = useClinicProfile()
   const honorific = clinic.profile.honorific
   const emr = clinic.state === 'ready' ? clinic.profile.emr : 'bit'
@@ -170,6 +173,8 @@ export function BitDashboard({
   const selected = picked !== null && inDateRange(picked, today) ? picked : today
 
   useEffect(() => {
+    // 보는 중: 이 PC 비트는 다른 의원 것이 아니라 읽지 않는다
+    if (readOnly) return
     // 묶음을 기다린다: 끝나면 이 효과가 다시 돌아 그때 한 번 읽는다
     if (!groupsSettled) return
     // 저절로 읽은 답은 조용히 둔다(열 때·날짜가 바뀔 때, AC-601.13·AC-601.16)
@@ -186,7 +191,7 @@ export function BitDashboard({
       if (result.kind === 'days') bitLoaded.current?.()
     })
     return () => leaving.abort()
-  }, [today, attempt, groupsSettled])
+  }, [today, attempt, groupsSettled, readOnly])
 
   const readAgain = () => {
     pressedNow.current = true

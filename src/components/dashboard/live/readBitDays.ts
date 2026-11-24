@@ -1,3 +1,4 @@
+import { enterScreen, leaveScreen } from '@/components/claim/bitLane'
 import { addDays } from '@/lib/analytics/dates'
 import { copyGroupDef } from '@/lib/analytics/groupDef'
 import { BridgeError } from '@/lib/bridge/protocol'
@@ -12,6 +13,8 @@ import { requestLoad, type WorkerLike } from '@/workers/statsClient'
 
 // 비트 읽기 한 번 (spec bit-dashboard design.md "### 읽기"). 환자 자료 구역 밖이다: 조각은 통로 포트로 Worker에 바로 가고,
 // 여기에는 상태·기간·요청 id와 Worker가 만든 일 숫자만 온다. 읽는 동안만 통로를 쥔다(useBridge는 화면이 떠 있는 내내 쥔다)
+// 비트 통로 차례(admin-view AC-8021.8, bitLane): 읽는 동안만 화면 차례에 든다. 저절로 올리기가 쥐고 있으면 끊기를 알리고 놓인 뒤에
+// Worker·통로를 만든다(쥔 쪽이 없으면 지금과 같은 차례로 바로). 기다리는 시간도 읽기 전체 시간 안이고, 떠나면 그 자리에서 차례에서 빠진다
 
 export const LOOKBACK_DAYS = 100
 export const READ_TIMEOUT_MS = 180_000
@@ -69,6 +72,12 @@ export async function readBitDays(deps: {
   let timer: ReturnType<typeof setTimeout> | undefined
   let onAbort: (() => void) | undefined
   let closed = false
+  let entered = false
+  let freed = () => {}
+  const free = new Promise<void>((resolve) => {
+    freed = () => resolve()
+  })
+  const onFree = () => freed()
   const close = () => {
     if (closed) return
     closed = true
@@ -76,10 +85,18 @@ export async function readBitDays(deps: {
     if (onAbort) signal?.removeEventListener('abort', onAbort)
     bridge?.close()
     worker?.terminate()
+    if (entered) leaveScreen(onFree)
   }
-  try {
+  const start = (deadline: number): Promise<ReadResult> => {
     worker = createWorker()
     bridge = connectScreenBridge({ runtime, worker })
+    return readThroughBridge(bridge, worker, today, groups, deadline)
+  }
+  try {
+    const deadline = Date.now() + timeoutMs
+    entered = true
+    // 통로 차례가 비어 있으면 바로(지금 차례), 저절로 올리기가 쥐고 있으면 놓인 뒤에 Worker·통로를 만든다. 그 전에 끝났으면 만들지 않는다
+    const reading = enterScreen(onFree) ? start(deadline) : free.then(() => (closed ? NOT_READY : start(deadline)))
     // hello·bit.check·stream에는 시간 제한이 없어 읽기 전체를 여기서 잰다. 다 되면 finally가 통로를 닫아 남은 단계도 끝난다
     const expired = new Promise<ReadResult>((resolve) => {
       timer = setTimeout(() => resolve({ kind: 'failed', code: READ_FAILED }), timeoutMs)
@@ -93,7 +110,7 @@ export async function readBitDays(deps: {
       }
       signal?.addEventListener('abort', onAbort, { once: true })
     })
-    return await Promise.race([readThroughBridge(bridge, worker, today, groups, Date.now() + timeoutMs), expired, left])
+    return await Promise.race([reading, expired, left])
   } catch (e) {
     return { kind: 'failed', code: failureCode(e) }
   } finally {

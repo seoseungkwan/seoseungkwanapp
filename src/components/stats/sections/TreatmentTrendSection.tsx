@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useReadOnly } from '@/components/shell/viewing'
 import { rxCatalog, rxPeriodCounts } from '@/components/stats/rxPickView'
 import type { ChartMode } from '@/components/stats/treatmentChart'
 import { savedNote } from '@/components/stats/treatmentEdit'
@@ -28,6 +29,7 @@ import { comparedNote } from './trendLabels'
 // 통계 화면에서는 처방 칸 첫 탭 `묶음별 추세` 안이다(stats-pc-ux): 고치기 제목은 탭 이름을 쓰고(AC-4003.6), 늘 같은 네 글은 "어떻게 세나요?" 안에 접는다(AC-4004.2 ①).
 // 따로 그릴 때의 h2 TITLE은 그대로다(앱에서는 탭 이름이 대신한다, design.md 표)
 // 처방 카드 안(first90 AC-4413.1): [묶음 고치기]는 카드 머리 줄 오른쪽이고, 설명은 카드 옆 글(같은 글, AC-4411.3)이 대신해 따로 그리지 않는다
+// 다른 의원을 보는 중(admin-view AC-8008.1, useReadOnly)이면 [묶음 고치기]가 없다(머리 줄 오른쪽 자리도 비운다)
 
 const TITLE = '처방별 추세'
 const EDIT_TITLE = '묶음별 추세 · 묶음 고치기'
@@ -111,6 +113,7 @@ export function TreatmentTrendSection({
   className?: string
 }) {
   const catalog = useRxCatalog(todayOf(input.range), revision)
+  const readOnly = useReadOnly()
   // 고치기를 연 때의 묶음(null = 보는 화면). 저장 글을 견줄 '전'이고 고치기 화면의 처음 초안이다
   const [editing, setEditing] = useState<readonly RxGroup[] | null>(null)
   // 이번 고치기에서 [저장]을 눌렀다: 그 뒤의 저장 실패만 오류 카드로 보인다(지난 고치기의 실패를 다시 보이지 않는다)
@@ -208,7 +211,7 @@ export function TreatmentTrendSection({
   )
 
   return (
-    <Section title={TITLE} desc={desc} action={editButton} className={`${className} ${PHONE_FULL_ACTION}`}>
+    <Section title={TITLE} desc={desc} action={readOnly ? undefined : editButton} className={`${className} ${PHONE_FULL_ACTION}`}>
       {note && (
         <p role="status" className="mt-2 text-small text-positive">
           {note}

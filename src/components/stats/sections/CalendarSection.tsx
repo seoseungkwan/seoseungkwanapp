@@ -7,6 +7,7 @@ import { formatCount } from '@/components/charts/format'
 import { niceScale } from '@/components/charts/scale'
 import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { addMonths, monthOf } from '@/lib/analytics/dates'
 import { monthTrend, ratePct, rateSummary } from '@/lib/calendar/counts'
@@ -22,6 +23,7 @@ import { CHART_NO_SIDE_SCROLL, Note, SECTION_HEAD, Section, dayNumber } from './
 // stats-insights(시안 docs/mockups/stats-insights ④⑤): 나눠 보기 시행자 표 기존 칸 뒤에 '다시 예약'(slots를 lib/calendar rebookRates로, 최근 12달)·
 // '12달 예약 수'(시행자마다 달마다 예약 수 작은 막대) 두 칸을 더하고(AC-6104.3), 나눠 보기 뒤에 '예약 빈자리'(OccupancySection, AC-6105.3)를 그린다.
 // 시행자 표는 예약 탭과 같이 쓰는 RateTable을 바꾸지 않으려고 같은 모양으로 여기서 그린다(종류별 표는 RateTable 그대로)
+// 다른 의원을 보는 중(admin-view AC-8008.2, useReadOnly)이면 '다시 예약' 칸·그 설명을 그리지 않는다(예약 빈자리는 slots가 없어 원래 없다). 새 글 없음
 
 export const CALENDAR_DESC = '최근 12개월 · 예약 탭에 넣은 예약으로 세요(비트에서 불러오지 않아도 돼요) · 위 기간과 상관없이 늘 12개월 · 예약은 1년만 남아요'
 const TITLE = '예약'
@@ -186,6 +188,7 @@ const RATE = 'max-md:hidden'
 const FOOT = 'h-8.5 border-t border-line-strong px-2 text-right font-semibold whitespace-nowrap text-ink tabular-nums first:pl-0 first:text-left last:pr-0'
 const STAFF_HEAD = ['예약', '취소', '취소율', '변경', '변경율', '안 옴', '안 옴율', '다시 예약', '12달 예약 수'] as const
 const RATE_HEAD = new Set<string>(['취소율', '변경율', '안 옴율'])
+const REBOOK_HEAD = '다시 예약'
 
 type Line = RateTableRow & { name: string } // name = 표시 없는 이름(막대 접근성 이름)
 type StaffLine = Line & { rebook: number | null; months: number[] }
@@ -262,8 +265,9 @@ function Spark({ name, months, labels, top }: { name: string; months: readonly n
   )
 }
 
-function StaffTable({ lines, total, labels }: { lines: readonly StaffLine[]; total: RateCounts; labels: readonly string[] }) {
+function StaffTable({ lines, total, labels, rebook }: { lines: readonly StaffLine[]; total: RateCounts; labels: readonly string[]; rebook: boolean }) {
   const top = Math.max(0, ...lines.flatMap((line) => line.months))
+  const heads = rebook ? STAFF_HEAD : STAFF_HEAD.filter((head) => head !== REBOOK_HEAD)
   return (
     <div className={ds.table.wrap}>
       <table className="w-full border-collapse text-small">
@@ -272,7 +276,7 @@ function StaffTable({ lines, total, labels }: { lines: readonly StaffLine[]; tot
             <th scope="col" className={HEAD}>
               시행자
             </th>
-            {STAFF_HEAD.map((head) => (
+            {heads.map((head) => (
               <th key={head} scope="col" className={RATE_HEAD.has(head) ? `${HEAD} ${RATE}` : HEAD}>
                 {head}
               </th>
@@ -286,7 +290,7 @@ function StaffTable({ lines, total, labels }: { lines: readonly StaffLine[]; tot
                 <span className="inline-flex items-center gap-1.5">{line.label}</span>
               </th>
               <Counts counts={line} cell={CELL} />
-              <td className={CELL}>{line.rebook === null ? NO_REBOOK : `${line.rebook}%`}</td>
+              {rebook && <td className={CELL}>{line.rebook === null ? NO_REBOOK : `${line.rebook}%`}</td>}
               <td className={CELL}>
                 <Spark name={line.name} months={line.months} labels={labels} top={top} />
               </td>
@@ -299,7 +303,7 @@ function StaffTable({ lines, total, labels }: { lines: readonly StaffLine[]; tot
               합계
             </th>
             <Counts counts={total} cell={FOOT} />
-            <td className={FOOT} />
+            {rebook && <td className={FOOT} />}
             <td className={FOOT} />
           </tr>
         </tfoot>
@@ -314,6 +318,7 @@ export function CalendarSection({ rows, today, onReread, settings, slots }: Stat
   const months = Array.from({ length: 12 }, (_, i) => addMonths(current, i - 11))
   const [picked, setPicked] = useState(() => addMonths(current, -1))
   const headId = useId()
+  const rebookShown = !useReadOnly()
 
   if (rows === 'reading') {
     return (
@@ -455,8 +460,8 @@ export function CalendarSection({ rows, today, onReread, settings, slots }: Stat
         <div className="mt-3 grid gap-y-4">
           <div className="min-w-0">
             <h4 className="mb-0.5 text-small font-semibold text-ink-2">시행자별</h4>
-            <StaffTable lines={staffLines} total={summary} labels={months.map(shortMonth)} />
-            <Note>{REBOOK_NOTE}</Note>
+            <StaffTable lines={staffLines} total={summary} labels={months.map(shortMonth)} rebook={rebookShown} />
+            {rebookShown && <Note>{REBOOK_NOTE}</Note>}
           </div>
           <div className="min-w-0">
             <h4 className="mb-0.5 text-small font-semibold text-ink-2">종류별</h4>

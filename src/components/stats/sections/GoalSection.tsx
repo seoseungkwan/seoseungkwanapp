@@ -4,6 +4,7 @@ import { useId, useRef, useState, type FormEvent } from 'react'
 import { formatCount, percentOf } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { formatManWon } from '@/components/revenue/money'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { goalPace, statsDayValues, type DayValue, type StatsDayTotals } from '@/lib/analytics/goalPace'
 import { GOAL_COUNT_MAX, GOAL_KEYS, GOAL_REVENUE_MAX, type Goal, type GoalKey } from '@/types/goals'
@@ -234,8 +235,10 @@ export function GoalSection({ today, goal, days, revenue, onReread, onSave }: Go
     return (
       <Section title={TITLE}>
         <p className="mt-1 text-body text-st-ink-2">{EMPTY}</p>
-        {open(WRITE)}
-        {form}
+        <WriteOnly>
+          {open(WRITE)}
+          {form}
+        </WriteOnly>
       </Section>
     )
   }
@@ -249,8 +252,10 @@ export function GoalSection({ today, goal, days, revenue, onReread, onSave }: Go
         ))}
       </div>
       <p className={NOTE}>{GOAL_NOTE}</p>
-      {open(EDIT)}
-      {form}
+      <WriteOnly>
+        {open(EDIT)}
+        {form}
+      </WriteOnly>
     </Section>
   )
 }

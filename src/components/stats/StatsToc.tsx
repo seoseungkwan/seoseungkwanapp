@@ -50,8 +50,9 @@ function atPageEnd(): boolean {
 
 // 띠(design.md 5-5 '바로가기 띠 모양', 시안 .s-nav): 불투명 회색 바탕(흐림 없음) + 아래 1px st-line 줄(붙기 전후 같음, 그림자 없음).
 // 앱 틀 안쪽 여백(24 · 휴대폰 16)까지 넓혀 선이 틀 끝까지 간다. z-9 = 머리줄(z-10) 아래, 처방 찾기 층(z-5) 위
+// 다른 의원 보는 중 띠(admin-view, AppShell group/app 안 data-view-band 45px)가 있으면 그만큼 내려 147px에 붙는다(AppShell 본문 scroll-margin과 같은 값)
 const NAV =
-  'sticky top-25.5 z-9 mt-5 -mx-6 border-b border-st-line bg-st-canvas px-6 py-2 max-md:top-23.5 max-md:mt-4 max-md:-mx-4 max-md:px-4 max-md:py-1.5'
+  'sticky top-25.5 group-has-[[data-view-band]]/app:top-36.75 z-9 mt-5 -mx-6 border-b border-st-line bg-st-canvas px-6 py-2 max-md:top-23.5 max-md:mt-4 max-md:-mx-4 max-md:px-4 max-md:py-1.5'
 // 링크 줄: 띠 안에서만 옆으로 밀린다(스크롤 막대 숨김). relative = 링크 offsetLeft의 기준
 const STRIP = 'relative flex min-w-0 gap-1 overflow-x-auto [scrollbar-width:none]'
 // 링크: 알약(rounded-full) 14px 600 st-ink-2, 넓은 화면 36px · 휴대폰 44px(누르는 자리). 초점 고리는 안쪽 2px
