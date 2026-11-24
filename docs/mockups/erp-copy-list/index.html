@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시안 — ERP 마감일지 입력 목록</title>
+<!-- 2026-11-24 erp-copy-list 클릭 시안(PC 화면만). 새 크롬 확장 화면 'ERP 마감일지 입력 목록'. 숫자는 모두 지어낸 예시(환자 정보 없음).
+     줄 차례·이름은 extension-erp/src/cells.ts planCells 그대로. 모양은 extension-erp/options.html · docs/mockups/erp-closing-fill/ 와 같은 토큰.
+     상태는 주소 끝 ?s=empty | loading | ready(기본) | copied | error | long, 오류 글은 &e=missing | unregistered | old, 업무일지 1 상자 차례는 &o=screen(기본, ERP 화면 차례) | plan -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;
+--negative:#C2410C;--negative-soft:#FDF0EA;--warning:#B45309;--warning-soft:#FDF4E3;--r-control:4px;--r-float:8px;
+--shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+ul{list-style:none}
+.nw{white-space:nowrap}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--surface);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
+.btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn-2:hover{background:var(--canvas)}
+.btn-2:disabled{color:var(--muted);background:var(--canvas);border-color:var(--line);cursor:default}
+.btn-1{background:var(--accent);color:var(--surface);font-weight:600}
+.btn-1:hover{background:var(--accent-strong)}
+.btn-1:disabled{background:#93A6C9;cursor:default}
+
+/* 시안 상태 단추 줄 (앱에 없음) */
+.mock-bar{font-size:13px;line-height:18px;background:#fff8d6;border-bottom:1px solid #e5d58a;padding:8px 16px;display:flex;flex-direction:column;gap:6px}
+.mock-bar .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mock-bar .row b{min-width:150px;font-weight:600}
+.mock-bar button{border:1px solid #c9b860;background:#fff;border-radius:4px;padding:3px 9px}
+.mock-bar button[aria-pressed="true"]{background:#e9d877;font-weight:600}
+.mock-bar .note{color:#7a6a10}
+
+/* 화면 머리 (설정 화면과 같은 모양) */
+.top{border-bottom:1px solid var(--line)}
+.top .in{max-width:1440px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:10px}
+.top i{width:20px;height:20px;border-radius:5px;background:var(--accent);flex:none}
+.top h1{font-size:18px;font-weight:600}
+.top .set{margin-left:auto}
+main{max-width:1440px;margin:0 auto;padding:20px 24px 40px;display:flex;flex-direction:column;gap:16px}
+
+/* 기간 고르기 */
+.ctrl .row1{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.ctrl label{display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:18px;color:var(--muted)}
+.ctrl input{height:36px;width:160px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;font-size:14px;color:var(--ink);background:var(--surface)}
+.ctrl input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.ctrl input:disabled{background:var(--canvas);color:var(--muted)}
+.ctrl .tilde{padding-bottom:7px;color:var(--muted)}
+.ctrl #make{margin-left:8px}
+.help{margin-top:6px;font-size:13px;line-height:20px;color:var(--muted)}
+.help.why{font-weight:500;color:var(--negative)}
+
+/* 안내 상자 */
+.hint{background:var(--accent-soft);border-radius:var(--r-control);padding:12px 16px;color:var(--ink-2);max-width:780px;display:flex;flex-direction:column;gap:4px}
+.hint .lead{color:var(--accent-strong)}
+.box{border:1px solid var(--line);border-radius:var(--r-float);padding:16px 18px;display:flex;flex-direction:column;gap:10px;max-width:640px;background:var(--surface);color:var(--ink-2)}
+.box.err{background:var(--negative-soft);border-color:#F1D3C4}
+.lead{font-size:15px;line-height:23px;font-weight:600;color:var(--ink)}
+.lead.err{color:var(--negative)}
+.lead.err::before{content:'!';display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-right:6px;border-radius:50%;background:var(--negative);color:#fff;font-size:12px;vertical-align:1px}
+.small{font-size:13px;line-height:20px;color:var(--muted)}
+.prog{height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent);transition:width .2s}
+.acts{display:flex;justify-content:flex-end;gap:8px}
+
+/* 목록 위 한 줄 */
+.sum{display:flex;justify-content:space-between;align-items:flex-end;gap:4px 16px;flex-wrap:wrap}
+.sum .l{display:flex;flex-direction:column;gap:2px}
+.sum .l b{font-weight:600;color:var(--ink)}
+.sum .made{font-size:13px;color:var(--muted);white-space:nowrap}
+.slide{font-size:13px;line-height:20px;color:var(--accent-strong);margin-bottom:-8px}
+
+/* 목록 표: 표 상자 안에서만 옆·아래로 밀림, 항목 칸은 왼쪽에, 날짜 줄은 위에 붙음 */
+.tbox{width:fit-content;max-width:100%;max-height:calc(100vh - 250px);min-height:300px;overflow:auto;border:1px solid var(--line-strong);border-radius:var(--r-float);background:var(--surface)}
+.tbox::-webkit-scrollbar{width:12px;height:12px}
+.tbox::-webkit-scrollbar-thumb{background:#C4C9D2;border-radius:6px;border:3px solid #fff}
+.tbox::-webkit-scrollbar-corner{background:#fff}
+.tbl{border-collapse:separate;border-spacing:0;font-size:13px;line-height:18px}
+.tbl th,.tbl td{border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl thead th{position:sticky;top:0;z-index:3;background:#F3F4F6;height:46px;padding:4px 12px;border-bottom:1px solid var(--line-strong);text-align:right;vertical-align:middle;font-weight:600;color:var(--ink)}
+.tbl thead th.lab{left:0;z-index:4;text-align:left;background:#F3F4F6}
+.tbl thead th .wd{font-weight:400;color:var(--muted)}
+.tbl thead th.sun .wd{color:var(--negative)}
+.tbl thead th .zt{display:block;font-size:11px;line-height:14px;font-weight:500;color:var(--muted)}
+.tbl th.lab{position:sticky;left:0;z-index:2;background:var(--surface);width:330px;min-width:330px;max-width:330px;text-align:left;font-weight:400;padding:0 10px 0 24px;border-right:1px solid var(--line-strong)}
+.tbl td{min-width:92px;padding:1px 3px;text-align:right;background:var(--surface)}
+.lw{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nm{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.nm .cl{color:var(--muted)}
+tr.s1 th.lab,tr.s1 td{background:#E9EDF3;height:34px}
+tr.s1 th.lab{padding-left:14px;font-size:14px;font-weight:600;color:var(--ink)}
+tr.s2 th.lab,tr.s2 td{background:var(--canvas);height:30px}
+tr.s2 th.lab{padding-left:14px;font-weight:600;color:var(--ink-2)}
+tr.s2 th.lab .sub{font-weight:400;color:var(--muted);margin-left:6px}
+tr.r th.lab{height:32px}
+tr:has(+ tr.g) > *{border-bottom-color:#CBD0D8}
+tr.r:hover th.lab,tr.r:hover td{background:#F6F9FF}
+tr.off .nm{color:var(--ink-2)}
+td.na{background:#F9FAFB}
+tr.r:hover td.na{background:#F1F4FA}
+.nt{display:inline-block;padding-right:9px;font-size:11px;color:var(--muted);cursor:help}
+.tag{flex:none;display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:10px;font-size:12px;line-height:18px;background:#F0F1F3;color:var(--muted);cursor:help}
+.tag.held,.tag.noName{background:var(--warning-soft);color:var(--warning)}
+.v{display:block;width:100%;height:30px;padding:0 9px;text-align:right;border-radius:3px;color:var(--ink);font-variant-numeric:tabular-nums}
+.v:hover{background:var(--accent-soft);box-shadow:inset 0 0 0 1px #BFD3FB;color:var(--accent-strong)}
+.v:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.v.done{background:var(--positive-soft);color:var(--positive)}
+.v.done::before{content:'✓';font-size:11px;margin-right:5px}
+.v.now{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent);color:var(--accent-strong);font-weight:600}
+td.z .v:not(.done):not(.now){color:var(--muted)}
+
+/* 빈 칸 까닭 */
+.legend{border:1px solid var(--line);border-radius:var(--r-float);padding:12px 16px;display:flex;flex-direction:column;gap:8px;max-width:980px}
+.legend h2{font-size:14px;font-weight:600}
+.legend li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:start;color:var(--ink-2)}
+.legend li .tag{justify-self:start;margin-top:1px;cursor:default}
+.legend .ovl{border-top:1px solid var(--line);padding-top:8px;font-size:13px;color:var(--ink-2)}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+/* 쪽지 */
+.toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:12px;background:#111827;color:#fff;border-radius:var(--r-float);padding:10px 18px;box-shadow:var(--shadow-float);font-size:14px;white-space:nowrap}
+.toast b{font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.toast b::before{content:'✓';display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;border-radius:50%;background:#22C55E;color:#fff;font-size:11px}
+.toast.bad b::before{content:'!';background:var(--negative)}
+.toast span{color:#D1D5DB;font-size:13px}
+</style>
+</head>
+<body>
+<div class="mock-bar" id="mockBar">
+  <div class="row"><b>시안 전용 · 화면 상태</b>
+    <button type="button" data-s="empty">① 처음(목록 전)</button>
+    <button type="button" data-s="loading">② 세는 중</button>
+    <button type="button" data-s="ready">③ 목록 3일</button>
+    <button type="button" data-s="copied">④ 복사한 뒤</button>
+    <button type="button" data-s="error">⑤ 도우미 연결 안 됨</button>
+    <button type="button" data-s="long">⑥ 긴 기간 31일</button>
+  </div>
+  <div class="row"><b>⑤의 오류 글</b>
+    <button type="button" data-e="missing">도우미 없음</button>
+    <button type="button" data-e="unregistered">이 PC 등록 안 됨</button>
+    <button type="button" data-e="old">도우미가 예전 판</button>
+  </div>
+  <div class="row"><b>업무일지 1 상자 차례</b>
+    <button type="button" data-o="screen">ERP 화면 차례(진료 · 치료현황 먼저)</button>
+    <button type="button" data-o="plan">지금 채우기 차례(환자현황 먼저)</button>
+  </div>
+  <p class="note">노란 띠는 시안 단추라 앱에 없어요 · 숫자는 모두 지어낸 예시예요(환자 정보 없음) · 시안 설정: 수술 · 기타3 · 기타4 · 예약 기타(수액,드레싱등)는 코드를 고르지 않음, 기타2는 코드는 골랐는데 ERP 줄 이름이 빔, 관절조영 치료별 매출은 보류 보기 · 엑셀은 시안이라 파일 이름만 보여요 · 숫자 칸 · 날짜 · 단추도 눌러 볼 수 있어요</p>
+</div>
+
+<div class="top"><div class="in"><i></i><h1>ERP 마감일지 입력 목록</h1><button type="button" class="btn btn-2 set" id="openSettings">설정 열기</button></div></div>
+<main>
+  <section class="ctrl" aria-label="기간">
+    <div class="row1">
+      <label>시작일<input type="date" id="from"></label>
+      <span class="tilde">~</span>
+      <label>끝일<input type="date" id="to"></label>
+      <button type="button" class="btn btn-1" id="make">목록 만들기</button>
+      <button type="button" class="btn btn-2" id="xlsx">엑셀로 받기</button>
+    </div>
+    <p class="help" id="help">오늘 뒤 날짜는 고를 수 없어요.</p>
+  </section>
+  <div id="stage" style="display:flex;flex-direction:column;gap:16px"></div>
+  <p class="foot">환자 이름 · 차트번호는 이 PC의 도우미 밖으로 나가지 않아요. 이 화면은 ERP를 건드리지 않아요. 숫자는 직접 붙여 넣고, 저장은 ERP에서 직접 눌러요.</p>
+</main>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+'use strict'
+const $ = (s) => document.querySelector(s)
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const pad = (n) => String(n).padStart(2, '0')
+const localDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const TODAY = localDay(new Date())
+const WD = ['일', '월', '화', '수', '목', '금', '토']
+const toUTC = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
+const fromUTC = (t) => `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`
+const dow = (s) => toUTC(s).getUTCDay()
+const md = (s) => { const [, m, d] = s.split('-').map(Number); return `${m}/${d}` }
+function datesBetween(a, b) { const out = []; for (let t = toUTC(a); fromUTC(t) <= b; t = new Date(t.getTime() + 864e5)) out.push(fromUTC(t)); return out }
+
+// ── cells.ts·types.ts 이름표 그대로 ──
+const GROUP_NAMES = { carm: '씨암', sono: 'SONO', arthro: '관절조영', manual: '도수', eswt: '충격파', pt: '물리치료', etc1: '기타1', etc2: '기타2', etc3: '기타3', etc4: '기타4', manualConsult: '도수상담', lipus: '리푸스', nail: '손발톱케어', ct: 'CT', surgery: '수술', eswtStd: 'ESWT Standard', eswtRadial: 'ESWT Radial', injection: '주사', ptVisit: '물리치료내원' }
+const RSV_ROWS = ['injection', 'followup', 'manual', 'eswt', 'clinic', 'etc']
+const RSV_NAMES = { injection: '주사', followup: '경과', manual: '도수', eswt: '충격파', clinic: '진료예약', etc: '기타(수액,드레싱등)' }
+const PATIENT_ROWS = [['신환', 'new'], ['90일초진', 'first90'], ['재진', 'return'], ['물리치료내원', 'ptVisit'], ['진찰료 산정안함', 'noExamFee'], ['합계', 'total']]
+const CARE_ROWS = [['씨암', 'carm'], ['SONO', 'sono'], ['도수상담', 'manualConsult'], ['도수치료', 'manual'], ['충격파(체충)', 'eswt'], ['관절조영술', 'arthro'], ['리푸스', 'lipus'], ['손발톱케어', 'nail'], ['CT', 'ct'], ['수술', 'surgery']]
+const MONEY_ROWS = [['외래 총매출', 'total'], ['청구액(-)', 'insurer'], ['미수입금(+)', 'receivableIn'], ['미수발생(-)', 'unpaidNew'], ['비급여', 'noncovered'], ['감액', 'discount'], ['장애인기금(-)', 'disabledFund'], ['진료수납액', 'received'], ['카드수납액(-)', 'card'], ['현금수납액(-)', 'cash'], ['계좌이체액(-)', 'transfer'], ['현불/환불(-)', 'refund']]
+const INPATIENT_ROWS = ['청구', '비급여', '본인부담금', '수납액']
+const RSV_COLS = [['총갯수', 'total'], ['내원', 'visited'], ['변경', 'changed'], ['취소', 'canceled']]
+const THREE_COLS = [['신환', 'new'], ['90일초진', 'first90'], ['재진', 'return']]
+const ETC_KEYS = ['etc1', 'etc2', 'etc3', 'etc4']
+const COUNT_ROWS = [['씨암(주사)', 'carm'], ['SONO(주사)', 'sono'], ['관절조영', 'arthro'], ['도수', 'manual'], ['충격파', 'eswt']]
+const AGE_ROWS = [['10대미만', '0'], ['10대', '10'], ['20대', '20'], ['30대', '30'], ['40대', '40'], ['50대', '50'], ['60대', '60'], ['70대', '70'], ['80대', '80'], ['90대', '90']]
+const SALES_ROWS = [['씨암', 'carm'], ['SONO', 'sono'], ['관절조영', 'arthro'], ['도수', 'manual'], ['충격파', 'eswt'], ['물리치료', 'pt']]
+
+// ── 시안 설정(예시) ──
+const PICK = { carm: 1, sono: 1, arthro: 1, manual: 1, eswt: 1, pt: 1, etc1: 1, etc2: 1, etc3: 0, etc4: 0, manualConsult: 1, lipus: 1, nail: 1, ct: 1, surgery: 0, eswtStd: 1, eswtRadial: 1, injection: 1, ptVisit: 1 }
+const ETC_NAMES = { etc1: '크라이오', etc2: '', etc3: '', etc4: '' }
+const RSV_PICK = { injection: 1, followup: 1, manual: 1, eswt: 1, clinic: 1, etc: 0 }
+const HELD = ['arthro'] // 지금 코드의 보류 묶음(HELD_SALES)은 비어 있다. 시안에서만 까닭을 보이려고 둔다
+const ZERO_DAYS = new Set(['2026-10-03', '2026-10-05', '2026-10-09']) // 일요일과 함께 진료 0건인 날(예시)
+const NO_RECV = new Set(['2026-11-02', '2026-10-14', '2026-10-27']) // 미수입금(+)을 비트로 셀 수 없는 날(예시)
+
+// ── 빈 칸 까닭(cells.ts why) ──
+const WHY = {
+  unpicked: { tag: '코드를 고르지 않음', cell: '코드 안 고름', help: '설정에서 코드를 고르지 않은 항목이라 비워 두었어요. 직접 넣거나 [설정 열기]에서 코드를 고른 뒤 목록을 다시 만들어 주세요.' },
+  unknown: { tag: '비트로 셀 수 없음', cell: '셀 수 없음', help: '비트로 셀 수 없어 비워 두었어요. 직접 넣어 주세요.' },
+  held: { tag: '보류 중', cell: '보류', help: `${HELD.map((k) => GROUP_NAMES[k]).join('·')} 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.` },
+  noName: { tag: 'ERP 줄 이름 없음', cell: '줄 이름 없음', help: '설정 화면에서 그 기타 줄의 ERP 줄 이름을 업무일지 2 줄 이름과 똑같이 넣어 주세요.' },
+}
+
+// ── 오류 글(errors.ts 그대로) ──
+const ERRORS = {
+  missing: { code: 'E-HELPER-MISSING', what: 'ERP 도우미가 이 PC에 없어요.', how: 'ERP 도우미를 설치해 주세요. 받은 zip을 풀고 install.cmd를 두 번 누르면 돼요.' },
+  unregistered: { code: 'E-BIT-NOT-REGISTERED', what: '이 PC가 아직 등록되지 않았어요.', how: 'ERP 도우미 설치 파일을 다시 실행해 주세요(비트 로그인 → PC 확인 창 [확인]).' },
+  old: { code: 'E-HELPER-BAD-MESSAGE', what: 'ERP 도우미가 예전 판이에요.', how: '새 판을 설치해 주세요. 확장과 ERP 도우미는 꼭 같이 바꿔요.' },
+}
+
+// ── 지어낸 하루 숫자(날짜로 늘 같은 값) ──
+function rng(s) { let a = 0; for (const c of s) a = (Math.imul(a, 31) + c.charCodeAt(0)) | 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
+const won = (x) => Math.round(x / 100) * 100
+const cache = {}
+function makeDay(date) {
+  if (cache[date]) return cache[date]
+  const r = rng('erp-' + date)
+  const w = dow(date)
+  const zero = w === 0 || ZERO_DAYS.has(date)
+  const k = zero ? 0 : w === 6 ? 0.55 : 1
+  const int = (lo, hi) => (zero ? 0 : Math.round((lo + r() * (hi - lo)) * k))
+  const patients = { new: int(4, 12), first90: int(3, 9), return: int(55, 95), ptVisit: int(20, 40), noExamFee: int(2, 8) }
+  patients.total = patients.new + patients.first90 + patients.return + patients.ptVisit + patients.noExamFee
+  const groups = {}
+  const G = (key, lo, hi, price) => {
+    const p = int(lo, hi)
+    const nw = Math.min(p, Math.round(p * (0.08 + r() * 0.1)))
+    const f90 = Math.min(p - nw, Math.round(p * (0.06 + r() * 0.08)))
+    groups[key] = { patients: p, new: nw, first90: f90, return: p - nw - f90, total: won(p * price * (0.9 + r() * 0.3)) }
+  }
+  G('carm', 14, 28, 43000); G('sono', 8, 18, 36000); G('arthro', 0, 3, 82000); G('manual', 14, 28, 98000); G('eswt', 10, 24, 68000); G('pt', 55, 85, 8200)
+  G('etc1', 2, 8, 20000); G('etc2', 1, 5, 15000); G('etc3', 0, 0, 0); G('etc4', 0, 0, 0)
+  G('manualConsult', 2, 6, 0); G('lipus', 0, 4, 30000); G('nail', 0, 2, 25000); G('ct', 0, 3, 60000); G('surgery', 0, 1, 0)
+  const std = Math.round(groups.eswt.patients * (0.5 + r() * 0.2))
+  groups.eswtStd = { patients: std }; groups.eswtRadial = { patients: groups.eswt.patients - std }
+  const injNew = int(1, 5)
+  const injection = { firstTime: null, newPatients: injNew, newLines: injNew + int(0, 3) }
+  const weights = [0.02, 0.04, 0.06, 0.09, 0.13, 0.2, 0.22, 0.15, 0.07, 0.02]
+  const spread = (n) => { const out = weights.map((x) => Math.floor(n * x)); let left = n - out.reduce((a, b) => a + b, 0); const order = [6, 5, 7, 4, 3, 8, 2, 1, 9, 0]; for (let i = 0; left > 0; i++, left--) out[order[i % 10]]++; return out }
+  const aNew = spread(patients.new), aF90 = spread(patients.first90), aRet = spread(patients.return)
+  const ages = {}; AGE_ROWS.forEach(([, band], i) => { ages[band] = { new: aNew[i], first90: aF90[i], return: aRet[i] } })
+  const total = zero ? 0 : won((3.0e6 + r() * 2.6e6) * k)
+  const insurer = won(total * (0.5 + r() * 0.08))
+  const noncovered = won(total * (0.24 + r() * 0.08))
+  const receivableIn = zero || r() < 0.5 ? 0 : won(20000 + r() * 130000)
+  const unpaidNew = zero || r() < 0.6 ? 0 : won(10000 + r() * 90000)
+  const discount = zero ? 0 : won(r() * 60000)
+  const disabledFund = zero || r() < 0.7 ? 0 : won(1000 + r() * 9000)
+  const received = total - insurer + receivableIn - unpaidNew - discount - disabledFund
+  const refund = date === '2026-11-03' || date === '2026-10-21' ? 33000 : 0
+  const card = won(received * (0.72 + r() * 0.08))
+  const cash = won(received * (0.04 + r() * 0.05))
+  const transfer = received - card - cash - refund
+  const money = { total, insurer, receivableIn: NO_RECV.has(date) ? null : receivableIn, unpaidNew, noncovered, discount, disabledFund, received, card, cash, transfer, refund }
+  const rsv = {}
+  const R = (key, lo, hi) => { const t = int(lo, hi); const ch = Math.min(t, int(0, 3)); const ca = Math.min(t - ch, int(0, 4)); const no = Math.min(t - ch - ca, int(0, 2)); rsv[key] = { total: t, visited: t - ch - ca - no, changed: ch, canceled: ca } }
+  R('injection', 6, 16); R('followup', 10, 24); R('manual', 12, 26); R('eswt', 8, 20); R('clinic', 4, 12); R('etc', 1, 5)
+  const rsvPatients = RSV_ROWS.reduce((s, key) => s + (RSV_PICK[key] ? rsv[key].total : 0), 0) - int(2, 6)
+  return (cache[date] = { date, zero, patients, groups, ages, money, inpatientVisits: 0, rsv, rsvPatients: Math.max(0, rsvPatients), injection })
+}
+
+// ── 칸 계획(cells.ts planCells 차례 그대로) ──
+const put = (value, ok = true) => {
+  if (ok === 'noName') return { why: 'noName' }
+  if (!ok) return { why: 'unpicked' }
+  if (typeof value !== 'number' || !Number.isFinite(value)) return { why: 'unknown' }
+  return { v: String(Math.trunc(value) || 0) }
+}
+const etcRow = (key) => {
+  const name = (ETC_NAMES[key] || '').replace(/\s+/g, ' ').trim()
+  if (!PICK[key]) return { row: name || GROUP_NAMES[key], ok: false }
+  return name === '' ? { row: GROUP_NAMES[key], ok: 'noName' } : { row: name, ok: true }
+}
+function buildRows(order) {
+  const L = []
+  let sec = ''
+  const s1 = (text) => L.push({ t: 's1', text })
+  const s2 = (text, sub, short) => { sec = short || text; L.push({ t: 's2', text, sub }) }
+  const row = (name, col, get) => L.push({ t: 'row', name, col, get, sec })
+  const J1 = {
+    '환자현황': () => PATIENT_ROWS.forEach(([n, key]) => row(n, null, (d) => put(d.patients[key], key === 'ptVisit' ? !!PICK.ptVisit : true))),
+    '진료 · 치료현황': () => CARE_ROWS.forEach(([n, key]) => row(n, null, (d) => put(d.groups[key].patients, !!PICK[key]))),
+    '외래 수입': () => MONEY_ROWS.forEach(([n, key]) => row(n, null, (d) => put(d.money[key]))),
+    '입원수입': () => INPATIENT_ROWS.forEach((n) => row(n, null, (d) => put(d.inpatientVisits === 0 ? 0 : null))),
+  }
+  const SHORT1 = { '진료 · 치료현황': '치료현황' }
+  s1('업무일지 1')
+  const boxes = order === 'screen' ? ['진료 · 치료현황', '외래 수입', '입원수입', '환자현황'] : ['환자현황', '진료 · 치료현황', '외래 수입', '입원수입']
+  boxes.forEach((b) => { s2(b, '', SHORT1[b]); J1[b]() })
+
+  s1('업무일지 2')
+  s2('예약')
+  RSV_ROWS.forEach((key) => RSV_COLS.forEach(([c, f]) => row(RSV_NAMES[key], c, (d) => put(d.rsv[key][f], !!RSV_PICK[key]))))
+  row('실예약환자수', null, (d) => put(d.rsvPatients))
+
+  s2('치료별 신환/90일초진/재진 건수', '', '치료별 건수')
+  const counts = [...COUNT_ROWS.map(([n, key]) => ({ row: n, key, ok: !!PICK[key] })), ...ETC_KEYS.map((key) => ({ key, ...etcRow(key) }))]
+  counts.forEach(({ row: n, key, ok }) => THREE_COLS.forEach(([c, f]) => row(n, c, (d) => put(d.groups[key][f], ok))))
+
+  s2('연령별 신환/90일초진/재진', '', '연령별')
+  AGE_ROWS.forEach(([n, band]) => THREE_COLS.forEach(([c, f]) => row(n, c, (d) => put(d.ages[band][f]))))
+
+  s2('운영 지표', '', '운영 지표')
+  row('도수 총금액', null, (d) => put(d.groups.manual.total, !!PICK.manual))
+  row('충격파 총금액', null, (d) => put(d.groups.eswt.total, !!PICK.eswt))
+  row('ESWT Standard', null, (d) => put(d.groups.eswtStd.patients, !!PICK.eswtStd))
+  row('ESWT Radial', null, (d) => put(d.groups.eswtRadial.patients, !!PICK.eswtRadial))
+  row('주사1회환자', null, (d) => put(d.injection.firstTime, !!PICK.injection))
+  row('신환주사환자', null, (d) => put(d.injection.newPatients, !!PICK.injection))
+  row('신환주사건수', null, (d) => put(d.injection.newLines, !!PICK.injection))
+
+  s2('치료별 매출', '금액(원)', '치료별 매출')
+  const sales = [...SALES_ROWS.map(([n, key]) => ({ row: n, key, ok: !!PICK[key] })), ...ETC_KEYS.map((key) => ({ key, ...etcRow(key) }))]
+  sales.forEach(({ row: n, key, ok }) => row(n, null, (d) => (ok === true && HELD.includes(key) ? { why: 'held' } : put(d.groups[key].total, ok))))
+  return L
+}
+
+// ── 화면 상태 ──
+const params = new URLSearchParams(location.search)
+const view = {
+  s: ['empty', 'loading', 'ready', 'copied', 'error', 'long'].includes(params.get('s')) ? params.get('s') : 'ready',
+  e: ERRORS[params.get('e')] ? params.get('e') : 'missing',
+  o: params.get('o') === 'plan' ? 'plan' : 'screen',
+}
+let dates = []
+let copied = new Set()
+let current = null
+let madeAt = ''
+let timer = null
+const stage = $('#stage')
+const fromIn = $('#from'), toIn = $('#to'), make = $('#make'), xlsx = $('#xlsx'), help = $('#help')
+fromIn.max = TODAY; toIn.max = TODAY
+
+function syncUrl() {
+  const q = new URLSearchParams({ s: view.s })
+  if (view.s === 'error' && view.e !== 'missing') q.set('e', view.e)
+  if (view.o !== 'plan') q.set('o', view.o)
+  history.replaceState(null, '', '?' + q.toString())
+  document.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === view.s)))
+  document.querySelectorAll('[data-e]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.e === view.e)))
+  document.querySelectorAll('[data-o]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.o === view.o)))
+}
+const nowText = () => { const d = new Date(); return `${localDay(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}` }
+
+function setControls({ busy = false, hasList = false } = {}) {
+  fromIn.disabled = busy; toIn.disabled = busy; make.disabled = busy
+  xlsx.disabled = !hasList
+  help.className = 'help'; help.textContent = '오늘 뒤 날짜는 고를 수 없어요.'
+}
+
+function emptyView() {
+  stage.innerHTML = `<div class="hint">
+    <p class="lead">기간을 고르고 [목록 만들기]를 눌러 주세요.</p>
+    <p>날마다 비트 숫자를 세어, [비트 값 채우기]가 채우는 ERP 칸 차례대로 표를 만들어요. 줄은 ERP 칸, 열은 날짜예요.</p>
+    <p>숫자 칸을 누르면 복사돼요. ERP 칸에 붙여 넣어 주세요.</p>
+  </div>`
+}
+function loadingView(total, done) {
+  stage.innerHTML = `<div class="box" aria-live="polite">
+    <p class="lead">비트에서 읽는 중…</p>
+    <p><b class="nw">${total}일 중 ${done}일</b></p>
+    <div class="prog"><i style="width:${Math.round((done / total) * 100)}%"></i></div>
+    <div class="acts"><button type="button" class="btn btn-2" id="stop">그만두기</button></div>
+  </div>`
+  $('#stop').addEventListener('click', () => { clearInterval(timer); setControls(); emptyView(); view.s = 'empty'; syncUrl() })
+}
+function errorView() {
+  const e = ERRORS[view.e]
+  stage.innerHTML = `<div class="box err" role="alert">
+    <p class="lead err">${esc(e.what)}</p>
+    <p>${esc(e.how)}</p>
+    <p class="small">목록을 만들지 못했어요. (번호 ${e.code})</p>
+  </div>`
+}
+
+function tableHtml() {
+  const rows = buildRows(view.o)
+  const days = Object.fromEntries(dates.map((d) => [d, makeDay(d)]))
+  let h = '<table class="tbl"><thead><tr><th class="lab" scope="col">항목</th>'
+  for (const d of dates) {
+    const z = days[d].zero
+    h += `<th scope="col" class="${dow(d) === 0 ? 'sun' : ''}"${z ? ` title="${d}에는 비트 진료가 한 건도 없어요."` : ''}>${md(d)} <span class="wd">(${WD[dow(d)]})</span>${z ? '<span class="zt">진료 0건</span>' : ''}</th>`
+  }
+  h += '</tr></thead><tbody>'
+  let id = 0, prev = null, first = true
+  for (const r of rows) {
+    if (r.t === 's1') { h += `<tr class="s1"><th class="lab" scope="colgroup">${esc(r.text)}</th><td colspan="${dates.length}"></td></tr>`; prev = null; continue }
+    if (r.t === 's2') { h += `<tr class="s2"><th class="lab" scope="colgroup">${esc(r.text)}${r.sub ? `<span class="sub">${esc(r.sub)}</span>` : ''}</th><td colspan="${dates.length}"></td></tr>`; prev = null; first = true; continue }
+    const cells = dates.map((d) => r.get(days[d]))
+    const kinds = new Set(cells.map((c) => c.why || 'v'))
+    const rowWhy = kinds.size === 1 && !kinds.has('v') ? cells[0].why : null
+    const g = r.col && r.name !== prev && !first ? ' g' : ''
+    prev = r.name; first = false
+    const label = `${r.sec} ${r.name}${r.col ? ' ' + r.col : ''}`
+    h += `<tr class="r${g}${rowWhy ? ' off' : ''}"><th class="lab" scope="row"><div class="lw"><span class="nm">${esc(r.name)}${r.col ? ` <span class="cl">${esc(r.col)}</span>` : ''}</span>${rowWhy ? `<span class="tag ${rowWhy}" title="${esc(WHY[rowWhy].help)}">${WHY[rowWhy].tag}</span>` : ''}</div></th>`
+    cells.forEach((c, i) => {
+      const d = dates[i]
+      const zc = days[d].zero ? ' z' : ''
+      if (c.v !== undefined) {
+        const key = `${id}|${d}`
+        h += `<td class="${zc}"><button type="button" class="v${copied.has(key) ? ' done' : ''}${current === key ? ' now' : ''}" data-k="${key}" data-v="${c.v}" data-l="${esc(md(d) + ' · ' + label)}" title="누르면 복사돼요">${c.v}</button></td>`
+      } else if (rowWhy) h += `<td class="na${zc}"></td>`
+      else h += `<td class="na${zc}"><span class="nt" title="${esc(WHY[c.why].help)}">${WHY[c.why].cell}</span></td>`
+    })
+    h += '</tr>'
+    id++
+  }
+  return { html: h + '</tbody></table>', rowCount: id, rows, days }
+}
+
+function readyView() {
+  const t = tableHtml()
+  const used = new Set()
+  for (const r of t.rows) if (r.t === 'row') for (const d of dates) { const c = r.get(t.days[d]); if (c.why) used.add(c.why) }
+  const legend = ['unpicked', 'unknown', 'held', 'noName'].filter((w) => used.has(w))
+  stage.innerHTML = `<div class="sum">
+      <div class="l"><p><b>${dates[0]} ~ ${dates[dates.length - 1]}</b> · ${dates.length}일 · 날마다 ${t.rowCount}칸</p>
+      <p class="small">숫자 칸을 누르면 복사돼요. ERP 칸에 붙여 넣어 주세요. 빈 칸은 아래 까닭을 보고 직접 넣어 주세요.</p></div>
+      <p class="made">목록을 만든 때 ${madeAt}</p>
+    </div>
+    <p class="slide" id="slide" hidden>표를 옆으로 밀면 다른 날짜가 보여요. 항목 칸은 왼쪽에 그대로 있어요.</p>
+    <div class="tbox" id="tbox">${t.html}</div>
+    ${legend.length ? `<section class="legend"><h2>빈 칸 까닭</h2><ul>${legend.map((w) => `<li><span class="tag ${w}">${WHY[w].tag}</span><span>${esc(WHY[w].help)}</span></li>`).join('')}</ul>
+    <p class="ovl">씨암·SONO를 같이 받은 진료는 지난번 고른 대로 씨암에 넣어요.</p></section>` : ''}`
+  const box = $('#tbox')
+  $('#slide').hidden = box.scrollWidth <= box.clientWidth + 1
+}
+
+function render() {
+  clearInterval(timer)
+  toast.hidden = true
+  syncUrl()
+  if (view.s === 'empty') { fromIn.value = TODAY; toIn.value = TODAY; setControls(); emptyView(); return }
+  if (view.s === 'long') { fromIn.value = '2026-10-01'; toIn.value = '2026-10-31' } else { fromIn.value = '2026-11-01'; toIn.value = '2026-11-03' }
+  dates = datesBetween(fromIn.value, toIn.value)
+  if (view.s === 'loading') { setControls({ busy: true }); loadingView(dates.length, 1); return }
+  if (view.s === 'error') { setControls(); errorView(); return }
+  copied = new Set(); current = null; madeAt = madeAt || nowText()
+  if (view.s === 'copied') {
+    // 11/2 환자현황 신환·90일초진을 복사했고, 지금 재진을 복사함
+    copied = new Set(['0|2026-11-02', '1|2026-11-02']); current = '2|2026-11-02'
+  }
+  setControls({ hasList: true })
+  readyView()
+  if (view.s === 'copied') {
+    const b = document.querySelector(`[data-k="${current}"]`)
+    showToast('복사했어요', `${b.dataset.l} · ${b.dataset.v}`, { stay: true })
+  }
+}
+
+// ── 쪽지 ──
+const toast = $('#toast')
+let toastTimer = null
+function showToast(head, tail, { stay = false, bad = false } = {}) {
+  clearTimeout(toastTimer)
+  toast.className = 'toast' + (bad ? ' bad' : '')
+  toast.innerHTML = `<b>${esc(head)}</b>${tail ? `<span>${esc(tail)}</span>` : ''}`
+  toast.hidden = false
+  if (!stay) toastTimer = setTimeout(() => { toast.hidden = true }, 1800)
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true } catch (_) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.append(ta); ta.select(); let ok = false
+    try { ok = document.execCommand('copy') } catch (_) { ok = false }
+    ta.remove(); return ok
+  }
+}
+
+// ── 눌러 보기 ──
+stage.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button.v')
+  if (!b) return
+  const ok = await copyText(b.dataset.v)
+  if (!ok) { showToast('복사하지 못했어요. 다시 눌러 주세요.', '', { bad: true }); return }
+  if (current) { copied.add(current); const old = document.querySelector(`[data-k="${current}"]`); if (old) { old.classList.remove('now'); old.classList.add('done') } }
+  current = b.dataset.k
+  b.classList.remove('done'); b.classList.add('now')
+  showToast('복사했어요', `${b.dataset.l} · ${b.dataset.v}`)
+})
+make.addEventListener('click', () => {
+  const a = fromIn.value, b = toIn.value
+  const why = !a || !b ? '시작일과 끝일을 골라 주세요.' : a > b ? '시작일이 끝일보다 뒤예요.' : b > TODAY ? '오늘 뒤 날짜는 고를 수 없어요.' : ''
+  if (why) { help.className = 'help why'; help.textContent = why; return }
+  dates = datesBetween(a, b)
+  setControls({ busy: true })
+  let done = 0
+  loadingView(dates.length, done)
+  const step = Math.max(60, Math.min(400, 3000 / dates.length))
+  timer = setInterval(() => {
+    done++
+    if (done < dates.length) { loadingView(dates.length, done); return }
+    clearInterval(timer)
+    copied = new Set(); current = null; madeAt = nowText()
+    view.s = 'ready'; syncUrl()
+    setControls({ hasList: true })
+    readyView()
+  }, step)
+})
+xlsx.addEventListener('click', () => {
+  if (!dates.length) return
+  showToast('엑셀 파일을 받았어요', `ERP마감일지_입력목록_${dates[0]}_${dates[dates.length - 1]}.xlsx`)
+})
+$('#openSettings').addEventListener('click', () => showToast('설정 화면을 새 탭으로 열었어요.', ''))
+document.querySelectorAll('[data-s]').forEach((b) => b.addEventListener('click', () => { view.s = b.dataset.s; render() }))
+document.querySelectorAll('[data-e]').forEach((b) => b.addEventListener('click', () => { view.e = b.dataset.e; view.s = 'error'; render() }))
+document.querySelectorAll('[data-o]').forEach((b) => b.addEventListener('click', () => {
+  view.o = b.dataset.o
+  if (['ready', 'copied', 'long'].includes(view.s)) { syncUrl(); readyView() } else syncUrl()
+}))
+window.addEventListener('resize', () => { const box = $('#tbox'), s = $('#slide'); if (box && s) s.hidden = box.scrollWidth <= box.clientWidth + 1 })
+render()
+})()
+</script>
+</body>
+</html>
