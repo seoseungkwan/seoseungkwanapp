@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RxGroupDef } from '@/types/analysis'
-import { dropoff, type DropoffRow } from './dropoff'
+import { codesByDay, dropoff, dropoffLines, type DropoffRow } from './dropoff'
 
 // 몇 번까지 받나 (stats-insights REQ-6103 AC-6103.1). 환자 번호·날·처방 코드는 모두 지어낸 값이다.
 // 메모리 기간 1/1~6/30, 자료 끝 날 6/30 → '끝난 환자' = 그 묶음을 마지막으로 받은 날이 5/31(6/30 − 30일)보다 앞이거나 같은 환자
@@ -129,5 +129,39 @@ describe('AC-6103.1 dropoff: 묶음마다 처음 받은 신환이 몇 번까지 
       expect(Object.keys(line).sort()).toEqual(['atLeast', 'average', 'drop', 'group', 'n', 'once', 'ten'])
       expect(Object.values(line).flat().every((value) => typeof value === 'number' || value === line.group)).toBe(true)
     }
+  })
+})
+
+// 통계 합계 저장(admin-view REQ-8018 AC-8018.2): 달 줄 dropoff는 대상 환자를 첫 진료 달로 나눠 센다. 나눌 수 있게 두 조각을 내보낸다
+describe('AC-8018.2 dropoff를 나눠 셀 수 있다: codesByDay(대상 환자마다 날 → 처방) · dropoffLines(그 환자들을 묶음마다 센다)', () => {
+  const GROUPS = [MANUAL, SHOCK, NOBODY]
+  const input = { rows: ROWS, first: FIRST, groups: GROUPS, range: RANGE }
+
+  it('AC-8018.2: 두 조각을 이으면 dropoff()와 같다(대상은 첫 내원일이 기간 안인 환자뿐, 자료 끝 날 = 기간 끝)', () => {
+    const patients = codesByDay(input)
+    expect([...patients.keys()].sort((a, b) => a - b)).toEqual([1, 2, 3, 6, 7, 8]) // 4번(기간 앞)·5번(첫 내원일 없음)은 없다
+    expect(patients.get(1)?.get('2026-01-12')).toEqual(['MAN1', 'MAN2'])
+    expect(dropoffLines([...patients.values()], GROUPS, RANGE.to)).toEqual(dropoff(input))
+  })
+
+  it('AC-8018.2: 환자를 둘로 나눠 센 줄의 대상·k회 이상·10회 이상·1회만을 묶음마다 더하면 전체와 같다(평균은 반올림한 값이라 더하지 않는다)', () => {
+    const patients = codesByDay(input)
+    const early = [...patients].filter(([patient]) => FIRST.get(patient)! < '2026-02-01').map(([, days]) => days)
+    const late = [...patients].filter(([patient]) => FIRST.get(patient)! >= '2026-02-01').map(([, days]) => days)
+    const parts = [...dropoffLines(early, GROUPS, RANGE.to), ...dropoffLines(late, GROUPS, RANGE.to)]
+    for (const whole of dropoff(input)) {
+      const mine = parts.filter((line) => line.group === whole.group)
+      expect(mine.reduce((sum, line) => sum + line.n, 0)).toBe(whole.n)
+      expect(mine.reduce((sum, line) => sum + line.ten, 0)).toBe(whole.ten)
+      expect(mine.reduce((sum, line) => sum + line.once, 0)).toBe(whole.once)
+      expect(whole.atLeast.map((_, k) => mine.reduce((sum, line) => sum + line.atLeast[k]!, 0))).toEqual(whole.atLeast)
+    }
+  })
+
+  it('AC-8018.2: 자료 끝 날(asOf)이 앞이면 끝난 환자도 그 날 기준이다 — 고른 환자가 없으면 빈 목록', () => {
+    const patients = [...codesByDay(input).values()]
+    expect(dropoffLines([], GROUPS, RANGE.to)).toEqual([])
+    // 3/31 − 30일 = 3/1: 6번(마지막 5/31)·8번(마지막 3/14)은 그 뒤라 아직 다니는 중으로 본다 → 1·2·3번만
+    expect(dropoffLines(patients, [MANUAL], '2026-03-31')).toEqual([{ group: MANUAL.id, n: 3, atLeast: [3, 2, 1, 0, 0, 0], ten: 0, once: 1, average: 2, drop: 1 }])
   })
 })

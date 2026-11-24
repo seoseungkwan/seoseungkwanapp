@@ -392,6 +392,58 @@ describe('AC-4409.3 가장 새 조각이 아닌 조각은 날 줄 처방 줄의 
   })
 })
 
+// 통계 합계 저장(admin-view REQ-8018 AC-8018.4): 날 줄 sunap·달 줄 dropoff도 read 끝날까지 센 값이라, 가장 새 조각이 아닌 조각은 둘 다 뺀다(열쇠 없음 = 못 셈)
+describe('AC-8018.4 가장 새 조각이 아닌 조각은 날 줄 sunap·달 줄 dropoff를 뺀다', () => {
+  const SUNAP = { visits: 3, first_n: 1, d90_n: 1, ret_n: 1, block_n: 2, pt_n: 1, first_block: 1, d90_block: 0, ret_block: 1 }
+  const DROPOFF = { asOf: '2026-11-09', lines: [{ group: 'g1', n: 2, atLeast: [2, 1, 0, 0, 0, 0], ten: 0, once: 1, average: 1.5, drop: 1 }] }
+  const monthsOf = ({ save }: LoadPart) => [monthOf(save.from), monthOf(save.to)]
+  const daysOf = ({ save }: LoadPart) => [save.from, save.to]
+  const viewFor = (part: LoadPart) =>
+    loaded(part.read, {
+      months: monthsOf(part).map((month) => ({ ...monthRow(month), dropoff: DROPOFF }) as unknown as MonthPayload),
+      days: daysOf(part).map((ymd) => ({ ...dayRow(ymd), sunap: SUNAP }) as unknown as DayPayload),
+    })
+  const newKeys = (input: ReturnType<typeof partSave>) => [...input.months.map((row) => 'dropoff' in row), ...input.days.map((row) => 'sunap' in row)]
+
+  it('AC-8018.4 최근 30일 + 전체 기간(조각 넷): 첫 조각은 sunap·dropoff 그대로, 둘째 ~ 넷째 조각 줄에는 두 열쇠가 없고 다른 칸은 지금 규칙 그대로', () => {
+    const { parts } = planLoad(TODAY, recent30, 'all')
+    expect(parts).toHaveLength(4)
+    parts.forEach((part, i) => {
+      const view = viewFor(part)
+      const saved = partSave(view, part)
+      expect(newKeys(saved)).toEqual(i === 0 ? [true, true, true, true] : [false, false, false, false])
+      const revisit = i === 0 ? REVISIT : UNSURE
+      expect(saved.months).toEqual(monthsOf(part).map((month) => (i === 0 ? { ...monthRow(month), dropoff: DROPOFF } : monthRow(month, revisit))))
+      expect(saved.days).toEqual(daysOf(part).map((ymd) => (i === 0 ? { ...dayRow(ymd), sunap: SUNAP } : dayRow(ymd, revisit))))
+      // Worker 답은 바꾸지 않는다
+      expect(view.months!.every((row) => row.dropoff === DROPOFF)).toBe(true)
+      expect(view.days!.every((row) => row.sunap === SUNAP)).toBe(true)
+    })
+  })
+
+  it('AC-8018.4 2025년 8월 일별 + 지금 보는 기간(조각 둘): 둘째 조각은 두 열쇠가 없고, 조각 하나인 계획은 그대로다', () => {
+    const { parts } = planLoad(TODAY, monthPick('2025-08'), 'view')
+    expect(parts).toHaveLength(2)
+    expect(newKeys(partSave(viewFor(parts[0]), parts[0]))).toEqual([true, true, true, true])
+    expect(newKeys(partSave(viewFor(parts[1]), parts[1]))).toEqual([false, false, false, false])
+    for (const span of ['view', '2y'] as const) {
+      const [only] = planLoad(TODAY, recent30, span).parts
+      const saved = partSave(viewFor(only), only)
+      expect(newKeys(saved)).toEqual([true, true, true, true])
+      expect(saved.days.map((row) => row.sunap)).toEqual([SUNAP, SUNAP])
+      expect(saved.months.map((row) => row.dropoff)).toEqual([DROPOFF, DROPOFF])
+    }
+  })
+
+  it('AC-8018.4 새 열쇠가 없는 옛 줄은 지금처럼 그대로 간다(열쇠를 새로 만들지 않는다)', () => {
+    const { parts } = planLoad(TODAY, recent30, 'all')
+    for (const part of parts) {
+      const view = loaded(part.read, { months: monthsOf(part).map((month) => monthRow(month)), days: daysOf(part).map((ymd) => dayRow(ymd)) })
+      expect(newKeys(partSave(view, part))).toEqual([false, false, false, false])
+    }
+  })
+})
+
 // ── 글 ──────────────────────────────────────────────────
 
 describe('AC-3301.3 최근 30일의 안내 줄 (시안 네 글)', () => {

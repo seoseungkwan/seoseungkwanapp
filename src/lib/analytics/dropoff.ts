@@ -23,8 +23,8 @@ const STEPS = 6 // 1~6회 이상
 const TEN = 10
 const DROP_STEPS = 5 // 가장 많이 빠지는 곳은 1→2 ~ 5→6 가운데
 
-// 대상 환자마다 날 → 그날 받은 처방 코드
-function codesByDay({ rows, first, range }: DropoffInput): Map<number, Map<string, string[]>> {
+// 대상 환자마다 날 → 그날 받은 처방 코드. 대상 = 첫 내원일이 기간 안인 환자(통계 합계 저장 admin-view AC-8018.2가 첫 진료 달로 나눠 센다)
+export function codesByDay({ rows, first, range }: Pick<DropoffInput, 'rows' | 'first' | 'range'>): Map<number, Map<string, string[]>> {
   const inRange = (date: string) => compareYmd(date, range.from) >= 0 && compareYmd(date, range.to) <= 0
   const byPatient = new Map<number, Map<string, string[]>>()
   for (const { patient, date, rxCode } of rows) {
@@ -62,12 +62,17 @@ function lineOf(group: string, counts: readonly number[]): DropoffLine {
   }
 }
 
-export function dropoff(input: DropoffInput): DropoffLine[] {
-  const byPatient = codesByDay(input)
-  const lastDay = addDays(input.range.to, -ENDED_AFTER)
-  return input.groups.flatMap((def) => {
+// 고른 대상 환자들(환자마다 날 → 처방, codesByDay의 값)을 묶음마다 센다. asOf = 자료 끝 날(이 날 − 30일 뒤에 받은 환자는 아직 다니는 중)
+export function dropoffLines(
+  patients: Iterable<ReadonlyMap<string, readonly string[]>>,
+  groups: readonly RxGroupDef[],
+  asOf: string,
+): DropoffLine[] {
+  const lastDay = addDays(asOf, -ENDED_AFTER)
+  const list = [...patients]
+  return groups.flatMap((def) => {
     const counts: number[] = []
-    for (const days of byPatient.values()) {
+    for (const days of list) {
       let count = 0
       let last: string | null = null
       for (const [date, codes] of days) {
@@ -79,4 +84,8 @@ export function dropoff(input: DropoffInput): DropoffLine[] {
     }
     return counts.length === 0 ? [] : [lineOf(def.id, counts)]
   })
+}
+
+export function dropoff(input: DropoffInput): DropoffLine[] {
+  return dropoffLines(codesByDay(input).values(), input.groups, input.range.to)
 }

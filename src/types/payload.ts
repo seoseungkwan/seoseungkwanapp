@@ -1,4 +1,6 @@
 import type { FollowUp, Totals } from './analysis'
+import type { DropoffLine } from './stats'
+import type { SunapRates } from './sunap'
 
 // 병원 계정(서버)에 저장하는 모양 — 달마다·날마다 합계만. lib/payload/validate.ts가 기준이다(정해진 열쇠 밖은 거부).
 // 환자 번호·차트번호·파일 이름은 없다. 비율은 저장하지 않는다(읽을 때 나눈다 — 합과 어긋나지 않게)
@@ -23,7 +25,13 @@ export type MonthPayload = {
   groups: Array<{ id: string; patients: number; newPatients: number; returning: number; followup: FollowUp }> // id 순
   revisit: RevisitPayload
   regions: Array<{ name: string; patients: number }> // 5명 이상만, 이름 순
+  dropoff?: MonthDropoff // 선택 칸(admin-view REQ-8018). 없으면 이 기능 전에 저장했거나 묶음 없이·옛 도우미로 불러온 달('셀 수 없음'). 버전을 올리지 않는다
 }
+
+// 첫 진료가 그 달인 신환의 몇 번까지 받나(통계 탭 몇 번까지 받나와 같은 셈, admin-view REQ-8018). 그 달 전체를 불러왔을 때만 있다.
+// asOf = 센 자료 끝 날(불러온 끝 날, 'YYYY-MM-DD'): 그 날 − 30일보다 뒤에 그 묶음을 받은 환자는 아직 다니는 중이라 빠진다.
+// lines = 묶음 열쇠와 수뿐이다(대상이 없는 묶음 줄은 없다, 묶음 차례). 환자 번호·날 목록은 없다
+export type MonthDropoff = { asOf: string; lines: DropoffLine[] }
 
 // 같은 처방 재방문(fu-rate)의 창: 시작한 다음 날부터 7·14·30일째까지
 export const AGAIN_WINDOWS = [7, 14, 30] as const
@@ -49,6 +57,9 @@ export type DayPayload = {
   groups: Array<{ id: string; patients: number; newPatients: number; returning: number }> // id 순
   revisit: RevisitPayload
   again?: DayAgainPayload // 선택 칸. 없으면 이 기능 전에 저장한 날(0이 아니라 '셀 수 없음'). 버전을 올리지 않는다
+  // 선택 칸(admin-view REQ-8018): 그날 통계 탭 Block 전환 아홉 칸(수납일지 Block·물리치료 묶음으로 센 수). 없으면 이 기능 전에 저장했거나
+  // 묶음을 안 골랐거나 옛 도우미로 불러온 날('셀 수 없음'). 버전을 올리지 않는다
+  sunap?: SunapRates
 }
 
 // 통계 탭 비트 전용 세 칸(환자 구성 · 시간대별 접수 · 원장님별)의 달 합계. stats_months 줄의 sections 칸에 둔다(spec stats-bit-ai REQ-2901·REQ-2902).

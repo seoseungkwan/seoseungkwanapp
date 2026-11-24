@@ -618,3 +618,45 @@ describe('AC-2702.3 requestSections — 가짜 Worker', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 })
+
+// 통계 합계 저장(admin-view REQ-8018 AC-8018.4): 불러오기에도 수납일지 Block·물리치료 묶음 정의를 실어 Worker가 날 줄마다 sunap을 센다
+describe('AC-8018.4 requestLoad — Block·물리치료 묶음 정의는 열쇠·코드만 sunap으로 간다', () => {
+  const NOW = { type: 'load', streamId: REQ.streamId, from: REQ.from, to: REQ.to, today: REQ.today, closeToday: REQ.closeToday, groups: [] }
+
+  it('AC-8018.4: sunap을 주면 copyGroupDef로 열쇠·코드(빼는 처방·조건)만 새로 만들어 싣는다(이름·차례는 안 감)', () => {
+    const fake = fakeWorker()
+    const block = { id: 't00000000000000a1', codes: ['MM042'], out: ['ZZ999'], cond: [{ code: 'MM042', unless: ['B4001'] }], name: '가짜 묶음', sortOrder: 3 }
+    const pt = { id: 't00000000000000a2', codes: ['B4001'], out: [], cond: [] }
+    void requestLoad(fake.like, { ...REQ, sunap: { block, pt } })
+    expect(fake.sent).toEqual([
+      {
+        ...NOW,
+        sunap: { block: { id: block.id, codes: ['MM042'], out: ['ZZ999'], cond: [{ code: 'MM042', unless: ['B4001'] }] }, pt: { id: pt.id, codes: ['B4001'] } },
+      },
+    ])
+    const sent = fake.sent[0] as StatsLoadRequest
+    expect(sent.sunap?.block.codes).not.toBe(block.codes)
+    expect(JSON.stringify(fake.sent)).not.toContain('가짜 묶음')
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it.each([
+    ['sunap: null', { sunap: null }],
+    ['sunap 없음', {}],
+  ])('AC-8018.4: %s이면 sunap 칸이 없다(지금 메시지 모양 그대로)', (_name, over) => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, ...over })
+    expect(fake.sent).toEqual([NOW])
+    expect('sunap' in (fake.sent[0] as Record<string, unknown>)).toBe(false)
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-8018.4: 묶음·keep과 함께 주어도 각 칸은 지금 규칙 그대로다', () => {
+    const fake = fakeWorker()
+    const groups = [{ id: 't00000000000000b1', codes: ['MM042'] }]
+    const sunap = { block: { id: 't00000000000000a1', codes: ['MM042'] }, pt: { id: 't00000000000000a2', codes: ['B4001'] } }
+    void requestLoad(fake.like, { ...REQ, groups, keep: false, sunap })
+    expect(fake.sent).toEqual([{ ...NOW, groups, keep: false, sunap }])
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+})

@@ -91,13 +91,24 @@ function ask<T>(
 
 // 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다). 묶음도 copyGroupDef로 { id, codes }와 빼는 처방·조건(있을 때만)을
 // 골라 새로 만들고(group-exclude AC-3705.1), 주지 않으면 []를 싣는다: 메시지에는 늘 groups 배열이 있다(treatment-trend AC-1205.4·AC-1213.3).
-// keep은 false일 때만 싣는다(Worker 메모리를 바꾸지 않는 조각, stats-load-range AC-3304.2). true·없음이면 지금 메시지 모양 그대로다
+// keep은 false일 때만 싣는다(Worker 메모리를 바꾸지 않는 조각, stats-load-range AC-3304.2). true·없음이면 지금 메시지 모양 그대로다.
+// sunap(수납일지 Block·물리치료 묶음)을 주면 copyGroupDef로 열쇠·코드(빼는 처방·조건)만 새로 만들어 싣는다: Worker가 날 저장 줄마다 그날 Block 전환을 센다
+// (admin-view REQ-8018). 없거나 null이면 열쇠를 두지 않는다(지금 메시지 모양 그대로)
 export function requestLoad(
   worker: WorkerLike,
-  req: { streamId: string; from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[]; keep?: boolean },
+  req: {
+    streamId: string
+    from: string
+    to: string
+    today: string
+    closeToday: boolean
+    groups?: readonly RxGroupDef[]
+    keep?: boolean
+    sunap?: StatsSunapGroups | null
+  },
   opts: { timeoutMs?: number } = {},
 ): Promise<StatsLoaded> {
-  const { streamId, from, to, today, closeToday, groups = [], keep } = req
+  const { streamId, from, to, today, closeToday, groups = [], keep, sunap } = req
   const request: StatsLoadRequest = {
     type: 'load',
     streamId,
@@ -107,6 +118,7 @@ export function requestLoad(
     closeToday,
     groups: groups.map(copyGroupDef),
     ...(keep === false ? { keep: false } : {}),
+    ...(sunap ? { sunap: { block: copyGroupDef(sunap.block), pt: copyGroupDef(sunap.pt) } } : {}),
   }
   return ask(worker, request, (message) => (message.type === 'loaded' ? message.view : undefined), opts.timeoutMs)
 }

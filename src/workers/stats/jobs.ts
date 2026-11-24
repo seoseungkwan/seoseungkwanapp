@@ -18,6 +18,7 @@ import { sunapDoctors, sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
 import { fillGroupCounts } from '@/lib/payload/groupCounts'
+import { dropoffByMonth, sunapByDay, withDaySunap, withMonthDropoff } from '@/lib/payload/statSums'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import { toMonthSections } from '@/lib/payload/toMonthSections'
@@ -124,12 +125,12 @@ function newLinesByDay(patientDays: readonly PatientDay[]): Map<string, number> 
 }
 
 // groups = 화면이 준 묶음 열쇠·코드(없으면 []). 일 줄에는 열쇠마다 한 줄을 채우고(그날 없으면 0줄, treatment-trend AC-1205.4),
-// 달 줄은 aggregate가 준 그대로 둔다
+// 달 줄은 aggregate가 준 그대로 둔다. sunap = 수납일지 Block·물리치료 묶음 정의(없으면 날 줄에 sunap 열쇠가 없다, admin-view REQ-8018)
 export function loadJob(
   text: string,
-  opts: { from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[] },
+  opts: { from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[]; sunap?: StatsSunapGroups },
 ): { view: StatsLoaded; memory: StatsMemory; bit: BitMemory } {
-  const { from, to, today, closeToday, groups = [] } = opts
+  const { from, to, today, closeToday, groups = [], sunap } = opts
   const data = parseStatsRows(text, { from, to })
   const ids = createPatientIds()
   const consumption = toConsumptionRows(data, ids)
@@ -207,6 +208,15 @@ export function loadJob(
             doctors: extra.doctors,
             doctorDays: extra.doctorDays,
           })
+    // 통계 합계 저장(admin-view REQ-8018): 통계 탭과 같은 셈을 저장 줄에 붙인다(세 칸과 같이 v3 이상 답만, v2 답은 열쇠가 없다).
+    // 날 줄 sunap = 그날 Block 전환 아홉 칸(묶음 정의를 실었을 때만). 달 줄 dropoff = 첫 진료가 그달인 신환의 몇 번까지 받나
+    // (묶음을 실었을 때만, 달 전체가 불러온 범위 안인 달만, 자료 끝 날 = 불러온 끝 날). 첫 내원일은 세 칸과 같은 first다
+    if (view.days !== null && sunap !== undefined) {
+      view.days = withDaySunap(view.days, sunapByDay({ from, to, days: patientDays, rows: consumption, block: sunap.block, pt: sunap.pt }))
+    }
+    if (view.months !== null && groups.length > 0) {
+      view.months = withMonthDropoff(view.months, dropoffByMonth({ rows: consumption, first: bit.first, groups, range: { from, to } }))
+    }
   }
   return { view, memory, bit }
 }
@@ -362,13 +372,13 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
       }
     },
 
-    async load({ streamId, from, to, today, closeToday, groups, keep }) {
+    async load({ streamId, from, to, today, closeToday, groups, keep, sunap }) {
       latest = streamId
       let reply: StatsWorkerMessage
       try {
         const text = await textOf(streamId).promise
         if (latest !== streamId) return // 화면이 포기하고 새로 불렀다. 옛 자료로 메모리를 되돌리지 않는다
-        const loaded = loadJob(text, { from, to, today, closeToday, groups: groups ?? [] })
+        const loaded = loadJob(text, { from, to, today, closeToday, groups: groups ?? [], ...(sunap ? { sunap } : {}) })
         // keep: false = 나눠 읽기의 다른 조각. 답만 보내고 처방별·세 칸은 앞서 남긴 조각으로 답한다(AC-3304.1)
         if (keep !== false) {
           memory = loaded.memory

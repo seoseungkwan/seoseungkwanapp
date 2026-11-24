@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, eachDay } from '@/lib/analytics/dates'
 import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
-import type { DayAgainPayload, DayPayload, MonthPayload, MonthSections } from '@/types/payload'
+import type { DayAgainPayload, DayPayload, MonthDropoff, MonthPayload, MonthSections } from '@/types/payload'
 import { StorageError, readCoverage, readDays, readMonths, saveStats, type SupabaseLike } from './stats'
 
 // 통계 숫자 저장·읽기(브라우저 → Supabase). 실제 Supabase에 붙지 않는다 — 가짜 클라이언트가 어느 표에 어떤 칸이
@@ -1082,4 +1085,150 @@ describe('AC-2902.3 파일 저장: 달 줄은 늘 sections: null', () => {
     const rows = writesTo(calls, 'stats_months')[0].rows
     expect(rows.map((row) => [row.month, row.sections])).toEqual([['2026-08', null]])
   })
+})
+
+// ── 통계 합계 저장(admin-view REQ-8018 AC-8018.4): 날 줄 sunap · 달 줄 dropoff는 있어도 없어도 되는 열쇠다(schemaVersion 2 그대로, DB 바꿈 없음) ──
+// 숫자·묶음 열쇠는 모두 지어낸 값이다
+const SUM_SUNAP = { visits: 3, first_n: 1, d90_n: 1, ret_n: 1, block_n: 2, pt_n: 1, first_block: 1, d90_block: 0, ret_block: 1 }
+const SUM_DROPOFF: MonthDropoff = { asOf: '2026-10-31', lines: [{ group: 't00000000000000b1', n: 2, atLeast: [2, 1, 0, 0, 0, 0], ten: 0, once: 1, average: 1.5, drop: 1 }] }
+const sunapDay = (day: string) => dayPayload(day, { sunap: { ...SUM_SUNAP } })
+const dropoffMonth = (month: string) => monthPayload(month, { dropoff: structuredClone(SUM_DROPOFF) })
+
+describe('AC-8018.4 saveStats·readDays·readMonths: 새 열쇠가 있는 줄과 옛 줄을 함께 저장하고 읽는다', () => {
+  it('AC-8018.4 새 열쇠가 있는 날·달 줄과 없는 옛 줄을 한 번에 저장하면 둘 다 검사한 값 그대로 간다', async () => {
+    const { client, calls } = fakeClient()
+    const months = [dropoffMonth('2026-09'), monthPayload('2026-10')]
+    const days = [sunapDay('2026-09-29'), dayPayload('2026-09-30')]
+    const result = await saveStats(saveInput({ months, days, covered: { from: '2026-09-01', to: '2026-10-31' } }), { client })
+    expect(result).toEqual({ saved: 4 })
+    const monthRows = writesTo(calls, 'stats_months')[0].rows
+    expect(monthRows.map((row) => row.payload)).toEqual(months)
+    expect((monthRows[0].payload as MonthPayload).dropoff).toEqual(SUM_DROPOFF)
+    expect('dropoff' in (monthRows[1].payload as MonthPayload)).toBe(false)
+    const dayRows = writesTo(calls, 'stats_days')[0].rows
+    expect(dayRows.map((row) => row.payload)).toEqual(days)
+    expect((dayRows[0].payload as DayPayload).sunap).toEqual(SUM_SUNAP)
+    expect('sunap' in (dayRows[1].payload as DayPayload)).toBe(false)
+  })
+
+  it('AC-8018.4 새 열쇠의 모양이 틀린 줄이 있으면 지금처럼 아무것도 보내지 않고 E-STATS-SAVE-FAILED다', async () => {
+    const { client, calls } = fakeClient()
+    const bad = dayPayload('2026-09-30', { sunap: { ...SUM_SUNAP, visits: 4 } })
+    const error = await failure(saveStats(saveInput({ days: [bad] }), { client }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(calls).toEqual([])
+  })
+
+  it('AC-8018.4 표에 있던 새 열쇠 줄과 옛 줄을 둘 다 읽는다(옛 줄은 열쇠가 없어 화면이 –로 보인다)', async () => {
+    const stored = {
+      stats_days: [storedDay('2026-09-29', { payload: sunapDay('2026-09-29') }), storedDay('2026-09-30')],
+      stats_months: [storedMonth('2026-09', { payload: dropoffMonth('2026-09') }), storedMonth('2026-10')],
+    }
+    const { client } = fakeClient({ stored })
+    const days = await readDays({ from: '2026-09-01', to: '2026-09-30' }, { client })
+    expect(days.dropped).toBe(0)
+    expect(days.rows.map((row) => row.sunap)).toEqual([SUM_SUNAP, undefined])
+    expect('sunap' in days.rows[1]!).toBe(false)
+    const months = await readMonths({ from: '2026-09', to: '2026-10' }, { client })
+    expect(months.dropped).toBe(0)
+    expect(months.rows.map((row) => row.dropoff)).toEqual([SUM_DROPOFF, undefined])
+    expect('dropoff' in months.rows[1]!).toBe(false)
+  })
+
+  it('AC-8018.4 표에 있던 새 열쇠 줄의 모양이 틀리면 그 줄만 빼고 센다(dropped)', async () => {
+    const stored = { stats_days: [storedDay('2026-09-29', { payload: { ...sunapDay('2026-09-29'), sunap: { visits: 1 } } }), storedDay('2026-09-30')] }
+    const { client } = fakeClient({ stored })
+    const { rows, dropped } = await readDays({ from: '2026-09-01', to: '2026-09-30' }, { client })
+    expect(rows.map((row) => row.day)).toEqual(['2026-09-30'])
+    expect(dropped).toBe(1)
+  })
+})
+
+describe('AC-8018.4 하루 줄이 64KB를 넘으면 again만 빼고 sunap은 남긴다', () => {
+  const LIMIT = 65_536
+  const againLine = (code: string): DayAgainPayload['rx'][number] => ({ code, starts: 1, back: [1, 1, 1], more: [1, 2, 3] })
+  const without = (payload: DayPayload, key: 'again' | 'sunap'): DayPayload => {
+    const rest = { ...payload }
+    delete rest[key]
+    return rest
+  }
+  // 처방이 많아(sunap까지 약 51KB) 처방마다 again을 넣으면 한도를 넘는 날
+  function bigDay(): DayPayload {
+    const base = sized(51_000, 'a', (names) => dayPayload('2026-09-30', { rx: names.map((name, i) => ({ ...rxRow(i, name), patients: 1 })) }))
+    return { ...base, sunap: { ...SUM_SUNAP }, again: { ready: [true, true, true], rx: base.rx.map((line) => againLine(line.code)) } }
+  }
+
+  it('AC-8018.4 again을 빼면 한도 안인 날은 again만 빼고 sunap째 보낸다', async () => {
+    const big = bigDay()
+    expect(tableBytes(big)).toBeGreaterThan(LIMIT)
+    expect(tableBytes(without(big, 'again'))).toBeLessThanOrEqual(LIMIT)
+    const { client, calls } = fakeClient()
+    await saveStats(saveInput({ days: [big] }), { client })
+    const [row] = writesTo(calls, 'stats_days')[0].rows
+    expect(row.payload).toEqual(validateDayPayload(without(big, 'again')))
+    expect(row.payload).not.toHaveProperty('again')
+    expect((row.payload as DayPayload).sunap).toEqual(SUM_SUNAP)
+    expect(big.again).toBeDefined() // 넣은 값은 고치지 않는다
+  })
+
+  it('AC-8018.4 크기 안의 날은 again·sunap을 모두 그대로 보낸다', async () => {
+    const small = { ...sunapDay('2026-09-30'), again: { ready: [true, true, true] as [boolean, boolean, boolean], rx: [againLine('AA154')] } }
+    const { client, calls } = fakeClient()
+    await saveStats(saveInput({ days: [small] }), { client })
+    const [row] = writesTo(calls, 'stats_days')[0].rows
+    expect(row.payload).toEqual(small)
+  })
+})
+
+// 진짜 Postgres(PGlite, WASM)에 인증 → 통계 → 달 세 칸 마이그레이션을 그대로 돌려 표의 check 제약이 새 열쇠 줄을 받는지 본다(실제 Supabase에는 붙지 않는다)
+describe('AC-8018.4 DB 제약: 새 열쇠가 있는 줄도 옛 줄도 stats_days·stats_months가 받는다(DB 바꿈 없음)', () => {
+  const migration = (name: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${name}`, import.meta.url)), 'utf-8')
+  const SUPABASE_MOCK = `
+    create role anon nologin;
+    create role authenticated nologin;
+    grant usage on schema public to anon, authenticated;
+    alter default privileges in schema public grant all on tables to anon, authenticated;
+    alter default privileges in schema public grant all on functions to anon, authenticated;
+    create schema auth;
+    grant usage on schema auth to anon, authenticated;
+    create table auth.users (id uuid primary key, email text);
+    create function auth.jwt() returns jsonb language sql stable
+      as $$ select nullif(current_setting('request.jwt.claims', true), '')::jsonb $$;
+    create function auth.uid() returns uuid language sql stable
+      as $$ select nullif(auth.jwt() ->> 'sub', '')::uuid $$;
+  `
+  const USER = '00000000-0000-4000-8000-00000000000a'
+
+  it(
+    'AC-8018.4 운영자가 새 열쇠 줄·옛 줄을 넣고 다시 읽은 payload가 검사를 지나 같은 값이다',
+    async () => {
+      const db = await PGlite.create()
+      try {
+        await db.exec(SUPABASE_MOCK)
+        for (const name of ['20261028000000_auth.sql', '20261101000200_stats.sql', '20261109000000_stats_month_sections.sql']) await db.exec(migration(name))
+        await db.query('insert into auth.users (id, email) values ($1, $2)', [USER, 'fake@fake.test'])
+        const [{ id }] = (
+          await db.query<{ id: string }>(
+            `insert into public.hospitals (owner_id, name, applicant_name, email, status) values ($1, '가짜병원', '가짜신청자', 'fake@fake.test', 'approved') returning id`,
+            [USER],
+          )
+        ).rows
+        const days = [sunapDay('2026-09-29'), dayPayload('2026-09-30')]
+        const months = [dropoffMonth('2026-09'), monthPayload('2026-10')]
+        for (const payload of days) {
+          await db.query(`insert into public.stats_days (hospital_id, day, partial, source, payload) values ($1, $2, false, 'bit', $3::jsonb)`, [id, payload.day, JSON.stringify(payload)])
+        }
+        for (const payload of months) {
+          await db.query(`insert into public.stats_months (hospital_id, month, partial, source, payload) values ($1, $2, false, 'bit', $3::jsonb)`, [id, payload.month, JSON.stringify(payload)])
+        }
+        const storedDays = (await db.query<{ payload: unknown }>('select payload from public.stats_days order by day')).rows.map((row) => validateDayPayload(row.payload))
+        const storedMonths = (await db.query<{ payload: unknown }>('select payload from public.stats_months order by month')).rows.map((row) => validateMonthPayload(row.payload))
+        expect(storedDays).toEqual(days)
+        expect(storedMonths).toEqual(months)
+      } finally {
+        await db.close()
+      }
+    },
+    30_000,
+  )
 })

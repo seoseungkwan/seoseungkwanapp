@@ -6,7 +6,7 @@ import type { ConsumptionRow } from '@/types/consumption'
 import { aggregate } from './aggregate'
 import { groupMatches } from './groupMatch'
 import type { VisitLine } from './patientMix'
-import { sunapDoctors, sunapRates, type SunapDoctorsInput, type SunapRatesInput } from './sunapRates'
+import { addVisit, eachVisit, emptyRates, sunapDoctors, sunapRates, type SunapDoctorsInput, type SunapRatesInput, type SunapRates } from './sunapRates'
 
 // 지어낸 환자·날 줄(통계 Worker의 접수 줄 PatientDay)과 처방 줄(ConsumptionRow). 2026-11-02 월 ~ 11-04 수
 const FROM = '2026-11-02'
@@ -291,4 +291,48 @@ describe('AC-5001.6 lib/sunap·sunapRates — 환자 자료 구역 울타리를 
     },
     120_000,
   )
+})
+
+// 통계 합계 저장(admin-view REQ-8018 AC-8018.1): 날 줄 sunap은 같은 셈을 날마다 나눈 것이다. 나눌 수 있게 환자·날 훑기(eachVisit)를 내보낸다
+describe('AC-8018.1 eachVisit — sunapRates가 세는 환자·날을 하나씩 넘긴다(날마다 나눠 셀 수 있게)', () => {
+  type Line = Parameters<Parameters<typeof eachVisit>[1]>[0]
+  const linesOf = (over: Partial<SunapRatesInput> = {}) => {
+    const lines: Line[] = []
+    eachVisit(input(DAYS, ROWS, over), (line) => lines.push(line))
+    return lines
+  }
+
+  it('AC-8018.1: 기간 안 환자·날마다 한 번, 날·구분·Block·물리치료를 넘긴다', () => {
+    const lines = linesOf()
+    expect(lines).toHaveLength(10)
+    expect(lines.map(({ date, kind, block, pt }) => [date, kind, block, pt])).toEqual([
+      ['2026-11-02', 'new', true, true],
+      ['2026-11-02', 'd90', true, false],
+      ['2026-11-02', 're', true, false],
+      ['2026-11-02', 'new', false, true],
+      ['2026-11-03', 're', false, false],
+      ['2026-11-03', 'd90', true, true],
+      ['2026-11-03', 're', true, false],
+      ['2026-11-04', 'new', false, true],
+      ['2026-11-04', 're', true, true],
+      ['2026-11-04', 're', false, false],
+    ])
+  })
+
+  it('AC-8018.1: 날마다 addVisit으로 모은 아홉 칸의 합은 기간 sunapRates와 같고, 하루만 고른 sunapRates와도 날마다 같다', () => {
+    const byDay = new Map<string, SunapRates>()
+    for (const { date, kind, block, pt } of linesOf()) {
+      const rates = byDay.get(date) ?? emptyRates()
+      addVisit(rates, kind, block, pt)
+      byDay.set(date, rates)
+    }
+    const total = emptyRates()
+    for (const rates of byDay.values()) for (const key of Object.keys(total) as (keyof SunapRates)[]) total[key] += rates[key]
+    expect(total).toEqual(sunapRates(input(DAYS, ROWS)))
+    for (const [date, rates] of byDay) expect(rates).toEqual(sunapRates(input(DAYS, ROWS, { from: date, to: date })))
+  })
+
+  it('AC-8018.1: 기간 밖 날은 넘기지 않는다', () => {
+    expect(new Set(linesOf({ from: '2026-11-03', to: '2026-11-03' }).map((line) => line.date))).toEqual(new Set(['2026-11-03']))
+  })
 })
