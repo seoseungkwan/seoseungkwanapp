@@ -71,3 +71,39 @@ export function explain(code: unknown): { code: string; what: string; how: strin
   const found = Object.prototype.hasOwnProperty.call(ERRORS, shown) ? ERRORS[shown] : OTHER
   return { code: shown, what: found.what, how: found.how }
 }
+
+// --- 의사랑판(spec erp-uisarang design.md 10-4, REQ-4212 AC-4212.6) ---
+// 이 파일은 다른 파일을 불러오지 않으므로 자료원 이름은 uisTypes.ts Source('bit' | 'uisarang')와 같은 꼴을 여기 적는다
+
+export const E_UIS_FOLDER = 'E-UIS-FOLDER'
+export const E_CLOSING_WRONG_SOURCE = 'E-CLOSING-WRONG-SOURCE'
+
+/**
+ * design.md 10-4 표. '{폴더}' 자리는 오류 답에 폴더 자리가 없어 이름만 쓴다(시안 ⑫ 보고서를 모를 때 'ERP마감 폴더의 엑셀이 …'와 같은 꼴)
+ */
+export const UIS_ERRORS: Readonly<Record<string, ErrorText>> = Object.freeze({
+  [E_UIS_FOLDER]: text(
+    'ERP마감 폴더를 만들거나 열지 못했어요.',
+    'ERP 도우미 설치 파일(install.cmd)을 다시 실행해 주세요. 계속되면 이 번호를 알려 주세요.',
+  ),
+  [E_CLOSING_WRONG_SOURCE]: text(
+    '이 PC의 ERP 도우미가 다른 차트 프로그램으로 등록되어 있어요.',
+    '이 PC가 쓰는 차트 프로그램(비트·의사랑)이 맞는지 확인하고 ERP 도우미 설치 파일을 다시 실행해 주세요.',
+  ),
+})
+
+/** 의사랑 자료원에서 두 표(UIS_ERRORS·ERRORS) 어디에도 없는 번호(그 밖) */
+export const UIS_OTHER: ErrorText = text('의사랑 엑셀을 읽지 못했어요.', RETRY_TELL)
+
+const has = (table: Readonly<Record<string, ErrorText>>, code: string) => Object.prototype.hasOwnProperty.call(table, code)
+
+/**
+ * 자료원에 맞는 오류 글. 'bit'이면 explain 그대로. 'uisarang'이면 번호 꼴 검사는 explain과 같고,
+ * UIS_ERRORS에 있으면 그 글 → 지금 ERRORS에 있으면 그 글 → 그 밖은 UIS_OTHER(번호는 그대로)
+ */
+export function explainFor(code: unknown, source: 'bit' | 'uisarang'): { code: string; what: string; how: string } {
+  if (source !== 'uisarang') return explain(code)
+  const shown = typeof code === 'string' && ERROR_CODE.test(code) ? code : E_BRIDGE_BAD_REPLY
+  const found = has(UIS_ERRORS, shown) ? UIS_ERRORS[shown] : has(ERRORS, shown) ? ERRORS[shown] : UIS_OTHER
+  return { code: shown, what: found.what, how: found.how }
+}

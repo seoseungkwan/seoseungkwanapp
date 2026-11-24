@@ -110,3 +110,121 @@ describe('AC-3614.1 errors.ts: design.md 5-2 오류 표 한 곳', () => {
     expect(code).not.toMatch(/\brequire\s*\(/)
   })
 })
+
+// spec erp-uisarang TASK-2 REQ-4212 AC-4212.6: 의사랑 자료원 오류 글(design.md 10-4 표)과 explainFor. explain(비트)은 위 시험 그대로다
+const UIS_DESIGN = readFileSync(path.resolve(SRC, '..', '..', 'specs', 'erp-uisarang', 'design.md'), 'utf8')
+/** 10-4 '{폴더}' 자리: 오류 답에는 폴더 자리가 없어 이름만(시안 ⑫ 보고서를 모를 때 'ERP마감 폴더의 엑셀이 …'와 같은 꼴) */
+const UIS_FOLDER_NAME = 'ERP마감 폴더'
+
+/** design.md(erp-uisarang) 10-4 표: 번호 → 무엇이·어떻게('…' 따옴표를 뗌). '그 밖' 줄은 other */
+function uisTable(): { rows: Record<string, { what: string; how: string }>; other: { what: string; how: string } } {
+  const start = UIS_DESIGN.indexOf('#### 10-4.')
+  const end = UIS_DESIGN.indexOf('#### 10-5.')
+  expect(start, 'design.md 10-4 절을 찾지 못했다').toBeGreaterThan(0)
+  const unquote = (cell: string) => cell.replace(/^'(.*)'$/, '$1').replace('{폴더}', UIS_FOLDER_NAME)
+  const rows: Record<string, { what: string; how: string }> = {}
+  let other: { what: string; how: string } | null = null
+  for (const line of UIS_DESIGN.slice(start, end).split('\n')) {
+    const cells = line.split('|').map((c) => c.trim())
+    if (cells.length < 5 || !(cells[1].startsWith('E-') || cells[1] === '그 밖')) continue
+    const text = { what: unquote(cells[2]), how: unquote(cells[3]) }
+    if (cells[1] === '그 밖') other = text
+    else rows[cells[1]] = text
+  }
+  if (!other) throw new Error("design.md 10-4 '그 밖' 줄이 없다")
+  return { rows, other }
+}
+
+describe('AC-4212.6 explainFor: 의사랑 자료원 오류 글(spec erp-uisarang design.md 10-4)', () => {
+  it('AC-4212.6: UIS_ERRORS는 E-UIS-FOLDER · E-CLOSING-WRONG-SOURCE 둘이고 글은 10-4 표 그대로다', async () => {
+    const { UIS_ERRORS } = await loadErrors()
+    const { rows } = uisTable()
+    expect(Object.keys(rows)).toEqual(['E-UIS-FOLDER', 'E-CLOSING-WRONG-SOURCE'])
+    expect(Object.keys(UIS_ERRORS).sort()).toEqual(Object.keys(rows).sort())
+    for (const [code, text] of Object.entries(rows)) expect(UIS_ERRORS[code], code).toEqual(text)
+  })
+
+  it("AC-4212.6: 의사랑 '그 밖' 글도 10-4 표 그대로다", async () => {
+    const { UIS_OTHER } = await loadErrors()
+    expect(UIS_OTHER).toEqual(uisTable().other)
+    expect(UIS_OTHER).toEqual({ what: '의사랑 엑셀을 읽지 못했어요.', how: '잠시 뒤 다시 해 주세요. 계속되면 이 번호를 알려 주세요.' })
+  })
+
+  it('AC-4212.6: 의사랑 표도 읽기만 된다(고칠 수 없다)', async () => {
+    const { UIS_ERRORS, UIS_OTHER } = await loadErrors()
+    expect(Object.isFrozen(UIS_ERRORS)).toBe(true)
+    expect(Object.isFrozen(UIS_OTHER)).toBe(true)
+    for (const text of Object.values(UIS_ERRORS)) expect(Object.isFrozen(text)).toBe(true)
+  })
+
+  it.each([
+    [
+      'E-UIS-FOLDER',
+      'ERP마감 폴더를 만들거나 열지 못했어요.',
+      'ERP 도우미 설치 파일(install.cmd)을 다시 실행해 주세요. 계속되면 이 번호를 알려 주세요.',
+    ],
+    [
+      'E-CLOSING-WRONG-SOURCE',
+      '이 PC의 ERP 도우미가 다른 차트 프로그램으로 등록되어 있어요.',
+      '이 PC가 쓰는 차트 프로그램(비트·의사랑)이 맞는지 확인하고 ERP 도우미 설치 파일을 다시 실행해 주세요.',
+    ],
+  ])("AC-4212.6: explainFor(%s, 'uisarang')는 그 번호와 10-4 글이다", async (code, what, how) => {
+    const { explainFor, E_UIS_FOLDER, E_CLOSING_WRONG_SOURCE } = await loadErrors()
+    expect([E_UIS_FOLDER, E_CLOSING_WRONG_SOURCE]).toContain(code)
+    expect(explainFor(code, 'uisarang')).toEqual({ code, what, how })
+  })
+
+  it("AC-4212.6: 지금 ERRORS 표의 번호(16개 모두)는 'uisarang'에서도 지금 ERRORS 글 그대로다", async () => {
+    const { explainFor, ERRORS } = await loadErrors()
+    const codes = Object.keys(designTable().rows)
+    expect(codes).toHaveLength(16)
+    for (const code of codes) expect(explainFor(code, 'uisarang'), code).toEqual({ code, ...ERRORS[code] })
+  })
+
+  it.each(['E-UIS-SOMETHING-NEW', 'E-BIT-SOMETHING-NEW', 'E-X', 'E-UIS-FILE-OPEN', 'E-UIS-FOLDER2'])(
+    "AC-4212.6: 두 표 어디에도 없는 번호 %s 는 'uisarang'에서 번호 그대로 의사랑 '그 밖' 글이다(비트 '그 밖' 글이 아님)",
+    async (code) => {
+      const { explainFor, UIS_OTHER, OTHER } = await loadErrors()
+      expect(explainFor(code, 'uisarang')).toEqual({ code, ...UIS_OTHER })
+      expect(UIS_OTHER).not.toEqual(OTHER)
+    },
+  )
+
+  it.each<[string, unknown]>([
+    ['빈 글자', ''],
+    ['소문자', 'e-uis-folder'],
+    ['HTML', '<img src=x>'],
+    ['앞뒤 빈칸', ' E-UIS-FOLDER '],
+    ['숫자', 42],
+    ['null', null],
+    ['undefined', undefined],
+    ['객체', { code: 'E-UIS-FOLDER' }],
+    ['표 밖 물려받은 이름', 'constructor'],
+    ['표 밖 물려받은 이름 2', 'toString'],
+  ])("AC-4212.6: 'uisarang'에서도 오류 번호 모양이 아니면(%s) E-BRIDGE-BAD-REPLY와 지금 글이다", async (_name, code) => {
+    const { explainFor, ERRORS } = await loadErrors()
+    expect(explainFor(code, 'uisarang')).toEqual({ code: 'E-BRIDGE-BAD-REPLY', ...ERRORS['E-BRIDGE-BAD-REPLY'] })
+  })
+
+  it.each<unknown>([
+    'E-UIS-FOLDER',
+    'E-CLOSING-WRONG-SOURCE',
+    'E-HELPER-MISSING',
+    'E-CLOSING-FUTURE-DATE',
+    'E-BIT-SOMETHING-NEW',
+    'e-helper-missing',
+    null,
+    'constructor',
+  ])("AC-4212.6: explainFor(%s, 'bit')는 explain(비트)과 같다", async (code) => {
+    const { explainFor, explain } = await loadErrors()
+    expect(explainFor(code, 'bit')).toEqual(explain(code))
+  })
+
+  it('AC-4212.6: explain(비트)은 그대로 — 의사랑 번호도 지금 비트 그 밖 글이고 ERRORS에 의사랑 번호를 더하지 않았다', async () => {
+    const { explain, ERRORS, OTHER } = await loadErrors()
+    for (const code of ['E-UIS-FOLDER', 'E-CLOSING-WRONG-SOURCE']) {
+      expect(explain(code)).toEqual({ code, ...OTHER })
+      expect(Object.prototype.hasOwnProperty.call(ERRORS, code), code).toBe(false)
+    }
+  })
+})
