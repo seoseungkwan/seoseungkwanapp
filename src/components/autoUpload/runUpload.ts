@@ -27,6 +27,11 @@ import { requestLoad, type WorkerLike } from '@/workers/statsClient'
 export const LOCK_NAME = 'ssk-auto-upload'
 /** 첫 도우미 요청에서 이만큼 지나면 새 일을 시작하지 않는다 */
 export const RUN_MS = 5 * 60_000
+/**
+ * 한 번 돈 끝. 'lane-busy' = 비트 화면이 통로를 쓰는 중이라 잡지 못했거나 도는 중 화면에게 비켜 끊었다 —
+ * 앱 틀이 통로가 풀리기를 기다렸다 다시 해 본다(AC-8021.8). 'ended' = 그 밖 모두(다 됨·할 일 없음·다른 탭·비트 PC 아님·잡지 못함·숨김·떠남·실패)
+ */
+export type RunEnd = 'lane-busy' | 'ended'
 
 /** 원장 길(TASK-17 함수 + 지금 읽기·저장)과 데스크 길(deskUpload.ts + desk 저장)이 같은 모양으로 준다 */
 export type UploadAccess = {
@@ -119,20 +124,21 @@ type Ready = {
 }
 
 /** 한 번 돈다. 무엇이 실패해도 던지지 않는다 */
-export async function runUpload(deps: RunDeps): Promise<void> {
+export async function runUpload(deps: RunDeps): Promise<RunEnd> {
   try {
     const ready = await readAll(deps)
-    if (ready === null) return
-    const run = () => (ready.draft.length === 0 ? claimOnly(deps, ready) : session(deps, ready))
-    if (deps.locks === undefined) {
-      await run()
-      return
+    if (ready === null) return 'ended'
+    const run = async (): Promise<RunEnd> => {
+      if (ready.draft.length > 0) return session(deps, ready)
+      await claimOnly(deps, ready)
+      return 'ended'
     }
-    await deps.locks.request(LOCK_NAME, { ifAvailable: true }, async (lock) => {
-      if (lock !== null) await run()
-    })
+    if (deps.locks === undefined) return await run()
+    const end: RunEnd = await deps.locks.request(LOCK_NAME, { ifAvailable: true }, (lock) => (lock !== null ? run() : 'ended'))
+    return end
   } catch {
     // 알리지 않는다(다음 열기에 다시)
+    return 'ended'
   }
 }
 
@@ -173,9 +179,11 @@ async function claimOnly(deps: RunDeps, ready: Ready): Promise<void> {
 }
 
 // 통로 차례 → 통로 붙이기 → 잡기 → 일을 하나씩 → 알리기 → 닫기
-async function session(deps: RunDeps, ready: Ready): Promise<void> {
+async function session(deps: RunDeps, ready: Ready): Promise<RunEnd> {
   const { access, page, signal, tab, today } = deps
   let halted = false
+  // 비트 화면이 통로를 쓰는 중이라 못 잡았거나 화면에게 비켜 끊었으면 참(통로가 풀리면 다시 해 볼 일)
+  let byScreen = false
   let opened: { bridge: UploadBridge; worker: UploadWorker } | null = null
   let freeLane: (() => void) | null = null
   let haltNow = () => {}
@@ -212,13 +220,16 @@ async function session(deps: RunDeps, ready: Ready): Promise<void> {
     return result as T
   }
 
-  freeLane = deps.lane.enterBackground(interrupt)
-  if (freeLane === null) return
+  freeLane = deps.lane.enterBackground(() => {
+    if (!halted) byScreen = true
+    interrupt()
+  })
+  if (freeLane === null) return 'lane-busy'
   page.addEventListener('visibilitychange', onVisibility)
   signal?.addEventListener('abort', interrupt)
   let final: UploadReport | null = null
   try {
-    if (page.visibilityState !== 'visible' || signal?.aborted) return
+    if (page.visibilityState !== 'visible' || signal?.aborted) return 'ended'
     opened = deps.open()
     const { bridge, worker } = opened
     const startedAt = deps.now()
@@ -228,20 +239,21 @@ async function session(deps: RunDeps, ready: Ready): Promise<void> {
     try {
       const hello = await guard(bridge.hello())
       helperVersion = hello.helperVersion ?? null
+      // 잡기가 false면(다른 PC·다른 의원 비트·묶인 의원을 표시 없이) 아무것도 알리지 않는다
       if (hello.state === 'update-helper') {
         if (await access.claim(tab, null)) {
           final = { ...progressOf(ready.fill, revenueSaved(ready.sales, helperVersion), ready.coverage), error: HELPER_OLD, done: true }
         }
-        return
+        return byScreen ? 'lane-busy' : 'ended'
       }
-      if (hello.state !== 'ready') return
+      if (hello.state !== 'ready') return byScreen ? 'lane-busy' : 'ended'
       const check = await guard(bridge.call('bit.check', {}))
-      if (!check.registered || !check.steps.every((step) => step.ok)) return
+      if (!check.registered || !check.steps.every((step) => step.ok)) return 'ended'
       const code = check.institutionCode
       const mark = typeof code === 'string' && code !== '' ? await bitMarkOf(deps.subtle, code) : null
-      if (halted || !(await access.claim(tab, mark))) return
+      if (halted || !(await access.claim(tab, mark))) return byScreen ? 'lane-busy' : 'ended'
     } catch {
-      return
+      return byScreen ? 'lane-busy' : 'ended'
     }
 
     const tasks = ready.planWith(helperVersion)
@@ -289,6 +301,7 @@ async function session(deps: RunDeps, ready: Ready): Promise<void> {
       }
     }
     final = { ...progress(), error: stopCode ?? chunkCode ?? groupError, done: true }
+    return byScreen ? 'lane-busy' : 'ended'
   } finally {
     page.removeEventListener('visibilitychange', onVisibility)
     signal?.removeEventListener('abort', interrupt)

@@ -63,15 +63,21 @@ describe('AC-4002.6: 목차 자리(SectionAnchor)', () => {
     expect(section.getAttribute('aria-labelledby')).toBe(screen.getByRole('heading', { level: 2 }).id)
   })
 
-  it('AC-4002.6: TOC_SCROLL은 넓은 화면과 휴대폰(max-md:) 두 scroll-margin 값이다', () => {
+  it('AC-4002.6·AC-8008.1: TOC_SCROLL은 넓은 화면·휴대폰(max-md:)·보는 중 띠(group-has-[[data-view-band]]/app:) 세 scroll-margin 값이다', () => {
     const tokens = tocTokens()
-    expect(tokens).toHaveLength(2)
+    expect(tokens).toHaveLength(3)
     expect(tokens[0]).toMatch(/^scroll-mt-/)
     expect(tokens[1]).toMatch(/^max-md:scroll-mt-/)
+    expect(tokens[2]).toMatch(/^group-has-\[\[data-view-band\]\]\/app:scroll-mt-/)
   })
 
   it('AC-4002.6·AC-4411.2: 카드는 바로가기 띠 아래 9px에 선다 — 머리줄 102 + 띠 53(위아래 8 + 링크 36 + 선 1) + 9 = 164px, 휴대폰 94 + 57(6 + 44 + 6 + 1) + 9 = 160px(시안 .s-card scroll-margin 164)', () => {
-    expect(tocTokens()).toEqual(['scroll-mt-41', 'max-md:scroll-mt-40'])
+    expect(tocTokens().slice(0, 2)).toEqual(['scroll-mt-41', 'max-md:scroll-mt-40'])
+  })
+
+  it('AC-8008.1: 보는 중 띠(45px)가 있으면 바로가기 띠가 147px에 붙는 만큼(StatsToc top-36.75) 카드도 45px 더 내려 164 + 45 = 209px에 선다', () => {
+    expect(tocTokens()[2]).toBe('group-has-[[data-view-band]]/app:scroll-mt-52.25')
+    expect(52.25 * 4).toBe(41 * 4 + 45)
   })
 
   it('AC-4002.6: id는 안쪽 Section에 넘기지 않는다(겹친 id 없음). 감싸지 않은 Section에는 id·scroll-margin이 없다', () => {

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { StrictMode } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ViewingProvider } from '@/components/shell/viewing'
 import { loadWorklogDay, saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
 import { BIT_FILL_KEYS, mergeBit } from '@/lib/worklog/bitFill'
 import type { RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
@@ -2034,6 +2035,37 @@ describe('AC-1508.5 비트 채우기·칸 고치기는 크기를 두고 보내�
     expect(memoPt()).toBe('14')
     expect(save).toHaveBeenCalledTimes(4)
     for (const call of save.mock.calls) expect(call.length).toBeLessThan(5)
+  })
+})
+
+describe('AC-8009.1 보는 중 상태 글', () => {
+  const VIEWING = { hospitalId: '00000000-0000-4000-8000-00000000b001', name: '가짜다른의원' }
+  const openViewing = async (cells: Partial<WorklogDay> | null) => {
+    load.mockResolvedValueOnce(cells === null ? null : saved(cells))
+    render(
+      <ViewingProvider viewing={VIEWING}>
+        <WorklogScreen initialToday={TODAY} />
+      </ViewingProvider>,
+    )
+    await settle()
+  }
+
+  it.each<[string, Partial<WorklogDay> | null]>([
+    ['줄 없는 날', null],
+    ['값이 있는 날', { cashIn: '100000', memo: '가상 업무 글' }],
+  ])('AC-8009.1: PC에서 보는 중이면 %s에도 "휴대폰에서는 보기만 할 수 있어요"·"적으면 바로 저장돼요"가 없고 상태 글이 비어 있다(새 글 없음)', async (_label, cells) => {
+    await openViewing(cells)
+    expect(statusText()).toBe('')
+    expect(screen.queryByText('휴대폰에서는 보기만 할 수 있어요')).toBeNull()
+    expect(screen.queryByText('적으면 바로 저장돼요')).toBeNull()
+    expectLocked()
+  })
+
+  it('AC-8009.1: 터치 기기에서 보는 중이어도 휴대폰 보기만 글을 보이지 않는다(보는 중이 먼저)', async () => {
+    media.touch = true
+    await openViewing({})
+    expect(statusText()).toBe('')
+    expect(screen.queryByText('휴대폰에서는 보기만 할 수 있어요')).toBeNull()
   })
 })
 

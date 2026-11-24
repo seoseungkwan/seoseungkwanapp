@@ -797,18 +797,42 @@ describe('AC-8019.4 내 계획 읽기 · 잡기 my_auto_upload_plan · claim_aut
     expect(await claim(T1, M1)).toBe(false)
   })
 
-  it('AC-8019.4: 표시 null(판이 낡은 도우미·번호 없는 의원)은 묶기·검사 없이 잡기만 — 묶인 표시는 그대로, 없으면 다음 표시가 묶인다', async () => {
+  it('AC-8019.4 · AC-8021.4: 묶인 표시가 없으면 표시 null(판이 낡은 도우미·번호 없는 의원)은 묶기·검사 없이 잡기만이고, 다음 표시가 묶인다', async () => {
     await become(A)
     expect(await claim(T1, null)).toBe(true)
     expect(await statusOf(HA)).toMatchObject({ bit_mark: null, lease_by: T1 })
+    // 표시 없이 잡은 줄이 있어도(bit_mark null) 다시 null로 잡는다
+    await become(A)
+    expect(await claim(T1, null)).toBe(true)
     await become(A)
     expect(await claim(T1, M1)).toBe(true)
     expect(await statusOf(HA)).toMatchObject({ bit_mark: M1 })
+  })
+
+  it('AC-8021.4: 그 의원에 묶인 표시가 있으면 표시 null로는 잡지 못한다 — false이고 상태 줄은 한 글자도 그대로다(오류 번호도 안 적음)', async () => {
+    await become(A)
+    expect(await claim(T1, M1)).toBe(true)
     await operator()
     await db.query(`update public.auto_upload_status set lease_until = null, lease_by = null where hospital_id = $1`, [HA])
+    const free = await rawStatus(HA)
     await become(A)
-    expect(await claim(T3, null)).toBe(true)
+    expect(await claim(T3, null)).toBe(false)
+    expect(await rawStatus(HA)).toBe(free)
+    // 잡음이 끝난 줄·잡은 탭 자신이어도 null로는 잡지 못한다
+    await operator()
+    await db.query(`update public.auto_upload_status set lease_until = now() - interval '1 second', lease_by = $2 where hospital_id = $1`, [HA, T3])
+    const ended = await rawStatus(HA)
+    await become(A)
+    expect(await claim(T3, null)).toBe(false)
+    expect(await rawStatus(HA)).toBe(ended)
+    // 같은 표시로는 그대로 잡는다
+    await become(A)
+    expect(await claim(T3, M1)).toBe(true)
     expect(await statusOf(HA)).toMatchObject({ bit_mark: M1, lease_by: T3, error_code: null })
+    // 다른 병원(묶인 표시 없음)은 null로 잡는다
+    await become(B)
+    expect(await claim(T1, null)).toBe(true)
+    expect(await statusOf(HB)).toMatchObject({ bit_mark: null, lease_by: T1 })
   })
 
   it('AC-8019.4: 표시 모양이 아니면(16진 64자 소문자) 22023이고 줄은 생기지 않는다', async () => {

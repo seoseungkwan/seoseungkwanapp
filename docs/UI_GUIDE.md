@@ -24,9 +24,9 @@
 | 금지 | 이유 |
 |------|------|
 | 그라데이션(바탕·글자·선), 원형 빛, 격자 바탕, 유리 효과(blur·`backdrop-filter`), `filter` | 장식이다. "AI가 만든 템플릿" 느낌 **(사용자)** |
-| 카드 그림자, 떠 있는 카드 | 그림자는 떠 있는 층(계정 메뉴·확인 창·툴팁·[전체 메뉴] 판·1분 전 안내·건너뛰기 링크)에만 쓴다. 예외는 통계 화면 카드의 아주 옅은 그림자(`shadow-st-card`) 하나다(아래 '통계 화면(first90)') |
+| 카드 그림자, 떠 있는 카드 | 그림자는 떠 있는 층(계정 메뉴·확인 창·툴팁·[전체 메뉴] 판·1분 전 안내·건너뛰기 링크)에만 쓴다. 예외는 통계 화면(의원 비교 `src/components/admin/compare/**` 포함) 카드의 아주 옅은 그림자(`shadow-st-card`) 하나다(아래 '통계 화면(first90)') |
 | 상자 안 상자(테두리 상자 안에 또 테두리 상자), 같은 카드 반복 | 같은 상자 반복이 템플릿 티의 첫째 원인이다. 안쪽은 선으로 나눈다 |
-| 큰 둥글기(8px 넘는 모서리, 999px 둥근 단추) | 모서리는 4px(조작 요소·패널)와 8px(떠 있는 층)뿐이다. 예외는 대시보드의 비트 읽는 표시 둘(`.bit-read-bar` 2px, `.bit-read-spin` 50%)과 통계 화면(카드 14px·작은 칸 8px·스위치와 꼬리표와 바로가기 링크의 둥근 끝, 아래 '통계 화면(first90)')뿐이다(아래 '움직임 › 비트 읽는 표시') |
+| 큰 둥글기(8px 넘는 모서리, 999px 둥근 단추) | 모서리는 4px(조작 요소·패널)와 8px(떠 있는 층)뿐이다. 예외는 대시보드의 비트 읽는 표시 둘(`.bit-read-bar` 2px, `.bit-read-spin` 50%)과 통계 화면(의원 비교 `src/components/admin/compare/**` 포함 — 카드 14px·작은 칸 8px·스위치와 꼬리표와 바로가기 링크의 둥근 끝, 아래 '통계 화면(first90)')뿐이다(아래 '움직임 › 비트 읽는 표시') |
 | 두 번째 글꼴(IBM Plex Sans KR·Space Grotesk 등) | Pretendard 하나만 쓴다 **(사용자, 2026-10-30)** (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 700 굵기(`font-bold` 등)와 300 이하 굵기 | 글꼴 파일이 400·500·600뿐이라 다른 굵기는 가짜 굵게가 된다 (업무일지 양식 칸은 예외 — 아래 '업무일지 양식'. 급여 명세서 그림도 예외 — ADR-039, `components/staff/pay/PaySlip.tsx` SVG 안의 `SlipPretendard` 700·900만, 아래 '토큰') |
 | 지어낸 숫자(예시 표시 없는 숫자), 실제 화면의 예시 숫자 | 믿고 쓰는 데이터 서비스여야 한다. 예시는 랜딩·로그인 미리보기에서만 "예시" 표시와 함께 쓴다 |
@@ -569,7 +569,7 @@
 ## 통계 화면(first90)
 사용자가 통계 화면 새 시안을 승인했다 **(사용자, 2026-11-14)**. 기준 시안은 `docs/mockups/first90/redesign.html`, 명세는 `specs/first90/design.md` 5절(5-1 토큰 · 5-2 규칙 예외 · 5-3 움직임 · 5-4 차트 기반)이다. 이 절의 예외는 아래 파일에만 해당하고, 다른 화면은 이 문서의 일반 규칙 그대로다.
 
-- **예외 파일**: `src/components/stats/**`·`src/components/revenue/**`(시험 파일 빼고)와 차트 넷 `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`·`ChartLegend.tsx`(범례 색 표시). 그 밖의 파일(대시보드·미리보기·다른 차트·앱 틀·`src/app/(app)/stats/page.tsx` 포함)이 아래 클래스를 쓰면 규칙 시험이 잡는다
+- **예외 파일**: `src/components/stats/**`·`src/components/revenue/**`·`src/components/admin/compare/**`(의원 비교 — 통계 카드를 의원마다 나란히 그려 같은 통계 토큰, admin-view)(시험 파일 빼고)와 차트 넷 `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`·`ChartLegend.tsx`(범례 색 표시). 그 밖의 파일(대시보드·미리보기·다른 차트·앱 틀·`src/app/(app)/stats/page.tsx` 포함)이 아래 클래스를 쓰면 규칙 시험이 잡는다
 - **토큰**(`globals.css` `:root`에 더함, 지금 토큰 값은 그대로)
   - 바탕·글자·선: `--st-canvas` #F4F6F9 · `--st-ink` #172B4D · `--st-ink-2` #3B4A63 · `--st-muted` #5B6B82 · `--st-line` #E5EAF1 · `--st-line-2` #CBD3DF
   - 계열: 신환은 지금 `--accent`, 90일초진 `--st-f90` #0D9488, 재진 `--st-ret` #6B89BF, 참고 금액 `--st-ref` #B7791F · `--st-ref-2` #E9C98F, 주의 글자 `--st-warn-ink` #975A16. 옅은 노랑은 지금 `--warning-soft`

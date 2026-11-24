@@ -132,6 +132,13 @@ describe('AC-009.2 저장 상태 글', () => {
     expect(screen.getByRole('status').textContent).toBe(text)
   })
 
+  it('AC-8009.1: 보는 중(viewing)이면 상태 글이 비어 있다 — 휴대폰 보기만 글·적으면 저장 글이 없고 새 글도 없다', () => {
+    setup({ status: 'viewing', savedAt: SAVED_AT })
+    expect(screen.getByRole('status').textContent).toBe('')
+    expect(screen.queryByText('휴대폰에서는 보기만 할 수 있어요')).toBeNull()
+    expect(screen.queryByText('적으면 바로 저장돼요')).toBeNull()
+  })
+
   it('AC-009.2: 저장 시각이 없는 saved도 빈 시각을 그리지 않는다', () => {
     setup({ status: 'saved', savedAt: null })
     expect(screen.getByRole('status').textContent).toBe('저장했어요')

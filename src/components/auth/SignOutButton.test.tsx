@@ -4,9 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SignOutButton } from './SignOutButton'
 
-// 실제 Supabase에 붙지 않는다. signOut을 부르는지와 그 뒤 어디로 가는지만 본다
-const { signOut } = vi.hoisted(() => ({ signOut: vi.fn() }))
+// 실제 Supabase에 붙지 않는다. signOut을 부르는지와 그 뒤 어디로 가는지만 본다(보기 끝 stopAdminView도 가짜)
+const { signOut, stopAdminView } = vi.hoisted(() => ({ signOut: vi.fn(), stopAdminView: vi.fn() }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { signOut } }) }))
+vi.mock('@/lib/auth/adminView', () => ({ stopAdminView }))
 
 // jsdom의 location.assign은 바꿔 끼울 수 없다 → location을 통째로 가짜로
 const assign = vi.fn()
@@ -15,6 +16,8 @@ const replace = vi.fn()
 beforeEach(() => {
   signOut.mockReset()
   signOut.mockResolvedValue({ error: null })
+  stopAdminView.mockReset()
+  stopAdminView.mockResolvedValue(undefined)
   assign.mockReset()
   replace.mockReset()
   vi.stubGlobal('location', { origin: 'http://localhost:3000', href: 'http://localhost:3000/pending', assign, replace })
@@ -81,6 +84,14 @@ describe('SignOutButton', () => {
     expect(signOut).not.toHaveBeenCalled()
     expect(assign).not.toHaveBeenCalled()
   })
+
+  it('AC-8006.5: 보는 중이 아니면(보기 쿠키 없음) 보기 끝(stopAdminView)을 부르지 않는다', async () => {
+    const user = userEvent.setup()
+    render(<SignOutButton />)
+    await user.click(screen.getByRole('button', { name: '로그아웃' }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(stopAdminView).not.toHaveBeenCalled()
+  })
 })
 
 // admin-view REQ-8006 AC-8006.5: 로그아웃도 보기 쿠키(ssk_view)를 지운다 — 로그아웃을 부르기 전에(다음 로그인이 남의 의원으로 이어지지 않게)
@@ -126,5 +137,36 @@ describe('AC-8006.5 SignOutButton — 보기 쿠키 지우기', () => {
   it('AC-8006.5: 그리기만 해서는 쿠키를 쓰지 않는다', () => {
     render(<SignOutButton />)
     expect(writes).toEqual([])
+    expect(stopAdminView).not.toHaveBeenCalled()
+  })
+
+  it('AC-8006.5: 보는 중이면 보기를 끝내고(stopAdminView 한 번 — 쿠키를 지우기 전, 머리가 남아 있을 때) 그 뒤 쿠키를 지우고 signOut한다', async () => {
+    const order: string[] = []
+    stopAdminView.mockImplementation(async () => {
+      order.push(`stop:${writes.length}`)
+    })
+    signOut.mockImplementation(async () => {
+      order.push(`signOut:${writes.length}`)
+      return { error: null }
+    })
+    const user = userEvent.setup()
+    render(<SignOutButton />)
+    await user.click(screen.getByRole('button', { name: '로그아웃' }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(stopAdminView).toHaveBeenCalledTimes(1)
+    expect(stopAdminView).toHaveBeenCalledWith()
+    expect(order).toEqual(['stop:0', 'signOut:1'])
+    expect(writes).toEqual([CLEAR])
+  })
+
+  it('AC-8006.5: 보기 끝(stopAdminView)이 실패해도 쿠키를 지우고 signOut한 뒤 /login으로 간다(오류는 보이지 않는다)', async () => {
+    stopAdminView.mockRejectedValue(new Error('가짜 보기 끝 실패'))
+    const user = userEvent.setup()
+    render(<SignOutButton />)
+    await user.click(screen.getByRole('button', { name: '로그아웃' }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(writes).toEqual([CLEAR])
+    expect(document.body.textContent).not.toContain('가짜 보기 끝 실패')
   })
 })

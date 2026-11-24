@@ -108,6 +108,116 @@ describe('bitLane: 저절로 올리기가 쥐고 있을 때 (AC-8021.8)', () => 
   })
 })
 
+describe('bitLane: 통로가 풀리면 저절로 올리기에 알림 waitBackground (AC-8021.8)', () => {
+  const turn = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+  it('AC-8021.8: 화면이 있는 동안은 부르지 않고, 마지막 화면이 떠나면 한 번 부른다', async () => {
+    const l = createBitLane()
+    const a = vi.fn()
+    const b = vi.fn()
+    l.enterScreen(a)
+    l.enterScreen(b)
+    const onFree = vi.fn()
+    l.waitBackground(onFree)
+    await turn()
+    expect(onFree).not.toHaveBeenCalled()
+    l.leaveScreen(a)
+    await turn()
+    expect(onFree).not.toHaveBeenCalled()
+    l.leaveScreen(b)
+    await turn()
+    expect(onFree).toHaveBeenCalledTimes(1)
+    // 한 번만 먹는다(다시 붙었다 떠나도 또 부르지 않음)
+    l.enterScreen(a)
+    l.leaveScreen(a)
+    await turn()
+    expect(onFree).toHaveBeenCalledTimes(1)
+    // 그때는 저절로 올리기가 잡을 수 있다
+    expect(l.enterBackground(vi.fn())).toEqual(expect.any(Function))
+  })
+
+  it('AC-8021.8: 한 화면이 떠나고 같은 차례에 다른 화면이 붙으면(탭 옮김) 풀린 것이 아니다 — 그 화면이 떠날 때 부른다', async () => {
+    const l = createBitLane()
+    const a = vi.fn()
+    const b = vi.fn()
+    l.enterScreen(a)
+    const onFree = vi.fn()
+    l.waitBackground(onFree)
+    l.leaveScreen(a)
+    l.enterScreen(b)
+    await turn()
+    expect(onFree).not.toHaveBeenCalled()
+    l.leaveScreen(b)
+    await turn()
+    expect(onFree).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8: 지금 화면이 없으면 다음 차례에 바로 부른다(기다리는 사이 화면이 모두 떠난 경우)', async () => {
+    const l = createBitLane()
+    const onFree = vi.fn()
+    l.waitBackground(onFree)
+    expect(onFree).not.toHaveBeenCalled()
+    await turn()
+    expect(onFree).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8: 돌려준 함수로 거두면 화면이 떠나도 부르지 않는다', async () => {
+    const l = createBitLane()
+    const a = vi.fn()
+    l.enterScreen(a)
+    const onFree = vi.fn()
+    const cancel = l.waitBackground(onFree)
+    cancel()
+    l.leaveScreen(a)
+    await turn()
+    expect(onFree).not.toHaveBeenCalled()
+  })
+
+  it('AC-8021.8: 저절로 올리기가 쥐고 있는 동안은 부르지 않고, 놓인 뒤 화면이 없으면 부른다', async () => {
+    const l = createBitLane()
+    const release = l.enterBackground(vi.fn())!
+    const onFree = vi.fn()
+    l.waitBackground(onFree)
+    await turn()
+    expect(onFree).not.toHaveBeenCalled()
+    release()
+    await turn()
+    expect(onFree).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8: 놓일 때 기다리던 화면이 있으면(화면이 먼저) 부르지 않고, 그 화면이 떠난 뒤 부른다', async () => {
+    const l = createBitLane()
+    const release = l.enterBackground(vi.fn())!
+    const screen = vi.fn()
+    l.enterScreen(screen)
+    const onFree = vi.fn()
+    l.waitBackground(onFree)
+    release()
+    await turn()
+    expect(screen).toHaveBeenCalledTimes(1)
+    expect(onFree).not.toHaveBeenCalled()
+    l.leaveScreen(screen)
+    await turn()
+    expect(onFree).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8021.8: 부른 쪽이 던져도 다른 기다림은 불린다', async () => {
+    const l = createBitLane()
+    const a = vi.fn()
+    l.enterScreen(a)
+    const bad = vi.fn(() => {
+      throw new Error('x')
+    })
+    const good = vi.fn()
+    l.waitBackground(bad)
+    l.waitBackground(good)
+    l.leaveScreen(a)
+    await turn()
+    expect(bad).toHaveBeenCalledTimes(1)
+    expect(good).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('bitLane: 모듈 (AC-8021.8)', () => {
   it('AC-8021.8: 앱이 쓰는 차례 하나를 enterScreen·leaveScreen·enterBackground로 내보낸다(같은 차례)', () => {
     const onFree = vi.fn()
@@ -117,6 +227,18 @@ describe('bitLane: 모듈 (AC-8021.8)', () => {
     const release = lane.enterBackground(vi.fn())
     expect(release).toEqual(expect.any(Function))
     release!()
+  })
+
+  it('AC-8021.8: waitBackground도 같은 차례로 내보낸다', async () => {
+    const screen = vi.fn()
+    lane.enterScreen(screen)
+    const onFree = vi.fn()
+    lane.waitBackground(onFree)
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(onFree).not.toHaveBeenCalled()
+    lane.leaveScreen(screen)
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(onFree).toHaveBeenCalledTimes(1)
   })
 
   it('AC-8021.8: 네트워크·저장소·React·통로 코드를 쓰지 않는 순수 모듈이다', () => {

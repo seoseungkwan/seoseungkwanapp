@@ -16,6 +16,8 @@
 -- 겹침 막기: 다른 PC·탭과는 잡음(lease_by·lease_until, 7분, 일마다 늘림)으로 한 곳만 돈다(한 줄 upsert라 동시에 둘이 잡지 못한다).
 -- 다른 의원 비트 막기: 처음 올린 비트 PC의 요양기관번호 SHA-256(16진 64자 — 번호 글자는 두지 않는다)을 그 병원에 묶고, 다른 표시로
 -- 잡으려 하면 잡지 않고 E-AUTO-OTHER-BIT만 적는다. 표시 없이(null — 판이 낡은 도우미·번호 없는 의원) 잡으면 묶기·검사를 건너뛴다.
+-- 단 그 병원에 이미 묶인 표시가 있으면 null로는 잡지 못한다(false, 아무것도 적지 않음 — 번호를 못 찾는 다른 의원 비트 PC에서
+-- 같은 계정으로 열어도 그 의원 숫자를 덮어쓰지 않게, AC-8021.4).
 -- 상태에는 오류 번호만 적는다(글자는 관리자 화면이 lib/errors.ts에서) — 오류 글·환자 자료가 이 표로 오지 않는다.
 -- 채울 기간을 줄여도 매출·통계 줄(sales_days·stats_*)은 지우지 않는다(사용자 결정). 의원 비교 달 고르기의 가장 이른 달은
 -- 승인된 병원의 stats_days·sales_days 가운데 가장 이른 날의 달 1일이다(지역과 상관없음, 10년 자르기는 화면이 한다).
@@ -72,7 +74,7 @@ as $$
      and public.admin_view_hospital_id() is null
 $$;
 
--- 잡기: 잡으면 true, 다른 탭이 잡고 있거나 다른 의원 비트면 false
+-- 잡기: 잡으면 true, 다른 탭이 잡고 있거나 다른 의원 비트거나 묶인 병원을 표시 없이(null) 잡으려 하면 false
 create or replace function public.claim_auto_upload(p_tab uuid, p_bit_mark text)
 returns boolean language plpgsql security definer set search_path = ''
 as $$
@@ -87,17 +89,20 @@ begin
   if p_bit_mark is not null and p_bit_mark !~ '^[0-9a-f]{64}$' then
     raise exception 'bad bit mark' using errcode = '22023';
   end if;
-  -- 묶인 표시와 다르면 잡지 않고 오류 번호만 적는다(표시·잡음은 그대로)
-  if p_bit_mark is not null then
-    select s.bit_mark into v_mark from public.auto_upload_status s where s.hospital_id = v_hospital;
-    if v_mark is not null and v_mark <> p_bit_mark then
-      update public.auto_upload_status
-         set error_code = 'E-AUTO-OTHER-BIT', error_at = now(), updated_at = now()
-       where hospital_id = v_hospital;
-      return false;
-    end if;
+  select s.bit_mark into v_mark from public.auto_upload_status s where s.hospital_id = v_hospital;
+  -- 묶인 표시가 있는데 표시 없이(null) 부르면 잡지 않는다(아무것도 적지 않음, AC-8021.4)
+  if v_mark is not null and p_bit_mark is null then
+    return false;
   end if;
-  -- 한 줄 upsert: 잡음이 없거나 끝났거나 내 탭이면 잡는다(같은 줄을 두 곳이 함께 잡지 못한다). 처음 표시를 묶는다
+  -- 묶인 표시와 다르면 잡지 않고 오류 번호만 적는다(표시·잡음은 그대로)
+  if v_mark is not null and v_mark <> p_bit_mark then
+    update public.auto_upload_status
+       set error_code = 'E-AUTO-OTHER-BIT', error_at = now(), updated_at = now()
+     where hospital_id = v_hospital;
+    return false;
+  end if;
+  -- 한 줄 upsert: 잡음이 없거나 끝났거나 내 탭이면 잡는다(같은 줄을 두 곳이 함께 잡지 못한다). 처음 표시를 묶는다.
+  -- 표시 검사도 이 줄에 한 번 더 건다(위 읽기와 이 사이에 다른 곳이 표시를 묶어도 null·다른 표시로는 잡지 못한다)
   insert into public.auto_upload_status as s (hospital_id, lease_by, lease_until, bit_mark)
   values (v_hospital, p_tab, now() + interval '7 minutes', p_bit_mark)
   on conflict (hospital_id) do update
@@ -106,7 +111,7 @@ begin
          bit_mark = coalesce(s.bit_mark, excluded.bit_mark),
          updated_at = now()
    where (s.lease_until is null or s.lease_until < now() or s.lease_by = p_tab)
-     and (excluded.bit_mark is null or s.bit_mark is null or s.bit_mark = excluded.bit_mark)
+     and (s.bit_mark is null or s.bit_mark = excluded.bit_mark)
   returning true into v_ok;
   return coalesce(v_ok, false);
 end;

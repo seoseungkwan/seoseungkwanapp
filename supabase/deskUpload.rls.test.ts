@@ -693,7 +693,8 @@ describe('AC-8024.2 계획 · 잡기 · 보고 desk_upload_plan · desk_claim_up
     await resetData()
     const desk = await run(K, deskClaim, deskReport)
     expect(desk).toEqual(owner)
-    expect(desk.answers).toEqual([true, false, false, 'ok', 'ok', 'ok', true, 'ok', true, 'ok'])
+    // 일곱째(탭3·표시 null)는 M1이 묶인 뒤라 false(AC-8021.4) — 여덟째 보고는 잡지 않은 탭이라 아무것도 안 바뀜
+    expect(desk.answers).toEqual([true, false, false, 'ok', 'ok', 'ok', false, 'ok', true, 'ok'])
     expect(desk.states.at(-1)).toMatchObject({ through_day: yesterday, filled_from: monthStart, error_code: null, bit_mark: M1, lease_by: null })
   })
 
@@ -732,10 +733,28 @@ describe('AC-8024.2 계획 · 잡기 · 보고 desk_upload_plan · desk_claim_up
     await become(K)
     expect(await deskClaim(T2, M2)).toBe(false)
     expect(await statusOf(HA)).toMatchObject({ bit_mark: M1, lease_by: null, error_code: 'E-AUTO-OTHER-BIT', has_error_at: true })
-    // 표시 null은 묶기·검사 없이 잡기만
+  })
+
+  it('AC-8021.4: 묶인 표시가 없으면 데스크도 표시 null로 잡고, 묶인 표시가 있으면 null로는 false이며 상태 줄은 한 글자도 그대로다', async () => {
+    // 묶인 표시 없음 → null로 잡기만(묶기 없음)
     await become(K)
-    expect(await deskClaim(T2, null)).toBe(true)
-    expect(await statusOf(HA)).toMatchObject({ bit_mark: M1, lease_by: T2 })
+    expect(await deskClaim(T1, null)).toBe(true)
+    expect(await statusOf(HA)).toMatchObject({ bit_mark: null, lease_by: T1 })
+    // 원장이 M1을 묶은 뒤에는 잡음이 풀려도 null로 잡지 못한다(오류 번호도 안 적음)
+    await operator()
+    await db.query(`update public.auto_upload_status set lease_until = null, lease_by = null where hospital_id = $1`, [HA])
+    await become(A)
+    expect(await ownerClaim(T2, M1)).toBe(true)
+    await operator()
+    await db.query(`update public.auto_upload_status set lease_until = null, lease_by = null where hospital_id = $1`, [HA])
+    const free = await hospitalRows(HA)
+    await become(K)
+    expect(await deskClaim(T3, null)).toBe(false)
+    expect(await hospitalRows(HA)).toEqual(free)
+    // 같은 표시로는 그대로 잡는다
+    await become(K)
+    expect(await deskClaim(T3, M1)).toBe(true)
+    expect(await statusOf(HA)).toMatchObject({ bit_mark: M1, lease_by: T3, error_code: null })
   })
 
   it('AC-8024.2: 표시 모양이 아니면 22023, 보고 값이 틀리면 22023이다(report_auto_upload와 같은 검사)', async () => {

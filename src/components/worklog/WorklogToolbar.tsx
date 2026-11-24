@@ -14,7 +14,8 @@ import type { MemoFontPt } from '@/types/worklog'
 // 날짜 줄 바로 아래 줄 오른쪽 끝에 업무사항 글씨 [가−] 숫자 [가+], 그 아래 잘림 안내 한 줄 (specs/worklog-memo-font REQ-1506·REQ-1507, design.md '날짜 줄').
 // 자리는 시안(docs/mockups/worklog/memo-font.html)과 다르다: 날짜 줄에 [오늘로]·[인쇄]가 있어 한 줄에 다 들어가지 않는다(design.md '시안과 다른 곳')
 
-export type ToolbarStatus = 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed' | 'view-only'
+// 'viewing' = 관리자가 다른 의원을 보는 중(admin-view AC-8009.1): 휴대폰 보기만 글이 맞지 않아 글을 비운다(새 글 없음)
+export type ToolbarStatus = 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed' | 'view-only' | 'viewing'
 
 /** 업무사항 글씨 크기 단추. disabled = 불러오는 중·불러오기 실패, overflow = 업무사항 글이 칸을 넘음(양식이 잰다) */
 export type MemoFontControl = { pt: MemoFontPt; disabled: boolean; overflow: boolean; onStep(step: -1 | 1): void }
@@ -40,9 +41,10 @@ export function statusText(status: ToolbarStatus, savedAt: Date | null): string 
       return time ? `빨간 칸 빼고 저장했어요 · ${time}` : '빨간 칸은 저장하지 않았어요'
     case 'offline':
       return '인터넷이 끊겼어요. 다시 연결되면 저장해요'
-    // 실패는 오류 카드가 말한다. 자리(role="status")는 남겨 다음 글을 읽어 주게 한다
+    // 실패는 오류 카드가 말한다. 보는 중은 말할 저장 상태가 없다. 자리(role="status")는 남겨 다음 글을 읽어 주게 한다
     case 'failed':
     case 'load-failed':
+    case 'viewing':
       return ''
   }
 }
