@@ -1,5 +1,7 @@
-import { todayInKorea } from '@/lib/analytics/dates'
+import { REGION_UNKNOWN, regionOf, roParticle, SIDO_LIST, type Sido } from '@/lib/admin/region'
+import { todayInKorea, weekdayOf } from '@/lib/analytics/dates'
 import type { AdminMark, Application } from '@/lib/auth/admin'
+import type { ViewHospital, ViewLogRow } from '@/lib/auth/adminView'
 
 // 관리자 화면의 순수 계산(탭·칸 글자·완료 문구). 탭·순서는 승인된 목업 docs/mockups/auth/Admin.dc.html,
 // 말끝은 ui-90 시안 말투 "~요"(ui-90 AC-417.1)
@@ -87,4 +89,64 @@ export function phoneText(phone: string | null): string {
   if (!/^[0-9]{9,11}$/.test(phone)) return phone
   const head = phone.startsWith('02') ? 2 : 3
   return `${phone.slice(0, head)}-${phone.slice(head, -4)}-${phone.slice(-4)}`
+}
+
+// ── 다른 의원 보기·지역 칸·본 기록 (spec admin-view REQ-8012, design.md '관리자 화면', 시안 docs/mockups/admin-view ?s=admin-list)
+
+/** 승인 줄 의원 이름 단추의 마우스 글 */
+export function viewTitle(name: string): string {
+  return `${name} 화면 보기 (읽기만)`
+}
+
+/** 내 줄: 보기 목록(admin_view_hospitals is_me)이나 관리자 표시(admin_hospitals is_me) 어느 한쪽이 내 줄이라 하면. 둘 다 없으면 아님 */
+export function isMine(views: readonly ViewHospital[], marks: readonly AdminMark[], hospitalId: string): boolean {
+  return views.some((v) => v.hospitalId === hospitalId && v.mine) || marks.some((m) => m.hospitalId === hospitalId && m.mine)
+}
+
+/** 지역 고르기: 17개(시안 차례) + 맨 끝 '지역 모름'(값 null) */
+export const REGION_CHOICES: readonly { value: Sido | null; label: string }[] = [
+  ...SIDO_LIST.map((sido) => ({ value: sido, label: sido })),
+  { value: null, label: REGION_UNKNOWN },
+]
+
+/** 그 줄의 지역: 관리자가 정한 값 → 주소에서 읽은 시·도 → null(지역 모름). 목록에 없는 줄도 null */
+export function regionOfRow(views: readonly ViewHospital[], hospitalId: string): Sido | null {
+  const v = views.find((x) => x.hospitalId === hospitalId)
+  if (v === undefined) return null
+  return regionOf(v.address, v.regionSet ? v.region : undefined)
+}
+
+/** 지역을 고친 뒤 손에 든 목록: 그 줄만 정한 값으로 바꾼 새 목록(다른 줄은 그대로). 목록에 없던 줄(막 승인한 줄)은 끝에 더한다 */
+export function withRegion(views: readonly ViewHospital[], hospitalId: string, sido: Sido | null): ViewHospital[] {
+  if (!views.some((v) => v.hospitalId === hospitalId)) {
+    return [...views, { hospitalId, name: '', address: null, regionSet: true, region: sido, mine: false }]
+  }
+  return views.map((v) => (v.hospitalId === hospitalId ? { ...v, regionSet: true, region: sido } : v))
+}
+
+/** 완료 줄: '{의원 이름} 지역을 {지역}로/으로 바꿨어요.'(받침 규칙은 roParticle) */
+export function regionDoneMessage(name: string, sido: Sido | null): string {
+  return `${name} 지역을 ${sido ?? REGION_UNKNOWN}${roParticle(sido)} 바꿨어요.`
+}
+
+const WEEKDAY = ['월', '화', '수', '목', '금', '토', '일'] // weekdayOf: 1=월 … 7=일
+const KOREA_TIME = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+
+/** 본 때: DB 시각(UTC) → 한국 시각 'M월 D일 (요일) HH:mm'. 읽을 수 없으면 '—' (날짜는 dates.ts 한 곳) */
+export function viewedAt(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return '—'
+  const ymd = todayInKorea(at)
+  const [, month, day] = ymd.split('-').map(Number)
+  const parts = Object.fromEntries(KOREA_TIME.formatToParts(at).map((p) => [p.type, p.value]))
+  return `${month}월 ${day}일 (${WEEKDAY[weekdayOf(ymd) - 1]}) ${parts.hour}:${parts.minute}`
+}
+
+/** 본 기록: 새 것이 위. 같은 때는 받은 차례, 받은 목록은 그대로 */
+export function newestFirst(rows: readonly ViewLogRow[]): ViewLogRow[] {
+  const time = (r: ViewLogRow) => {
+    const t = new Date(r.startedAt).getTime()
+    return Number.isNaN(t) ? -Infinity : t
+  }
+  return [...rows].sort((a, b) => time(b) - time(a))
 }
