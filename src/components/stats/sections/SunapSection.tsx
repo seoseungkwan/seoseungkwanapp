@@ -82,9 +82,10 @@ const people = (n: number) => `${formatCount(n)}명`
 const dayCount = (n: number) => `${formatCount(n)}일`
 const fraction = (part: number, whole: number) => `${formatCount(part)}/${formatCount(whole)}`
 
-type ClosedSums = { days: number; late: number; first: number; rsvFirst: number; d90: number; rsvD90: number; dates: ReadonlySet<string> }
+export type ClosedSums = { days: number; late: number; first: number; rsvFirst: number; d90: number; rsvD90: number; dates: ReadonlySet<string> }
 
-function sumClosed(days: readonly SunapClosedDay[]): ClosedSums {
+/** 마감한 날의 합. 의원 비교(spec admin-view '대표 숫자 표' 신환 예약률·나란히 보기)도 이 셈을 그대로 쓴다. 비율 글은 sunapView의 sunapPct */
+export function sumClosed(days: readonly SunapClosedDay[]): ClosedSums {
   const sums = { days: days.length, late: 0, first: 0, rsvFirst: 0, d90: 0, rsvD90: 0 }
   for (const { late, totals } of days) {
     if (late) sums.late++
