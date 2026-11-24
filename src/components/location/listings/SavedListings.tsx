@@ -5,6 +5,7 @@
 // 줄마다 [매물 화면 열기](새 창) · 중개사 [주소록에 넣기](매물 중개사 글로 만든 주소록 몸통) · [후보로 저장](후보 더하기 판을 부르는 쪽이 연다)
 import { useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly } from '@/components/shell/viewing'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { areaText } from '@/lib/location/area'
 import { filterByPyeong, type ListingComparison, type PyeongRange } from '@/lib/location/listings'
@@ -59,6 +60,8 @@ export function SavedListings({
   onAddBroker: AddBroker
   onMakeCandidate?: (listing: Listing) => void
 }) {
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 [주소록에 넣기]가 없다([후보로 저장]은 부르는 쪽이 onMakeCandidate를 빼서 없앤다)
+  const readOnly = useReadOnly()
   const [busy, setBusy] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -154,7 +157,7 @@ export function SavedListings({
                     <td className={look.td}>
                       {l.brokerNote === '' ? DASH : <span className="block">{l.brokerNote}</span>}
                       {l.brokerId !== null && <span className={look.sub}>주소록에 있어요</span>}
-                      {body && (
+                      {body && !readOnly && (
                         <button type="button" className={look.textButton} aria-busy={busy === l.id || undefined} onClick={() => void addBroker(l, body)}>
                           주소록에 넣기
                         </button>

@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { isYmd } from '@/lib/analytics/dates'
 import type { CandidateStatus, LocationNote } from '@/types/location'
@@ -34,6 +35,8 @@ const STEP_NEXT = `${STEP} border-line-strong bg-surface text-ink-2 hover:bg-can
 
 function StatusSteps({ status, onStatus }: Pick<ProgressNotesProps, 'status' | 'onStatus'>) {
   const labelId = useId()
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 단계는 보이기만(막힘)이고 [내려놓기]가 없다
+  const readOnly = useReadOnly()
   const at = STATUS_STEPS.findIndex(([s]) => s === status)
   return (
     <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-6 gap-y-3">
@@ -47,6 +50,7 @@ function StatusSteps({ status, onStatus }: Pick<ProgressNotesProps, 'status' | '
             type="button"
             className={i === at ? STEP_CUR : at >= 0 && i < at ? STEP_DONE : STEP_NEXT}
             aria-pressed={i === at}
+            disabled={readOnly}
             onClick={() => {
               if (i !== at) onStatus(s)
             }}
@@ -57,7 +61,7 @@ function StatusSteps({ status, onStatus }: Pick<ProgressNotesProps, 'status' | '
       </div>
       {status === 'dropped' ? (
         <span className={`${ds.chip.neutral} justify-self-start`}>{S.dropped}</span>
-      ) : (
+      ) : readOnly ? null : (
         <button type="button" className={look.button} onClick={() => onStatus('dropped')}>
           {S.drop}
         </button>
@@ -118,36 +122,40 @@ export function ProgressNotes({ status, notes, today, onStatus, onAddNote, onDel
                 {n.day}
               </time>
               <p className="min-w-0 whitespace-pre-wrap break-words text-body text-ink">{n.body}</p>
-              <button type="button" className={look.textButton} aria-label={T.deleteLabel(n.day)} onClick={() => void remove(n.id)}>
-                {T.delete}
-              </button>
+              <WriteOnly>
+                <button type="button" className={look.textButton} aria-label={T.deleteLabel(n.day)} onClick={() => void remove(n.id)}>
+                  {T.delete}
+                </button>
+              </WriteOnly>
             </li>
           ))}
         </ul>
       )}
-      <form className="mt-3 grid grid-cols-[160px_minmax(0,1fr)_auto] items-start gap-2" onSubmit={(e) => void add(e)} noValidate>
-        <input type="date" className={look.input} aria-label={T.dateLabel} value={day} onChange={(e) => setDay(e.currentTarget.value)} />
-        <div className="grid min-w-0 gap-1">
-          <input
-            ref={textRef}
-            type="text"
-            className={look.input}
-            aria-label={T.textLabel}
-            aria-invalid={empty || undefined}
-            placeholder={T.placeholder}
-            maxLength={NOTE_MAX}
-            value={text}
-            onChange={(e) => {
-              setEmpty(false)
-              setText(e.currentTarget.value)
-            }}
-          />
-          {empty && <p className="text-caption font-medium text-negative">{T.empty}</p>}
-        </div>
-        <button type="submit" className={look.button} aria-busy={busy || undefined}>
-          {T.add}
-        </button>
-      </form>
+      <WriteOnly>
+        <form className="mt-3 grid grid-cols-[160px_minmax(0,1fr)_auto] items-start gap-2" onSubmit={(e) => void add(e)} noValidate>
+          <input type="date" className={look.input} aria-label={T.dateLabel} value={day} onChange={(e) => setDay(e.currentTarget.value)} />
+          <div className="grid min-w-0 gap-1">
+            <input
+              ref={textRef}
+              type="text"
+              className={look.input}
+              aria-label={T.textLabel}
+              aria-invalid={empty || undefined}
+              placeholder={T.placeholder}
+              maxLength={NOTE_MAX}
+              value={text}
+              onChange={(e) => {
+                setEmpty(false)
+                setText(e.currentTarget.value)
+              }}
+            />
+            {empty && <p className="text-caption font-medium text-negative">{T.empty}</p>}
+          </div>
+          <button type="submit" className={look.button} aria-busy={busy || undefined}>
+            {T.add}
+          </button>
+        </form>
+      </WriteOnly>
       {failed && (
         <div className="mt-3">
           <ErrorCard code="E-LOC-SAVE-FAILED" />

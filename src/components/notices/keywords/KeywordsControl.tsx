@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { kindsText } from '@/lib/notices/askCheck'
 import { checkKeyword, KEYWORD_LEN, KEYWORD_MAX, normKeyword, RECOMMENDED_KEYWORDS } from '@/lib/notices/keywords'
@@ -13,7 +14,8 @@ import { InfoIcon, PlusIcon, StopIcon, TagIcon, XIcon } from './icons'
 // 쪽 파일이 <NoticesScreen keywords={<KeywordsControl />} />로 '별표만' 바로 뒤에 감싸지 않고 넣는다. 그래서 단추와 칸을 조각(Fragment)으로
 // 돌려준다: 칸은 고르기 첫 줄(flex-wrap)의 형제가 되어 basis-full order-last로 그 줄 바로 아래(출처 칩 위)에 꽉 차게 내려온다.
 // 낱말은 혼자 읽는다(그릴 때 한 번 + notices:changed마다). 넣기 전에 checkKeyword를 거치고 ok일 때만 저장소를 부른다.
-// 저장소는 성공/실패만 준다(DB의 겹침 23505·한도 23514도 false) → 실패는 모두 E-NOTICE-WORDS 상자다. 모든 글은 글자 노드로만 그린다
+// 저장소는 성공/실패만 준다(DB의 겹침 23505·한도 23514도 false) → 실패는 모두 E-NOTICE-WORDS 상자다. 모든 글은 글자 노드로만 그린다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.1)이면 보는 의원의 낱말만 보이고 빼기·더할 칸·추천 낱말이 없다
 
 type Problem = 'dup' | { private: PrivateKind[] } | null
 
@@ -43,6 +45,7 @@ function buttonText(words: string[] | 'failed' | null): string {
 }
 
 export function KeywordsControl() {
+  const readOnly = useReadOnly()
   const [words, setWords] = useState<string[] | 'failed' | null>(null)
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -191,64 +194,70 @@ export function KeywordsControl() {
                         className="inline-flex h-8 items-center gap-0.5 whitespace-nowrap rounded-full bg-accent-soft pr-1 pl-3 text-small font-semibold text-accent-strong"
                       >
                         {w}
-                        <button type="button" aria-label={`${w} 빼기`} onClick={() => void drop(w)} className={REMOVE}>
-                          <XIcon />
-                        </button>
+                        <WriteOnly>
+                          <button type="button" aria-label={`${w} 빼기`} onClick={() => void drop(w)} className={REMOVE}>
+                            <XIcon />
+                          </button>
+                        </WriteOnly>
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <div role="status" className="grid gap-0.5 rounded-control bg-canvas px-3.5 py-3">
                     <b className="text-body font-semibold text-ink">아직 고른 낱말이 없어요</b>
-                    <p className="text-small text-ink-2">추천 낱말을 누르거나 직접 적어 더해 주세요.</p>
+                    <WriteOnly>
+                      <p className="text-small text-ink-2">추천 낱말을 누르거나 직접 적어 더해 주세요.</p>
+                    </WriteOnly>
                   </div>
                 )}
-                <form onSubmit={submit} className="flex max-w-110 gap-2">
-                  <label className="min-w-0 flex-1">
-                    <span className="sr-only">더할 낱말</span>
-                    <input
-                      className={INPUT}
-                      value={text}
-                      maxLength={KEYWORD_LEN}
-                      autoComplete="off"
-                      placeholder="예: 실손보험"
-                      disabled={full}
-                      aria-invalid={problem !== null && !full ? true : undefined}
-                      aria-describedby={problem !== null && !full ? problemId : undefined}
-                      onChange={(e) => {
-                        setText(e.target.value)
-                        setProblem(null)
-                      }}
-                    />
-                  </label>
-                  <button type="submit" disabled={full} className={ds.button.secondary}>
-                    <PlusIcon className="shrink-0" />
-                    더하기
-                  </button>
-                </form>
-                {full ? (
-                  <div role="status" className="flex items-start gap-2.5 rounded-control bg-accent-soft px-4 py-3 text-small">
-                    <InfoIcon className="mt-0.5 shrink-0 text-accent-strong" />
-                    <p className="min-w-0 flex-1 text-ink-2">낱말은 30개까지 고를 수 있어요. 하나를 빼고 더해 주세요.</p>
-                  </div>
-                ) : problem === 'dup' ? (
-                  <p id={problemId} role="alert" className="text-small font-medium text-negative">
-                    이미 고른 낱말이에요
-                  </p>
-                ) : problem !== null ? (
-                  <div id={problemId} role="alert" className="flex items-start gap-2.5 rounded-control bg-negative-soft px-4 py-3 text-small">
-                    <StopIcon className="mt-0.5 shrink-0 text-negative" />
-                    <div className="min-w-0 flex-1">
-                      <b className="block text-body font-semibold text-ink">환자 정보로 보이는 글자가 있어 저장하지 않았어요</b>
-                      <p className="text-ink-2">{`${kindsText(problem.private)}로 보이는 글자를 지우고 다시 눌러 주세요.`}</p>
+                <WriteOnly>
+                  <form onSubmit={submit} className="flex max-w-110 gap-2">
+                    <label className="min-w-0 flex-1">
+                      <span className="sr-only">더할 낱말</span>
+                      <input
+                        className={INPUT}
+                        value={text}
+                        maxLength={KEYWORD_LEN}
+                        autoComplete="off"
+                        placeholder="예: 실손보험"
+                        disabled={full}
+                        aria-invalid={problem !== null && !full ? true : undefined}
+                        aria-describedby={problem !== null && !full ? problemId : undefined}
+                        onChange={(e) => {
+                          setText(e.target.value)
+                          setProblem(null)
+                        }}
+                      />
+                    </label>
+                    <button type="submit" disabled={full} className={ds.button.secondary}>
+                      <PlusIcon className="shrink-0" />
+                      더하기
+                    </button>
+                  </form>
+                  {full ? (
+                    <div role="status" className="flex items-start gap-2.5 rounded-control bg-accent-soft px-4 py-3 text-small">
+                      <InfoIcon className="mt-0.5 shrink-0 text-accent-strong" />
+                      <p className="min-w-0 flex-1 text-ink-2">낱말은 30개까지 고를 수 있어요. 하나를 빼고 더해 주세요.</p>
                     </div>
-                  </div>
-                ) : null}
+                  ) : problem === 'dup' ? (
+                    <p id={problemId} role="alert" className="text-small font-medium text-negative">
+                      이미 고른 낱말이에요
+                    </p>
+                  ) : problem !== null ? (
+                    <div id={problemId} role="alert" className="flex items-start gap-2.5 rounded-control bg-negative-soft px-4 py-3 text-small">
+                      <StopIcon className="mt-0.5 shrink-0 text-negative" />
+                      <div className="min-w-0 flex-1">
+                        <b className="block text-body font-semibold text-ink">환자 정보로 보이는 글자가 있어 저장하지 않았어요</b>
+                        <p className="text-ink-2">{`${kindsText(problem.private)}로 보이는 글자를 지우고 다시 눌러 주세요.`}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </WriteOnly>
                 {saveFailed && <ErrorCard code="E-NOTICE-WORDS" />}
                 <p className="text-caption text-muted">{SPACE_HELP}</p>
               </div>
 
-              {recommended.length > 0 && (
+              {recommended.length > 0 && !readOnly && (
                 <div className="grid min-w-0 content-start gap-2.5">
                   <h3 className={COL_HEAD}>
                     추천 낱말

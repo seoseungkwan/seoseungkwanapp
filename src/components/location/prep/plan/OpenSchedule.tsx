@@ -7,6 +7,7 @@
 // 부품은 props·콜백만 쓴다. 오늘은 부르는 쪽이 한국 날짜로 넘긴다(시계를 읽지 않는다)
 import { useId, type MouseEvent } from 'react'
 import { asOfText } from '@/components/location/common/text'
+import { useReadOnly } from '@/components/shell/viewing'
 import { isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { commaText } from '@/lib/location/money'
 import { buildSchedule, daysUntilOpen, toggleTaskDone, type OpenTaskId } from '@/lib/location/schedule'
@@ -41,6 +42,8 @@ function daysLine(openOn: string | null, today: string): string | null {
 
 export function OpenSchedule({ openOn, today, done, onOpenOn, onDone, onOpenLaw }: OpenScheduleProps) {
   const uid = useId()
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 개원 날짜 칸은 읽기만, 할 일 체크는 막힘
+  const readOnly = useReadOnly()
   const headId = `${uid}-head`
   const dateId = `${uid}-date`
   const rows = openOn === null ? [] : buildSchedule(openOn, today, done)
@@ -71,6 +74,7 @@ export function OpenSchedule({ openOn, today, done, onOpenOn, onDone, onOpenLaw 
             id={dateId}
             type="date"
             className={look.date}
+            readOnly={readOnly}
             value={openOn ?? ''}
             onChange={(e) => onOpenOn(isYmd(e.target.value) ? e.target.value : null)}
           />
@@ -97,6 +101,7 @@ export function OpenSchedule({ openOn, today, done, onOpenOn, onDone, onOpenLaw 
                       type="checkbox"
                       className={look.check}
                       checked={row.done}
+                      disabled={readOnly}
                       aria-label={T.doneLabel(row.text)}
                       onChange={() => onDone(toggleTaskDone(done, row.id))}
                     />

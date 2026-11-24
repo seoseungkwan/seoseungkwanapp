@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { formatCount } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { EXPIRY_WINDOW_DAYS, expiryText, inventoryAlerts, type AlertRow } from '@/lib/inventory/alerts'
@@ -15,7 +16,8 @@ import type { InvItem } from '@/types/inventory'
 // 스스로 물품을 읽어(loadInventory) 목록 차례(sortItems)로 inventoryAlerts에 넘긴다. 처음 분류 넣기는 목록 도구 몫이라 여기서는 seed: false로 읽는다
 // (분류가 없으면 물품도 없어 챙길 것도 없다 — 두 곳이 같은 때 처음 분류를 넣으려 다투지 않게).
 // [주문함]은 '주문하세요' 줄에만 있다(총괄 결정). 누르면 ordered_at을 적고 그 줄은 칩 '주문함 m/d' + [주문 취소]로 맨 아래, 수에서 빠진다.
-// 기한 줄은 정보만(단추 없음), 주문함과 상관없이 그대로 남는다. 저장이 되면 onChanged로 알린다(목록 표의 상태 칩도 다시 읽게)
+// 기한 줄은 정보만(단추 없음), 주문함과 상관없이 그대로 남는다. 저장이 되면 onChanged로 알린다(목록 표의 상태 칩도 다시 읽게).
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.3)이면 [주문함]·[주문 취소]가 없고 줄·칩만 보인다
 
 type Props = { today: string; reloadKey?: number; onChanged?: () => void }
 type Loaded = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; items: InvItem[] }
@@ -63,6 +65,7 @@ export function AlertBar({ today, reloadKey, onChanged }: Props) {
   const [saveFailed, setSaveFailed] = useState(false)
   const busy = useRef(false)
   const alive = useRef(false)
+  const readOnly = useReadOnly()
 
   useEffect(() => {
     alive.current = true
@@ -164,6 +167,7 @@ export function AlertBar({ today, reloadKey, onChanged }: Props) {
                 <span className="text-small text-muted">{item.vendor ?? ''}</span>
                 <span className="justify-self-end">
                   {row.kind === 'low' &&
+                    !readOnly &&
                     (done ? (
                       <button
                         type="button"

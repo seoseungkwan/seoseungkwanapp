@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { RISK_CHECKS, checkOf, type CleanChecks } from '@/lib/location/checklist'
 import { IROS_URL, NEW_TAB } from '@/lib/location/links'
 import { look } from './look'
@@ -45,6 +46,8 @@ function flushMemo(dirty: { current: boolean }, latest: { current: Latest }) {
 
 export function ContractRisk({ terms, checks, onToggle, onTerms, onOpenLaw }: ContractRiskProps) {
   const titleId = useId()
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 임대 조건 메모는 읽기만(고치지 않으니 칸을 떠나도 저장하지 않는다)
+  const readOnly = useReadOnly()
   const memoId = useId()
   const [memo, setMemo] = useState(() => memoOf(terms))
   const dirty = useRef(false)
@@ -92,6 +95,7 @@ export function ContractRisk({ terms, checks, onToggle, onTerms, onOpenLaw }: Co
               id={memoId}
               className={look.textarea}
               maxLength={MEMO_MAX}
+              readOnly={readOnly}
               placeholder={T.memoPlaceholder}
               value={memo}
               onChange={(e) => {

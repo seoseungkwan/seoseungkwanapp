@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { mustSeeText } from '@/lib/notices/keywords'
 import { numberSlot, sourcesText } from '@/lib/notices/view'
@@ -20,6 +21,8 @@ import { SummaryBox } from './SummaryBox'
 // 쪽 파일이 id를 넘긴다. openNotice로 글 하나를 읽고, 읽으면 markRead로 읽음을 적는다(저장소가 notices:changed를 알린다).
 // PC 배치 하나: 왼쪽 칸 규칙 상자 → 요약 → AI에게 묻기, 오른쪽 칸 메모 → 올라온 곳. 폰 전용 모양은 없다(2026-11-21 사용자 지시).
 // 모든 글(제목·요약·답·메모)은 글자 노드로만 그린다. 글이 없거나 읽기 실패면 E-NOTICE-READ 상자와 [다시 읽기]
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.1)이면 읽음을 적지 않고(markRead 없음) [별표]·AI에게 묻기 칸이 없다.
+// 보는 의원이 별표한 글은 별표 표시(단추 아님)만, 메모는 읽기만 칸으로 보인다
 
 const BACK_TO = '/notices'
 
@@ -39,6 +42,7 @@ function BackLink() {
 }
 
 function Opened({ notice }: { notice: NoticeView }) {
+  const readOnly = useReadOnly()
   const [starred, setStarred] = useState(notice.mark.starred)
   const [starFailed, setStarFailed] = useState(false)
   const [memo, setMemo] = useState(notice.mark.memo)
@@ -92,17 +96,30 @@ function Opened({ notice }: { notice: NoticeView }) {
                 {related && <span className={ds.chip.accent}>정형외과 의원 관련</span>}
               </p>
             )}
-            <div className="mt-1 flex flex-wrap gap-2">
-              <button type="button" aria-pressed={starred} className={starButton} onClick={() => void toggleStar()}>
-                <StarIcon on={starred} />
-                {starred ? '별표함' : '별표'}
-              </button>
-            </div>
+            {readOnly ? (
+              starred && (
+                <p className="mt-1 flex flex-wrap gap-2">
+                  <span className={ds.chip.warning}>
+                    <StarIcon on />
+                    별표함
+                  </span>
+                </p>
+              )
+            ) : (
+              <div className="mt-1 flex flex-wrap gap-2">
+                <button type="button" aria-pressed={starred} className={starButton} onClick={() => void toggleStar()}>
+                  <StarIcon on={starred} />
+                  {starred ? '별표함' : '별표'}
+                </button>
+              </div>
+            )}
             {starFailed && <ErrorCard code="E-NOTICE-SAVE" />}
           </header>
           {notice.ruleHits.length > 0 && <RuleBox noticeId={notice.id} rules={notice.ruleHits} checkedAt={notice.mark.rulesCheckedAt} />}
           <SummaryBox notice={notice} />
-          <AskBox noticeId={notice.id} readMode={notice.readMode} onToMemo={(answer) => setMemo((now) => appendAnswer(now, answer))} />
+          <WriteOnly>
+            <AskBox noticeId={notice.id} readMode={notice.readMode} onToMemo={(answer) => setMemo((now) => appendAnswer(now, answer))} />
+          </WriteOnly>
         </article>
         <aside className="grid min-w-0 gap-4">
           <MemoBox noticeId={notice.id} value={memo} onChange={setMemo} savedAt={notice.mark.memoAt} />
@@ -118,6 +135,7 @@ type Loaded = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; notice
 export function NoticeDetail({ id }: { id: string }) {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const readOnly = useReadOnly()
 
   useEffect(() => {
     let alive = true
@@ -130,12 +148,12 @@ export function NoticeDetail({ id }: { id: string }) {
           return
         }
         setLoaded({ kind: 'ready', notice: found })
-        void markRead(found.id)
+        if (!readOnly) void markRead(found.id)
       })
     return () => {
       alive = false
     }
-  }, [id, attempt])
+  }, [id, attempt, readOnly])
 
   if (loaded.kind === 'ready') return <Opened key={`${loaded.notice.id}-${attempt}`} notice={loaded.notice} />
 

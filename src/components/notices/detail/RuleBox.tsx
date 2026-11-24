@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useId, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { checkRules } from '@/lib/storage/notices'
 import { readNoticeRules, seeRuleChanges } from '@/lib/storage/ruleChanges'
@@ -18,7 +19,8 @@ import { RuleChangeCard } from './RuleChangeCard'
 // 차례: 사람이 봐야 함(노랑) → 저절로 바뀜(파랑, 카드는 RuleChangeCard) → 살펴보는 중(회색) → 바꿀 것 없음(회색, 처음엔 접힘). 줄이 있는 상자만 그린다.
 // [확인했어요]는 내 확인 시각만 저장한다(checkRules, 실패면 E-NOTICE-SAVE). [점검 규칙 보기]는 설정의 '점검 규칙' 칸(notices 기본값 17).
 // 읽은 줄에 우리 병원이 아직 안 본, 되돌리지 않은 바뀐 판이 있으면 seeRuleChanges를 한 번 부른다(대시보드 파랑 띠가 빠진다. 실패는 알리지 않는다).
-// 모든 글(제목·까닭 — AI가 쓴 글)은 글자 노드로만 그린다
+// 모든 글(제목·까닭 — AI가 쓴 글)은 글자 노드로만 그린다.
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.1)이면 seeRuleChanges를 부르지 않고 [확인했어요]·[되돌리기]/[다시 적용]이 없다(상자 글은 그대로)
 
 const RULE_SETTINGS = '/settings#rule-settings-title'
 
@@ -103,10 +105,12 @@ function HumanBox({ noticeId, rows, checkedAt: firstCheckedAt }: { noticeId: str
           점검 규칙 보기
           <ArrowIcon />
         </Link>
-        <button type="button" className={ds.button.secondarySmall} aria-busy={saving ? true : undefined} onClick={() => void confirm()}>
-          <CheckIcon />
-          확인했어요
-        </button>
+        <WriteOnly>
+          <button type="button" className={ds.button.secondarySmall} aria-busy={saving ? true : undefined} onClick={() => void confirm()}>
+            <CheckIcon />
+            확인했어요
+          </button>
+        </WriteOnly>
       </div>
     </section>
   )
@@ -190,6 +194,7 @@ export type RuleBoxProps = { noticeId: string; rules: RuleHit[]; checkedAt: stri
 export function RuleBox({ noticeId, rules, checkedAt }: RuleBoxProps) {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const readOnly = useReadOnly()
 
   useEffect(() => {
     let alive = true
@@ -202,12 +207,12 @@ export function RuleBox({ noticeId, rules, checkedAt }: RuleBoxProps) {
           return
         }
         setLoaded({ kind: 'ready', view: found })
-        if (found.rows.some(unseenChange)) void seeRuleChanges(noticeId).catch(() => false)
+        if (!readOnly && found.rows.some(unseenChange)) void seeRuleChanges(noticeId).catch(() => false)
       })
     return () => {
       alive = false
     }
-  }, [noticeId, rules, attempt])
+  }, [noticeId, rules, attempt, readOnly])
 
   if (loaded.kind === 'loading') return null
 

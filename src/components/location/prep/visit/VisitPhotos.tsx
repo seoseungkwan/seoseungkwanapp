@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
 import type { LocationPhoto } from '@/types/location'
 import { look } from './look'
 import { CameraIcon } from './parts'
@@ -101,35 +102,39 @@ export function VisitPhotos({ photos, today, shrink, onAddPhoto, onDeletePhoto }
                 <span className="block truncate">{p.label}</span>
                 {p.takenOn && <small className="block text-caption text-muted">{monthDayText(p.takenOn)}</small>}
               </p>
-              <button type="button" className={look.photoDelete} aria-label={T.deletePhotoLabel(p.label)} onClick={() => void remove(p.id)}>
-                {T.deletePhoto}
-              </button>
+              <WriteOnly>
+                <button type="button" className={look.photoDelete} aria-label={T.deletePhotoLabel(p.label)} onClick={() => void remove(p.id)}>
+                  {T.deletePhoto}
+                </button>
+              </WriteOnly>
             </div>
           </div>
         ))}
-        <button
-          type="button"
-          className={look.photoAdd}
-          aria-busy={busy || undefined}
-          onClick={() => {
-            if (!running.current) input.current?.click()
-          }}
-        >
-          <CameraIcon />
-          <span>{T.addPhoto}</span>
-        </button>
-        <input
-          ref={input}
-          type="file"
-          accept={PHOTO_ACCEPT}
-          multiple
-          hidden
-          onChange={(e) => {
-            const files = Array.from(e.currentTarget.files ?? [])
-            e.currentTarget.value = ''
-            void upload(files)
-          }}
-        />
+        <WriteOnly>
+          <button
+            type="button"
+            className={look.photoAdd}
+            aria-busy={busy || undefined}
+            onClick={() => {
+              if (!running.current) input.current?.click()
+            }}
+          >
+            <CameraIcon />
+            <span>{T.addPhoto}</span>
+          </button>
+          <input
+            ref={input}
+            type="file"
+            accept={PHOTO_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? [])
+              e.currentTarget.value = ''
+              void upload(files)
+            }}
+          />
+        </WriteOnly>
       </div>
       {error && (
         <div className="mt-3">

@@ -6,6 +6,7 @@
 // 고친 칸 글은 받은 값이 같아질 때까지 들고 있어서, 부모가 새 값을 주기 전에 다른 칸을 고쳐도 앞서 고친 칸이 빠지지 않는다
 import { useEffect, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly } from '@/components/shell/viewing'
 import type { Candidate } from '@/types/location'
 import { look } from './look'
 import { Section } from './Section'
@@ -57,6 +58,8 @@ function pendingOf(c: TermsCandidate, d: Drafts, sentJson: string | undefined): 
 }
 
 export function TermsTable({ candidates, onSaveTerms }: { candidates: readonly TermsCandidate[]; onSaveTerms: SaveTerms }) {
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 칸은 읽기만(고치지 않으니 칸을 떠나도 저장하지 않는다)
+  const readOnly = useReadOnly()
   const live = candidates.filter((c) => c.status !== 'dropped')
   const [drafts, setDrafts] = useState<Drafts>({})
   const [failed, setFailed] = useState(false)
@@ -149,6 +152,7 @@ export function TermsTable({ candidates, onSaveTerms }: { candidates: readonly T
                                   className={look.inputSmall}
                                   aria-label={`${c.name} ${row.label} ${word}`}
                                   maxLength={TERM_MAX}
+                                  readOnly={readOnly}
                                   placeholder={side === 'want' ? '바라는 것' : undefined}
                                   value={drafts[k] ?? termOf(c.terms, row.key)[side]}
                                   onChange={(e) => {

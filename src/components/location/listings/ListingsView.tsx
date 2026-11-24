@@ -9,8 +9,10 @@
 //   onAddBroker(listingId, b)   — 같은 주소록 넣기 뒤 그 매물의 brokerId를 잇는다
 //   onSaveTerms(candidateId, t) — updateCandidate(id, { terms: t }) (t는 terms 전체, terms.memo 포함)
 //   onMakeCandidate(listing)    — 후보 더하기 판을 '붙여 넣은 매물에서 고르기'로 연다
-// 실패는 던지면 된다(그 묶음에 E-LOC-SAVE-FAILED 오류 카드, 적은 값은 그대로)
+// 실패는 던지면 된다(그 묶음에 E-LOC-SAVE-FAILED 오류 카드, 적은 값은 그대로).
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 매물 붙여 넣기 묶음과 [주소록에 넣기]가 없고 협상표 칸은 읽기만이다
 import { useState } from 'react'
+import { WriteOnly } from '@/components/shell/viewing'
 import { compareListings, filterByPyeong } from '@/lib/location/listings'
 import type { Candidate, Listing } from '@/types/location'
 import type { BrokerBody } from './broker'
@@ -56,7 +58,9 @@ export function ListingsView({ listings, candidates, places, defaultPlaceId, onS
   return (
     <div className={look.grid}>
       <NaverFinder places={places} defaultPlaceId={defaultPlaceId} />
-      <PasteForm onSave={onSave} />
+      <WriteOnly>
+        <PasteForm onSave={onSave} />
+      </WriteOnly>
       <SavedListings
         listings={listings}
         shown={shown}

@@ -12,6 +12,7 @@
 // 후보 줄마다(내려놓은 후보 포함) [지우기] → 확인 창(DeleteCandidateDialog) → onDelete(후보 id)(AC-7914.3, TASK-93).
 // 견줄 후보 고르기(2~4곳)는 이 화면에서만 쓰는 고름이라 저장하지 않는다
 import { useMemo, useState, type ReactNode } from 'react'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { areaText } from '@/lib/location/area'
@@ -218,14 +219,16 @@ export function CandidateCompare({ candidates, listings, rule, deptRule, homeEsw
                     )}
                   </span>
                   <span className="text-small">{T.droppedTag}</span>
-                  <div className="flex gap-2">
-                    <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'watching')}>
-                      {T.restore}
-                    </button>
-                    <button type="button" className={SMALL_DANGER} onClick={() => setAsking(c)}>
-                      {T.delete}
-                    </button>
-                  </div>
+                  <WriteOnly>
+                    <div className="flex gap-2">
+                      <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'watching')}>
+                        {T.restore}
+                      </button>
+                      <button type="button" className={SMALL_DANGER} onClick={() => setAsking(c)}>
+                        {T.delete}
+                      </button>
+                    </div>
+                  </WriteOnly>
                 </div>
               ))}
             </details>
@@ -482,6 +485,8 @@ function Progress({
   onStatus: CandidateCompareProps['onStatus']
   onAskDelete: (c: Candidate) => void
 }) {
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 진행 단계는 보이기만(막힘)이고 [내려놓기]·[지우기]가 없다
+  const readOnly = useReadOnly()
   const cur = STEPS.indexOf(c.status)
   const saved = dayText(c.createdAt)
   const when = [c.addressNote.trim(), saved ? T.saved(saved) : ''].filter((t) => t !== '').join(' · ')
@@ -502,6 +507,7 @@ function Progress({
             className={i === cur ? STEP_CUR : i < cur ? STEP_DONE : STEP_TODO}
             aria-pressed={i === cur}
             data-done={i < cur ? 'true' : undefined}
+            disabled={readOnly}
             onClick={() => {
               if (s !== c.status) onStatus(c.id, s)
             }}
@@ -510,14 +516,16 @@ function Progress({
           </button>
         ))}
       </div>
-      <div className="flex gap-2">
-        <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'dropped')}>
-          {T.drop}
-        </button>
-        <button type="button" className={SMALL_DANGER} onClick={() => onAskDelete(c)}>
-          {T.delete}
-        </button>
-      </div>
+      <WriteOnly>
+        <div className="flex gap-2">
+          <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'dropped')}>
+            {T.drop}
+          </button>
+          <button type="button" className={SMALL_DANGER} onClick={() => onAskDelete(c)}>
+            {T.delete}
+          </button>
+        </div>
+      </WriteOnly>
     </div>
   )
 }

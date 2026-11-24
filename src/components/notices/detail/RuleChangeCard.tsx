@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { fromText } from '@/lib/notices/ruleView'
 import { setRuleReverted } from '@/lib/storage/ruleChanges'
@@ -13,7 +14,8 @@ import { safeDateTimeText } from './parts'
 // [되돌리기]·[다시 적용]은 우리 병원 표시만 바꾼다(setRuleReverted). 기다리는 동안 그 단추만 aria-busy이고 다시 눌러도 한 번만 부른다.
 // 성공하면 카드가 바로 바뀐 모양(되돌린 시각은 지금), 실패하면 카드 안에 E-RULE-AUTO-SAVE 오류 상자이고 모양은 그대로다.
 // 되돌리기 전: 전 = 흐린 지운 줄, 후 = 굵게 / 되돌린 뒤: 반대. 되돌린 카드 제목은 원래 규칙 제목(ruleHits)이다.
-// 모든 글(제목·전·후·까닭 — AI가 쓴 글)은 글자 노드로만 그린다. 아이콘은 공용 Icon의 reload(되돌리기는 좌우를 뒤집어 거꾸로 도는 화살표)
+// 모든 글(제목·전·후·까닭 — AI가 쓴 글)은 글자 노드로만 그린다. 아이콘은 공용 Icon의 reload(되돌리기는 좌우를 뒤집어 거꾸로 도는 화살표).
+// 다른 의원을 보는 중(읽기만, admin-view AC-8010.1)이면 [되돌리기]/[다시 적용]이 없다(보는 의원의 되돌림 표시는 그대로)
 
 const card = 'grid gap-2 rounded-control border px-3 py-3'
 const cardOn = `${card} border-accent/20 bg-surface`
@@ -76,16 +78,18 @@ export function RuleChangeCard({ row, originalTitle }: RuleChangeCardProps) {
         <span className="min-w-0 whitespace-pre-wrap break-words text-subtitle font-semibold text-ink">{reverted ? originalTitle : row.title}</span>
         <span className="text-caption text-muted">{row.ruleId}</span>
         {reverted && <span className={ds.chip.neutral}>우리 병원은 되돌림</span>}
-        <button
-          type="button"
-          className={`ml-auto ${ds.button.secondarySmall}`}
-          aria-label={reverted ? `${row.ruleId} 다시 적용` : `${row.ruleId} 되돌리기`}
-          aria-busy={saving ? true : undefined}
-          onClick={() => void toggle()}
-        >
-          <Icon name="reload" size={14} className={reverted ? undefined : '-scale-x-100'} />
-          {reverted ? '다시 적용' : '되돌리기'}
-        </button>
+        <WriteOnly>
+          <button
+            type="button"
+            className={`ml-auto ${ds.button.secondarySmall}`}
+            aria-label={reverted ? `${row.ruleId} 다시 적용` : `${row.ruleId} 되돌리기`}
+            aria-busy={saving ? true : undefined}
+            onClick={() => void toggle()}
+          >
+            <Icon name="reload" size={14} className={reverted ? undefined : '-scale-x-100'} />
+            {reverted ? '다시 적용' : '되돌리기'}
+          </button>
+        </WriteOnly>
       </div>
       <dl className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt className={term}>전</dt>

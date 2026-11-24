@@ -11,6 +11,7 @@
 // 부품은 props·콜백만 쓴다: 칸을 떠날 때 바뀐 비용이 있으면 onSave(아는 열쇠·칸 범위의 원 정수만)를 한 번 부른다.
 // 밖에서 다른 비용이 오면(다른 후보) 그 값으로 다시 그리고, 넘긴 비용이 그대로 되돌아오면 고치던 칸을 그대로 둔다
 import { useId, useState } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { m2ToPyeong } from '@/lib/location/area'
 import { COST_KEYS, calcCosts, checkCosts, costFieldText, parseCostInput, type CostKey, type Costs } from '@/lib/location/costs'
 import { commaText, manText, wonText } from '@/lib/location/money'
@@ -77,6 +78,8 @@ const validArea = (m2: number | null) => (m2 !== null && Number.isFinite(m2) && 
 
 export function OpenCosts({ costs, areaM2, listing, onSave }: OpenCostsProps) {
   const uid = useId()
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 칸은 읽기만(고치지 않으니 칸을 떠나도 저장하지 않는다)
+  const readOnly = useReadOnly()
   const saved = checkCosts(costs)
   const savedKey = keyOf(saved)
   const [state, setState] = useState(() => fresh(saved))
@@ -131,6 +134,7 @@ export function OpenCosts({ costs, areaM2, listing, onSave }: OpenCostsProps) {
             type="text"
             inputMode={field.unit === 'rate' ? 'decimal' : 'numeric'}
             autoComplete="off"
+            readOnly={readOnly}
             className={look.number}
             value={state.texts[field.key]}
             aria-invalid={bad || undefined}

@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { BUILDING_CHECKS, HOW_MAX, checkOf, countChecks, type CleanChecks } from '@/lib/location/checklist'
 import { look } from './look'
 import { LawLink, SectionHead } from './parts'
@@ -18,6 +19,8 @@ export type BuildingTableProps = {
 
 export function BuildingTable({ checks, onCycle, onHow, onHowDone, onOpenLaw }: BuildingTableProps) {
   const titleId = useId()
+  // 다른 의원을 보는 중(읽기만, admin-view AC-8010.2)이면 O·X 단추는 막히고 '어떻게 알았나' 칸은 읽기만
+  const readOnly = useReadOnly()
   return (
     <section aria-labelledby={titleId} className="min-w-0">
       <SectionHead id={titleId} title={T.title} aside={T.aside} />
@@ -42,7 +45,7 @@ export function BuildingTable({ checks, onCycle, onHow, onHowDone, onOpenLaw }: 
                   </td>
                   <td className={`${look.td} text-ink-2`}>{item.need}</td>
                   <td className={look.tdCenter}>
-                    <button type="button" className={look.oxButton} aria-label={T.oxLabel(item.label, v)} onClick={() => onCycle(item.id)}>
+                    <button type="button" className={look.oxButton} aria-label={T.oxLabel(item.label, v)} disabled={readOnly} onClick={() => onCycle(item.id)}>
                       <span aria-hidden="true" className={look.ox[v]}>
                         {T.mark[v]}
                       </span>
@@ -54,6 +57,7 @@ export function BuildingTable({ checks, onCycle, onHow, onHowDone, onOpenLaw }: 
                       className={look.cellInput}
                       aria-label={T.howLabel(item.label)}
                       maxLength={HOW_MAX}
+                      readOnly={readOnly}
                       value={checks.how?.[item.id] ?? ''}
                       onChange={(e) => onHow(item.id, e.currentTarget.value)}
                       onBlur={onHowDone}

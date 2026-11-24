@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import type { IconName } from '@/components/common/Icon'
 import { ToolRow } from '@/components/patients/ToolRow'
+import { useReadOnly } from '@/components/shell/viewing'
 import { AlertBar } from './AlertBar'
 import { BitCodePicker } from './BitCodePicker'
 import { CountTool } from './CountTool'
@@ -22,6 +23,8 @@ import { ReceiptsTool } from './ReceiptsTool'
 // - 세기: [입고 적기] = 주소를 ?tool=in으로 바꾸고 ReceiptsTool을 "사진 없이 적기"로 연다. 세기 도구는 한 번 열면 숨기기만 해서
 //   입고를 적고 돌아와도 적던 센 수가 그대로다(입고를 저장하면 다시 읽어 경고가 풀린다).
 // - 저장 뒤 다시 읽기: 저장한 쪽이 아닌 도구의 reloadKey를 올린다. 목록·챙길 것은 제가 저장한 것은 스스로 고쳐 그린다(챙길 것은 다시 읽는 동안 줄이 접혀 [주문함]마다 깜빡이지 않게)
+// - 다른 의원을 보는 중(읽기만, admin-view AC-8010.3): 도구마다 쓰기 단추를 숨기고 처음 분류 넣기 없이 읽는다. [양식 받기]도 { seed: false }로 읽는다.
+//   엑셀 미리 보기·비트 코드 판·"사진 없이 적기"는 여는 단추가 없어 열리지 않는다
 
 export type InventoryTool = 'list' | 'count' | 'in' | 'month'
 
@@ -49,6 +52,7 @@ export function InventoryScreen({ today }: { today: string }) {
   const params = useSearchParams()
   const router = useRouter()
   const tool = inventoryToolFrom(params?.getAll('tool') ?? [])
+  const readOnly = useReadOnly()
 
   const [saves, setSaves] = useState<Record<SavedBy, number>>({ items: 0, alerts: 0, other: 0 })
   const [excelFile, setExcelFile] = useState<File | null>(null)
@@ -82,10 +86,10 @@ export function InventoryScreen({ today }: { today: string }) {
     if (templating.current) return
     templating.current = true
     setTemplateFailed(false)
-    const ok = await downloadTemplate()
+    const ok = await (readOnly ? downloadTemplate({ seed: false }) : downloadTemplate())
     templating.current = false
     setTemplateFailed(!ok)
-  }, [])
+  }, [readOnly])
 
   const onBitPick = useCallback(() => {
     // 연 단추(머리 줄 또는 빈 상태의 [비트 코드에서 고르기])를 기억해 닫은 뒤 초점을 돌린다
@@ -116,7 +120,7 @@ export function InventoryScreen({ today }: { today: string }) {
 
   let body = null
   if (tool === 'list') {
-    body = excelFile ? (
+    body = excelFile && !readOnly ? (
       <ExcelPreview
         file={excelFile}
         onDone={() => {
@@ -144,11 +148,11 @@ export function InventoryScreen({ today }: { today: string }) {
           }}
           onBitPick={onBitPick}
         />
-        {bitOpen && <BitCodePicker onAdded={otherChanged} onClose={closeBit} />}
+        {bitOpen && !readOnly && <BitCodePicker onAdded={otherChanged} onClose={closeBit} />}
       </>
     )
   } else if (tool === 'in') {
-    body = <ReceiptsTool today={today} startManual={manual} onChanged={otherChanged} />
+    body = <ReceiptsTool today={today} startManual={manual && !readOnly} onChanged={otherChanged} />
   } else if (tool === 'month') {
     body = <MonthlyTool today={today} />
   }
