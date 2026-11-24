@@ -254,6 +254,110 @@ public class UisDayReadTests
         Assert.Equal(JsonValueKind.Null, data.GetProperty("uis").GetProperty("checks").GetProperty("rsvRows").ValueKind);
     }
 
+    // ---- 예약일 날짜 찾기·못 찾으면 조회일 라벨로(AC-4208.1·AC-4208.4, design 2-1 고침 15) ------------------------
+
+    /// <summary>환자별 예약 표: 제목 · (label이 있으면) 조회일 라벨 · 머리글 · 예약일 칸이 days인 환자 줄 · 끝 '합계' 줄.</summary>
+    private static IReadOnlyList<IReadOnlyList<XlsCell>> RsvPatientRows(string? label, params object?[] days)
+    {
+        var charts = new[] { "9000001", "9000002", "9000003" };
+        var rows = new List<IReadOnlyList<XlsCell>> { Row("예약환자통계 (환자별)") };
+        if (label != null) rows.Add(Row("[조 회 일] " + label));
+        rows.Add(Row("예약일", "차트번호", "방문여부"));
+        for (var i = 0; i < days.Length; i++) rows.Add(Row(days[i], charts[i], "방문"));
+        rows.Add(Row("합계", null, null));
+        return rows;
+    }
+
+    [Fact(DisplayName = "AC-4208.1 시각 붙은 예약일(오후 2:30·초·'년월일')이 모두 마감 일자면 rsvPatients ok · from·to = 그날 · 실예약환자수 = 서로 다른 차트번호")]
+    public void RsvPatientsWithTimes()
+    {
+        using var rig = new DayRig();
+        rig.All();
+        rig.Made(DayRig.RsvPatients, RsvPatientRows("2026-11-23 ~ 2026-11-23", "2026-11-23 오후 2:30", "2026/11/23 09:00:00", "2026년 11월 23일 14:30"));
+        var result = rig.Read(Usual());
+        var data = Data(result);
+        DayKit.Dump("rsvTimes", Day, result);
+
+        Assert.Equal("ok", State(data, "rsvPatients"));
+        Assert.Equal(Day, ReportOf(data, "rsvPatients").GetProperty("from").GetString());
+        Assert.Equal(Day, ReportOf(data, "rsvPatients").GetProperty("to").GetString());
+        Assert.Equal(3, N(data.GetProperty("reservations").GetProperty("patients")));
+        Assert.Empty(rig.Folder.Names);
+        NoMarkers(Text(result), "답");
+        Assert.All(rig.Notes, note => NoMarkers(note, "기록 줄"));
+    }
+
+    [Fact(DisplayName = "AC-4208.4 어느 줄의 예약일 칸에서도 날짜를 못 찾고 조회일 라벨이 마감 일자 하루면 ok · from·to = 라벨(멈추지 않음)")]
+    public void RsvPatientsNoDateLabelOnDay()
+    {
+        using var rig = new DayRig();
+        rig.All();
+        rig.Made(DayRig.RsvPatients, RsvPatientRows("2026-11-23 ~ 2026-11-23", "오후 2:30", null, "내일"));
+        var result = rig.Read(Usual());
+        var data = Data(result);
+        DayKit.Dump("rsvLabelOk", Day, result);
+
+        Assert.Equal("ok", State(data, "rsvPatients"));
+        Assert.Equal(Day, ReportOf(data, "rsvPatients").GetProperty("from").GetString());
+        Assert.Equal(Day, ReportOf(data, "rsvPatients").GetProperty("to").GetString());
+        Assert.Equal(3, N(data.GetProperty("reservations").GetProperty("patients")));
+        Assert.Empty(rig.Folder.Names);
+        NoMarkers(Text(result), "답");
+        Assert.All(rig.Notes, note => NoMarkers(note, "기록 줄"));
+    }
+
+    [Fact(DisplayName = "AC-4208.4 예약일 날짜를 못 찾고 조회일 라벨이 다른 날이면 otherDate · from·to = 라벨")]
+    public void RsvPatientsNoDateLabelOtherDay()
+    {
+        using var rig = new DayRig();
+        rig.All();
+        rig.Made(DayRig.RsvPatients, RsvPatientRows("2026-11-24 ~ 2026-11-25", "14:30", "오전 9:00"));
+        var result = rig.Read(Usual());
+        var data = Data(result);
+        DayKit.Dump("rsvLabelOther", Day, result);
+
+        Assert.Equal("otherDate", State(data, "rsvPatients"));
+        Assert.Equal("2026-11-24", ReportOf(data, "rsvPatients").GetProperty("from").GetString());
+        Assert.Equal("2026-11-25", ReportOf(data, "rsvPatients").GetProperty("to").GetString());
+        Assert.Null(N(data.GetProperty("reservations").GetProperty("patients")));
+        Assert.Empty(rig.Folder.Names);
+        NoMarkers(Text(result), "답");
+    }
+
+    [Fact(DisplayName = "AC-4208.4 예약일 날짜를 못 찾고 조회일 라벨도 없으면 ok · from·to = null")]
+    public void RsvPatientsNoDateNoLabel()
+    {
+        using var rig = new DayRig();
+        rig.All();
+        rig.Made(DayRig.RsvPatients, RsvPatientRows(null, "14:30", null));
+        var result = rig.Read(Usual());
+        var data = Data(result);
+        DayKit.Dump("rsvNoLabel", Day, result);
+
+        Assert.Equal("ok", State(data, "rsvPatients"));
+        Assert.Equal(JsonValueKind.Null, ReportOf(data, "rsvPatients").GetProperty("from").ValueKind);
+        Assert.Equal(JsonValueKind.Null, ReportOf(data, "rsvPatients").GetProperty("to").ValueKind);
+        Assert.Equal(2, N(data.GetProperty("reservations").GetProperty("patients")));
+        NoMarkers(Text(result), "답");
+    }
+
+    [Fact(DisplayName = "AC-4208.4 조건이 '전체'가 아니면(notAll) 날짜를 못 찾아도 notAll 그대로 · from·to = 라벨")]
+    public void RsvPatientsNoDateNotAll()
+    {
+        using var rig = new DayRig();
+        rig.All();
+        rig.Made(DayRig.RsvPatients, Sheet(
+            Row("예약환자통계 (환자별)"),
+            Row("[조 회 일] 2026-11-23 ~ 2026-11-23", null, "[외/입 구분] 외래"),
+            Row("예약일", "차트번호", "방문여부"),
+            Row("14:30", "9000001", "방문")));
+        var data = Data(rig.Read(Usual()));
+
+        Assert.Equal("notAll", State(data, "rsvPatients"));
+        Assert.Equal(Day, ReportOf(data, "rsvPatients").GetProperty("from").GetString());
+        Assert.Null(N(data.GetProperty("reservations").GetProperty("patients")));
+    }
+
     [Fact(DisplayName = "AC-4202.4 조건이 '전체'가 아닌 환자별 엑셀(notAll)도 읽자마자 지우고 value에 그 값")]
     public void NotAllPatientsAreDeleted()
     {

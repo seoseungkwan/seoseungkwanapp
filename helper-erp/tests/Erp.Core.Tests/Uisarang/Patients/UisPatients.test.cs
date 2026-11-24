@@ -269,38 +269,78 @@ public class UisPatientsTests
         Assert.False(UisPatients.ReadRsv(Fake("rsv-patients-other-day.xls"), new DateTime(2026, 11, 24)).AllOnDay);
     }
 
-    [Theory(DisplayName = "AC-4208.1 예약일 칸 앞 10글자(. / → -)가 마감 일자면 그날: 날짜만·시각 붙음·점·빗금·요일 붙음")]
+    /// <summary>시험 글 → 예약일 칸 값: "" = 빈 칸, "oadate" = 2026-11-23 14:30의 엑셀 날짜 숫자, "n:값" = 숫자 칸, 나머지는 글자 칸.</summary>
+    private static object? RsvCell(string text)
+    {
+        if (text.Length == 0) return null;
+        if (text == "oadate") return new DateTime(2026, 11, 23, 14, 30, 0).ToOADate();
+        if (text.StartsWith("n:", StringComparison.Ordinal)) return double.Parse(text.Substring(2), System.Globalization.CultureInfo.InvariantCulture);
+        return text;
+    }
+
+    [Theory(DisplayName = "AC-4208.1 예약일 칸 어디서든 날짜를 찾으면 그날(design 2-1 고침 15): 시각·오전/오후·초·요일·'년월일'·시각 앞·두 자리 연도·여덟 자리·연도 없는 월-일·엑셀 날짜 숫자")]
     [InlineData("2026-11-23")]
     [InlineData("2026-11-23 14:30")]
-    [InlineData("2026.11.23")]
+    [InlineData("2026-11-23 오후 2:30")]
     [InlineData("2026/11/23 09:00:00")]
-    [InlineData("2026-11-23(월)")]
+    [InlineData("2026.11.23")]
+    [InlineData("2026.11.23(월) 14:30")]
+    [InlineData("2026. 11. 23. 오후 2:30:00")]
+    [InlineData("2026년 11월 23일 14:30")]
+    [InlineData("14:30 2026-11-23")]
+    [InlineData("26-11-23 14:30")]
+    [InlineData("20261123")]
+    [InlineData("20261123 1430")]
+    [InlineData("11/23 14:30")]
+    [InlineData("11-23(월) 오전 9:00")]
+    [InlineData("11월 23일")]
+    [InlineData("11/23/2026")]
+    [InlineData("oadate")]
+    [InlineData("n:46349")]
     public void RsvDayForms(string text)
     {
-        var facts = UisPatients.ReadRsv(RsvSheet(Row("2026-11-23", "9000001", "방문"), Row(text, "9000002", "방문")), Day);
+        Assert.Equal((DateTime?)Day, UisPatients.RsvDate(C(RsvCell(text)), Day.Year));
+        var facts = UisPatients.ReadRsv(RsvSheet(Row("2026-11-23", "9000001", "방문"), Row(RsvCell(text), "9000002", "방문")), Day);
         Assert.Equal(2, facts.Rows);
         Assert.True(facts.AllOnDay);
     }
 
-    [Theory(DisplayName = "AC-4208.1 환자 줄 하나라도 예약일이 마감 일자가 아니면(다른 날·빈 칸·날짜 아닌 글·다른 꼴·숫자 칸) AllOnDay = false")]
-    [InlineData("2026-11-24")]
-    [InlineData("2026-11-22 23:59")]
-    [InlineData("")]
-    [InlineData("내일")]
-    [InlineData("11/23/2026")]
-    [InlineData("20261123")]
-    [InlineData("number")]
-    public void RsvOtherDay(string text)
+    [Theory(DisplayName = "AC-4208.1 환자 줄 하나라도 예약일에서 찾은 날짜가 마감 일자가 아니면 AllOnDay = false(다른 날·시각 붙은 다른 날·연도 없는 다른 날·엑셀 날짜 숫자 다른 날)")]
+    [InlineData("2026-11-24", 2026, 11, 24)]
+    [InlineData("2026-11-24 09:00", 2026, 11, 24)]
+    [InlineData("2026-11-22 23:59", 2026, 11, 22)]
+    [InlineData("11-24 오전 9:00", 2026, 11, 24)]
+    [InlineData("n:46350.5", 2026, 11, 24)]
+    public void RsvOtherDay(string text, int year, int month, int date)
     {
-        object? cell = text switch
-        {
-            "" => null,
-            "number" => 46349.0,
-            _ => text,
-        };
-        var facts = UisPatients.ReadRsv(RsvSheet(Row("2026-11-23", "9000001", "방문"), Row(cell, "9000002", "방문")), Day);
+        Assert.Equal((DateTime?)new DateTime(year, month, date), UisPatients.RsvDate(C(RsvCell(text)), Day.Year));
+        var facts = UisPatients.ReadRsv(RsvSheet(Row("2026-11-23", "9000001", "방문"), Row(RsvCell(text), "9000002", "방문")), Day);
         Assert.Equal(2, facts.Rows);
         Assert.False(facts.AllOnDay);
+    }
+
+    [Theory(DisplayName = "AC-4208.1 예약일 칸에서 날짜를 못 찾으면(빈 칸·'내일'·시각만·달력에 없는 날·숫자가 붙은 조각·엑셀 날짜 범위 밖 숫자) 판단에서 뺀다 — 다른 줄이 그날이면 AllOnDay = true")]
+    [InlineData("")]
+    [InlineData("내일")]
+    [InlineData("14:30")]
+    [InlineData("오후 2:30")]
+    [InlineData("2026-13-01")]
+    [InlineData("2026-02-30")]
+    [InlineData("120261123")]
+    [InlineData("2026-11-234")]
+    [InlineData("n:5")]
+    [InlineData("n:90000")]
+    public void RsvNoDateLeftOut(string text)
+    {
+        Assert.Null(UisPatients.RsvDate(C(RsvCell(text)), Day.Year));
+        var facts = UisPatients.ReadRsv(RsvSheet(Row("2026-11-23", "9000001", "방문"), Row(RsvCell(text), "9000002", "방문")), Day);
+        Assert.Equal(2, facts.Rows);
+        Assert.True(facts.AllOnDay);
+        Assert.Equal(new[] { Day }, UisPatients.RsvDays(RsvSheet(Row("2026-11-23", "9000001", "방문"), Row(RsvCell(text), "9000002", "방문")), Day));
+
+        var alone = RsvSheet(Row(RsvCell(text), "9000001", "방문"));
+        Assert.True(UisPatients.ReadRsv(alone, Day).AllOnDay);
+        Assert.Empty(UisPatients.RsvDays(alone, Day));
     }
 
     [Fact(DisplayName = "AC-4208.1 차트번호 꼴이 아닌 줄(끝 '합계' 줄 등)은 예약일을 보지 않고 세지도 않는다, 환자 줄이 없으면 AllOnDay = true")]
@@ -314,6 +354,12 @@ public class UisPatientsTests
         Assert.Equal(1, facts.Visited);
         Assert.Equal(1, facts.DistinctCharts);
         Assert.True(facts.AllOnDay);
+        // 날짜를 찾은 줄 목록도 환자 줄만(차트번호 꼴이 아닌 줄의 '2026-11-30'은 없음)
+        Assert.Equal(new[] { Day }, UisPatients.RsvDays(RsvSheet(
+            Row("2026-11-23", "9000001", "방문"),
+            Row("합계", "1건", null),
+            Row("출력 2026-11-30 10:12", null, null),
+            Row("2026-11-30", "가짜", "방문")), Day));
 
         var empty = UisPatients.ReadRsv(RsvSheet(Row("합계", "0건", null)), Day);
         Assert.Equal(0, empty.Rows);

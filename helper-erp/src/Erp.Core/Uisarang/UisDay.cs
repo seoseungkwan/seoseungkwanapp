@@ -207,7 +207,9 @@ public static class UisDay
 
     /// <summary>
     /// 환자별 엑셀(이미 지움)에서 상태·조회일·숫자만 남긴다. 내원 표는 조회일 라벨이 있을 때만 날짜를 보고(없으면 ok + noDate),
-    /// 예약 표는 예약일이 하나라도 마감 일자가 아니면 otherDate이고 from·to = 예약일 처음·끝.
+    /// 예약 표는 예약일 칸에서 찾은 날짜(UisPatients.RsvDate)가 하나라도 마감 일자가 아니면 otherDate이고 from·to = 찾은 날짜 처음·끝.
+    /// 환자 줄은 있는데 어느 줄에서도 날짜를 못 찾으면 조회일 라벨로 본다(AC-4208.4, design 2-1 고침 15): 라벨이 마감 일자 하루면 ok,
+    /// 다르면 otherDate(from·to = 라벨), 라벨이 없으면 ok(from·to = null). 이미 ok가 아닌 상태(notAll)는 그대로.
     /// </summary>
     private static PatientRead ReadPatient(UisSheet sheet, DateTime day)
     {
@@ -223,27 +225,20 @@ public static class UisDay
 
         var rsv = UisPatients.ReadRsv(sheet, day);
         if (pick.State == UisState.Ok && !rsv.AllOnDay) pick.State = UisState.OtherDate;
-        var days = RsvDays(sheet);
+        var days = UisPatients.RsvDays(sheet, day);
         if (days.Count > 0)
         {
             pick.From = days.Min().ToString(DayFormat, CultureInfo.InvariantCulture);
             pick.To = days.Max().ToString(DayFormat, CultureInfo.InvariantCulture);
         }
-        return new PatientRead(kind, pick, null, rsv);
-    }
-
-    /// <summary>예약 아래쪽 표 예약일 칸(앞 10글자, '.'·'/'는 '-')이 날짜인 줄의 날짜들(합계 줄 등 날짜가 아닌 줄은 뺀다).</summary>
-    private static List<DateTime> RsvDays(UisSheet sheet)
-    {
-        var days = new List<DateTime>();
-        foreach (var row in sheet.Rows)
+        else if (rsv.Rows > 0)
         {
-            var text = UisReport.Value(sheet, row, UisPatients.RsvDayColumn).Text?.Trim();
-            if (string.IsNullOrEmpty(text)) continue;
-            var head = (text!.Length > 10 ? text.Substring(0, 10) : text).Replace('.', '-').Replace('/', '-');
-            if (UisReport.TryDate(head, out var date)) days.Add(date);
+            var range = UisReport.Range(sheet);
+            pick.From = range?.FromText;
+            pick.To = range?.ToText;
+            if (pick.State == UisState.Ok && range != null && !UisReport.IsOnDay(sheet, day)) pick.State = UisState.OtherDate;
         }
-        return days;
+        return new PatientRead(kind, pick, null, rsv);
     }
 
     private static void SetSum(UisFactsSet fresh, UisSheet sheet, DateTime day)

@@ -60,8 +60,18 @@ describe('REQ-4207·REQ-4208·REQ-4209 UisPatients·UisVisits (C# Erp.Core.Tests
     expectAc('AC-4207.5')
   })
 
-  it('AC-4208.1 예약 아래쪽 표: 서로 다른 차트번호 수 · 줄 수 · 방문 줄 수, 예약일(앞 10글자, ./ → -)이 하나라도 마감 일자가 아니면 AllOnDay false', () => {
+  it('AC-4208.1 예약 아래쪽 표: 서로 다른 차트번호 수 · 줄 수 · 방문 줄 수, 예약일 칸에서 찾은 날짜(고침 15: 글 어디든·시각 무시·엑셀 날짜 숫자)가 하나라도 마감 일자가 아니면 AllOnDay false, 못 찾은 칸은 뺌', () => {
     expectAc('AC-4208.1')
+  })
+
+  it('AC-4208.1 코드 글자: 예약일 날짜 찾기는 UisPatients.RsvDate 한 곳이고 UisDay는 UisPatients.RsvDays(환자 줄만)로 받는다(앞 10글자 자르기 없음)', () => {
+    const patients = code(PATIENTS)
+    const day = code(path.join(UISARANG, 'UisDay.cs'))
+    expect(patients).toMatch(/public static DateTime\? RsvDate\(XlsCell \w+, int year\)/)
+    expect(day).toMatch(/UisPatients\.RsvDays\(/)
+    for (const text of [patients, day]) {
+      expect(text).not.toContain('Substring(0, 10)')
+    }
   })
 
   it('AC-4208.2 예약 위쪽 표 합계(또는 그날) 줄 예약건수·이행건수, 다르면 rsvRows·rsvVisited(경고만), uis.reservations는 위쪽 표 → 아래쪽 표 → null', () => {
