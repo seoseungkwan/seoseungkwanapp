@@ -10,12 +10,17 @@
 // - 안내가 창보다 길면 안에서 스크롤하고(늘 보이는 스크롤 막대), 단추 줄은 안내 아래에 붙어 늘 보인다. 한글 낱말은 가운데서 끊지 않는다(TASK-21)
 // 기간 채우기(spec erp-closing-range TASK-3): [비트 값 채우기] 왼쪽 [기간 채우기] 단추와, 같은 안내 틀에 그리는 기간 안내(몸통은 rangeView.ts).
 // 글·모양은 승인된 시안 docs/mockups/erp-closing-range/ ①~⑤와 design.md 4절 그대로다
+// 의사랑판(spec erp-uisarang TASK-11, design.md 8-9·9-3): setSource('uisarang')이면 단추 줄이 [기간 채우기] [엑셀로 받기] [의사랑 값 채우기]가 되고,
+// 같은 안내 틀에 의사랑 안내(몸통은 uisView.ts)를 그린다. 비트 자료원(처음 그대로)이면 그리는 단추·안내 DOM은 지금과 같다
 import { HELD_SALES, type Where } from './cells.js'
-import { explain } from './errors.js'
+import { explainFor } from './errors.js'
 import { shortPlace, type FillResult } from './fill.js'
 import type { RangeAction, RangeView } from './rangeTypes.js'
 import { RANGE_TEXT, renderRange } from './rangeView.js'
 import { GROUP_NAMES, type ClosingDay, type OverlapChoice } from './types.js'
+import { UIS_TEXT } from './uisText.js'
+import type { Source } from './uisTypes.js'
+import { renderUis, type PanelWords, type UisAction, type UisView } from './uisView.js'
 
 /** ERP 화면에 붙이는 요소의 id */
 export const HOST_ID = 'erp-closing-fill'
@@ -86,6 +91,16 @@ export const SKIP_TEXT = {
 
 /** 짧은 줄 이름을 보이는 가장 많은 줄 수 */
 export const MAX_PLACES = 10
+
+/** 의사랑 안내(uisView.ts)가 쓰는 지금 안내 글(spec erp-uisarang design.md 10-2 '지금 그대로') */
+export const UIS_PANEL_WORDS: PanelWords = {
+  placeLine,
+  skip: SKIP_TEXT,
+  end: TEXT.end,
+  firstHelp: TEXT.firstHelp,
+  kept: FLOW_TEXT.kept,
+  errUntouched: FLOW_TEXT.errUntouched,
+}
 
 /** 씨암·SONO가 함께 있는 진료 묻기와 채운 뒤 줄(design.md 5절 '겹친 진료 묻기', TASK-15) */
 export const OVERLAP_TEXT = {
@@ -237,6 +252,19 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .fails{display:flex;flex-direction:column;gap:2px;padding-left:12px}
 .ask{display:flex;flex-direction:column;gap:6px}
 .picks{display:flex;flex-wrap:wrap;gap:6px}
+.files{display:flex;flex-direction:column;gap:6px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-control);padding:10px 12px}
+.files ol{list-style:none;display:flex;flex-direction:column;gap:6px}
+.files .h{font-size:12px;line-height:18px;font-weight:600;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.files li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:baseline}
+.files .nm{color:var(--ink)}
+.files .st{font-size:13px;white-space:nowrap;color:var(--ink-2)}
+.files .st.ok,.files .st.bad{font-weight:600}
+.files .st.ok{color:var(--ok)}
+.files .st.bad{color:var(--negative)}
+.files .st.ok::before{content:'✓ '}
+.blk .whys{display:flex;flex-direction:column;gap:2px;color:var(--ink)}
+.blk .whys li{padding-left:12px;position:relative}
+.blk .whys li::before{content:'·';position:absolute;left:2px;color:var(--muted)}
 @media (max-width:600px){.dock{right:12px;bottom:12px;max-width:calc(100vw - 24px)}.panel{max-height:calc(100vh - 190px)}}
 `
 
@@ -282,6 +310,20 @@ export type Dock = {
   showRange(view: RangeView): void
   /** 기간 살펴보기·채우기가 도는 중: [기간 채우기]·[비트 값 채우기]·[지난 결과]를 막는다(안내는 그대로 둔다) */
   setRangeBusy(on: boolean): void
+  /**
+   * 이 PC의 자료원(spec erp-uisarang design.md 9-3). 'uisarang'이면 큰 단추 글 '의사랑 값 채우기', 그 왼쪽에 [엑셀로 받기](버금 단추)를 끼우고
+   * 지금 안내(show·묻기)의 머리도 '의사랑 값 채우기', show(err)는 의사랑 오류 글이다. 'bit'(처음)이면 지금 그대로
+   */
+  setSource(source: Source): void
+  /** 의사랑 엑셀 읽는 중: 누른 단추('fill' 큰 단추 · 'export' [엑셀로 받기]) 글이 '의사랑 엑셀 읽는 중…', 세 단추와 [지난 결과]를 막고 안내를 숨긴다. null이면 풂 */
+  setUisReading(which: 'fill' | 'export' | null): void
+  /**
+   * 의사랑 안내(design.md 10-1~10-3, 몸통은 uisView.ts)를 같은 안내 틀에 보인다. 열린 묻기는 null로 끝난다.
+   * 안내 단추는 onUisAction(그 동작)을 부르고, [안내 닫기]·[닫기]·×·Esc는 안내를 닫은 뒤 onUisAction('close')
+   */
+  showUis(view: UisView): void
+  /** [지난 결과]가 다시 열 의사랑 안내. null이면 [지난 결과]가 없다(setLast와 같은 자리 하나) */
+  setLastUis(view: UisView | null): void
 }
 
 type Pending = { resolve(value: unknown): void; cancel: unknown }
@@ -299,6 +341,10 @@ export function createDock(
     onRange?(): void
     /** 기간 안내 단추·×·Esc. 'close'는 안내를 닫은 뒤 부른다. 주지 않으면 닫기만 한다 */
     onRangeAction?(action: RangeAction): void
+    /** 의사랑 단추 줄 [엑셀로 받기](spec erp-uisarang). 주지 않으면 아무 일 없다 */
+    onExport?(): void
+    /** 의사랑 안내 단추·×·Esc. 'close'는 안내를 닫은 뒤 부른다. 주지 않으면 닫기만 한다 */
+    onUisAction?(action: UisAction): void
   },
 ): Dock {
   const h = <K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: Child[]) =>
@@ -314,17 +360,25 @@ export function createDock(
   const button = h('button', { type: 'button', class: 'fill-btn' }, TEXT.button)
   const rangeButton = h('button', { type: 'button', class: 'fill-btn2' }, RANGE_TEXT.button)
   const lastButton = h('button', { type: 'button', class: 'btn btn-2 last' }, FLOW_TEXT.last)
-  root.append(h('style', {}, CSS), h('div', { class: 'dock' }, panel, h('div', { class: 'row' }, lastButton, rangeButton, button)))
+  /** 의사랑 [엑셀로 받기]: 의사랑 자료원일 때만 단추 줄에 끼운다(비트면 DOM에 없다) */
+  const exportButton = h('button', { type: 'button', class: 'fill-btn2' }, UIS_TEXT.exportButton)
+  const buttonRow = h('div', { class: 'row' }, lastButton, rangeButton, button)
+  root.append(h('style', {}, CSS), h('div', { class: 'dock' }, panel, buttonRow))
 
-  /** [지난 결과]가 다시 열 안내 */
-  let last: View | null = null
+  /** [지난 결과]가 다시 열 안내(비트 안내 또는 의사랑 안내) */
+  let last: { uis: false; view: View } | { uis: true; view: UisView } | null = null
   /** 아직 답하지 않은 묻기. 끝내면 비운다 */
   let pending: Pending | null = null
   /** 지금 보이는 기간 안내(없으면 null) */
   let range: RangeView['kind'] | null = null
-  /** [비트 값 채우기] 읽는 중 · 기간 살펴보기·채우기 도는 중 */
+  /** 지금 보이는 것이 의사랑 안내인가(×·Esc가 onUisAction('close')를 부른다) */
+  let uisOpen = false
+  /** 이 PC의 자료원(setSource, 처음은 비트) */
+  let source: Source = 'bit'
+  /** [비트 값 채우기] 읽는 중 · 기간 살펴보기·채우기 도는 중 · 의사랑 엑셀 읽는 중(누른 단추) */
   let reading = false
   let rangeBusy = false
+  let uisReading: 'fill' | 'export' | null = null
   const cancel = () => {
     const open = pending
     pending = null
@@ -335,42 +389,58 @@ export function createDock(
   const refreshLast = () => {
     lastButton.hidden = last === null || !panel.hidden
   }
-  /** 읽는 중이거나 기간이 도는 중이면 두 단추와 [지난 결과]를 막는다(AC-3701.4) */
+  /** 읽는 중이거나 기간이 도는 중이면 단추 줄([엑셀로 받기] 포함)과 [지난 결과]를 막는다(AC-3701.4). 의사랑은 누른 단추 글이 바뀐다 */
   const refreshButtons = () => {
-    const off = reading || rangeBusy
+    const off = reading || rangeBusy || uisReading !== null
     button.disabled = off
     rangeButton.disabled = off
     lastButton.disabled = off
-    button.textContent = reading ? TEXT.reading : TEXT.button
+    exportButton.disabled = off
+    if (source === 'uisarang') {
+      button.textContent = reading || uisReading === 'fill' ? UIS_TEXT.reading : UIS_TEXT.button
+      exportButton.textContent = uisReading === 'export' ? UIS_TEXT.reading : UIS_TEXT.exportButton
+    } else button.textContent = reading ? TEXT.reading : TEXT.button
   }
   const setPanel = (open: boolean) => {
     panel.hidden = !open
     refreshLast()
   }
-  /** 머리 작은 글과 × (기간 안내가 아니면 range = null, 지금 안내 그대로) */
+  /** 머리 작은 글과 × (기간 안내가 아니면 range = null, 지금 안내 그대로. 의사랑 자료원이면 머리는 '의사랑 값 채우기') */
   const setHead = (kind: RangeView['kind'] | null) => {
     range = kind
-    title.textContent = kind === null ? TEXT.title : RANGE_TEXT.head[kind]
+    uisOpen = false
+    title.textContent = kind !== null ? RANGE_TEXT.head[kind] : source === 'uisarang' ? UIS_TEXT.head.fill : TEXT.title
     close.hidden = kind !== null && RANGE_OPEN.has(kind)
   }
   const hide = () => {
     setPanel(false)
     cancel()
     range = null
+    uisOpen = false
   }
   /** 기간 안내를 닫고 알린다([닫기]·×·Esc) */
   const closeRange = () => {
     hide()
     handlers.onRangeAction?.({ kind: 'close' })
   }
-  /** ×·Esc: 기간 안내면 닫을 수 있을 때만 closeRange, 아니면 지금처럼 hide */
+  /** 의사랑 안내를 닫고 알린다([안내 닫기]·[닫기]·×·Esc) */
+  const closeUis = () => {
+    hide()
+    handlers.onUisAction?.('close')
+  }
+  /** ×·Esc: 기간 안내면 닫을 수 있을 때만 closeRange, 의사랑 안내면 closeUis, 아니면 지금처럼 hide */
   const dismiss = () => {
-    if (range === null) hide()
+    if (uisOpen) closeUis()
+    else if (range === null) hide()
     else if (!RANGE_OPEN.has(range)) closeRange()
   }
   const rangeAct = (action: RangeAction) => {
     if (action.kind === 'close') closeRange()
     else handlers.onRangeAction?.(action)
+  }
+  const uisAct = (action: UisAction) => {
+    if (action === 'close') closeUis()
+    else handlers.onUisAction?.(action)
   }
   refreshLast()
 
@@ -380,9 +450,14 @@ export function createDock(
   rangeButton.addEventListener('click', () => {
     if (!rangeButton.disabled) handlers.onRange?.()
   })
+  exportButton.addEventListener('click', () => {
+    if (!exportButton.disabled) handlers.onExport?.()
+  })
   close.addEventListener('click', dismiss)
   lastButton.addEventListener('click', () => {
-    if (!lastButton.disabled && last) show(last)
+    if (lastButton.disabled || !last) return
+    if (last.uis) showUis(last.view)
+    else show(last.view)
   })
   // 안내가 열려 있을 때 Esc로 닫는다. ERP 쪽 키 처리는 그대로 받게 preventDefault·stopPropagation 하지 않는다
   doc.addEventListener('keydown', (event) => {
@@ -446,7 +521,8 @@ export function createDock(
       case 'first':
         return [lead(TEXT.first), small(TEXT.firstHelp), h('div', { class: 'acts' }, actButton(TEXT.openSettings, () => handlers.onOpenSettings()))]
       case 'err': {
-        const e = explain(view.code)
+        // 비트면 explain과 같은 글(explainFor(code, 'bit') = explain(code)), 의사랑이면 의사랑 오류 글(AC-4212.6)
+        const e = explainFor(view.code, source)
         return [lead(e.what, true), plain(e.how), small(FLOW_TEXT.errUntouched(e.code))]
       }
       case 'future':
@@ -472,6 +548,17 @@ export function createDock(
     cancel()
     setHead(null)
     body.replaceChildren(...parts(view).filter((p): p is Node | string => Boolean(p)))
+    setPanel(true)
+  }
+
+  /** 의사랑 안내: 머리 글 · 몸통 자식(uisView.ts) → 지금 안내 틀(.pb), 단추가 있으면 맨 끝 단추 줄(.acts) */
+  function showUis(view: UisView) {
+    cancel()
+    setHead(null)
+    const drawn = renderUis(doc, view, uisAct, UIS_PANEL_WORDS)
+    title.textContent = drawn.head
+    uisOpen = true
+    body.replaceChildren(...drawn.body.childNodes, ...(drawn.buttons.length > 0 ? [h('div', { class: 'acts' }, ...drawn.buttons)] : []))
     setPanel(true)
   }
 
@@ -552,7 +639,7 @@ export function createDock(
       )
     },
     setLast(view) {
-      last = view
+      last = view === null ? null : { uis: false, view }
       refreshLast()
     },
     hide,
@@ -567,6 +654,23 @@ export function createDock(
     setRangeBusy(on) {
       rangeBusy = on
       refreshButtons()
+    },
+    setSource(next) {
+      source = next
+      // 의사랑이면 [기간 채우기]와 큰 단추 사이에 [엑셀로 받기], 비트면 뗀다(비트 단추 줄 DOM은 지금 그대로)
+      if (next === 'uisarang') buttonRow.insertBefore(exportButton, button)
+      else exportButton.remove()
+      refreshButtons()
+    },
+    setUisReading(which) {
+      uisReading = which
+      refreshButtons()
+      if (which !== null) hide()
+    },
+    showUis,
+    setLastUis(view) {
+      last = view === null ? null : { uis: true, view }
+      refreshLast()
     },
   }
 }

@@ -13,6 +13,8 @@ import type { FillResult } from './fill'
 import { createDock, FLOW_TEXT, HOST_ID, OVERLAP_TEXT, placeLine, SKIP_TEXT, TEXT, warningLines, type Dock, type View } from './panel'
 import type { RangeAction, RangeView, RunSummary, ScanSummary } from './rangeTypes'
 import type { ClosingDay, OverlapChoice } from './types'
+import type { UisDay } from './uisTypes'
+import type { UisAction, UisView } from './uisView'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const MOCKUP = readFileSync(path.join(ROOT, 'docs', 'mockups', 'erp-closing-fill', 'index.html'), 'utf8')
@@ -1124,5 +1126,275 @@ describe('TASK-3 [기간 채우기] 단추와 기간 안내(design.md 4절)', ()
     // css()는 빈칸을 지운다('.prog i' → '.progi')
     expect(rule(all, '.progi')).toContain('background:var(--accent)')
     expect(all).toMatch(/\.datesinput\{[^}]*border:1pxsolidvar\(--line-strong\)/)
+  })
+})
+
+// --- TASK-11 (spec erp-uisarang) design.md 8-9 panel·9-3: 의사랑 단추 줄([기간 채우기] [엑셀로 받기] [의사랑 값 채우기])·읽는 중·
+// 의사랑 안내(showUis, 몸통은 uisView.ts)·[지난 결과](setLastUis). 비트 자료원이면 그리는 DOM은 위 시험 그대로다
+describe('TASK-11 의사랑 단추 줄과 의사랑 안내(spec erp-uisarang design.md 8-9·9-3)', () => {
+  const UIS_DAY = '2026-11-23'
+  /** 숫자 칸은 안 보는 짧은 의사랑 답(지움 줄·폴더·조회일만 쓰는 안내용, 환자 정보 없음) */
+  function uisDay(over: Partial<UisDay['uis']> = {}): UisDay {
+    const kinds = ['income', 'rx', 'visits', 'visitPatients', 'rsv', 'rsvPatients'] as const
+    const bands = ['0', '10', '20', '30', '40', '50', '60', '70', '80', '90'] as const
+    return {
+      date: UIS_DAY,
+      patients: { new: 7, first90: null, return: 57, ptVisit: 31, noExamFee: 0, total: 97 },
+      groups: [],
+      ages: bands.map((band) => ({ band, new: 0, first90: null, return: 0 })),
+      money: {
+        total: 5_182_300,
+        insurer: 3_441_200,
+        receivableIn: null,
+        unpaidNew: null,
+        noncovered: 1_206_000,
+        discount: null,
+        disabledFund: null,
+        received: 1_741_100,
+        card: 1_388_600,
+        cash: 352_500,
+        transfer: null,
+        refund: null,
+      },
+      inpatientVisits: null,
+      reservations: { kinds: [], patients: 33 },
+      injection: null,
+      overlap: null,
+      warnings: { moneyUnconfirmed: false, splitUnconfirmed: false, unpaidVisits: 0, unknownAge: 0, noHistory: false },
+      source: 'uisarang',
+      uis: {
+        folder: 'desktop',
+        reports: kinds.map((kind) => ({ kind, state: 'ok', cached: false, from: UIS_DAY, to: UIS_DAY, value: null, columns: [] })),
+        open: [],
+        deleted: 6,
+        kept: 0,
+        deleteFailed: 0,
+        unknownFiles: 0,
+        checks: {
+          totalFee: null,
+          received: null,
+          headcount: null,
+          rxTotal: null,
+          visitRows: null,
+          visitNew: null,
+          rsvRows: null,
+          rsvVisited: null,
+          noDate: false,
+        },
+        fractional: [],
+        negative: [],
+        reservations: null,
+        ...over,
+      },
+    }
+  }
+  const EXPORTED: UisView = { kind: 'exported', day: uisDay(), fileName: 'ERP마감-의사랑-2026-11-23.xlsx' }
+  const OPEN_STOP: UisView = { kind: 'stop', stop: { kind: 'open', kinds: ['income'] }, day: uisDay({ open: ['income'] }), action: 'fill' }
+
+  function openUis(source: 'bit' | 'uisarang' | null = 'uisarang') {
+    const onFill = vi.fn()
+    const onOpenSettings = vi.fn()
+    const onUndo = vi.fn()
+    const onRange = vi.fn()
+    const onExport = vi.fn()
+    const onUisAction = vi.fn<(a: UisAction) => void>()
+    dock = createDock(document, { onFill, onOpenSettings, onUndo, onRange, onExport, onUisAction })
+    if (source) dock.setSource(source)
+    document.body.append(dock.host)
+    const shadow = dock.host.shadowRoot
+    if (!shadow) throw new Error('shadowRoot 없음')
+    const $ = <T extends Element = HTMLElement>(sel: string) => shadow.querySelector<T>(sel) as T
+    const $$ = (sel: string) => [...shadow.querySelectorAll(sel)]
+    const row = () => $$('.row > *') as HTMLButtonElement[]
+    const act = (label: string) => {
+      const found = $$('.acts button').find((b) => text(b) === label) as HTMLButtonElement | undefined
+      if (!found) throw new Error(`[${label}] 단추가 없다: ${$$('.acts button').map(text).join(', ')}`)
+      return found
+    }
+    return {
+      dock,
+      $,
+      $$,
+      row,
+      act,
+      acts: () => $$('.acts button').map(text),
+      head: () => text($('.pt')),
+      x: () => $<HTMLButtonElement>('.x'),
+      panel: () => $<HTMLElement>('.panel'),
+      body: () => $<HTMLElement>('.panel .pb'),
+      last: () => $<HTMLButtonElement>('.last'),
+      onFill,
+      onOpenSettings,
+      onUndo,
+      onRange,
+      onExport,
+      onUisAction,
+    }
+  }
+  const esc = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+
+  it('AC-4213.3: 비트 자료원(setSource 안 부름 · setSource(bit))이면 단추 줄은 지금 그대로 [지난 결과] [기간 채우기] [비트 값 채우기]이고 [엑셀로 받기]가 없다', () => {
+    for (const source of [null, 'bit'] as const) {
+      const p = openUis(source)
+      expect(p.row().map((b) => b.className)).toEqual(['btn btn-2 last', 'fill-btn2', 'fill-btn'])
+      expect(p.row().map(text)).toEqual(['지난 결과', '기간 채우기', '비트 값 채우기'])
+      p.dock.show({ kind: 'errDate' })
+      expect(p.head()).toBe('비트 값 채우기')
+      p.dock.host.remove()
+    }
+  })
+
+  it('AC-4213.3: setSource(uisarang)이면 [기간 채우기] [엑셀로 받기] [의사랑 값 채우기] — 가운데는 [기간 채우기]와 같은 버금 단추, 누르면 onExport만', () => {
+    const p = openUis()
+    expect(p.row().map((b) => b.className)).toEqual(['btn btn-2 last', 'fill-btn2', 'fill-btn2', 'fill-btn'])
+    expect(p.row().map(text)).toEqual(['지난 결과', '기간 채우기', '엑셀로 받기', '의사랑 값 채우기'])
+    expect(p.row().every((b) => b.type === 'button')).toBe(true)
+    p.row()[2].click()
+    expect(p.onExport).toHaveBeenCalledTimes(1)
+    expect(p.onFill).not.toHaveBeenCalled()
+    p.row()[3].click()
+    expect(p.onFill).toHaveBeenCalledTimes(1)
+    p.row()[1].click()
+    expect(p.onRange).toHaveBeenCalledTimes(1)
+    expect(p.onExport).toHaveBeenCalledTimes(1)
+    // 다시 비트면 지금 모양 그대로
+    p.dock.setSource('bit')
+    expect(p.row().map((b) => b.className)).toEqual(['btn btn-2 last', 'fill-btn2', 'fill-btn'])
+    expect(p.row().map(text)).toEqual(['지난 결과', '기간 채우기', '비트 값 채우기'])
+  })
+
+  it("AC-4213.3: setUisReading(export)면 누른 [엑셀로 받기] 글이 '의사랑 엑셀 읽는 중…'이고 세 단추와 [지난 결과]가 막히며 안내는 숨는다", () => {
+    const p = openUis()
+    p.dock.setLastUis(EXPORTED)
+    p.dock.showUis({ kind: 'first' })
+    p.dock.setUisReading('export')
+    expect(p.row().map(text)).toEqual(['지난 결과', '기간 채우기', '의사랑 엑셀 읽는 중…', '의사랑 값 채우기'])
+    expect(p.row().map((b) => b.disabled)).toEqual([true, true, true, true])
+    expect(p.panel().hidden).toBe(true)
+    for (const b of p.row()) b.click()
+    expect(p.onExport).not.toHaveBeenCalled()
+    expect(p.onFill).not.toHaveBeenCalled()
+    expect(p.onRange).not.toHaveBeenCalled()
+    expect(p.panel().hidden).toBe(true)
+    p.dock.setUisReading('fill')
+    expect(p.row().map(text)).toEqual(['지난 결과', '기간 채우기', '엑셀로 받기', '의사랑 엑셀 읽는 중…'])
+    expect(p.row().map((b) => b.disabled)).toEqual([true, true, true, true])
+    p.dock.setUisReading(null)
+    expect(p.row().map(text)).toEqual(['지난 결과', '기간 채우기', '엑셀로 받기', '의사랑 값 채우기'])
+    expect(p.row().map((b) => b.disabled)).toEqual([false, false, false, false])
+  })
+
+  it('AC-4212.4: showUis는 같은 안내 틀(.panel)에 머리 · 몸통을 그리고, 단추 줄(.acts)은 맨 끝이며 단추는 onUisAction을 부른다', () => {
+    const p = openUis()
+    p.dock.showUis(EXPORTED)
+    expect(p.panel().hidden).toBe(false)
+    expect(p.head()).toBe('엑셀로 받기')
+    expect(p.x().hidden).toBe(false)
+    expect(text(p.$('.pb .lead'))).toBe('2026-11-23 의사랑 값을 엑셀 파일로 받았어요. ERP 칸은 바꾸지 않았어요.')
+    expect(p.body().lastElementChild?.className).toBe('acts')
+    expect(p.acts()).toEqual(['닫기', '의사랑 값 채우기'])
+    p.act('의사랑 값 채우기').click()
+    expect(p.onUisAction).toHaveBeenCalledWith('fill')
+    expect(p.onFill).not.toHaveBeenCalled()
+    expect(p.panel().hidden).toBe(false)
+    // 단추가 없는 안내는 단추 줄도 없다
+    p.dock.showUis(OPEN_STOP)
+    expect(p.$$('.acts')).toHaveLength(0)
+    expect(p.head()).toBe('의사랑 값 채우기')
+  })
+
+  it('AC-4212.3: 의사랑 안내의 [안내 닫기]·[닫기]·×·Esc는 안내를 닫고 onUisAction(close)를 부른다', () => {
+    const p = openUis()
+    p.dock.showUis(EXPORTED)
+    p.act('닫기').click()
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onUisAction.mock.calls.map((c) => c[0])).toEqual(['close'])
+    p.dock.showUis({ kind: 'range' })
+    p.x().click()
+    expect(p.panel().hidden).toBe(true)
+    p.dock.showUis({ kind: 'first' })
+    esc()
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onUisAction.mock.calls.map((c) => c[0])).toEqual(['close', 'close', 'close'])
+    // 닫힌 뒤 Esc는 아무 일 없다
+    esc()
+    expect(p.onUisAction).toHaveBeenCalledTimes(3)
+  })
+
+  it('AC-4212.4: 다른 안내(show · 묻기)를 보이면 의사랑 안내는 사라지고, 그 뒤 ×는 onUisAction을 부르지 않는다', async () => {
+    const p = openUis()
+    p.dock.showUis(EXPORTED)
+    p.dock.show({ kind: 'errDate' })
+    expect([...p.body().children].map(text)).toEqual(['마감 일자를 먼저 골라 주세요.'])
+    p.x().click()
+    expect(p.onUisAction).not.toHaveBeenCalled()
+    // 열린 묻기는 showUis가 null로 끝낸다
+    const asked = p.dock.askWritten([{ j: 1, box: '환자현황', row: '신환' }])
+    p.dock.showUis({ kind: 'first' })
+    await expect(asked).resolves.toBeNull()
+    expect(p.acts()).toEqual(['설정 열기'])
+  })
+
+  it('AC-4212.4: setLastUis면 [지난 결과]가 그 의사랑 안내를 다시 열고, null이면 없으며 setLast(비트 안내)로 바꿀 수 있다', () => {
+    const p = openUis()
+    expect(p.last().hidden).toBe(true)
+    p.dock.setLastUis(EXPORTED)
+    expect(p.last().hidden).toBe(false)
+    p.last().click()
+    expect(p.panel().hidden).toBe(false)
+    expect(p.head()).toBe('엑셀로 받기')
+    expect(p.acts()).toEqual(['닫기', '의사랑 값 채우기'])
+    expect(p.last().hidden).toBe(true)
+    p.x().click()
+    p.dock.setLast({ kind: 'readOnly' })
+    p.last().click()
+    expect([...p.body().children].map(text)).toEqual(['이 화면은 읽기 전용이라 채울 수 없어요(본사 열람 등).', '아무 칸도 바꾸지 않았어요.'])
+    p.dock.hide()
+    p.dock.setLastUis(null)
+    expect(p.last().hidden).toBe(true)
+  })
+
+  it("AC-4212.5: 의사랑 단추 줄에서 지금 안내(날짜 없음 · 진료 0건 묻기)의 머리는 '의사랑 값 채우기', 오류(show err)는 의사랑 오류 글이다", () => {
+    const p = openUis()
+    p.dock.show({ kind: 'errDate' })
+    expect(p.head()).toBe('의사랑 값 채우기')
+    void p.dock.askZero(UIS_DAY)
+    expect(p.head()).toBe('의사랑 값 채우기')
+    p.dock.show({ kind: 'err', code: 'E-UIS-FOLDER' })
+    expect([...p.body().children].map(text)).toEqual([
+      'ERP마감 폴더를 만들거나 열지 못했어요.',
+      'ERP 도우미 설치 파일(install.cmd)을 다시 실행해 주세요. 계속되면 이 번호를 알려 주세요.',
+      '아무 칸도 바꾸지 않았어요. (번호 E-UIS-FOLDER)',
+    ])
+    p.dock.show({ kind: 'err', code: 'E-UIS-ELSE' })
+    expect(text(p.$('.lead'))).toBe('의사랑 엑셀을 읽지 못했어요.')
+  })
+
+  it("AC-4212.5: showUis(range)는 머리 '기간 채우기' · [닫기]만이고 기간 고르기 칸이 없다", () => {
+    const p = openUis()
+    p.dock.showUis({ kind: 'range' })
+    expect(p.head()).toBe('기간 채우기')
+    expect(p.$$('.pb input, .pb select')).toHaveLength(0)
+    expect(p.acts()).toEqual(['닫기'])
+    expect(p.onRange).not.toHaveBeenCalled()
+  })
+
+  it('AC-4212.4: onExport·onUisAction을 주지 않아도 의사랑 단추 줄·안내가 오류 없이 돈다', () => {
+    const p = open()
+    p.dock.setSource('uisarang')
+    p.dock.showUis(EXPORTED)
+    p.$$('.acts button').forEach((b) => (b as HTMLButtonElement).click())
+    p.$$('.row > *').forEach((b) => (b as HTMLButtonElement).click())
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onFill).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-4212.4: 의사랑 안내 모양(저장할 엑셀 목록 · 까닭 줄)도 지금 안내 스타일 블록 하나 안에 있다', () => {
+    openUis()
+    expect(dock?.host.shadowRoot?.querySelectorAll('style')).toHaveLength(1)
+    const css = (dock?.host.shadowRoot?.querySelector('style')?.textContent ?? '').replace(/\s+/g, '')
+    expect(css).toMatch(/\.files\{[^}]*border:1pxsolidvar\(--line\)/)
+    expect(css).toContain('.files.st.bad{')
+    expect(css).toContain('.blk.whysli')
   })
 })
