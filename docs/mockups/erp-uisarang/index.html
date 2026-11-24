@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시안 — ERP 마감일지 의사랑 값 채우기</title>
+<!-- 2026-11-24 erp-uisarang 클릭 시안. 조사 노트(의사랑 ERP 마감일지 조사 1)를 보고 그림. 상태는 ?s= 로 고른다(notes.md 표).
+     지금 확장(extension-erp/src/panel.ts · options.html · options.ts)의 모양·말투·단추를 그대로 쓰고 의사랑판에서 바뀌는 곳만 더했다.
+     ERP 화면은 가짜(회색, 간단히). 숫자·코드 이름은 모두 예시(환자 정보 없음) -->
+<style>
+@font-face{font-family:'Pretendard';src:url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2');font-weight:400}
+@font-face{font-family:'Pretendard';src:url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2');font-weight:500}
+@font-face{font-family:'Pretendard';src:url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2');font-weight:600}
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--ok:#15803D;
+--negative:#C2410C;--negative-soft:#FDF0EA;--warning:#B45309;--warning-soft:#FDF4E3;--r-control:4px;--r-float:8px;
+--shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08);
+/* 가짜 ERP 화면 회색(ERP 그대로라는 뜻, 앱 토큰 아님) */
+--erp-bg:#ECEEF1;--erp-box:#FBFBFC;--erp-line:#D9DCE1;--erp-text:#6B7280;--erp-title:#4B5563;--erp-input:#F3F4F6}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+.nw{white-space:nowrap}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--canvas);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+ul,ol{list-style:none}
+
+/* 시안 상태 단추 줄 (앱에 없음) */
+.mock-bar{font-size:13px;line-height:18px;background:#fff8d6;border-bottom:1px solid #e5d58a;padding:8px 16px;display:flex;flex-direction:column;gap:6px}
+.mock-bar .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mock-bar .row b{min-width:118px;font-weight:600}
+.mock-bar button{border:1px solid #c9b860;background:#fff;border-radius:4px;padding:3px 9px}
+.mock-bar button[aria-pressed="true"]{background:#e9d877;font-weight:600}
+.mock-bar .note{color:#7a6a10}
+.addr{font-size:12px;color:var(--muted);background:#E3E6EA;border-bottom:1px solid var(--erp-line);padding:5px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.addr code{font-family:inherit;background:#fff;border:1px solid var(--erp-line);border-radius:4px;padding:0 8px;color:var(--ink-2)}
+
+/* ── 가짜 ERP 마감일지 화면 (회색 = ERP 그대로) ── */
+.erp{display:flex;min-height:calc(100vh - 120px);background:var(--erp-bg);color:var(--erp-text)}
+.erp-side{width:168px;flex:none;background:#E2E5E9;border-right:1px solid var(--erp-line);padding:16px 10px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.erp-side .logo{font-weight:600;color:var(--erp-title);padding:0 8px 12px}
+.erp-side span{padding:6px 8px;border-radius:4px}
+.erp-side span.on{background:#D3D7DD;color:var(--erp-title);font-weight:500}
+.erp-main{flex:1;min-width:0;padding:16px 20px 120px}
+.erp-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.erp-head h1{font-size:18px;font-weight:600;color:var(--erp-title)}
+.erp-chip{display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--erp-line);border-radius:4px;background:var(--erp-box);font-size:12px;color:var(--erp-text);white-space:nowrap}
+.erp-date{margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--erp-box);border:1px solid var(--erp-line);border-radius:6px;padding:10px 14px}
+.erp-date label{font-weight:500;color:var(--erp-title)}
+.erp-date .ei{width:130px}
+.erp-date .ei.date-on{color:var(--ink);font-weight:500}
+.erp-tabs{margin-top:12px;display:flex;border-bottom:1px solid var(--erp-line)}
+.erp-tabs button{padding:8px 14px;color:var(--erp-text)}
+.erp-tabs button.on{color:var(--erp-title);font-weight:600;box-shadow:inset 0 -2px #9CA3AF}
+.erp-sec{margin-top:12px}
+.erp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:start}
+.erp-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.erp-box{background:var(--erp-box);border:1px solid var(--erp-line);border-radius:6px;padding:10px 12px}
+.erp-box h4,.erp-box h3{font-size:13px;font-weight:600;color:var(--erp-title);margin-bottom:6px}
+.erp-box table{width:100%;border-collapse:collapse;font-size:12px}
+.erp-box td,.erp-box th{padding:3px 4px;border-top:1px solid #E7E9EC;text-align:left;vertical-align:middle;font-weight:400}
+.erp-box thead th{border-top:0;color:var(--erp-text);font-size:11px}
+.erp-box td.lab{white-space:nowrap}
+.erp-box td.lab small{display:block;font-size:10px;line-height:12px;color:#9CA3AF}
+.erp-box td.u{width:18px;font-size:11px;color:#9CA3AF}
+.ei{display:inline-block;width:100%;min-width:44px;height:24px;line-height:22px;border:1px solid var(--erp-line);border-radius:3px;background:var(--erp-input);padding:0 6px;text-align:right;color:#B4B9C1;font-size:12px;white-space:nowrap;overflow:hidden}
+.ei.on{color:var(--ink);background:#fff}
+.ei.keep{color:var(--erp-title);background:var(--erp-input)}
+.ei.text{text-align:left}
+.ei.area{height:44px;text-align:left}
+.erp-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;margin-top:8px;font-size:12px}
+.erp-fields div{display:flex;flex-direction:column;gap:2px}
+.erp-save{margin-top:12px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.cdf-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.cdf-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.erp-notice{font-size:12px;background:var(--erp-box);border:1px solid var(--erp-line);border-radius:6px;padding:8px 12px;margin-bottom:10px}
+
+/* ── 확장이 ERP 화면에 붙이는 것 (panel.ts 모양 그대로 + 의사랑판에서 더한 .files) ── */
+.new{outline:2px dashed #e0a100;outline-offset:4px}
+.dock{position:fixed;right:24px;bottom:24px;z-index:20;display:flex;flex-direction:column;align-items:flex-end;gap:12px;max-width:calc(100vw - 48px);text-align:left}
+.row{display:flex;align-items:center;gap:8px}
+.fill-btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border-radius:var(--r-control);background:var(--accent);color:var(--surface);font-size:15px;font-weight:600;box-shadow:var(--shadow-float);white-space:nowrap}
+.fill-btn:hover{background:var(--accent-strong)}
+.fill-btn:disabled{background:#93A6C9;cursor:default}
+.fill-btn2{display:inline-flex;align-items:center;height:44px;padding:0 16px;border-radius:var(--r-control);background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);font-size:15px;font-weight:600;box-shadow:var(--shadow-float);white-space:nowrap}
+.fill-btn2:hover{background:var(--canvas)}
+.fill-btn2:disabled{background:var(--surface);color:var(--muted);cursor:default}
+.panel{width:440px;max-width:100%;max-height:calc(100vh - 210px);overflow-x:hidden;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);color:var(--ink-2);font-size:14px;line-height:22px;word-break:keep-all;overflow-wrap:anywhere}
+.panel::-webkit-scrollbar{width:10px}
+.panel::-webkit-scrollbar-track{background:transparent}
+.panel::-webkit-scrollbar-thumb{background:#C4C9D2;border-radius:5px;border:2px solid #FFFFFF}
+.ph{display:flex;justify-content:space-between;align-items:center;padding:10px 12px 0 18px}
+.pt{font-size:12px;font-weight:500;color:var(--muted)}
+.x{width:32px;height:32px;border-radius:var(--r-control);color:var(--muted);font-size:18px}
+.x:hover{background:var(--canvas)}
+.pb{padding:4px 18px 16px;display:flex;flex-direction:column;gap:12px}
+.lead{font-size:15px;line-height:23px;font-weight:600;color:var(--ink)}
+.lead.err{color:var(--negative)}
+.lead.err::before{content:'!';display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-right:6px;border-radius:50%;background:var(--negative);color:#fff;font-size:12px;vertical-align:1px}
+.small{font-size:13px;line-height:20px;color:var(--muted)}
+.check{display:flex;flex-direction:column;gap:2px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-control);padding:10px 12px}
+.check .h{font-size:12px;line-height:18px;font-weight:600;color:var(--muted)}
+.check .n{font-weight:600;color:var(--ink)}
+.check .small{margin-top:2px}
+.kept{color:var(--ink)}
+.blk{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+.blk .h{font-weight:600;color:var(--ink)}
+.blk b{color:var(--ink);font-weight:600}
+.blk .rows{color:var(--ink-2);word-break:keep-all}
+.blk .whys{display:flex;flex-direction:column;gap:2px;color:var(--ink)}
+.blk .whys li{padding-left:12px;position:relative}
+.blk .whys li::before{content:'·';position:absolute;left:2px;color:var(--muted)}
+.warns{display:flex;flex-direction:column;gap:8px;background:var(--warning-soft);border-radius:var(--r-control);padding:10px 12px}
+.warns li{display:flex;gap:8px;align-items:flex-start;color:var(--ink-2)}
+.warns li::before{content:'!';flex:none;display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--warning);color:#fff;font-size:12px;font-weight:600}
+.end{border-top:1px solid var(--line);padding-top:10px;color:var(--ink)}
+.acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;position:sticky;bottom:0;z-index:1;background:var(--surface);border-top:1px solid var(--line);margin:0 -18px -16px;padding:10px 18px 16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
+.btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn-2:hover{background:var(--canvas)}
+.btn-2:disabled{color:var(--muted);cursor:default}
+.btn-1{background:var(--accent);color:var(--surface);font-weight:600}
+.btn-1:hover{background:var(--accent-strong)}
+.last{height:44px;box-shadow:var(--shadow-float)}
+.ok{color:var(--ok);font-weight:600}
+.bad{color:var(--negative);font-weight:600}
+/* 의사랑판에서 더함: 저장할 엑셀 목록(번호 · 보고서 · 있음/없음 또는 조회일) */
+.files{display:flex;flex-direction:column;gap:6px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-control);padding:10px 12px}
+.files ol{display:flex;flex-direction:column;gap:6px}
+.files .h{font-size:12px;line-height:18px;font-weight:600;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.files li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:baseline}
+.files .no{font-size:12px;color:var(--muted);text-align:right}
+.files .nm{color:var(--ink)}
+.files .nm small{display:block;font-size:12px;line-height:17px;color:var(--muted)}
+.files .st{font-size:13px;white-space:nowrap;color:var(--ink-2)}
+.files .st.ok,.files .st.bad{font-weight:600}
+.files .st.ok{color:var(--ok)}
+.files .st.bad{color:var(--negative)}
+.files .st.ok::before{content:'✓ '}
+
+/* ── 확장 설정 화면 (options.html 모양 그대로 + 의사랑판에서 더한 것) ── */
+.opt{background:var(--surface);min-height:calc(100vh - 120px)}
+.opt-top{border-bottom:1px solid var(--line)}
+.opt-top .in{max-width:1000px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:10px}
+.opt-top i{width:20px;height:20px;border-radius:5px;background:var(--accent);flex:none}
+.opt-top h1{font-size:18px;font-weight:600}
+.opt main{max-width:1000px;margin:0 auto;padding:20px 24px 120px;display:flex;flex-direction:column;gap:16px}
+.lead-p{color:var(--ink-2)}
+.notice{border-radius:var(--r-control);padding:10px 14px;color:var(--ink-2)}
+.notice.first{background:var(--accent-soft)}
+.notice.first b{color:var(--accent-strong);font-weight:600}
+.notice.src{background:var(--canvas);border:1px solid var(--line)}
+.notice.src b{color:var(--ink);font-weight:600}
+.notice.codes{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 16px;align-items:center;padding:0;font-size:13px;color:var(--muted)}
+.notice.codes .btn{grid-column:2;grid-row:1 / span 2}
+.notice.nofile{background:var(--warning-soft);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:end}
+.notice.nofile>*{grid-column:1}
+.notice.nofile b{color:var(--warning);font-weight:600}
+.notice.nofile ol{list-style:decimal;padding-left:20px}
+.notice.nofile .btn{grid-column:2;grid-row:1 / span 4;align-self:center}
+.osec{border-top:1px solid var(--line-strong);padding-top:14px}
+.osec>h2{font-size:16px;font-weight:600}
+.osec>p{margin-top:2px;font-size:13px;color:var(--ink-2)}
+.orow{display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 20px;padding:12px 0;border-bottom:1px solid var(--line)}
+.orow:last-child{border-bottom:0}
+.oname b{font-weight:600;color:var(--ink)}
+.oname small{display:block;font-size:12px;line-height:17px;color:var(--muted);margin-top:2px}
+.opick{display:flex;flex-direction:column;gap:8px;min-width:0}
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 2px 0 9px;border:1px solid var(--line-strong);border-radius:var(--r-control);background:var(--surface);max-width:100%}
+.chip b{font-weight:600;color:var(--ink);white-space:nowrap}
+.chip .cn{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip .cn.gone{color:var(--warning)}
+.chip button{width:26px;height:26px;border-radius:3px;color:var(--muted);font-size:16px;flex:none}
+.chip button:hover{background:var(--canvas);color:var(--ink)}
+.none{font-size:13px;color:var(--muted)}
+.pickline{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;min-height:34px}
+/* 의사랑판: 한 줄에 '건수로 셀 코드' · '매출로 셀 코드' 두 줄. 이름표는 왼쪽 고정, 조각·찾기 칸은 오른쪽에서만 줄바꿈 */
+.kline{display:grid;grid-template-columns:100px minmax(0,1fr);gap:8px;align-items:start}
+.kline .sub{font-size:12px;line-height:34px;color:var(--muted);white-space:nowrap}
+.kline + .kline{border-top:1px dashed var(--line);padding-top:8px}
+.opick>.hint{padding-left:108px}
+.find{position:relative;flex:0 1 280px;min-width:200px}
+.find input,.etc input,.opick select{width:100%;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:var(--surface)}
+.find input:focus,.etc input:focus,.opick select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.find input:disabled,.opick select:disabled{background:var(--canvas);color:var(--muted)}
+.dd{position:absolute;left:0;width:max(100%,420px);max-width:calc(100vw - 32px);top:calc(100% + 4px);z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);max-height:300px;overflow:auto;padding:4px}
+.dd button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;padding:7px 10px;border-radius:var(--r-control)}
+.dd button:hover:not(:disabled){background:var(--accent-soft)}
+.dd button b{font-weight:600;color:var(--ink);white-space:nowrap}
+.dd button span{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd button em{font-style:normal;font-size:12px;color:var(--muted);white-space:nowrap}
+.dd button em.frac{color:var(--warning);font-weight:600}
+.dd button:disabled{cursor:default}
+.dd button:disabled b,.dd button:disabled span{color:var(--muted)}
+.dd .empty{padding:8px 10px;color:var(--muted);font-size:13px}
+.dd .cnt{padding:4px 10px 6px;color:var(--warning);font-size:12px;line-height:17px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.hint{font-size:12px;line-height:18px;color:var(--muted)}
+.etc{display:flex;align-items:center;gap:8px;max-width:420px}
+.etc span{font-size:13px;color:var(--ink-2);white-space:nowrap}
+.etc input{max-width:240px}
+.opick select{flex:0 1 240px;min-width:200px}
+/* 매일 저장할 엑셀 표 */
+.rtable{width:100%;border-collapse:collapse;font-size:13px;line-height:19px;margin-top:10px}
+.rtable th{font-size:12px;font-weight:500;color:var(--muted);text-align:left;padding:0 8px 6px}
+.rtable td{border-top:1px solid var(--line);padding:8px;vertical-align:top;color:var(--ink-2)}
+.rtable td:first-child{color:var(--muted);width:28px;text-align:right}
+.rtable td b{font-weight:600;color:var(--ink)}
+.rtable .pi{display:inline-block;margin-top:2px;font-size:12px;line-height:17px;color:var(--warning);font-weight:500}
+.rtable .fn{white-space:nowrap}
+.howto{margin-top:10px;display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:20px;color:var(--ink-2)}
+.priv{margin-top:10px;font-size:13px;line-height:20px;color:var(--ink-2);background:var(--canvas);border-radius:var(--r-control);padding:8px 12px}
+.priv b{font-weight:600;color:var(--ink)}
+.savebar{position:sticky;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line)}
+.savebar .in{max-width:1000px;margin:0 auto;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.status{font-size:14px;color:var(--ink-2)}
+.status.saved{color:var(--positive);font-weight:500}
+.status.saved::before{content:'✓ '}
+.status.dirty{color:var(--warning)}
+.savebar .acts2{display:flex;gap:8px;margin-left:auto}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+@media (max-width:1180px){.erp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:960px){.erp-side{display:none}.cdf-cols{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:720px){.orow{grid-template-columns:minmax(0,1fr)}.etc{max-width:none}.find,.opick select{flex:1 1 100%}}
+</style>
+</head>
+<body>
+<div class="mock-bar" id="mockBar">
+  <div class="row"><b>ERP 마감일지 화면</b>
+    <button data-s="idle">① 단추</button>
+    <button data-s="reading">② 읽는 중</button>
+    <button data-s="done">③ 다 채움</button>
+    <button data-s="partial">④ 일부 칸 못 읽음</button>
+    <button data-s="check">⑤ 맞춰 보기 어긋남</button>
+    <button data-s="missing">⑥ 엑셀 없음</button>
+    <button data-s="some">⑦ 엑셀 일부 없음</button>
+    <button data-s="someDone">⑧ 있는 엑셀로 채움</button>
+    <button data-s="date">⑨ 날짜 다름</button>
+    <button data-s="cond">⑩ 조건이 '전체' 아님</button>
+    <button data-s="dup">⑪ 같은 엑셀 둘</button>
+    <button data-s="locked">⑫ 한셀에 열림</button>
+    <button data-s="range">⑬ 기간 채우기</button>
+    <button data-s="first">⑭ 설정 저장 전</button>
+  </div>
+  <div class="row"><b>확장 설정 화면</b>
+    <button data-s="optNoFile">⑮ 처방통계 엑셀 없음</button>
+    <button data-s="optFirst">⑯ 처음 열었을 때</button>
+    <button data-s="optSearch">⑰ 코드 찾기</button>
+    <button data-s="optSaved">⑱ 저장한 뒤</button>
+  </div>
+  <p class="note">노란 띠는 시안 단추라 앱에 없어요 · 점선 = 확장이 ERP 화면에 붙이는 것 · 회색 = ERP 화면 그대로(가짜, 간단히) · 마감 일자 2026-11-23 예시 · 숫자·코드 이름은 모두 예시(환자 정보 없음) · 주소 끝 ?s= 로도 고를 수 있어요</p>
+</div>
+
+<!-- ════════ ERP 마감일지 화면 (가짜) ════════ -->
+<div id="viewErp">
+  <div class="addr">주소 <code>erp.minesolution.com/h/closing</code> ERP 마감일지 화면 · 의사랑 쓰는 의원 PC</div>
+  <div class="erp">
+    <aside class="erp-side" aria-hidden="true">
+      <div class="logo">ERP</div>
+      <span>대시보드</span><span class="on">마감 · 입력</span><span>파일 업로드</span><span>운영관리</span><span>청구 · 처방</span>
+    </aside>
+    <div class="erp-main">
+      <div class="erp-head"><h1>마감일지</h1><span class="erp-chip">마감일지 삭제</span></div>
+      <div class="erp-date"><label>마감 일자</label><span class="ei text date-on" id="erpDate">2026-11-23</span><span class="erp-chip">PDF 출력</span></div>
+      <div class="erp-tabs" role="tablist" aria-label="업무일지">
+        <button type="button" data-tab="w1">업무일지 1</button>
+        <button type="button" data-tab="w2">업무일지 2</button>
+      </div>
+      <div class="erp-sec" id="w1"></div>
+      <div class="erp-sec" id="w2" hidden></div>
+    </div>
+  </div>
+  <div class="dock">
+    <div class="panel new" id="panel" role="status" hidden></div>
+    <div class="row">
+      <button type="button" class="btn btn-2 last new" id="lastBtn" hidden>지난 결과</button>
+      <button type="button" class="fill-btn2 new" id="rangeBtn">기간 채우기</button>
+      <button type="button" class="fill-btn new" id="fillBtn">의사랑 값 채우기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ 확장 설정 화면 (새 탭) ════════ -->
+<div id="viewOpt" hidden>
+  <div class="addr">확장 설정 화면 · 크롬 새 탭으로 열려요 (확장 아이콘 › 옵션, 또는 안내의 [설정 열기])</div>
+  <div class="opt">
+    <div class="opt-top"><div class="in"><i></i><h1>ERP 마감일지 채우기 · 설정</h1></div></div>
+    <main id="optMain"></main>
+    <div class="savebar"><div class="in">
+      <p class="status" id="optStatus" role="status"></p>
+      <div class="acts2"><button type="button" class="btn btn-1" id="optSave">저장</button></div>
+    </div></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const won = (n) => n.toLocaleString('ko-KR')
+const DAY = '2026-11-23'
+const ERP_STATES = ['idle', 'reading', 'done', 'partial', 'check', 'missing', 'some', 'someDone', 'date', 'cond', 'dup', 'locked', 'range', 'first', 'undone']
+const OPT_STATES = ['optNoFile', 'optFirst', 'optSearch', 'optSaved']
+const S = { s: 'idle', tab: 'w1', panelOpen: true }
+
+/* ───────────── 저장할 엑셀 6개 (조사 노트 3절·4-2절) ───────────── */
+const FILES = [
+  { menu: '수입통계', name: '일일수입통계', table: '', file: '통계-일일수입통계.xls', fills: '외래 수입 6칸 · 재진' },
+  { menu: '진료통계', name: '기간별처방통계', table: '위쪽 표', file: '통계-기간별처방통계.xls', fills: '치료별 건수 · 치료별 매출 · 물리치료내원' },
+  { menu: '인원통계', name: '내원일별환자현황', table: '위쪽 표', file: '통계-내원일별환자현황.xls', fills: '신환 · 환자 합계 · 진찰료 산정안함' },
+  { menu: '인원통계', name: '내원일별환자현황', table: '아래쪽 표', tableHow: '그날 줄을 누른 뒤', file: '통계-내원일별환자현황-환자별.xls', fills: '연령별 신환 · 재진', person: true },
+  { menu: '인원통계', name: '예약환자통계', table: '위쪽 표', file: '통계-예약환자통계.xls', fills: '예약 총갯수 · 내원' },
+  { menu: '인원통계', name: '예약환자통계', table: '아래쪽 표', tableHow: '그날 줄을 누른 뒤', file: '통계-예약환자통계-환자별.xls', fills: '실예약환자수', person: true },
+]
+const fileLabel = (f) => f.name + (f.table ? ` ${f.table}` : '')
+
+/* ───────────── 안내 글 (notes.md '화면 글' 표와 같음) ───────────── */
+const T = {
+  button: '의사랑 값 채우기',
+  reading: '의사랑 엑셀 읽는 중…',
+  title: '의사랑 값 채우기',
+  rangeTitle: '기간 채우기',
+  close: '안내 닫기',
+  closeShort: '닫기',
+  openSettings: '설정 열기',
+  undo: '되돌리기',
+  checkTitle: '의사랑과 맞춰 볼 숫자',
+  checkHelp: '의사랑 일일수입통계 화면의 같은 숫자와 먼저 견주어 보세요.',
+  filled: (n) => `${DAY} 의사랑 값으로 ${n}칸을 채웠어요. 저장은 하지 않았어요.`,
+  gone: (n) => `읽은 엑셀 ${n}개는 이 PC에서 지웠어요.`,
+  end: '확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.',
+  untouched: '아무 칸도 바꾸지 않았어요.',
+  unread: '의사랑에서 읽지 못한 칸',
+  unreadHelp: '의사랑 통계 표의 칸 설정이 바뀌었을 수 있어요. 비워 둔 칸은 직접 넣거나, 그 칸이 보이게 한 뒤 엑셀을 다시 저장하고 다시 눌러 주세요.',
+  absent: '엑셀이 없어 비워 둔 칸',
+  manual: '의사랑에 없어 비워 둔 칸',
+  manualW1: '환자현황 90일초진 · 외래 수입 미수입금(+) · 미수발생(-) · 감액 · 장애인기금(-) · 계좌이체액(-) · 현불/환불(-) · 입원수입',
+  manualW2: '예약 나머지 칸 · 치료별 건수 · 연령별 90일초진 · 주사1회환자 · 신환주사환자 · 신환주사건수',
+  manualHelp: '의사랑 통계 합계로는 셀 수 없는 칸이라 비워 두었어요. 직접 넣어 주세요. 계좌이체는 현금수납액에 들어 있고, 내원하지 않은 환자의 미수 · 환불은 일일수입통계에 빠져요.',
+  unpicked: '고르지 않아 건너뛴 칸',
+  unpickedRows: '치료현황 관절조영술 · 치료현황 리푸스 · 치료현황 손발톱케어 · 치료현황 CT · 치료현황 수술 · 치료별 매출 관절조영 · ESWT Standard · ESWT Radial · 치료별 매출 기타2 · 치료별 매출 기타3 외 1줄',
+  unpickedHelp: '설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.',
+  mismatchAfter: '채우기는 했어요. 의사랑 화면과 견주어 확인해 주세요.',
+  how: `조회일은 ${DAY} 하루, 외/입 구분은 '전체'로 두고 [검색]한 뒤 표 오른쪽 위 초록 엑셀 단추로 저장해 주세요.`,
+  where: '저장할 곳: 바탕화면 › ERP마감 폴더',
+  person: '4 · 6번은 환자별 표예요. ERP 도우미가 이 PC 안에서만 읽고 바로 지워요.',
+  missLead: '의사랑 통계에서 아래 보고서 6개를 엑셀로 저장해 주세요.',
+  someLead: (name) => `의사랑 통계에서 ${name}를 엑셀로 저장해 주세요.`,
+  someHelp: '저장한 뒤 [의사랑 값 채우기]를 다시 눌러 주세요. [있는 엑셀로 채우기]를 누르면 없는 엑셀의 칸만 비우고 채워요.',
+  useSome: '있는 엑셀로 채우기',
+  dateLead: '엑셀 날짜가 마감 일자와 달라요.',
+  dateHow: `날짜가 다른 엑셀 2개를 조회일 ${DAY}으로 다시 [검색]해 저장한 뒤 다시 눌러 주세요.`,
+  dateKept: '아무 칸도 바꾸지 않았어요. 엑셀은 지우지 않고 그대로 두었어요.',
+  condLead: "기간별처방통계 엑셀의 외/입 구분이 '외래'예요.",
+  condHow: "의사랑 통계에서 외/입 구분을 '전체'로 바꿔 [검색]한 뒤 다시 엑셀로 저장해 주세요.",
+  dupLead: '일일수입통계 엑셀이 2개 있어요.',
+  dupHow: '바탕화면 › ERP마감 폴더에서 하나만 남기고 지운 뒤 다시 눌러 주세요.',
+  dupWhy: '어느 것이 맞는지 몰라 아무 칸도 바꾸지 않았어요.',
+  lockLead: '한셀에 열려 있는 엑셀이 있어 읽지 못했어요.',
+  lockHow: '내원일별환자현황 아래쪽 표가 한셀에 열려 있어요. 한셀 창을 닫은 뒤 다시 눌러 주세요.',
+  lockWhy: '환자별 엑셀은 읽은 뒤 바로 지워야 해서, 열려 있으면 읽지 않아요.',
+  lockCode: '아무 칸도 바꾸지 않았어요. (번호 E-UIS-FILE-OPEN)',
+  rangeLead: '의사랑 자료로는 하루씩만 채울 수 있어요.',
+  rangeHow: '의사랑 일일수입통계가 하루씩만 나와서예요. 날마다 그날 엑셀 6개를 저장하고 [의사랑 값 채우기]를 눌러 주세요.',
+  first: '처음 한 번 설정 화면에서 코드를 고르고 [저장]을 눌러 주세요.',
+  firstHelp: '설정 화면을 새 탭으로 열었어요. 아무 칸도 바꾸지 않았어요.',
+  undone: (n) => `되돌렸어요. ${n}칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.`,
+}
+
+/* ───────────── ERP 화면 값 (예시, 서로 맞게 지음) ───────────── */
+// 일일수입통계 합계: 총진료비 5,182,300 = 급여총액 3,976,300 + 비급여 1,206,000 · 진료수납액 1,741,100 = 현금 352,500 + 카드 1,388,600
+// 초진수 9 · 재진수 88 · 인원계 97 · 내원일별 인원수 97 · 신규환자 7 · AA222 총투여량 31 → 재진 88-31=57, 산정안함 97-(9+88)=0
+const W1 = [
+  [{ t: '진료 · 치료현황', u: '건', rows: ['씨암', 'SONO', '도수상담', '도수치료', '충격파(체충)', '관절조영술', '리푸스', '손발톱케어', 'CT', '수술'] }],
+  [{ t: '외래 수입', u: '원', rows: ['외래 총매출', '청구액(-)', '미수입금(+)', '미수발생(-)', '비급여', '감액', '장애인기금(-)', '진료수납액', '카드수납액(-)', '현금수납액(-)', '계좌이체액(-)', '현불/환불(-)'] }],
+  [{ t: '입원수입', u: '원', rows: ['청구', '비급여', '본인부담금', '수납액'] }, { t: '지출', u: '원', rows: ['현금', '카드', 'FREE'] }],
+  [{ t: '환자현황', u: '명', rows: ['신환', '90일초진', '재진', '물리치료내원', '진찰료 산정안함', '합계'], notes: { '재진': '물리치료내원 · 진찰료 산정안함 제외' } }, { t: '신환경로', u: '명', rows: ['지인소개', '간판', '인터넷', '홍보물', '기타'] }],
+]
+const V1 = {
+  '진료 · 치료현황': { '씨암': '18', 'SONO': '21', '도수상담': '2', '도수치료': '6', '충격파(체충)': '4' },
+  '외래 수입': { '외래 총매출': '5,182,300', '청구액(-)': '3,441,200', '비급여': '1,206,000', '진료수납액': '1,741,100', '카드수납액(-)': '1,388,600', '현금수납액(-)': '352,500' },
+  '환자현황': { '신환': '7', '재진': '57', '물리치료내원': '31', '진찰료 산정안함': '0', '합계': '97' },
+}
+const AGES = ['10대미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80대', '90대']
+const AGE_NEW = [0, 1, 1, 0, 1, 2, 1, 1, 0, 0]          // 합 7 = 신규환자
+const AGE_RET = [1, 3, 5, 7, 10, 16, 22, 17, 8, 1]      // 합 90 = 97 - 7
+const SALES = { '씨암': '482,000', 'SONO': '731,500', '도수': '498,000', '충격파': '360,000', '물리치료': '862,400', '크라이오': '154,000' }
+const F2 = { '도수 총금액': '498,000', '충격파 총금액': '360,000' }
+const FILLED = ['done', 'partial', 'check', 'someDone']
+
+/** 상태마다 비운 칸(일부 못 읽음 · 엑셀 없음) */
+function blanked(key) {
+  if (S.s === 'partial') return ['외래 수입|카드수납액(-)', '외래 수입|현금수납액(-)', '예약|진료예약|1'].includes(key)
+  if (S.s === 'someDone') return key === '예약|실예약환자수|0'
+  return false
+}
+function v1(box, row) {
+  if (!FILLED.includes(S.s) || blanked(`${box}|${row}`)) return null
+  return (V1[box] || {})[row] ?? null
+}
+function v2(card, row, col) {
+  if (!FILLED.includes(S.s) || blanked(`${card}|${row}|${col}`)) return null
+  if (card === '예약') return row === '진료예약' ? ['34', '29', null, null][col] : row === '실예약환자수' && col === 0 ? '33' : null
+  if (card === '연령별 신환/90일초진/재진') { const i = AGES.indexOf(row); return col === 0 ? String(AGE_NEW[i]) : col === 2 ? String(AGE_RET[i]) : null }
+  if (card === '치료별 매출') return SALES[row] ?? null
+  return null
+}
+const f2 = (name) => (FILLED.includes(S.s) ? F2[name] ?? null : null)
+const cell = (val, cls = '') => `<span class="ei ${cls} ${val != null ? 'on' : ''}">${val != null ? esc(val) : '-'}</span>`
+
+function drawW1() {
+  const keep = `<div class="erp-box" style="margin-bottom:10px"><h4>담당자 · 휴무자</h4>
+    <div class="erp-fields" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:0">
+      ${['휴무자', '담당', '팀장', '원장'].map((n) => `<div><span>${n}</span>${cell(null, 'text')}</div>`).join('')}</div></div>`
+  const cols = W1.map((boxes) => `<div class="erp-col">${boxes.map((b) => `
+    <div class="erp-box"><h4>${b.t}</h4><table><tbody>${b.rows.map((r) => {
+      const note = b.notes && b.notes[r] ? `<small>${b.notes[r]}</small>` : ''
+      return `<tr><td class="lab">${r}${note}</td><td>${cell(v1(b.t, r))}</td><td class="u">${b.u}</td></tr>`
+    }).join('')}</tbody></table></div>`).join('')}</div>`).join('')
+  const bottom = `<div class="erp-box" style="margin-top:10px"><div class="erp-fields" style="margin-top:0">
+      <div><span>특이사항 <small style="color:#9CA3AF">업무일지 2 와 같은 칸</small></span>${cell(null, 'area')}</div>
+      <div><span>상태</span><span class="ei text keep">작성중 ▾</span></div></div></div>
+    <div class="erp-save"><span class="erp-chip">중간저장</span><span class="erp-chip" style="font-weight:600">전체 저장</span></div>`
+  $('w1').innerHTML = keep + `<div class="erp-grid">${cols}</div>` + bottom
+}
+function table(card, firstHead, cols, rows, opts = {}) {
+  return `<div class="erp-box"><h3>${card}</h3><table>
+    <thead><tr><th>${firstHead}</th>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((r) => `<tr><td class="lab">${r}</td>${cols.map((c, i) => `<td>${opts.keep ? cell(null) : cell(v2(card, r, i))}</td>`).join('')}</tr>`).join('')}
+    ${opts.extra || ''}</tbody></table></div>`
+}
+function drawW2() {
+  const rsvRows = ['주사', '경과', '도수', '충격파', '진료예약', '기타(수액,드레싱등)']
+  const rsvExtra = `<tr><td class="lab" style="font-weight:600">총갯수</td><td colspan="4" style="font-size:11px;color:#9CA3AF">ERP가 더함</td></tr>
+    <tr><td class="lab">실예약환자수</td><td>${cell(v2('예약', '실예약환자수', 0))}</td><td colspan="3"></td></tr>`
+  const left = [
+    table('예약', '구분', ['총갯수', '내원', '변경', '취소'], rsvRows, { extra: rsvExtra }),
+    table('치료별 신환/90일초진/재진 건수', '치료', ['신환', '90일초진', '재진'], ['씨암(주사)', 'SONO(주사)', '관절조영', '도수', '충격파', '크라이오', '기타2', '기타3', '기타4']),
+    table('상담-전환률', '구분', ['상담건수', '예약건수', '실행건수'], ['도수치료', '체외충격파', '기타'], { keep: true }),
+    table('연령별 신환/90일초진/재진', '연령대', ['신환', '90일초진', '재진'], AGES),
+  ].join('')
+  const fields = ['도수 총금액', '충격파 총금액', 'ESWT Standard', 'ESWT Radial', '주사1회환자', '신환주사환자', '신환주사건수']
+  const ops = `<div class="erp-box"><h3>운영 지표(치료사별·금액)</h3><table>
+      <thead><tr><th>치료사</th><th>도수</th><th>충격파</th><th>상담</th></tr></thead>
+      <tbody>${['치료사 가', '치료사 나'].map((n) => `<tr><td class="lab">${n}</td><td>${cell(null)}</td><td>${cell(null)}</td><td>${cell(null)}</td></tr>`).join('')}</tbody></table>
+    <div class="erp-fields">${fields.map((n) => `<div><span>${n}</span>${cell(f2(n))}</div>`).join('')}
+      <div><span>도수 기본단가</span><span class="ei keep">43,850</span></div><div><span>충격파 기본단가</span><span class="ei keep">90,000</span></div></div></div>`
+  const right = [
+    ops,
+    table('치료별 매출', '치료', ['금액(원)'], ['씨암', 'SONO', '관절조영', '도수', '충격파', '물리치료', '크라이오', '기타2', '기타3', '기타4']),
+    `<div class="erp-box"><h3>이벤트 진행</h3><span class="erp-chip">+ 이벤트 추가</span></div>`,
+    `<div class="erp-box"><h3>특이사항 <small style="font-weight:400;color:#9CA3AF">업무일지 1 과 같은 칸</small></h3>${cell(null, 'area')}</div>`,
+  ].join('')
+  $('w2').innerHTML = `<div class="erp-notice">일일 상세 (연령 · 치료별 매출 · 건수 · 상담 · 예약 · 이벤트)</div>
+    <div class="cdf-cols"><section class="cdf-col">${left}</section><section class="cdf-col">${right}</section></div>
+    <div class="erp-save"><span class="erp-chip">중간저장</span><span class="erp-chip" style="font-weight:600">일일 상세 저장</span><span class="erp-chip">초기화</span></div>`
+}
+
+/* ───────────── 안내 (panel.ts 틀 그대로) ───────────── */
+const p = (t, cls = '') => `<p${cls ? ` class="${cls}"` : ''}>${t}</p>`
+const lead = (t, err = false) => p(t, err ? 'lead err' : 'lead')
+const small = (t) => p(t, 'small')
+const acts = (...b) => `<div class="acts">${b.join('')}</div>`
+const btn = (label, attr, primary = false) => `<button type="button" class="btn ${primary ? 'btn-1' : 'btn-2'}" ${attr}>${label}</button>`
+const blk = (title, n, rows, help, whys) => `<div class="blk"><p class="h">${title} <b>${n}칸</b></p>${rows}${whys ? `<ul class="whys">${whys.map((w) => `<li>${w}</li>`).join('')}</ul>` : ''}${small(help)}</div>`
+
+/** 엑셀 목록: have = 번호별 있음(true)/없음(false), dates = 번호별 조회일(날짜 다름) */
+function filesBox({ have, dates }) {
+  const head = dates ? `<p class="h"><span>마감 일자 ${DAY}</span><span>엑셀 조회일</span></p>` : '<p class="h"><span>저장할 엑셀</span></p>'
+  const items = FILES.map((f, i) => {
+    let st
+    if (dates) st = `<span class="st ${dates[i] === DAY ? '' : 'bad'}">${dates[i]}</span>`
+    else st = have[i] ? '<span class="st ok">있음</span>' : '<span class="st bad">없음</span>'
+    const sub = [f.menu, f.tableHow].filter(Boolean).join(' · ')
+    return `<li><span class="no">${i + 1}</span><span class="nm">${fileLabel(f)}<small>${sub}</small></span>${st}</li>`
+  }).join('')
+  return `<div class="files">${head}<ol>${items}</ol></div>`
+}
+
+function doneHtml(o) {
+  const check = `<div class="check"><p class="h">${T.checkTitle}</p><p class="n">외래 총매출 5,182,300원</p><p class="n">진료수납액 1,741,100원</p><p class="n">환자 합계 97명</p>${small(T.checkHelp)}</div>`
+  const unread = o.unread ? blk(T.unread, 3, p('외래 수입 카드수납액(-) · 외래 수입 현금수납액(-) · 예약 진료예약', 'rows'), T.unreadHelp,
+    ["일일수입통계에 '카드수납액' · '현금수납액' 칸이 없어요.", "예약환자통계 위쪽 표에 '이행건수' 칸이 없어요."]) : ''
+  const absent = o.absent ? blk(T.absent, 1, p('예약 실예약환자수', 'rows'), '예약환자통계 아래쪽 표가 없어 비워 두었어요. 직접 넣어 주세요.') : ''
+  const unpicked = blk(T.unpicked, 11, p(T.unpickedRows, 'rows'), T.unpickedHelp)
+  const manual = blk(T.manual, 64, p(`<b>업무일지 1</b> ${T.manualW1}`, 'rows') + p(`<b>업무일지 2</b> ${T.manualW2}`, 'rows'), T.manualHelp)
+  const warns = o.warns ? `<ul class="warns">
+      <li>총진료비(5,182,300원)가 급여총액 + 비급여(5,179,300원)와 달라요.</li>
+      <li>진료수납액(1,741,100원)이 현금 + 카드(1,729,100원)와 달라요.</li>
+      <li>내원일별환자현황 아래쪽 표 환자 수(96명)가 인원수(97명)와 달라요. 연령별 표가 1명 모자랄 수 있어요.</li></ul>${small(T.mismatchAfter)}` : ''
+  return check + lead(T.filled(o.filled)) + p(T.gone(o.files), 'kept') + unread + absent + unpicked + manual + warns + p(T.end, 'end')
+    + acts(btn(T.undo, 'data-undo'), btn(T.openSettings, 'data-open-settings'))
+}
+
+function panelHtml() {
+  switch (S.s) {
+    case 'done': return doneHtml({ filled: 47, files: 6 })
+    case 'partial': return doneHtml({ filled: 44, files: 6, unread: true })
+    case 'check': return doneHtml({ filled: 47, files: 6, warns: true })
+    case 'someDone': return doneHtml({ filled: 46, files: 5, absent: true })
+    case 'missing':
+      return lead(T.missLead) + filesBox({ have: [0, 0, 0, 0, 0, 0] }) + p(T.how) + p(T.where, 'kept') + small(T.person) + small(T.untouched)
+        + acts(btn(T.openSettings, 'data-open-settings'))
+    case 'some':
+      return lead(T.someLead('예약환자통계 아래쪽 표')) + filesBox({ have: [1, 1, 1, 1, 1, 0] }) + p(T.how) + p(T.where, 'kept') + small(`${T.untouched} ${T.someHelp}`)
+        + acts(btn(T.close, 'data-close'), btn(T.useSome, 'data-use-some'))
+    case 'date':
+      return lead(T.dateLead) + filesBox({ dates: ['2026-11-22', '2026-11-22', DAY, DAY, DAY, DAY] }) + p(T.dateHow) + small(T.dateKept)
+    case 'cond': return lead(T.condLead) + p(T.condHow) + small(T.untouched)
+    case 'dup': return lead(T.dupLead) + p(T.dupHow) + small(T.dupWhy)
+    case 'locked': return lead(T.lockLead, true) + p(T.lockHow) + small(T.lockWhy) + small(T.lockCode)
+    case 'range': return lead(T.rangeLead) + p(T.rangeHow) + small(T.untouched) + acts(btn(T.closeShort, 'data-close'))
+    case 'first': return lead(T.first) + small(T.firstHelp) + acts(btn(T.openSettings, 'data-open-settings'))
+    case 'undone': return lead(T.undone(47))
+  }
+  return ''
+}
+
+function renderErp() {
+  document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab))
+  $('w1').hidden = S.tab !== 'w1'
+  $('w2').hidden = S.tab !== 'w2'
+  drawW1(); drawW2()
+  const reading = S.s === 'reading'
+  $('fillBtn').disabled = reading
+  $('rangeBtn').disabled = reading
+  $('fillBtn').textContent = reading ? T.reading : T.button
+  const html = panelHtml()
+  const open = !!html && S.panelOpen
+  $('panel').hidden = !open
+  $('lastBtn').hidden = open || !FILLED.includes(S.s)
+  const head = `<div class="ph"><span class="pt">${S.s === 'range' ? T.rangeTitle : T.title}</span><button type="button" class="x" data-close aria-label="${T.close}">×</button></div>`
+  $('panel').innerHTML = html ? head + `<div class="pb">${html}</div>` : ''
+}
+
+/* ───────────── 설정 화면 ───────────── */
+// 의사랑 기간별처방통계(석 달) 엑셀에서 읽은 목록 예시: [코드, 처방명칭, 총투여량, 총액]. 코드는 조사 노트 4절, 이름·숫자는 지은 예시
+const CODES = [
+  ['AA254', '재진진찰료', 5120, 59187200], ['AA222', '재진진찰료(물리치료 · 주사 등)', 2310, 9563400], ['MM010', '표층열치료', 2280, 2052000],
+  ['MM080', '경피적전기신경자극치료', 2190, 3285000], ['MM101', '간섭파전류치료', 1880, 2632000], ['sono0', '초음파 표시(0원)', 1620, 0],
+  ['carm', '씨암 표시(0원)', 1410, 0], ['la358', '신경근차단술', 1190, 41888000], ['AA154', '초진진찰료', 812, 13218000],
+  ['MM085', '재활저출력레이저치료', 640, 1286400], ['LIDO', '리도카인 주사', 403.5, 403500], ['sono5', '초음파 유도 주사', 402, 24120000],
+  ['KR006', '도수치료', 388, 19400000], ['ESWT 1부위', '체외충격파 1부위', 240, 21600000], ['carm2', '씨암 표시 2(0원)', 233, 0],
+  ['KK090', '관절강내주사', 210, 2730000], ['CRYO 대관절', '크라이오 대관절', 133, 3990000], ['DEXA', '덱사메타손 주사', 121.5, 243000],
+  ['AA254010', '재진진찰료(야간)', 96, 1351700], ['mm010 100/100', '표층열치료(100/100)', 77, 69300], ['도수상담', '도수치료 상담', 61, 0],
+  ['CRYO 소관절', '크라이오 소관절', 58, 1160000], ['SOLU', '솔루메드롤 주사', 31.5, 94500], ['AA154010', '초진진찰료(야간)', 21, 392700],
+  ['도수치료 상담', '도수치료 상담(재)', 17, 0], ['HA280', '관절조영', 9, 1530000],
+]
+const CODE_MAP = Object.fromEntries(CODES.map(([c, n, q, w]) => [c, { n, q, w }]))
+const CODE_TOTAL = 186   // 예시: 엑셀에서 읽은 코드 수
+const KIND_LABEL = { n: '건수로 셀 코드', w: '매출로 셀 코드' }
+const CAUTION = (name) => `시술 코드(예: la358)를 매출에 고르면 ${name}를 쓰지 않은 진료의 그 시술 금액도 그날 것이 모두 들어가요.`
+
+// 줄: [key, 이름, 쓰는 칸, 고르는 것(n 건수 · w 매출), 더할 것]
+const SECTIONS = [
+  { t: '치료별 건수 · 매출', p: '건수는 고른 코드의 총투여량을 더해 업무일지 1 진료 · 치료현황에, 매출은 고른 코드의 총액을 더해 업무일지 2 치료별 매출에 채워요. 총투여량은 환자 수가 아니라 처방한 양이라, 건수에는 한 번에 1씩 나가는 코드만 고르세요.', items: [
+    ['carm', '씨암', '업무일지 1 씨암 · 업무일지 2 씨암 매출', 'nw', 'caution'],
+    ['sono', 'SONO', '업무일지 1 SONO · 업무일지 2 SONO 매출', 'nw', 'caution'],
+    ['arthro', '관절조영', '업무일지 1 관절조영술 · 업무일지 2 관절조영 매출', 'nw'],
+    ['manual', '도수', '업무일지 1 도수치료 · 업무일지 2 도수 매출 · 도수 총금액', 'nw'],
+    ['eswt', '충격파', '업무일지 1 충격파(체충) · 업무일지 2 충격파 매출 · 충격파 총금액', 'nw'],
+    ['pt', '물리치료', '업무일지 2 물리치료 매출', 'w'],
+    ['etc1', '기타1', '업무일지 2 이 이름 줄의 매출', 'w', 'etc'],
+    ['etc2', '기타2', '업무일지 2 이 이름 줄의 매출', 'w', 'etc'],
+    ['etc3', '기타3', '업무일지 2 이 이름 줄의 매출', 'w', 'etc'],
+    ['etc4', '기타4', '업무일지 2 이 이름 줄의 매출', 'w', 'etc'],
+  ] },
+  { t: '진료 · 치료현황만', p: '고른 코드의 총투여량을 더해 업무일지 1 진료 · 치료현황에 채워요.', items: [
+    ['manualConsult', '도수상담', '업무일지 1 도수상담', 'n'], ['lipus', '리푸스', '업무일지 1 리푸스', 'n'], ['nail', '손발톱케어', '업무일지 1 손발톱케어', 'n'],
+    ['ct', 'CT', '업무일지 1 CT', 'n'], ['surgery', '수술', '업무일지 1 수술', 'n'],
+  ] },
+  { t: '운영 지표', p: '고른 코드의 총투여량을 더해 채워요. 주사1회환자 · 신환주사환자 · 신환주사건수는 의사랑 합계로 셀 수 없어 직접 넣어요.', items: [
+    ['eswtStd', 'ESWT Standard', '업무일지 2 ESWT Standard', 'n'], ['eswtRadial', 'ESWT Radial', '업무일지 2 ESWT Radial', 'n'],
+  ] },
+  { t: '환자현황', p: '고른 코드의 총투여량을 물리치료내원으로 채우고, 일일수입통계 재진수에서 빼서 재진을 채워요.', items: [
+    ['ptVisit', '물리치료내원', '업무일지 1 환자현황 물리치료내원 · 재진', 'n'],
+  ] },
+]
+const RSV_ROWS = ['주사', '경과', '도수', '충격파', '진료예약', '기타(수액,드레싱등)']
+
+let O, everSaved, dirty, noFile, search
+function optPreset(name) {
+  O = { picks: {}, etcNames: { etc1: '', etc2: '', etc3: '', etc4: '' }, rsv: '진료예약' }
+  everSaved = false; dirty = false; noFile = false; search = null
+  if (name === 'optNoFile') noFile = true
+  if (name === 'optSearch') {
+    dirty = true
+    O.picks = { carm: { n: ['carm', 'carm2'] } }
+    search = { key: 'sono', kind: 'n', text: 'so' }
+  }
+  if (name === 'optSaved') {
+    everSaved = true
+    O.picks = {
+      carm: { n: ['carm', 'carm2'], w: ['la358'] }, sono: { n: ['sono0', 'sono5'], w: ['sono5'] },
+      manual: { n: ['KR006', 'KR006-1'], w: ['KR006', 'KR006-1'] }, eswt: { n: ['ESWT 1부위'], w: ['ESWT 1부위'] },
+      pt: { w: ['MM010', 'MM080', 'MM085', 'MM101', 'mm010 100/100'] }, etc1: { w: ['CRYO 대관절', 'CRYO 소관절'] },
+      manualConsult: { n: ['도수상담', '도수치료 상담'] }, ptVisit: { n: ['AA222'] },
+    }
+    O.etcNames.etc1 = '크라이오'
+  }
+}
+const picks = (key, kind) => (O.picks[key] && O.picks[key][kind]) || []
+
+function results(text) {
+  const q = text.trim().toLowerCase()
+  if (!q) return []
+  return CODES.filter(([c, n]) => c.toLowerCase().includes(q) || n.toLowerCase().includes(q)).sort((a, b) => b[2] - a[2]).slice(0, 30)
+}
+function ddHtml(key, kind, text) {
+  const list = results(text)
+  if (!list.length) return '<p class="empty">맞는 코드가 없어요.</p>'
+  const mine = picks(key, kind)
+  const frac = kind === 'n' && list.some(([, , q]) => !Number.isInteger(q))
+  return (frac ? '<p class="cnt">주황 숫자는 총투여량에 소수가 있는 코드예요. 건수로는 맞지 않을 수 있어요.</p>' : '') + list.map(([c, n, q, w]) => {
+    const has = mine.includes(c)
+    const em = has ? '<em>골랐어요</em>' : kind === 'n' ? `<em class="${Number.isInteger(q) ? '' : 'frac'}">총투여량 ${won(q)}</em>` : `<em>총액 ${won(w)}원</em>`
+    return `<button type="button" data-add="${esc(c)}" data-key="${key}" data-kind="${kind}" ${has ? 'disabled' : ''}><b>${esc(c)}</b><span>${esc(n)}</span>${em}</button>`
+  }).join('')
+}
+function chip(code, key, kind) {
+  const info = CODE_MAP[code]
+  const name = noFile ? '' : info ? `<span class="cn">${esc(info.n)}</span>` : '<span class="cn gone">(처방통계에 없음)</span>'
+  return `<span class="chip"><b>${esc(code)}</b>${name}<button type="button" data-del="${esc(code)}" data-key="${key}" data-kind="${kind}" aria-label="${esc(code)} 빼기">×</button></span>`
+}
+function pickLine(key, name, kind) {
+  const mine = picks(key, kind)
+  const full = mine.length >= 20
+  const ph = noFile ? '코드 목록이 없어 찾을 수 없어요' : full ? '20개까지 고를 수 있어요' : '코드나 이름으로 찾기'
+  const open = search && search.key === key && search.kind === kind
+  return `<div class="kline"><span class="sub">${KIND_LABEL[kind]}</span><div class="pickline">${mine.length ? mine.map((c) => chip(c, key, kind)).join('') : '<span class="none">고른 코드 없음 · 이 칸은 채우지 않아요</span>'}
+    <div class="find"><input type="search" data-find="${key}" data-kind="${kind}" placeholder="${ph}" value="${open ? esc(search.text) : ''}" ${noFile || full ? 'disabled' : ''} aria-label="${name} ${KIND_LABEL[kind]} 찾기" autocomplete="off">
+      <div class="dd" data-dd="${key}-${kind}" ${open && search.text.trim() ? '' : 'hidden'}>${open ? ddHtml(key, kind, search.text) : ''}</div></div></div></div>`
+}
+function codeRow([key, name, use, kinds, extra]) {
+  const etc = extra === 'etc' ? `<label class="etc"><span>ERP 줄 이름</span><input type="text" maxlength="20" data-etc="${key}" value="${esc(O.etcNames[key])}" placeholder="업무일지 2 줄 이름과 똑같이"></label>` : ''
+  const lines = kinds.split('').map((k) => pickLine(key, name, k)).join('')
+  const caution = extra === 'caution' ? `<p class="hint">${CAUTION(name)}</p>` : ''
+  return `<div class="orow" data-row="${key}"><div class="oname"><b>${name}</b><small>${use}</small></div><div class="opick">${etc}${lines}${caution}</div></div>`
+}
+
+function reportsSection() {
+  const rows = FILES.map((f, i) => `<tr><td>${i + 1}</td>
+      <td>${f.menu} › <b>${f.name}</b></td>
+      <td>${f.table ? `${f.table}${f.tableHow ? `<br><span class="hint">${f.tableHow}</span>` : ''}` : '표 하나'}${f.person ? '<br><span class="pi">환자 정보 있음</span>' : ''}</td>
+      <td class="fn">${f.file}</td><td>${f.fills}</td></tr>`).join('')
+  return `<section class="osec"><h2>매일 저장할 엑셀 6개</h2>
+    <p>마감할 때마다 의사랑 통계(FStat)에서 아래 6개를 엑셀로 저장해 바탕화면 › ERP마감 폴더에 두세요.</p>
+    <table class="rtable"><thead><tr><th></th><th>의사랑 통계 메뉴</th><th>표</th><th>이름 예</th><th>채우는 칸</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="howto">
+      <p>조회일은 마감 일자 하루로, 외/입 구분은 '전체'로 두고 [검색]한 뒤 표 오른쪽 위 초록 엑셀 단추를 눌러 저장해요.</p>
+      <p>이름은 바꿔도 돼요(도우미가 표 머리글로 어느 보고서인지 알아봐요). 아래쪽 표는 위쪽 표와 이름이 겹치지 않게 끝에 '-환자별'을 붙여 주세요.</p>
+      <p>이 폴더에는 마감 엑셀만 두세요. 다 읽은 뒤 폴더 안 엑셀을 모두 지워요.</p>
+    </div>
+    <p class="priv"><b>4 · 6번 환자별 표에는 환자 이름 · 주민번호가 들어 있어요.</b> ERP 도우미가 이 PC 안에서만 읽고 바로 지워요. 주민번호로는 나이만 셈하고, ERP에는 숫자만 넣어요.</p>
+  </section>`
+}
+
+function renderOpt() {
+  const src = '<p class="notice src"><b>의사랑 통계 엑셀에서 읽어요.</b> 이 PC의 ERP 도우미는 바탕화면 › ERP마감 폴더에 저장한 의사랑 통계 엑셀을 읽어 ERP 칸을 채워요.</p>'
+  const first = !everSaved ? '<p class="notice first"><b>처음 한 번 ERP 항목마다 의사랑 처방 코드를 고르고 [저장]을 눌러 주세요.</b> 처방 코드는 의원마다 달라 처음에는 고른 코드가 없어요.</p>' : ''
+  const codes = noFile
+    ? `<div class="notice nofile"><b>처방 코드 목록이 아직 없어요.</b>
+        <ol><li>의사랑 통계 › 진료통계 › 기간별처방통계를 열어 주세요.</li><li>조회일을 최근 석 달로, 외/입 구분을 '전체'로 두고 [검색]을 눌러 주세요.</li><li>표 오른쪽 위 초록 엑셀 단추로 바탕화면 › ERP마감 폴더에 저장해 주세요.</li></ol>
+        <p>그다음 [코드 목록 읽기]를 눌러 주세요.</p><button type="button" class="btn btn-1" data-reread>코드 목록 읽기</button></div>`
+    : `<div class="notice codes"><p>의사랑 기간별처방통계(2026-08-24~2026-11-23)에서 처방 코드 ${CODE_TOTAL}개를 읽었어요. 목록만 기억하고 엑셀은 지웠어요.</p>
+        <p>새 코드가 생기면 기간별처방통계를 다시 저장하고 [코드 목록 다시 읽기]를 눌러 주세요.</p><button type="button" class="btn btn-2" data-reread>코드 목록 다시 읽기</button></div>`
+  const rsv = `<section class="osec"><h2>예약</h2><p>의사랑 예약에는 종류가 없어 예약환자통계 합계(예약건수 → 총갯수, 이행건수 → 내원)를 고른 한 줄에 넣어요. 실예약환자수는 늘 채워요. 다른 줄과 변경 · 취소는 직접 넣어 주세요.</p>
+    <div class="orow"><div class="oname"><b>예약 합계를 넣을 줄</b><small>업무일지 2 예약 표</small></div>
+      <div class="opick"><div class="pickline"><select data-rsv aria-label="예약 합계를 넣을 줄">${RSV_ROWS.map((r) => `<option ${O.rsv === r ? 'selected' : ''}>${r}</option>`).join('')}<option ${O.rsv === '넣지 않음' ? 'selected' : ''}>넣지 않음</option></select></div></div></div></section>`
+  $('optMain').innerHTML = src + first
+    + '<p class="lead-p">ERP 칸마다 셀 의사랑 처방 코드를 고르세요. 건수와 매출은 따로 골라요. 여러 개를 고를 수 있어요. 코드를 고르지 않은 칸은 건드리지 않아요.</p>'
+    + codes
+    + SECTIONS.map((s) => `<section class="osec"><h2>${s.t}</h2><p>${s.p}</p>${s.items.map(codeRow).join('')}</section>`).join('')
+    + rsv + reportsSection()
+    + '<p class="foot">환자 이름 · 차트번호 · 주민번호는 이 PC의 도우미 밖으로 나가지 않아요. ERP 화면에는 숫자만 넣고, 저장은 ERP에서 직접 눌러요.</p>'
+  const st = $('optStatus')
+  st.className = 'status ' + (dirty ? 'dirty' : everSaved ? 'saved' : '')
+  st.textContent = dirty ? '바꾼 것을 아직 저장하지 않았어요.' : everSaved ? '저장했어요.' : '아직 한 번도 저장하지 않았어요.'
+}
+
+/* ───────────── 그리기 · 누르기 ───────────── */
+function setState(s, push = true) {
+  S.s = s; S.panelOpen = true
+  if (OPT_STATES.includes(s)) optPreset(s)
+  if (push) history.replaceState(null, '', `?s=${s}`)
+  render(); window.scrollTo(0, 0)
+}
+function render() {
+  const opt = OPT_STATES.includes(S.s)
+  document.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === S.s)))
+  $('viewErp').hidden = opt
+  $('viewOpt').hidden = !opt
+  if (opt) renderOpt(); else renderErp()
+}
+let timer = null
+document.querySelectorAll('[data-s]').forEach((b) => b.addEventListener('click', () => { clearTimeout(timer); setState(b.dataset.s) }))
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { S.tab = b.dataset.tab; render() }))
+$('fillBtn').addEventListener('click', () => { setState('reading'); timer = setTimeout(() => setState('done'), 1500) })
+$('rangeBtn').addEventListener('click', () => setState('range'))
+$('lastBtn').addEventListener('click', () => { S.panelOpen = true; render() })
+$('panel').addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]')) { S.panelOpen = false; render() }
+  if (e.target.closest('[data-use-some]')) setState('someDone')
+  if (e.target.closest('[data-undo]')) setState('undone')
+  if (e.target.closest('[data-open-settings]')) setState(S.s === 'first' ? 'optFirst' : 'optSaved')
+})
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  if (!$('viewErp').hidden && S.panelOpen && S.s !== 'reading') { S.panelOpen = false; render() }
+  if (search) { search = null; renderOpt() }
+})
+const optMain = $('optMain')
+optMain.addEventListener('input', (e) => {
+  const key = e.target.dataset.find
+  if (key) {
+    search = { key, kind: e.target.dataset.kind, text: e.target.value }
+    const dd = optMain.querySelector(`[data-dd="${key}-${search.kind}"]`)
+    dd.hidden = !e.target.value.trim()
+    dd.innerHTML = ddHtml(key, search.kind, e.target.value)
+    return
+  }
+  const etc = e.target.dataset.etc
+  if (etc) { O.etcNames[etc] = e.target.value; dirty = true; $('optStatus').className = 'status dirty'; $('optStatus').textContent = '바꾼 것을 아직 저장하지 않았어요.' }
+})
+optMain.addEventListener('change', (e) => { if (e.target.hasAttribute('data-rsv')) { O.rsv = e.target.value; dirty = true; renderOpt() } })
+optMain.addEventListener('click', (e) => {
+  const add = e.target.closest('[data-add]')
+  if (add) {
+    const { key, kind } = add.dataset
+    O.picks[key] = O.picks[key] || {}
+    const list = picks(key, kind)
+    if (!list.includes(add.dataset.add) && list.length < 20) O.picks[key][kind] = [...list, add.dataset.add]
+    search = null; dirty = true; renderOpt()
+    return
+  }
+  const del = e.target.closest('[data-del]')
+  if (del) { const { key, kind } = del.dataset; O.picks[key][kind] = picks(key, kind).filter((c) => c !== del.dataset.del); dirty = true; renderOpt(); return }
+  if (e.target.closest('[data-reread]')) { noFile = false; renderOpt() }
+})
+document.addEventListener('click', (e) => {
+  if (search && !e.target.closest('.find') && !$('viewOpt').hidden) { search = null; optMain.querySelectorAll('.dd').forEach((d) => (d.hidden = true)) }
+})
+$('optSave').addEventListener('click', () => { everSaved = true; dirty = false; search = null; renderOpt() })
+
+const start = new URLSearchParams(location.search).get('s')
+setState(ERP_STATES.includes(start) || OPT_STATES.includes(start) ? start : 'idle', false)
+</script>
+</body>
+</html>
