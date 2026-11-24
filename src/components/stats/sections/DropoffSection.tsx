@@ -2,7 +2,9 @@
 
 import { useId, useMemo, useState } from 'react'
 import { formatCount, percentOf } from '@/components/charts/format'
+import { NO_RATE } from '@/components/stats/sunapView'
 import { groupKey } from '@/components/stats/treatmentView'
+import type { SavedDropoffLine } from '@/components/stats/viewSums'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import type { DropoffLine } from '@/types/stats'
 import type { BitSectionsShown } from './PatientMixSection'
@@ -12,7 +14,8 @@ import { useTabDesc } from './RxSection'
 // 몇 번까지 받나 (stats-insights REQ-6103 AC-6103.2~AC-6103.5, 시안 docs/mockups/stats-insights/index.html ③). 처방 칸 넷째 탭이다.
 // 숫자는 Worker가 불러온 범위 전체로 센 묶음 열쇠별 줄(BitSectionsView.dropoff)이고, 이름은 지금 묶음의 열쇠(groupKey)로 찾아 붙인다.
 // 지금 묶음에 없는 열쇠(불러온 뒤 묶음을 바꿈)는 그리지 않는다. 묶음 고르기는 대상이 많은 순(같으면 Worker 차례 = 묶음 차례), 고른 것은 React 상태뿐이다.
-// 비율은 모두 반올림 정수 %(명세 AC-6103.2·AC-6103.3), 평균은 소수 1자리
+// 비율은 모두 반올림 정수 %(명세 AC-6103.2·AC-6103.3), 평균은 소수 1자리.
+// 다른 의원을 보는 중(admin-view AC-8025.1)이면 줄은 저장 합계(saved, viewSums — 고른 달들을 묶음마다 더한 수)이고, 평균은 다시 셀 수 없어 '–'다
 
 const TITLE = '몇 번까지 받나'
 const DESC = '신환이 그 치료를 몇 번까지 받고 그만 오는지 봐요'
@@ -47,11 +50,13 @@ const TH = 'whitespace-nowrap border-b border-st-line px-4 py-2 text-right text-
 const TD = 'whitespace-nowrap border-b border-st-line px-4 py-3 text-right tabular-nums text-st-ink-2 first:pl-0 first:text-left first:font-semibold first:text-st-ink'
 const FOOT_LINE = 'mt-3 text-small text-st-muted'
 
-type Shown = DropoffLine & { name: string }
+type Line = DropoffLine | SavedDropoffLine
+type Shown = Line & { name: string }
 
 const pct = (part: number, n: number) => Math.round((part * 100) / n)
 const people = (count: number) => `${formatCount(count)}명`
-const times = (average: number) => `${average.toFixed(1)}회`
+// 저장 합계 줄의 평균(null)은 '–'(다른 칸의 '셀 수 없음'과 같은 표시)
+const times = (average: number | null) => (average === null ? NO_RATE : `${average.toFixed(1)}회`)
 
 // 지금 묶음의 열쇠 → 이름(sortOrder 차례, 같은 열쇠는 앞 묶음). 처방 없는 묶음은 불러오기에 실리지 않는다(groupDefs)
 function namesOf(groups: readonly StatsRxGroup[]): Map<string, string> {
@@ -64,10 +69,16 @@ function namesOf(groups: readonly StatsRxGroup[]): Map<string, string> {
   return names
 }
 
-function shownLines(view: BitSectionsShown, groups: readonly StatsRxGroup[]): Shown[] {
+// 그릴 줄: 저장 합계를 받으면 그것, 아니면 Worker 답의 줄
+function linesOf(view: BitSectionsShown, saved: readonly SavedDropoffLine[] | undefined): readonly Line[] {
+  if (saved !== undefined) return saved
   if (view === null || view === 'waiting' || view.kind !== 'ready') return []
+  return view.dropoff ?? []
+}
+
+function shownLines(lines: readonly Line[], groups: readonly StatsRxGroup[]): Shown[] {
   const names = namesOf(groups)
-  return (view.dropoff ?? [])
+  return lines
     .flatMap((line) => {
       const name = names.get(line.group)
       return name === undefined ? [] : [{ ...line, name }]
@@ -149,20 +160,26 @@ function CompareTable({ lines }: { lines: readonly Shown[] }) {
   )
 }
 
-export function DropoffSection({ view, groups }: { view: BitSectionsShown; groups: readonly StatsRxGroup[] }) {
+type Props = {
+  view: BitSectionsShown
+  groups: readonly StatsRxGroup[]
+  saved?: readonly SavedDropoffLine[] // 보는 중 저장 합계(admin-view AC-8025.1). 주면 view 대신 이 줄을 그린다. 주지 않으면 지금과 같다
+}
+
+export function DropoffSection({ view, groups, saved }: Props) {
   // 처방 카드(옆 글 있음) 안이면 설명은 패널 맨 위 한 줄(lead)이다(first90 AC-4413.1)
   const { head, lead } = useTabDesc(DESC)
   const [chosen, setChosen] = useState<string | null>(null)
-  const lines = useMemo(() => shownLines(view, groups), [view, groups])
+  const lines = useMemo(() => shownLines(linesOf(view, saved), groups), [view, saved, groups])
 
-  if (view === 'waiting') {
+  if (saved === undefined && view === 'waiting') {
     return (
       <Section title={TITLE} desc={head}>
         {lead}
       </Section>
     )
   }
-  if (view === null || view.kind !== 'ready') {
+  if (saved === undefined && (view === null || view === 'waiting' || view.kind !== 'ready')) {
     return (
       <Section title={TITLE} desc={head}>
         {lead}

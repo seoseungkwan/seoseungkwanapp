@@ -9,6 +9,7 @@ import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import type { WideDays } from '@/components/stats/useWideDays'
 import { sunapSpan, workedDays } from '@/components/stats/sunapView'
 import { summaryCells, summaryDesc, type StatsInput, type StatsRange } from '@/components/stats/view'
+import type { ViewSums } from '@/components/stats/viewSums'
 import { buildAlerts } from '@/lib/analytics/alerts'
 import { addDays } from '@/lib/analytics/dates'
 import type { CalCountRow } from '@/types/calendar'
@@ -126,6 +127,9 @@ type Props = {
   wide?: WideDays // 넓은 하루 읽기(오늘 앞 12달, useWideDays). 주지 않으면 '평소와 다른 것'·'휴일에 따라'·'이번 달 목표'가 없다
   goals?: StatsGoalsShown // 이번 달 목표·하루 매출(useStatsGoals). 내원·신환 하루 숫자는 wide에서 온다. 주지 않으면 '이번 달 목표'가 없다
   salesRevision?: number // revision + 비트 매출 읽기가 끝난 횟수. 월간 보고서가 고른 달 매출·목표를 다시 읽는 때다(AC-6108.5). 주지 않으면 revision
+  // 다른 의원을 보는 중 저장 합계(admin-view AC-8025.1, viewSums). Block 전환·몇 번까지 받나는 값이 있으면 bit 대신 이것으로 그린다
+  // (처방별 신환·재진은 통계 화면이 split으로 넘긴다). null 칸·주지 않음이면 지금과 같다
+  sums?: ViewSums
 }
 
 // 마지막 끝난 날: 통계 화면은 매출 값에 오늘 진료 끝을 반영한 날을 준다. 매출을 주지 않으면 어제다
@@ -138,7 +142,7 @@ function alertsShown(today: string, wide: Pick<WideDays, 'state' | 'days'>, cal:
   return wide.state === 'ready' && buildAlerts({ today, days: wide.days, cal }) !== null
 }
 
-export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar, wide, goals, salesRevision = revision }: Props) {
+export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar, wide, goals, salesRevision = revision, sums }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
   const clinic = useClinicProfile()
   const honorific = clinic.profile.honorific
@@ -220,7 +224,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       )}
       {sunap !== undefined && (
         <StatsCard id={SUNAP_ID} title={SUNAP}>
-          <SunapSection closed={sunap.closed} groups={sunap.groups} onReread={sunap.onReread} bit={bit ?? null} worked={worked} />
+          <SunapSection closed={sunap.closed} groups={sunap.groups} onReread={sunap.onReread} bit={bit ?? null} worked={worked} saved={sums?.sunap ?? undefined} />
         </StatsCard>
       )}
       {calendar !== undefined && (
@@ -234,7 +238,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             { name: '묶음별 추세', panel: <TreatmentTrendSection input={input} saved={saved} groups={groups} revision={revision} /> },
             { name: '처방별 신환·재진', panel: <RxSplitSection view={split} hospitalName={hospitalName} saved={saved} name={name} /> },
             { name: '처방 골라 보기', panel: <RxPickerSection input={input} saved={saved} hospitalName={hospitalName} revision={revision} /> },
-            ...(bit === undefined ? [] : [{ name: '몇 번까지 받나', panel: <DropoffSection view={bit} groups={groups.groups} /> }]),
+            ...(bit === undefined ? [] : [{ name: '몇 번까지 받나', panel: <DropoffSection view={bit} groups={groups.groups} saved={sums?.dropoff ?? undefined} /> }]),
           ]}
         />
       </StatsCard>

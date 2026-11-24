@@ -26,7 +26,8 @@ const OLD_HELPER: Note = {
   title: '도우미를 업데이트하면 보여요',
   text: '새 도우미가 나이·보험·동네·접수 시각·원장님을 함께 읽어 와요. 비트 PC 연결 화면에서 업데이트할 수 있어요.',
 }
-const NO_VISITS: Note = { title: '자료 없음', text: '이 기간에 불러온 접수가 없어요.' }
+// 보는 중 저장 합계(admin-view REQ-8025)로 그리는 Block 전환 칸도 접수가 하나도 없으면 같은 안내다(SunapSection)
+export const NO_VISITS: Note = { title: '자료 없음', text: '이 기간에 불러온 접수가 없어요.' }
 
 // 세 칸 공통 갈래(AC-2706.5·AC-2706.6). note면 제목만 두고 안내 한 줄, 접수가 하나도 없으면 세 칸 모두 같은 안내다
 export function bitState(view: BitSectionsShown): { kind: 'waiting' } | { kind: 'note'; note: Note } | Ready {

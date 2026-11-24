@@ -8,7 +8,7 @@ import { sunapPct } from '@/components/stats/sunapView'
 import { ds } from '@/components/ui/classes'
 import type { SunapRates, SunapTotals } from '@/types/sunap'
 import { HowCounted } from './HowCounted'
-import { bitState, type BitSectionsShown } from './PatientMixSection'
+import { bitState, NO_VISITS, type BitSectionsShown } from './PatientMixSection'
 import { EmptyNote, Note, Section } from './parts'
 
 // 통계 '예약·전환' 칸 (spec sunap-ilji REQ-4906 AC-4906.2·AC-4906.3, 시안 docs/mockups/sunap-ilji/index.html ?s=stats).
@@ -30,6 +30,9 @@ export type StatsSunapShown = { closed: SunapClosed; groups: SunapGroupsState; o
 type Props = StatsSunapShown & {
   bit: BitSectionsShown // 세 칸 답. sunapRates는 답의 sunap, 원장님별 표는 sunapDoctors에 있다(묶음을 실어 물었을 때만)
   worked: readonly string[] // 진료한 날(기간 안 저장된 날 숫자에서 환자가 있는 날). 비면 모른다
+  // 보는 중 저장 합계(admin-view AC-8025.1, viewSums): 고른 기간 날 줄 sunap 아홉 칸의 합. 주면 Block 전환 칸은 bit 대신 이것으로 그린다
+  // (원장님별 표는 저장하지 않아 없다). 주지 않으면 지금과 같다
+  saved?: SunapRates
 }
 
 const RSV_FIRST = '신환 예약률'
@@ -167,10 +170,12 @@ function BlockRows({ rates }: { rates: SunapRates }) {
 }
 
 // Block 전환 칸의 안쪽. 설정을 읽는 중·실패는 비움, 묶음을 안 골랐으면 한 줄(비트 답보다 먼저),
-// 그다음은 세 칸과 같은 빈 상태 갈래(bitState). 답에 sunap이 없으면(묶음을 실어 물은 답을 기다림) 비움
-function BlockBody({ groups, bit }: { groups: SunapGroupsState; bit: BitSectionsShown }) {
+// 그다음은 세 칸과 같은 빈 상태 갈래(bitState). 답에 sunap이 없으면(묶음을 실어 물은 답을 기다림) 비움.
+// 저장 합계(saved)를 받으면 bit 대신 그것이다: 접수가 없으면 세 칸과 같은 '자료 없음', 아니면 같은 줄
+function BlockBody({ groups, bit, saved }: { groups: SunapGroupsState; bit: BitSectionsShown; saved?: SunapRates }) {
   if (groups === 'reading' || groups === 'failed') return null
   if (groups === 'none') return <p className={LINE}>{NO_GROUPS}</p>
+  if (saved !== undefined) return saved.visits === 0 ? <EmptyNote title={NO_VISITS.title}>{NO_VISITS.text}</EmptyNote> : <BlockRows rates={saved} />
   const state = bitState(bit)
   if (state.kind === 'waiting') return null
   if (state.kind === 'note') return <EmptyNote title={state.note.title}>{state.note.text}</EmptyNote>
@@ -189,7 +194,7 @@ function DoctorBody({ groups, bit }: { groups: SunapGroupsState; bit: BitSection
   )
 }
 
-export function SunapSection({ closed, groups, bit, worked, onReread }: Props) {
+export function SunapSection({ closed, groups, bit, worked, onReread, saved }: Props) {
   const sums = closed === 'reading' || closed === 'failed' ? 'blank' : closed.length === 0 ? 'empty' : sumClosed(closed)
   const failed = closed === 'failed' || groups === 'failed'
   return (
@@ -202,7 +207,7 @@ export function SunapSection({ closed, groups, bit, worked, onReread }: Props) {
           <RateBody sums={sums} kind="d90" worked={worked} />
         </Section>
         <Section title={BLOCK} desc={BLOCK_DESC} className={CELL_LAST}>
-          <BlockBody groups={groups} bit={bit} />
+          <BlockBody groups={groups} bit={bit} saved={saved} />
         </Section>
       </div>
       <DoctorBody groups={groups} bit={bit} />

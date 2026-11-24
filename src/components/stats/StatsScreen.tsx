@@ -27,6 +27,7 @@ import { useStatsSunap } from './useStatsSunap'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 import { useWideDays } from './useWideDays'
 import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
+import { useViewSums } from './viewSums'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 둔다(AC-514.9).
 // 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
@@ -243,6 +244,10 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
   const goals = useStatsGoals(today, salesRevision)
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
   const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
+  // 다른 의원을 보는 중(admin-view AC-8025.1)이면 Block 전환·몇 번까지 받나·처방별 신환·재진을 그 의원 저장 합계로 그린다(viewSums).
+  // 보는 중이 아니면 undefined라 지금과 같다. 'waiting' = 고른 달 줄을 읽는 중(처방별 답을 기다릴 때처럼 칸 전체가 기다린다)
+  const sums = useViewSums(data.input, lastDay, data.revision)
+  const shownSums = sums === 'waiting' ? undefined : sums
 
   const [job, setJob] = useState<StatsJob | null>(null)
   const [actionError, setActionError] = useState<ErrorCode | null>(null)
@@ -431,7 +436,7 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
   // 읽기에 실패하면 섹션을 그리지 않는다. 다만 화면이 "그대로 있어요"·"방금 불러온 숫자예요"라고 말한 숫자는 그린다(AC-514.6)
   const freshSplit = incomplete?.kind === 'bit'
   const canDraw = !readFailed || unsaved !== null || freshSplit
-  const waiting = reading || (canDraw && loads > 0 && answered === null)
+  const waiting = reading || (canDraw && ((loads > 0 && answered === null) || sums === 'waiting'))
   const showSections = canDraw && !waiting
   const drawn = readFailed && unsaved === null && freshSplit ? { days: [], covered: [], range } : input
   // 못 읽은 기간을 "이 기간 자료가 없어요"라고 하지 않는다. 저장하지 못한 숫자에 그 기간이 없을 때는 맞는 말이다
@@ -551,7 +556,7 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
           <StatsSections
             input={drawn}
             saved={drawnSaved}
-            split={answered?.view ?? null}
+            split={shownSums?.split ?? answered?.view ?? null}
             report={report}
             hospitalName={hospitalName}
             groups={groups}
@@ -571,6 +576,7 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
             wide={wide}
             goals={goals}
             salesRevision={salesRevision}
+            sums={shownSums}
           />
         </div>
       )}

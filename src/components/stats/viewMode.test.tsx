@@ -13,11 +13,12 @@ import type { ChromeRuntimeLike } from '@/types/bridge'
 import { DEFAULT_CAL_SETTINGS, type CalCountRow } from '@/types/calendar'
 import type { DayPayload } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
-import { DEFAULT_RSV_KINDS } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, type SunapRates } from '@/types/sunap'
 import { createStatsWorker } from '@/workers/statsClient'
 import { calendarCountRows } from './calendarCounts'
 import { StatsScreen } from './StatsScreen'
 import { StatsSections } from './sections/StatsSections'
+import { groupKey } from './treatmentView'
 import { statsRange } from './view'
 
 // 다른 의원 보기 중 통계 탭 (admin-view REQ-8008 AC-8008.1·AC-8008.2, design.md '탭마다 읽기만', 시안 docs/mockups/admin-view ?s=viewing&p=stats).
@@ -317,6 +318,153 @@ describe('통계: 보는 중 예약 칸 (AC-8008.2)', () => {
     expect(expected.length).toBe(DB_ROWS.length + 2)
     expect(calendarCountRows(adminAnswer(all))).toEqual(expected)
     expect(JSON.stringify(calendarCountRows(adminAnswer(all)))).not.toMatch(/가짜환자|000123|가짜 메모/)
+  })
+})
+
+describe('통계: 보는 중 비트 전용 칸은 저장 합계로 (AC-8025.1·AC-8025.2)', () => {
+  // 수납일지 Block·물리치료 묶음(둘 다 통계 처방 묶음에 있음 → Block 전환 칸이 묶음 안내 없이 숫자 자리)
+  const BLOCK_GROUP: RxGroup = { id: 'g1', name: '가짜 블록', codes: ['B100'], sortOrder: 1 }
+  const RATES: SunapRates = { visits: 10, first_n: 2, d90_n: 1, ret_n: 7, block_n: 3, pt_n: 6, first_block: 1, d90_block: 0, ret_block: 2 }
+  const withSunap = (row: DayPayload): DayPayload => ({ ...row, sunap: { ...RATES } })
+  const NOT_HERE = '비트 PC에서 불러오면 보여요'
+  const DROPOFF_NOT_HERE = '비트에서 불러오면 볼 수 있어요'
+  const KEY = groupKey(SAVED_GROUP.codes)
+  // 날 줄 둘씩: 최근 30일(11월 1·2일), 10월(5·6일). 덮은 기간 9월 1일 ~ 11월 12일(beforeEach)
+  const DAYS_30 = [withSunap(day('2026-11-01')), withSunap(day('2026-11-02'))]
+  const DAYS_OCT = [withSunap(day('2026-10-05')), withSunap(day('2026-10-06'))]
+  // 10월 달 줄(admin_rows 'stats_months' 모양). 저장된 평균 9.9·빠지는 곳 5는 일부러 수와 맞지 않는다(다시 세면 3회 → 4회)
+  const OCT_ROW = {
+    month: '2026-10',
+    partial: false,
+    rx: [{ code: 'A100', name: '가짜처방', type: '3', patients: 3, newPatients: 1, returning: 2, followup: [1, 1, 1, 0] }],
+    groups: [{ id: KEY, patients: 3, newPatients: 1, returning: 2, followup: [1, 1, 1, 0] }],
+    dropoff: { asOf: '2026-11-12', lines: [{ group: KEY, n: 8, atLeast: [8, 5, 5, 1, 0, 0], ten: 0, once: 3, average: 9.9, drop: 5 }] },
+    sections: null,
+  }
+  const monthCalls = () => vi.mocked(readAdminRows).mock.calls.filter(([kind]) => kind === 'stats_months')
+  const blockCell = () => within(within(card('stats-sunap')).getByRole('heading', { name: 'Block 전환' }).closest('section')!)
+  const pressDayUnit = () => fireEvent.click(within(screen.getAllByRole('group', { name: '보는 단위' })[0]!).getByRole('button', { name: '일별' }))
+
+  function serve({ days30 = DAYS_30, daysOct = DAYS_OCT, month = OCT_ROW as Record<string, unknown> } = {}) {
+    vi.mocked(readDays).mockImplementation(async (range) => (range.from === R30.current.from ? read(days30) : range.from === '2026-10-01' ? read(daysOct) : read()))
+    vi.mocked(readAdminRows).mockImplementation(async (kind) => (kind === 'stats_months' ? [{ hospitalId: VIEWING.hospitalId, row: { ...month } }] : adminAnswer()))
+  }
+
+  beforeEach(() => {
+    vi.mocked(listStatsRxGroups).mockResolvedValue([SAVED_GROUP, BLOCK_GROUP])
+    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: 'g1', ptGroup: 'g0', kinds: DEFAULT_RSV_KINDS })
+  })
+
+  it('AC-8025.1: 최근 30일 — Block 전환은 고른 기간 날 줄 sunap 합으로 그리고, 온전한 달이 아니라 달 줄은 읽지 않으며 몇 번까지 받나·처방별 신환·재진은 안내 글이다', async () => {
+    countedChrome()
+    serve()
+    draw(VIEWING)
+    await sectionsShown()
+    // 두 날 합: 신환 4명 중 Block 2명 · 90일초진 2명 중 0명 · Block 6명 중 재진 4명 · 내원 20건 중 Block 6·물리치료 12
+    await waitFor(() => expect(blockCell().queryByText('2/4')).toBeTruthy())
+    expect(blockCell().getByText('0/2')).toBeTruthy()
+    expect(blockCell().getByText('4/6')).toBeTruthy()
+    expect(blockCell().getByText('6/20')).toBeTruthy()
+    expect(blockCell().getByText('12/20')).toBeTruthy()
+    expect(blockCell().queryByText(NOT_HERE)).toBeNull()
+    expect(monthCalls()).toEqual([])
+    expect(within(rxPanel('몇 번까지 받나')).getByText(DROPOFF_NOT_HERE)).toBeTruthy()
+    expect(within(rxPanel('처방별 신환·재진')).getByText(NOT_HERE)).toBeTruthy()
+    for (const fn of WRITES) expect(fn).not.toHaveBeenCalled()
+  })
+
+  it("AC-8025.1: 지난달(일별 → 10월) — readAdminRows('stats_months', [보는 의원], 10월 1일, 31일)로 읽어 몇 번까지 받나(수에서 다시 셈, 평균 –)·처방별 신환·재진·Block 전환을 그린다", async () => {
+    countedChrome()
+    serve()
+    draw(VIEWING)
+    await sectionsShown()
+    pressDayUnit()
+    await waitFor(() => expect(monthCalls()).toEqual([['stats_months', [VIEWING.hospitalId], '2026-10-01', '2026-10-31']]))
+    await sectionsShown()
+    await waitFor(() => expect(within(rxPanel('몇 번까지 받나')).queryByText('가짜 묶음 처음 받은 신환 8명')).toBeTruthy())
+    const dropoff = within(rxPanel('몇 번까지 받나'))
+    expect(dropoff.getByText('38%')).toBeTruthy() // 1회만 3/8
+    expect(dropoff.getByText('3회 → 4회')).toBeTruthy() // 더한 수에서 다시 셈(저장된 5회가 아니다)
+    expect(dropoff.queryByText('5회 → 6회')).toBeNull()
+    expect(dropoff.queryByText('9.9회')).toBeNull()
+    expect(dropoff.getByText('–')).toBeTruthy() // 평균은 저장된 수로 다시 셀 수 없다
+    expect(dropoff.queryByText(DROPOFF_NOT_HERE)).toBeNull()
+    const split = within(rxPanel('처방별 신환·재진'))
+    expect(split.getByText('2026-10-01 ~ 2026-10-31 (31일) · 외래 환자 20명 (신환 4명 · 재진 16명) · 내원 20건')).toBeTruthy()
+    expect(split.getByRole('row', { name: /가짜처방/ })).toBeTruthy()
+    expect(split.queryByText(NOT_HERE)).toBeNull()
+    expect(blockCell().getByText('2/4')).toBeTruthy()
+    for (const fn of WRITES) expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('AC-8025.2: 환자 구성·시간대별 접수·원장님별은 저장 합계에 없는 숫자(건수·요일×시간 칸·원장님별 내원)를 써서 보는 중에도 지금처럼 안내 글이다', async () => {
+    countedChrome()
+    serve()
+    draw(VIEWING)
+    await sectionsShown()
+    pressDayUnit()
+    await waitFor(() => expect(monthCalls().length).toBe(1))
+    await sectionsShown()
+    await waitFor(() => expect(within(rxPanel('처방별 신환·재진')).queryByText(NOT_HERE)).toBeNull())
+    const titled = (id: string, title: string) => within(within(card(id)).getByRole('heading', { name: title }).closest('section')!)
+    expect(titled('stats-patients', '환자 구성').getByText(NOT_HERE)).toBeTruthy()
+    expect(titled('stats-ops', '시간대별 접수').getByText(NOT_HERE)).toBeTruthy()
+    expect(titled('stats-ops', '원장님별').getByText(NOT_HERE)).toBeTruthy()
+  })
+
+  it('AC-8025.2: 고른 기간 날 줄 하나라도 sunap이 없으면 Block 전환은 안내 글이고, 그달 줄에 dropoff가 없으면 몇 번까지 받나만 안내 글이다', async () => {
+    countedChrome()
+    serve({ days30: [DAYS_30[0]!, day('2026-11-02')], month: { ...OCT_ROW, dropoff: null } })
+    draw(VIEWING)
+    await sectionsShown()
+    await waitFor(() => expect(blockCell().queryByText(NOT_HERE)).toBeTruthy())
+    expect(blockCell().queryByText('신환+Block')).toBeNull()
+    pressDayUnit()
+    await waitFor(() => expect(monthCalls().length).toBe(1))
+    await sectionsShown()
+    await waitFor(() => expect(within(rxPanel('처방별 신환·재진')).queryByText(NOT_HERE)).toBeNull())
+    expect(within(rxPanel('몇 번까지 받나')).getByText(DROPOFF_NOT_HERE)).toBeTruthy()
+    expect(blockCell().getByText('2/4')).toBeTruthy() // 10월 날 줄은 모두 sunap이 있다
+  })
+
+  it('AC-8025.2: 그달 줄이 덜 된 달(partial)이거나 달 줄 읽기가 실패하면 몇 번까지 받나·처방별 신환·재진은 안내 글이다', async () => {
+    countedChrome()
+    serve({ month: { ...OCT_ROW, partial: true } })
+    const { unmount } = draw(VIEWING)
+    await sectionsShown()
+    pressDayUnit()
+    await waitFor(() => expect(monthCalls().length).toBe(1))
+    await sectionsShown()
+    expect(within(rxPanel('처방별 신환·재진')).getByText(NOT_HERE)).toBeTruthy()
+    expect(within(rxPanel('몇 번까지 받나')).getByText(DROPOFF_NOT_HERE)).toBeTruthy()
+    unmount()
+    vi.mocked(readAdminRows).mockImplementation(async (kind) => {
+      if (kind === 'stats_months') throw new Error('가짜 실패')
+      return adminAnswer()
+    })
+    draw(VIEWING)
+    await sectionsShown()
+    pressDayUnit()
+    await waitFor(() => expect(monthCalls().length).toBe(2))
+    await sectionsShown()
+    expect(within(rxPanel('처방별 신환·재진')).getByText(NOT_HERE)).toBeTruthy()
+    expect(within(rxPanel('몇 번까지 받나')).getByText(DROPOFF_NOT_HERE)).toBeTruthy()
+  })
+
+  it('AC-8025.2: viewing={null}이면 날 줄에 sunap이 있어도 Block 전환·처방별·몇 번까지 받나는 지금처럼 안내 글이고 readAdminRows를 부르지 않는다', async () => {
+    countedChrome()
+    serve()
+    draw(null)
+    await sectionsShown()
+    await waitFor(() => expect(blockCell().queryByText(NOT_HERE)).toBeTruthy())
+    pressDayUnit()
+    await sectionsShown()
+    await waitFor(() => expect(blockCell().queryByText(NOT_HERE)).toBeTruthy())
+    expect(blockCell().queryByText('2/4')).toBeNull()
+    expect(within(rxPanel('처방별 신환·재진')).getByText(NOT_HERE)).toBeTruthy()
+    expect(within(rxPanel('몇 번까지 받나')).getByText(DROPOFF_NOT_HERE)).toBeTruthy()
+    expect(readAdminRows).not.toHaveBeenCalled()
+    await act(async () => {})
   })
 })
 
