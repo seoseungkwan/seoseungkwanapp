@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-uisarang",
-  "approved_at": "2026-11-24T04:08:55Z",
+  "approved_at": "2026-11-24T05:32:09Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "87771d8ab10e9fd0e2d7ad72fdb8d9ca1b8aede2143a20077892915f95b66a8c",
+  "spec_sha256": "af418b004dd510fa01f901a78d872c547b151a28a3167ce23befcbe5e69c15db",
   "scope": [
     ".gitignore",
     "extension-erp/README.md",
@@ -44,6 +44,7 @@
     "extension-erp/src/zip.test.ts",
     "extension-erp/src/zip.ts",
     "fixtures/fake-uisarang/*.xls",
+    "fixtures/make-fake-fixtures.test.ts",
     "fixtures/make-fake-uisarang.test.ts",
     "fixtures/make-fake-uisarang.ts",
     "helper-erp/Directory.Build.props",
