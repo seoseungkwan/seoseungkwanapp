@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useViewing } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { isYmd } from '@/lib/analytics/dates'
 import { StaffStoreError, type StaffStore } from '@/lib/storage/staff'
@@ -72,6 +73,7 @@ const dateInput = `${ds.input} w-auto max-w-50`
 
 export function LeaveEditor({ choices, leaves, changes, plans, settings, profile, today, preset, store, onSaved, onFailed, onClose }: LeaveEditorProps) {
   const ids = { person: useId(), memo: useId() }
+  const viewHospitalId = useViewing()?.hospitalId ?? null
   const group = preset.group
   const first = group?.[0] ?? null
   const [staffId, setStaffId] = useState(first?.staffId ?? preset.staffId ?? '')
@@ -100,20 +102,22 @@ export function LeaveEditor({ choices, leaves, changes, plans, settings, profile
   const problem = person === null ? null : days.length === 0 ? '휴가로 셀 날이 없어요.' : taken !== undefined ? `${mmdd(taken)}에 이미 휴가가 있어요.` : null
   const left = person ? leftBeforeAfter(person, leaves, settings, today, { groupId, rows }) : null
 
-  // 이어진 사람의 그날 예약 수(경고만 — 저장은 막지 않는다). 못 세면 경고 없이 둔다
+  // 이어진 사람의 그날 예약 수(경고만 — 저장은 막지 않는다). 못 세면 경고 없이 둔다.
+  // 관리자가 다른 의원을 보는 중이면 보는 의원 id를 함께 넘겨 예약 표 대신 관리자 비교 읽기로 센다(admin-view AC-8009.4)
   const apptKey = link && days.length > 0 ? `${link.id}|${days.join(',')}` : null
   useEffect(() => {
     if (apptKey === null) return
     let current = true
     const [calendarStaffId, list] = apptKey.split('|')
-    store.countAppts(calendarStaffId, list.split(',')).then(
+    const counting = viewHospitalId === null ? store.countAppts(calendarStaffId, list.split(',')) : store.countAppts(calendarStaffId, list.split(','), viewHospitalId)
+    counting.then(
       (counts) => current && setAppts({ key: apptKey, list: counts }),
       () => current && setAppts({ key: apptKey, list: [] }),
     )
     return () => {
       current = false
     }
-  }, [apptKey, store])
+  }, [apptKey, store, viewHospitalId])
   const warnings = appts !== null && appts.key === apptKey ? appts.list.filter((a) => a.count > 0) : []
 
   const changeMode = (next: 'one' | 'range') => {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { addMonthsToDay, isMonth, isYmd, todayInKorea } from '@/lib/analytics/dates'
 import { hasNationalId } from '@/lib/staff/nationalId'
+import { readAdminRows } from '@/lib/storage/adminRows'
 import type { DateRange } from '@/types/dates'
 import {
   ADJUST_REASONS,
@@ -38,6 +39,7 @@ import {
 // 실패는 StaffStoreError(번호만: E-STAFF-READ-FAILED·E-STAFF-SAVE-FAILED·E-STAFF-FILE-FAILED)다. Supabase 오류 글·입력값은 담지 않는다.
 // 자식 표(기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄)는 열쇠 칸(직원·날·달)에 고치기 권한이 없어(design.md 1절 권한 표) upsert를 쓰지 않는다:
 // 그 열쇠 줄을 먼저 고치고, 없으면 열쇠와 함께 넣는다(다른 창이 그새 넣어 겹치면 한 번 더 고친다)
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.4) 예약 표(calendar_appts, 보기 ×)는 읽지 않고 휴가 날 예약 수만 관리자 비교 읽기(admin_rows 'calendar_counts')로 센다
 
 export type StaffClient = Pick<SupabaseClient, 'from' | 'storage'>
 type Row = Record<string, unknown> // 읽은 줄은 모양을 믿지 않고 칸마다 확인한다
@@ -561,8 +563,12 @@ export type StaffStore = {
   /** 묶음 고치기 = 지우고 같은 묶음 id로 다시 넣기 */
   replaceLeaveGroup(groupId: string, rows: readonly LeaveDraft[]): Promise<Leave[]>
   deleteLeaveGroup(groupId: string): Promise<void>
-  /** 휴가 날들 그 시행자의 취소 아닌 예약 수(AC-7610.5). 예약 표에서 날짜 칸만 읽는다. 예약이 있는 날만, 날 차례 */
-  countAppts(calendarStaffId: string, days: readonly string[]): Promise<ApptCount[]>
+  /**
+   * 휴가 날들 그 시행자의 취소 아닌 예약 수(AC-7610.5). 예약 표에서 날짜 칸만 읽는다. 예약이 있는 날만, 날 차례.
+   * 보는 의원 id를 받으면(관리자가 다른 의원을 보는 중, admin-view AC-8009.4) 예약 표를 바로 읽지 않고 관리자 비교 읽기
+   * readAdminRows('calendar_counts') 줄(이름·차트번호·메모 없음)에서 같은 시행자·취소 뺀 수를 센다
+   */
+  countAppts(calendarStaffId: string, days: readonly string[], viewHospitalId?: string): Promise<ApptCount[]>
   /** 설정. 줄이 없으면 기본값, 틀린 칸만 기본값 */
   loadSettings(): Promise<StaffSettings>
   /** 설정 세 칸을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). 보낸 값을 돌려준다 */
@@ -587,6 +593,32 @@ export function createStaffStore(client: StaffClient): StaffStore {
         client.from(MEMBERS).select(MEMBER_COLUMNS).order('hired_on', ASC).order('name', ASC).order('id', ASC).range(first, last),
       )
     ).flatMap((row) => toMember(row) ?? [])
+
+  // 내 의원 예약 표에서 날짜 칸만(취소 아닌 줄, 그 시행자, 첫날~끝날)
+  const readOwnAppts = (calendarStaffId: string, wanted: readonly string[]) =>
+    readAllOrFail(READ, (first, last) =>
+      client
+        .from(APPTS)
+        .select('day')
+        .eq('staff_id', calendarStaffId)
+        .gte('day', wanted[0])
+        .lte('day', wanted[wanted.length - 1])
+        .neq('status', 'cancel')
+        .order('day', ASC)
+        .order('id', ASC)
+        .range(first, last),
+    )
+
+  // 보는 의원 예약 숫자 칸(calendar_counts)에서 그 시행자·취소 아닌 줄. 실패는 번호만(원래 오류는 담지 않는다)
+  async function readViewAppts(viewHospitalId: string, calendarStaffId: string, wanted: readonly string[]): Promise<unknown[]> {
+    let rows: { row: Record<string, unknown> }[]
+    try {
+      rows = await readAdminRows('calendar_counts', [viewHospitalId], wanted[0], wanted[wanted.length - 1])
+    } catch {
+      throw fail(READ)
+    }
+    return rows.map(({ row }) => row).filter((row) => row.staff_id === calendarStaffId && row.status !== 'cancel')
+  }
 
   /** 열쇠 줄을 고치고, 없으면 열쇠와 함께 넣는다. 넣다가 겹치면(23505) 한 번 더 고친다. DB가 준 줄 */
   async function saveByKey(table: string, key: Row, values: Row, columns: string): Promise<unknown> {
@@ -813,21 +845,10 @@ export function createStaffStore(client: StaffClient): StaffStore {
       await requestOrFail(SAVE, () => client.from(LEAVES).delete().eq('group_id', group))
     },
 
-    async countAppts(calendarStaffId, days) {
+    async countAppts(calendarStaffId, days, viewHospitalId) {
       const wanted = [...new Set(Array.isArray(days) ? days.filter(isDay) : [])].sort()
       if (!isFilled(calendarStaffId) || wanted.length === 0) return []
-      const rows = await readAllOrFail(READ, (first, last) =>
-        client
-          .from(APPTS)
-          .select('day')
-          .eq('staff_id', calendarStaffId)
-          .gte('day', wanted[0])
-          .lte('day', wanted[wanted.length - 1])
-          .neq('status', 'cancel')
-          .order('day', ASC)
-          .order('id', ASC)
-          .range(first, last),
-      )
+      const rows = viewHospitalId === undefined ? await readOwnAppts(calendarStaffId, wanted) : await readViewAppts(viewHospitalId, calendarStaffId, wanted)
       const counts = new Map<string, number>(wanted.map((day) => [day, 0]))
       for (const row of rows) {
         const day = isRecord(row) ? row.day : undefined

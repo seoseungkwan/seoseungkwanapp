@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState, type MouseEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
+import { ReadOnlyFields } from '@/components/staff/ReadOnlyFields'
 import { OVERTIME_KIND_LABEL } from '@/components/staff/labels'
 import { ds } from '@/components/ui/classes'
 import { weekdayOf } from '@/lib/analytics/dates'
@@ -18,6 +20,7 @@ import { Segment, ShiftFields, shiftProblem } from './parts'
 // 더 일한 시간은 바뀐 종류만 저장한다(0이면 그 줄을 지운다). [기본으로 되돌리기]는 그날 바꾼 근무·더 일한 시간·메모를 모두 지운다.
 // 저장이 실패하면 창 안에 E-STAFF-SAVE-FAILED, 적은 값은 그대로다. 여러 번 쓰다(지우고 다시 넣기) 중간에 실패할 수 있으니 실패하면 그 기간을 다시 읽어
 // 뒤 칸을 DB와 맞추고(onFailed), 다시 [저장]하면 다시 읽은 값(changes·overtime)과 견줘 DB에 없는 것만 쓴다. Esc·✕·뒤 가림막은 저장하지 않고 닫는다
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) 그날 근무·더 일한 시간·메모는 보이기만 하고(칸·단추 막힘) [기본으로 되돌리기]·[저장]이 없다. ✕는 그대로
 
 const KINDS: readonly OvertimeKind[] = ['extended', 'night', 'holiday']
 const KIND_HELP: Record<OvertimeKind, string> = {
@@ -171,84 +174,88 @@ export function DayDialog({ member, day, plans, changes, overtime, ctx, store, o
           </button>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <p className={ds.label}>그날 근무</p>
-          <Segment
-            label="그날 근무"
-            className="self-start"
-            options={[
-              ['work', '일함'],
-              ['rest', '쉼'],
-            ]}
-            value={shift !== null ? 'work' : 'rest'}
-            onChange={setWorking}
-          />
-          {shift !== null ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <ShiftFields shift={shift} onChange={changeShift} />
-            </div>
-          ) : null}
-          {problem !== null ? <p className={ds.fieldError}>{problem}</p> : null}
-          <p className={ds.help}>근무 시간을 늘려도 더 일한 시간은 저절로 늘지 않아요. 아래 칸에 따로 적어 주세요.</p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <p className={ds.label}>
-            더 일한 시간 <span className={ds.labelHint}>30분씩 늘고 줄어요</span>
-          </p>
-          {KINDS.map((key) => {
-            const label = OVERTIME_KIND_LABEL[key]
-            return (
-              <div key={key} className="flex items-center justify-between gap-3 border-b border-line py-2 last-of-type:border-b-0">
-                <span className="flex min-w-0 flex-col">
-                  <span className="text-small font-semibold text-ink">{label}</span>
-                  <span className="text-caption text-muted">{KIND_HELP[key]}</span>
-                </span>
-                <div role="group" aria-label={label} className="inline-flex shrink-0 items-center gap-2">
-                  <button type="button" aria-label={`${label} 30분 줄이기`} className={STEP_BUTTON} disabled={minutes[key] <= 0} onClick={() => step(key, -OVERTIME_STEP)}>
-                    −
-                  </button>
-                  <span role="status" className={`w-24 text-center text-small font-semibold tabular-nums ${minutes[key] > 0 ? 'text-ink' : 'text-muted'}`}>
-                    {fmtMinutes(minutes[key])}
-                  </span>
-                  <button type="button" aria-label={`${label} 30분 늘리기`} className={STEP_BUTTON} disabled={minutes[key] >= OVERTIME_MAX} onClick={() => step(key, OVERTIME_STEP)}>
-                    +
-                  </button>
-                </div>
+        <ReadOnlyFields>
+          <div className="flex flex-col gap-2">
+            <p className={ds.label}>그날 근무</p>
+            <Segment
+              label="그날 근무"
+              className="self-start"
+              options={[
+                ['work', '일함'],
+                ['rest', '쉼'],
+              ]}
+              value={shift !== null ? 'work' : 'rest'}
+              onChange={setWorking}
+            />
+            {shift !== null ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <ShiftFields shift={shift} onChange={changeShift} />
               </div>
-            )
-          })}
-          <p className={ds.help}>공휴일·휴진일에 일하면 그 시간은 &apos;휴일&apos;로 들어가요.</p>
-        </div>
+            ) : null}
+            {problem !== null ? <p className={ds.fieldError}>{problem}</p> : null}
+            <p className={ds.help}>근무 시간을 늘려도 더 일한 시간은 저절로 늘지 않아요. 아래 칸에 따로 적어 주세요.</p>
+          </div>
 
-        <div className={ds.field}>
-          <label htmlFor={memoId} className={ds.label}>
-            메모
-          </label>
-          <input
-            id={memoId}
-            type="text"
-            maxLength={MEMO_MAX}
-            className={ds.input}
-            value={memo}
-            onChange={(event) => {
-              setMemo(event.target.value)
-              setFailed(false)
-            }}
-          />
-          <p className={ds.help}>휴가는 이 창이 아니라 휴가 화면에서 넣어요.</p>
-        </div>
+          <div className="flex flex-col gap-2">
+            <p className={ds.label}>
+              더 일한 시간 <span className={ds.labelHint}>30분씩 늘고 줄어요</span>
+            </p>
+            {KINDS.map((key) => {
+              const label = OVERTIME_KIND_LABEL[key]
+              return (
+                <div key={key} className="flex items-center justify-between gap-3 border-b border-line py-2 last-of-type:border-b-0">
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-small font-semibold text-ink">{label}</span>
+                    <span className="text-caption text-muted">{KIND_HELP[key]}</span>
+                  </span>
+                  <div role="group" aria-label={label} className="inline-flex shrink-0 items-center gap-2">
+                    <button type="button" aria-label={`${label} 30분 줄이기`} className={STEP_BUTTON} disabled={minutes[key] <= 0} onClick={() => step(key, -OVERTIME_STEP)}>
+                      −
+                    </button>
+                    <span role="status" className={`w-24 text-center text-small font-semibold tabular-nums ${minutes[key] > 0 ? 'text-ink' : 'text-muted'}`}>
+                      {fmtMinutes(minutes[key])}
+                    </span>
+                    <button type="button" aria-label={`${label} 30분 늘리기`} className={STEP_BUTTON} disabled={minutes[key] >= OVERTIME_MAX} onClick={() => step(key, OVERTIME_STEP)}>
+                      +
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            <p className={ds.help}>공휴일·휴진일에 일하면 그 시간은 &apos;휴일&apos;로 들어가요.</p>
+          </div>
+
+          <div className={ds.field}>
+            <label htmlFor={memoId} className={ds.label}>
+              메모
+            </label>
+            <input
+              id={memoId}
+              type="text"
+              maxLength={MEMO_MAX}
+              className={ds.input}
+              value={memo}
+              onChange={(event) => {
+                setMemo(event.target.value)
+                setFailed(false)
+              }}
+            />
+            <p className={ds.help}>휴가는 이 창이 아니라 휴가 화면에서 넣어요.</p>
+          </div>
+        </ReadOnlyFields>
 
         {failed ? <ErrorCard code="E-STAFF-SAVE-FAILED" /> : null}
 
-        <div className="flex items-center justify-between gap-2">
-          <button type="button" className={ds.button.secondary} aria-busy={busy || undefined} onClick={reset}>
-            기본으로 되돌리기
-          </button>
-          <button type="button" className={ds.button.primary} aria-busy={busy || undefined} disabled={problem !== null} onClick={save}>
-            저장
-          </button>
-        </div>
+        <WriteOnly>
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" className={ds.button.secondary} aria-busy={busy || undefined} onClick={reset}>
+              기본으로 되돌리기
+            </button>
+            <button type="button" className={ds.button.primary} aria-busy={busy || undefined} disabled={problem !== null} onClick={save}>
+              저장
+            </button>
+          </div>
+        </WriteOnly>
       </div>
     </div>
   )

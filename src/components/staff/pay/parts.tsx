@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { addMonths } from '@/lib/analytics/dates'
 import { ds } from '@/components/ui/classes'
 import { monthNumber, monthTitle, parseWon, won } from './format'
@@ -23,7 +24,8 @@ export const smallInput =
 
 /**
  * 금액·건수 칸: 쉼표를 넣어 보이고, 칸에서 나갈 때 값이 바뀌었으면 onCommit(빈 칸 = null).
- * 0 이상 정수가 아니면 저장하지 않고 칸을 틀림으로 둔다(쓴 글은 그대로)
+ * 0 이상 정수가 아니면 저장하지 않고 칸을 틀림으로 둔다(쓴 글은 그대로).
+ * 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) 칸 대신 쉼표 넣은 금액 글자만 그린다(노란 칸 표시는 그대로)
  */
 export function WonInput({
   label,
@@ -43,6 +45,18 @@ export function WonInput({
   const [draft, setDraft] = useState<string | null>(null)
   const [bad, setBad] = useState(false)
   const marked = changed === true || filled === true
+  const readOnly = useReadOnly()
+  if (readOnly) {
+    return (
+      <span
+        data-changed={changed === undefined ? undefined : String(changed)}
+        data-filled={filled === undefined ? undefined : String(filled)}
+        className={`block w-full min-w-21 rounded-control px-2 text-right text-small tabular-nums text-ink ${marked ? 'bg-warning-soft' : ''} ${className}`}
+      >
+        {value === null ? '' : won(value)}
+      </span>
+    )
+  }
   return (
     <input
       type="text"

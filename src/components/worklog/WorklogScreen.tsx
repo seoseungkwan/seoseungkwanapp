@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FocusEvent } from 'react'
+import { useReadOnly } from '@/components/shell/viewing'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { loadWorklogDay } from '@/lib/storage/worklogDays'
 import { supabaseBrowser } from '@/lib/supabase/browser'
@@ -31,6 +32,8 @@ import { onWorklogSignedOut, startWorklogSession, worklogAutosave } from './work
 // 현금 시재(specs/worklog-cash-float REQ-1609, design.md '화면 잇기'): 양식·비트 설명 줄 아래 상자(인쇄 숨김). 장수·확인란·이유·[이 날만 고치기]는 그날 읽기가 끝난 PC에서만
 // 화면 시재를 바꿔 changeCash로 넘긴다(바뀐 시재 칸만 간다). 안 센 날 첫 장수에는 병원 설정 금액을 그날 시재로 붙이고, 설정을 모르면 세지 않는다.
 // 다른 저장(칸·비트·글씨 크기)은 시재를 넘기지 않는다. 추측은 비트 '다름' 목록과 같은 때(그날 답·읽을 수 있는 상태·그날 읽기가 끝남)만 이 PC의 비트 현금으로 한다
+// 관리자가 다른 의원을 보는 중(useReadOnly, admin-view AC-8009.1)이면 터치 기기와 같은 '보기만' 모양을 켠다: 칸 저절로 저장·비트 채우기·글씨 크기·시재 고치기가 없고
+// 병원 시재 금액도 읽지 않는다(이 PC 비트는 내 의원 것). 그날 줄은 RLS가 보는 의원 것으로 준다
 
 const TOUCH_QUERY = '(hover: none) and (pointer: coarse)' // 보기만은 터치 기기로 정한다. 폭으로 정하면 반쪽 창·확대한 의원 PC가 막힌다
 const TODAY_CHECK_MS = 30_000
@@ -69,7 +72,8 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
   const [today, setToday] = useState(initialToday)
   const [ymd, setYmd] = useState(initialToday)
   const [snapshot, setSnapshot] = useState(() => autosave.snapshot())
-  const viewOnly = useSyncExternalStore(subscribeTouch, isTouchDevice, notTouchOnServer)
+  const touch = useSyncExternalStore(subscribeTouch, isTouchDevice, notTouchOnServer)
+  const viewOnly = useReadOnly() || touch
   const sheetArea = useRef<HTMLDivElement>(null)
   const focusCell = useRef<WorklogCellKey | null>(null)
   const rolloverFrom = useRef<string | null>(null) // 초점이 나가기를 기다리는 자정 넘김의 옛 오늘

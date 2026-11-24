@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { EMPLOYMENT_LABEL, jobLabel } from '@/components/staff/labels'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
@@ -19,6 +20,7 @@ import { codeOf, daysText, isActive, sizeText, statusOf } from './rosterText'
 
 // 직원 카드(staff AC-7612.2, 시안 list.html ②): 머리(이름·직종·근무 형태·근속·[고치기]) · 직원 정보(모든 칸, 계좌도 그대로) ·
 // 연차 요약([휴가 보기]) · 기본 근무 요약([근무표 보기]) · 서류 파일(올리기·받기·지우기). 퇴사자 카드도 같은 모양이다(AC-7612.5)
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) [고치기]·[파일 올리기]·파일 [지우기]·올리기 안내 줄이 없다. 정보·파일 목록·[받기]는 그대로
 
 const DOC_ACCEPT = '.pdf,.jpg,.jpeg,.png'
 const BASIS_TEXT = { hire: '입사일 기준', jan1: '1월 1일 기준' } as const
@@ -91,6 +93,7 @@ export function MemberCard({
   onBack(): void
   onEdit(): void
 }) {
+  const readOnly = useReadOnly()
   const [docs, setDocs] = useState<Docs>('loading')
   const [attempt, setAttempt] = useState(0)
   const [fileError, setFileError] = useState<ErrorCode | null>(null)
@@ -205,9 +208,11 @@ export function MemberCard({
         ) : (
           <span className={ds.chip.neutral}>{`퇴사 ${member.leftOn}`}</span>
         )}
-        <button type="button" className={`${ds.button.secondary} ml-auto`} onClick={onEdit}>
-          고치기
-        </button>
+        <WriteOnly>
+          <button type="button" className={`${ds.button.secondary} ml-auto`} onClick={onEdit}>
+            고치기
+          </button>
+        </WriteOnly>
       </div>
 
       <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start gap-3">
@@ -270,20 +275,22 @@ export function MemberCard({
           </>
         }
         action={
-          <>
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              accept={DOC_ACCEPT}
-              aria-label="서류 파일 고르기"
-              className="hidden"
-              onChange={(event) => void upload(event.target.files)}
-            />
-            <button type="button" aria-busy={uploading || undefined} className={ds.button.primarySmall} onClick={() => !uploading && inputRef.current?.click()}>
-              파일 올리기
-            </button>
-          </>
+          readOnly ? undefined : (
+            <>
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                accept={DOC_ACCEPT}
+                aria-label="서류 파일 고르기"
+                className="hidden"
+                onChange={(event) => void upload(event.target.files)}
+              />
+              <button type="button" aria-busy={uploading || undefined} className={ds.button.primarySmall} onClick={() => !uploading && inputRef.current?.click()}>
+                파일 올리기
+              </button>
+            </>
+          )
         }
       >
         {fileError !== null && <ErrorCard code={fileError} />}
@@ -307,15 +314,19 @@ export function MemberCard({
                   <button type="button" className={ds.button.secondarySmall} onClick={() => void download(file)}>
                     받기
                   </button>
-                  <button type="button" className={ds.button.ghostSmall} onClick={() => setDeleting(file)}>
-                    지우기
-                  </button>
+                  <WriteOnly>
+                    <button type="button" className={ds.button.ghostSmall} onClick={() => setDeleting(file)}>
+                      지우기
+                    </button>
+                  </WriteOnly>
                 </span>
               </li>
             ))}
           </ul>
         )}
-        <p className={ds.help}>PDF·그림 파일(jpg·png)을 올릴 수 있어요. 한 개에 10MB까지예요.</p>
+        <WriteOnly>
+          <p className={ds.help}>PDF·그림 파일(jpg·png)을 올릴 수 있어요. 한 개에 10MB까지예요.</p>
+        </WriteOnly>
       </Panel>
 
       {deleting !== null && (

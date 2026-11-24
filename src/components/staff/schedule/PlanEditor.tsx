@@ -2,6 +2,8 @@
 
 import { useId, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
+import { ReadOnlyFields } from '@/components/staff/ReadOnlyFields'
 import { EMPLOYMENT_LABEL, jobLabel } from '@/components/staff/labels'
 import { ds } from '@/components/ui/classes'
 import { addDays, isYmd, weekStartOf } from '@/lib/analytics/dates'
@@ -15,6 +17,7 @@ import { Segment, ShiftFields, shiftProblem } from './parts'
 // 요일마다 [일함]·[쉼]과 근무·점심(10분 단위, 점심 '없음'), 토요일은 [매주]·[1·3주]·[2·4주].
 // '언제부터' 날짜(처음 값은 오늘 다음 월요일)부터 새 판으로 저장한다 — 지난 근무표는 그대로다(그 날짜 판이 이미 있으면 그 판을 고친다).
 // 처음 값은 그 날짜에 쓰일 판(없으면 가장 늦은 판), 판이 없는 사람은 병원 진료시간이다. [저장]이 끝나면 근무표로 돌아간다
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) 요일마다 근무·언제부터는 보이기만 하고(칸 막힘) [저장]이 없다. [◀ 근무표로]는 그대로
 
 const SATURDAY = 5
 const ROTATIONS: readonly (readonly [SatRotation, string])[] = [
@@ -97,65 +100,69 @@ export function PlanEditor({ member, plans, ctx, today, store, onBack, onSaved }
         <small className="text-small text-muted">{`${jobLabel(member)} · ${EMPLOYMENT_LABEL[member.employment]} · 주 ${member.weeklyHours}시간`}</small>
       </div>
 
-      <div className="flex flex-col rounded-control border border-line bg-surface px-5">
-        {WEEKDAYS.map((name, index) => {
-          const shift = draft.week[index] ?? null
-          return (
-            <div key={name} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line py-3 last:border-b-0">
-              <span className="w-6 text-body font-semibold text-ink">{name}</span>
-              <Segment
-                label={`${name}요일`}
-                options={[
-                  ['work', '일함'],
-                  ['rest', '쉼'],
-                ]}
-                value={shift !== null ? 'work' : 'rest'}
-                onChange={(value) => {
-                  if (value === 'work' && shift === null) setDay(index, startShift(index))
-                  if (value === 'rest' && shift !== null) setDay(index, null)
-                }}
-              />
-              {shift !== null ? <ShiftFields shift={shift} prefix={`${name}요일 `} onChange={(next) => setDay(index, next)} /> : <span className="text-small text-muted">쉬는 요일</span>}
-              {index === SATURDAY && shift !== null ? (
-                <div className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1.5 pl-10">
-                  <span id={rotationId} className="text-small text-ink-2">
-                    어느 토요일에
-                  </span>
-                  <Segment labelledBy={rotationId} options={ROTATIONS} value={draft.sat} onChange={(sat) => setDraft((now) => ({ ...now, sat }))} />
-                  {draft.sat !== 'every' ? <small className="text-caption text-muted">{ROTATION_HELP[draft.sat]}</small> : null}
-                </div>
-              ) : null}
-              {problems[index] !== null ? <p className={`${ds.fieldError} basis-full pl-10`}>{problems[index]}</p> : null}
-            </div>
-          )
-        })}
-      </div>
-      <p className={ds.help}>시간은 10분 단위로 골라요. 점심이 없으면 &apos;없음&apos;을 골라요.</p>
+      <ReadOnlyFields>
+        <div className="flex flex-col rounded-control border border-line bg-surface px-5">
+          {WEEKDAYS.map((name, index) => {
+            const shift = draft.week[index] ?? null
+            return (
+              <div key={name} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line py-3 last:border-b-0">
+                <span className="w-6 text-body font-semibold text-ink">{name}</span>
+                <Segment
+                  label={`${name}요일`}
+                  options={[
+                    ['work', '일함'],
+                    ['rest', '쉼'],
+                  ]}
+                  value={shift !== null ? 'work' : 'rest'}
+                  onChange={(value) => {
+                    if (value === 'work' && shift === null) setDay(index, startShift(index))
+                    if (value === 'rest' && shift !== null) setDay(index, null)
+                  }}
+                />
+                {shift !== null ? <ShiftFields shift={shift} prefix={`${name}요일 `} onChange={(next) => setDay(index, next)} /> : <span className="text-small text-muted">쉬는 요일</span>}
+                {index === SATURDAY && shift !== null ? (
+                  <div className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1.5 pl-10">
+                    <span id={rotationId} className="text-small text-ink-2">
+                      어느 토요일에
+                    </span>
+                    <Segment labelledBy={rotationId} options={ROTATIONS} value={draft.sat} onChange={(sat) => setDraft((now) => ({ ...now, sat }))} />
+                    {draft.sat !== 'every' ? <small className="text-caption text-muted">{ROTATION_HELP[draft.sat]}</small> : null}
+                  </div>
+                ) : null}
+                {problems[index] !== null ? <p className={`${ds.fieldError} basis-full pl-10`}>{problems[index]}</p> : null}
+              </div>
+            )
+          })}
+        </div>
+        <p className={ds.help}>시간은 10분 단위로 골라요. 점심이 없으면 &apos;없음&apos;을 골라요.</p>
 
-      <p className="flex flex-wrap items-center gap-1.5 text-body text-ink-2">
-        지난 근무표는 그대로 두고{' '}
-        <label className={DATE}>
-          <span>{dayTitle(from)}</span>
-          <input
-            type="date"
-            aria-label="바꾸기 시작하는 날"
-            className={DATE_INPUT}
-            value={from}
-            onChange={(event) => {
-              if (isYmd(event.target.value)) setFrom(event.target.value)
-            }}
-          />
-        </label>{' '}
-        부터 이 근무로 바꿔요.
-      </p>
+        <p className="flex flex-wrap items-center gap-1.5 text-body text-ink-2">
+          지난 근무표는 그대로 두고{' '}
+          <label className={DATE}>
+            <span>{dayTitle(from)}</span>
+            <input
+              type="date"
+              aria-label="바꾸기 시작하는 날"
+              className={DATE_INPUT}
+              value={from}
+              onChange={(event) => {
+                if (isYmd(event.target.value)) setFrom(event.target.value)
+              }}
+            />
+          </label>{' '}
+          부터 이 근무로 바꿔요.
+        </p>
+      </ReadOnlyFields>
 
       {failed ? <ErrorCard code="E-STAFF-SAVE-FAILED" /> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-control bg-canvas px-4 py-3">
         <p className="text-small text-ink-2">이 근무가 매주 근무표의 바탕이 돼요.</p>
-        <button type="button" className={ds.button.primary} aria-busy={busy || undefined} disabled={blocked} onClick={save}>
-          저장
-        </button>
+        <WriteOnly>
+          <button type="button" className={ds.button.primary} aria-busy={busy || undefined} disabled={blocked} onClick={save}>
+            저장
+          </button>
+        </WriteOnly>
       </div>
     </section>
   )

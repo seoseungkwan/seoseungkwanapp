@@ -2,6 +2,7 @@
 
 import { TableScroll } from '@/components/staff/TableScroll'
 import { jobLabel } from '@/components/staff/labels'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { incentiveAmount } from '@/lib/staff/pay'
 import type { IncentiveEntry, PayLine, StaffMember } from '@/types/staff'
@@ -61,9 +62,11 @@ export function IncentivePart({
       <ToolRow
         left={<MonthNav month={month} onMonth={onMonth} suffix=" 실적" />}
         right={
-          <button type="button" className={ds.button.secondary} onClick={onOpenRules}>
-            인센티브 규칙 고치기
-          </button>
+          <WriteOnly>
+            <button type="button" className={ds.button.secondary} onClick={onOpenRules}>
+              인센티브 규칙 고치기
+            </button>
+          </WriteOnly>
         }
       />
       <InfoLine>건수·매출은 이달 숫자를 그대로 적어요(0 이상). 원 미만은 항목마다 버려요. 빼야 할 돈은 ① 표의 조정 칸에 적어요.</InfoLine>
@@ -142,9 +145,11 @@ export function IncentivePart({
           <p>
             인센티브 규칙이 없는 사람: <b className="font-semibold text-ink">{without.map((p) => p.member.name).join(' · ')}</b>
           </p>
-          <button type="button" className={`${ds.button.secondarySmall} ml-auto`} onClick={onOpenRules}>
-            규칙 더하기
-          </button>
+          <WriteOnly>
+            <button type="button" className={`${ds.button.secondarySmall} ml-auto`} onClick={onOpenRules}>
+              규칙 더하기
+            </button>
+          </WriteOnly>
         </div>
       )}
       <Note>노란 칸 = 이달 적은 실적. 실적 칸은 지난달 숫자를 가져오지 않고 매달 새로 적어요(고정 수당은 적을 것 없음).</Note>

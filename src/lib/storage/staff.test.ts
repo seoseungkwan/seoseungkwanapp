@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AdminRowsError, readAdminRows } from '@/lib/storage/adminRows'
 import { DEFAULT_PAY_ITEMS, type DayShift, type Leave, type PayLine, type StaffErrorCode, type StaffMember, type WeekPlan } from '@/types/staff'
 import { createStaffStore, defaultStaffSettings, StaffStoreError, type LeaveDraft, type RosterImportRow, type StaffClient } from './staff'
+
+// 보는 중 예약 수(admin-view AC-8009.4)는 관리자 비교 읽기(readAdminRows)로 센다 — 그 읽기는 가짜다
+vi.mock('@/lib/storage/adminRows', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/adminRows')>()),
+  readAdminRows: vi.fn(),
+}))
 
 // 직원 저장 층(spec staff REQ-7610 AC-7610.1·AC-7610.2·AC-7610.4·AC-7610.5·AC-7610.7, design.md 5절). 실제 Supabase에 붙지 않는다.
 // 사람·전화·계좌·id는 모두 지어낸 것이다
@@ -954,6 +961,58 @@ describe('AC-7610.5 휴가 날 예약 수 countAppts', () => {
     await expect(createStaffStore(client).countAppts('', ['2026-12-21'])).resolves.toEqual([])
     expect(calls).toEqual([])
     await caught(() => createStaffStore(fakeClient(failure()).client).countAppts('st-ga', ['2026-12-21']), 'E-STAFF-READ-FAILED')
+  })
+})
+
+describe('AC-8009.4 보는 중 휴가 날 예약 수 countAppts(보는 의원 id)', () => {
+  const VIEW_H = '22222222-2222-4222-8222-222222222222'
+  const admin = vi.mocked(readAdminRows)
+  const countRow = (day: unknown, staffId: unknown, status: unknown) => ({
+    hospitalId: VIEW_H,
+    row: { day, staff_id: staffId, staff_name: '가짜시행자', kind_id: 'k1', kind_name: '가짜종류', status, auto: null, orig_day: null },
+  })
+
+  beforeEach(() => {
+    admin.mockReset()
+  })
+
+  it('AC-8009.4: 보는 의원 id를 받으면 calendar_appts를 바로 읽지 않고 readAdminRows(calendar_counts, [보는 의원], 첫날, 끝날) 줄에서 같은 시행자·취소 뺀 날 목록을 만든다', async () => {
+    admin.mockResolvedValueOnce([
+      countRow('2026-12-21', 'st-ga', 'booked'),
+      countRow('2026-12-21', 'st-ga', 'arrived'),
+      countRow('2026-12-21', 'st-na', 'booked'), // 다른 시행자
+      countRow('2026-12-22', 'st-ga', 'cancel'), // 취소
+      countRow('2026-12-22', 'st-ga', 'booked'), // 고른 날이 아님
+      countRow('2026-12-23', 'st-ga', 'booked'),
+      countRow('bad', 'st-ga', 'booked'),
+      countRow(null, 'st-ga', 'booked'),
+    ])
+    const { client, calls } = fakeClient(okWith([{ day: '2026-12-21' }]))
+    await expect(createStaffStore(client).countAppts('st-ga', ['2026-12-23', '2026-12-21', '2026-12-21'], VIEW_H)).resolves.toEqual([
+      { day: '2026-12-21', count: 2 },
+      { day: '2026-12-23', count: 1 },
+    ])
+    expect(admin).toHaveBeenCalledTimes(1)
+    expect(admin).toHaveBeenCalledWith('calendar_counts', [VIEW_H], '2026-12-21', '2026-12-23')
+    expect(calls).toEqual([])
+  })
+
+  it('AC-8009.4: 보는 중이어도 날이 없거나 이어진 시행자가 없으면 부르지 않고 빈 목록, 읽기 실패는 E-STAFF-READ-FAILED(원래 오류 없음)', async () => {
+    const { client, calls } = fakeClient()
+    await expect(createStaffStore(client).countAppts('st-ga', [], VIEW_H)).resolves.toEqual([])
+    await expect(createStaffStore(client).countAppts('', ['2026-12-21'], VIEW_H)).resolves.toEqual([])
+    expect(admin).not.toHaveBeenCalled()
+    admin.mockRejectedValueOnce(new AdminRowsError(SECRET))
+    await caught(() => createStaffStore(client).countAppts('st-ga', ['2026-12-21'], VIEW_H), 'E-STAFF-READ-FAILED')
+    expect(calls).toEqual([])
+  })
+
+  it('AC-8009.4: 보는 의원 id를 받지 않으면 지금 부르기 모양 그대로(calendar_appts 날짜 칸)이고 readAdminRows를 부르지 않는다', async () => {
+    const { client, calls } = fakeClient(okWith([{ day: '2026-12-21' }]))
+    await expect(createStaffStore(client).countAppts('st-ga', ['2026-12-21'])).resolves.toEqual([{ day: '2026-12-21', count: 1 }])
+    expect(admin).not.toHaveBeenCalled()
+    expect(calls[0]).toEqual(['from', 'calendar_appts'])
+    expect(calls[1]).toEqual(['select', 'day'])
   })
 })
 

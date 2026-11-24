@@ -3,6 +3,7 @@
 import { useId } from 'react'
 import { Swatch } from '@/components/calendar/CalendarToolbar'
 import { EMPLOYMENT_LABEL, jobLabel } from '@/components/staff/labels'
+import { WriteOnly } from '@/components/shell/viewing'
 import { TableScroll } from '@/components/staff/TableScroll'
 import { ds } from '@/components/ui/classes'
 import { phoneText } from '@/lib/clinic/format'
@@ -14,6 +15,7 @@ import { weekdayName } from './rosterText'
 
 // 명단 첫 화면(staff AC-7612.1 · AC-7612.5, 시안 list.html ①·⑤): 앞으로 7일 알림 줄 · 재직/퇴사 고르기 · 단추 셋 · 표.
 // 넓은 표는 TableScroll 칸만 옆으로 밀린다(폰 전용 모양 없음 — 재직/퇴사 고르기도 근무표와 같은 PC 틀 Segment). 줄을 누르면(이름 단추로도) 직원 카드다
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) [＋ 직원 더하기]·[엑셀 올리기]·[지우기]가 없다([엑셀 양식 받기]는 받기라 그대로)
 
 export type RosterTab = 'active' | 'left'
 
@@ -108,13 +110,17 @@ export function RosterList({
           onChange={onTab}
         />
         <div className="ml-auto flex flex-wrap gap-2">
-          <button type="button" className={ds.button.primary} onClick={onAdd}>
-            ＋ 직원 더하기
-          </button>
+          <WriteOnly>
+            <button type="button" className={ds.button.primary} onClick={onAdd}>
+              ＋ 직원 더하기
+            </button>
+          </WriteOnly>
           <TemplateLink />
-          <button type="button" className={ds.button.secondary} onClick={onPickExcel}>
-            엑셀 올리기
-          </button>
+          <WriteOnly>
+            <button type="button" className={ds.button.secondary} onClick={onPickExcel}>
+              엑셀 올리기
+            </button>
+          </WriteOnly>
         </div>
       </div>
       <div className={ds.panel}>
@@ -194,16 +200,18 @@ export function RosterList({
                       </td>
                       <td className={ds.table.td}>
                         {purge && (
-                          <button
-                            type="button"
-                            className={ds.button.secondarySmall}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onPurge(member)
-                            }}
-                          >
-                            지우기
-                          </button>
+                          <WriteOnly>
+                            <button
+                              type="button"
+                              className={ds.button.secondarySmall}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                onPurge(member)
+                              }}
+                            >
+                              지우기
+                            </button>
+                          </WriteOnly>
                         )}
                       </td>
                     </tr>

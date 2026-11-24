@@ -2,6 +2,7 @@
 
 import { useId } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import type { LeaveStatus } from '@/lib/staff/leave'
 import type { ClinicStaff } from '@/types/clinicProfile'
@@ -14,6 +15,7 @@ import { deductOf, fmtDays, nextOf, rangeText, recordRows, recordSummary, rowDay
 // 한 사람 휴가 기록 (staff AC-7614.4, 시안 leave.html ④). 연차 현황 표에서 이름을 누르면 표 자리에 열린다.
 // 머리(이름·직종·근무 형태·주 시간·입사·예약 표시) → 네 칸(생긴·쓴·남은·다음 새 연차) → 이번 연차 기간 쓴 휴가 표(묶음마다 한 줄, 최근 날부터) →
 // 합계 줄 → 지난 연차 기간 줄. [고치기]·[지우기]는 화면이 맡는다(지우기는 화면이 한 번 묻는다). 줄은 이번 기간 날만 세고, [고치기]는 그 묶음 전체(기간 밖 날 포함)를 넘긴다
+// 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) [{이름} 님 휴가 넣기]와 고치기·지우기 칸이 없다
 
 export const linkTag = 'inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-control border border-line-strong px-1.5 text-caption text-ink-2'
 
@@ -34,6 +36,7 @@ type LeaveRecordProps = {
 export function LeaveRecord({ member, status, leaves, link, leftover, busy, error, onBack, onAdd, onEdit, onDelete }: LeaveRecordProps) {
   const headId = useId()
   const usedId = useId()
+  const readOnly = useReadOnly()
   const rows = recordRows(member.id, leaves, status.period)
   const next = nextOf(status)
   const prev = status.previous
@@ -65,9 +68,11 @@ export function LeaveRecord({ member, status, leaves, link, leftover, busy, erro
             </>
           ) : null}
         </div>
-        <button type="button" onClick={onAdd} className={ds.button.primary}>
-          {`${member.name} 님 휴가 넣기`}
-        </button>
+        <WriteOnly>
+          <button type="button" onClick={onAdd} className={ds.button.primary}>
+            {`${member.name} 님 휴가 넣기`}
+          </button>
+        </WriteOnly>
       </div>
 
       <div className="grid grid-cols-4 gap-2">
@@ -108,15 +113,17 @@ export function LeaveRecord({ member, status, leaves, link, leftover, busy, erro
                 <th scope="col" className={ds.table.th}>
                   메모
                 </th>
-                <th scope="col" className={ds.table.th}>
-                  <span className="sr-only">고치기·지우기</span>
-                </th>
+                <WriteOnly>
+                  <th scope="col" className={ds.table.th}>
+                    <span className="sr-only">고치기·지우기</span>
+                  </th>
+                </WriteOnly>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className={ds.table.emptyRow}>
+                  <td colSpan={readOnly ? 4 : 5} className={ds.table.emptyRow}>
                     이번 연차 기간에 쓴 휴가가 없어요.
                   </td>
                 </tr>
@@ -137,16 +144,18 @@ export function LeaveRecord({ member, status, leaves, link, leftover, busy, erro
                       ) : null}
                     </td>
                     <td className={ds.table.tdSub}>{row.memo ?? '—'}</td>
-                    <td className={`${ds.table.td} text-right`}>
-                      <span className="inline-flex gap-2">
-                        <button type="button" onClick={() => onEdit(row.leaves)} className={ds.button.secondarySmall}>
-                          고치기
-                        </button>
-                        <button type="button" disabled={busy} onClick={() => onDelete(row.groupId)} className={ds.button.secondarySmall}>
-                          지우기
-                        </button>
-                      </span>
-                    </td>
+                    <WriteOnly>
+                      <td className={`${ds.table.td} text-right`}>
+                        <span className="inline-flex gap-2">
+                          <button type="button" onClick={() => onEdit(row.leaves)} className={ds.button.secondarySmall}>
+                            고치기
+                          </button>
+                          <button type="button" disabled={busy} onClick={() => onDelete(row.groupId)} className={ds.button.secondarySmall}>
+                            지우기
+                          </button>
+                        </span>
+                      </td>
+                    </WriteOnly>
                   </tr>
                 ))
               )}
