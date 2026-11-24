@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminApplications } from '@/components/admin/AdminApplications'
+import { AdminViewLog } from '@/components/admin/AdminViewLog'
 import { InstallFilesAdmin } from '@/components/admin/InstallFilesAdmin'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
@@ -124,11 +125,26 @@ describe('/admin 페이지 그리기', () => {
     expect(SOURCE).toMatch(/from '@\/lib\/auth\/guard\.server'/)
   })
 
-  it('AC-007.1·AC-013.2·AC-5104.3: 앱 틀을 한 번 더 그리지 않는다 — 가입 승인(AdminApplications) 하나만 돌려주고 설치 파일 칸은 그 top 자리로 넘긴다(띠·탭·<main>은 (app)/layout 몫)', async () => {
-    const page = (await AdminPage()) as ReactElement<{ top?: ReactNode }>
+  it('AC-007.1·AC-013.2·AC-5104.3·AC-8012.3: 앱 틀을 한 번 더 그리지 않는다 — 가입 승인(AdminApplications) 하나만 돌려주고 설치 파일 칸은 그 top 자리, 본 기록 칸은 bottom 자리로 넘긴다(띠·탭·<main>은 (app)/layout 몫)', async () => {
+    const page = (await AdminPage()) as ReactElement<{ top?: ReactNode; bottom?: ReactNode }>
     expect(page.type).toBe(AdminApplications)
-    expect(Object.keys(page.props)).toEqual(['top'])
+    expect(Object.keys(page.props)).toEqual(['top', 'bottom'])
     expect((page.props.top as ReactElement).type).toBe(InstallFilesAdmin)
+    expect((page.props.bottom as ReactElement).type).toBe(AdminViewLog)
+  })
+
+  it('AC-8012.3·AC-8012.4: 서버 그리기 차례 — h1 `가입 승인` → 안쪽 메뉴(관리자 안 메뉴) → 설치 파일 칸 → 본 기록 칸, 목록·본 기록은 읽지 않는다', async () => {
+    const html = renderToStaticMarkup((await AdminPage()) as ReactElement)
+    const at = [
+      /<h1\b[^>]*>가입 승인<\/h1>/,
+      /<nav\b[^>]*aria-label="관리자 안 메뉴"/,
+      /<h2\b[^>]*>설치 파일<\/h2>/,
+      /<h2\b[^>]*>본 기록<\/h2>/,
+    ].map((re) => html.search(re))
+    for (const i of at) expect(i).toBeGreaterThan(-1)
+    expect([...at].sort((a, b) => a - b)).toEqual(at)
+    expect(html).toMatch(/<a\b[^>]*href="\/admin\/compare"[^>]*>의원 비교<\/a>/)
+    expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 
   it("AC-5104.1·AC-5104.3: 제목 '가입 승인'(h1)이 맨 위이고 그 아래 '설치 파일' 칸 — 서버 그리기에서 h1이 '설치 파일' 제목보다 먼저 나오고, 목록은 읽지 않는다", async () => {

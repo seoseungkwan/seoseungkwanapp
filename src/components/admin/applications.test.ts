@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { SIDO_LIST } from '@/lib/admin/region'
 import type { AdminMark, Application } from '@/lib/auth/admin'
+import type { ViewHospital, ViewLogRow } from '@/lib/auth/adminView'
 import {
   adminBadgeOf,
   adminDoneMessage,
@@ -8,10 +10,18 @@ import {
   countByTab,
   doneMessage,
   EMPTY,
+  isMine,
+  newestFirst,
   phoneText,
+  REGION_CHOICES,
+  regionDoneMessage,
+  regionOfRow,
   rowsOf,
   TABS,
+  viewedAt,
+  viewTitle,
   withAdmin,
+  withRegion,
   withStatus,
 } from './applications'
 
@@ -192,5 +202,102 @@ describe('관리자 표시 (multi-admin)', () => {
     expect(adminDoneMessage('바른정형외과의원', true)).toBe('바른정형외과의원 계정을 관리자로 정했어요.')
     expect(adminDoneMessage('새봄재활의학과의원', false)).toBe('새봄재활의학과의원 계정을 관리자에서 뺐어요.')
     for (const admin of [true, false]) expect(adminDoneMessage('가나 정형외과의원', admin)).not.toMatch(/니다|병원 이름/)
+  })
+})
+
+// admin-view: '승인' 탭 이름 눌러 보기·지역 칸·본 기록의 순수 계산 (REQ-8012, design.md '관리자 화면'·'지역'·기본값 11~14).
+// 자료는 지어낸 값이다(의원 이름·가짜 주소). 지역 값은 lib/admin/region.ts(regionOf·roParticle)를 부르기만 한다
+const view = (hospitalId: string, over: Partial<ViewHospital> = {}): ViewHospital => ({
+  hospitalId,
+  name: `${hospitalId} 의원`,
+  address: null,
+  regionSet: false,
+  region: null,
+  mine: false,
+  ...over,
+})
+
+describe('AC-8012.1 이름 눌러 보기', () => {
+  it("AC-8012.1: viewTitle — 마우스 글 '{의원 이름} 화면 보기 (읽기만)'", () => {
+    expect(viewTitle('다라 정형외과의원')).toBe('다라 정형외과의원 화면 보기 (읽기만)')
+  })
+
+  it('AC-8012.1: isMine — 보기 목록(admin_view_hospitals is_me)이나 관리자 표시(admin_hospitals is_me)가 내 줄이라 하면 내 줄', () => {
+    const views = [view('h1'), view('h5', { mine: true })]
+    expect(isMine(views, [], 'h5')).toBe(true)
+    expect(isMine(views, [], 'h1')).toBe(false)
+    expect(isMine([], [{ hospitalId: 'h3', mine: true, owner: false }], 'h3')).toBe(true)
+    expect(isMine([], [{ hospitalId: 'h3', mine: false, owner: true }], 'h3')).toBe(false)
+    expect(isMine([], [], 'h9')).toBe(false) // 두 목록에 없는 줄(이 화면에서 막 승인한 줄)은 내 줄이 아니다
+  })
+})
+
+describe('AC-8012.2 지역 칸', () => {
+  it('AC-8012.2: REGION_CHOICES — 고르기는 17개(SIDO_LIST 차례) + 지역 모름(null) 맨 끝', () => {
+    expect(REGION_CHOICES).toEqual([...SIDO_LIST.map((sido) => ({ value: sido, label: sido })), { value: null, label: '지역 모름' }])
+    expect(REGION_CHOICES).toHaveLength(18)
+  })
+
+  it('AC-8012.2: regionOfRow — 관리자가 정한 지역 → 주소에서 읽은 시·도 → 모름(null)', () => {
+    const views = [
+      view('set', { address: '서울특별시 가짜구 가짜로 1', regionSet: true, region: '부산' }), // 정한 값이 주소보다 먼저
+      view('unknown', { address: '서울특별시 가짜구 가짜로 1', regionSet: true, region: null }), // '지역 모름'으로 정함
+      view('address', { address: '경기도 예시시 예시로 45' }),
+      view('blank', { address: null }),
+      view('gwangju', { address: '광주시 예시로 1' }), // 경기 광주시와 헷갈림 → 모름
+    ]
+    expect(regionOfRow(views, 'set')).toBe('부산')
+    expect(regionOfRow(views, 'unknown')).toBeNull()
+    expect(regionOfRow(views, 'address')).toBe('경기')
+    expect(regionOfRow(views, 'blank')).toBeNull()
+    expect(regionOfRow(views, 'gwangju')).toBeNull()
+    expect(regionOfRow(views, 'missing')).toBeNull() // 목록에 없는 줄
+  })
+
+  it('AC-8012.2: withRegion — 그 줄만 정한 값(regionSet 참)으로 바꾼 새 목록, 받은 목록은 그대로. 목록에 없던 줄은 끝에 더한다', () => {
+    const views = [view('h1', { address: '서울 가짜구 가짜로 1' }), view('h2', { regionSet: true, region: '대전' })]
+    const before = structuredClone(views)
+    const after = withRegion(views, 'h1', '부산')
+    expect(views).toEqual(before)
+    expect(after).not.toBe(views)
+    expect(after[0]).toEqual({ ...views[0], regionSet: true, region: '부산' })
+    expect(after[1]).toBe(views[1])
+    expect(regionOfRow(after, 'h1')).toBe('부산')
+    expect(regionOfRow(withRegion(views, 'h2', null), 'h2')).toBeNull() // '지역 모름'으로 정함
+    const added = withRegion(views, 'h9', '제주')
+    expect(added).toHaveLength(3)
+    expect(regionOfRow(added, 'h9')).toBe('제주')
+    expect(isMine(added, [], 'h9')).toBe(false)
+  })
+
+  it("AC-8012.2: regionDoneMessage — '{의원 이름} 지역을 {지역}로/으로 바꿨어요.' 받침 없음·ㄹ 받침 → 로, 그 밖 받침·지역 모름 → 으로", () => {
+    expect(regionDoneMessage('다라 정형외과의원', '부산')).toBe('다라 정형외과의원 지역을 부산으로 바꿨어요.')
+    expect(regionDoneMessage('다라 정형외과의원', '경기')).toBe('다라 정형외과의원 지역을 경기로 바꿨어요.')
+    expect(regionDoneMessage('다라 정형외과의원', '서울')).toBe('다라 정형외과의원 지역을 서울로 바꿨어요.') // ㄹ 받침
+    expect(regionDoneMessage('다라 정형외과의원', '강원')).toBe('다라 정형외과의원 지역을 강원으로 바꿨어요.')
+    expect(regionDoneMessage('다라 정형외과의원', null)).toBe('다라 정형외과의원 지역을 지역 모름으로 바꿨어요.')
+  })
+})
+
+describe('AC-8012.3 본 기록 글', () => {
+  it("AC-8012.3: viewedAt — DB 시각(UTC) → 한국 시각 'M월 D일 (요일) HH:mm'(달·날은 앞 0 없음, 시·분은 두 자리)", () => {
+    expect(viewedAt('2026-11-24T00:12:00+00:00')).toBe('11월 24일 (화) 09:12')
+    expect(viewedAt('2026-11-02T23:55:00Z')).toBe('11월 3일 (화) 08:55')
+    expect(viewedAt('2026-11-20T15:00:00Z')).toBe('11월 21일 (토) 00:00')
+    expect(viewedAt('2026-11-22T14:59:00Z')).toBe('11월 22일 (일) 23:59')
+    expect(viewedAt('2027-01-01T03:04:05.678+09:00')).toBe('1월 1일 (금) 03:04')
+  })
+
+  it('AC-8012.3: viewedAt — 읽을 수 없는 시각은 —', () => {
+    expect(viewedAt('어제')).toBe('—')
+  })
+
+  it('AC-8012.3: newestFirst — 새 것이 위(받은 목록은 그대로), 같은 때는 받은 차례', () => {
+    const at = (startedAt: string, hospitalId: string): ViewLogRow => ({ startedAt, viewerName: null, viewerEmail: null, hospitalId, hospitalName: hospitalId })
+    const rows = [at('2026-11-23T08:40:00Z', 'b'), at('2026-11-24T09:12:00+09:00', 'a'), at('2026-11-03T02:55:00Z', 'c'), at('2026-11-23T17:40:00+09:00', 'b2')]
+    const before = structuredClone(rows)
+    const sorted = newestFirst(rows)
+    expect(rows).toEqual(before)
+    expect(sorted.map((r) => r.hospitalId)).toEqual(['a', 'b', 'b2', 'c'])
   })
 })

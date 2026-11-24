@@ -6,6 +6,9 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { EMR_LABEL } from '@/lib/clinic/emrText'
 import { listAdminHospitals, listApplications, setAdmin, setHospitalStatus, type AdminMark, type Application } from '@/lib/auth/admin'
+import { listViewHospitals, setHospitalRegion, startAdminView, type ViewHospital } from '@/lib/auth/adminView'
+import { setViewKey } from '@/lib/supabase/viewKey'
+import { AdminNav } from './AdminNav'
 import {
   adminBadgeOf,
   adminDoneMessage,
@@ -14,10 +17,16 @@ import {
   countByTab,
   doneMessage,
   EMPTY,
+  isMine,
   phoneText,
+  REGION_CHOICES,
+  regionDoneMessage,
+  regionOfRow,
   rowsOf,
   TABS,
+  viewTitle,
   withAdmin,
+  withRegion,
   withStatus,
   type Tab,
 } from './applications'
@@ -27,10 +36,15 @@ import {
 // 목록은 브라우저가 읽는다(RLS: 관리자는 모든 병원). 상태는 DB 함수 set_hospital_status로만 바꾸고, 성공한 뒤에만 화면 줄을 옮긴다.
 // '승인' 탭의 관리자 표시·정하기·빼기는 spec multi-admin(REQ-7703·REQ-7704, 시안 docs/mockups/multi-admin): 표시는 admin_hospitals(),
 // 바꾸기는 DB 함수 set_admin으로만 하고 성공한 뒤에만 손에 든 표시를 고친다(목록을 다시 읽지 않는다).
+// 안쪽 메뉴·'승인' 탭 이름 눌러 보기·지역 칸·본 기록 자리(bottom)·신청자 · 이메일 한 칸은 spec admin-view(REQ-8012·REQ-8022, design.md '관리자 화면',
+// 시안 docs/mockups/admin-view ?s=admin-list). 관리자 화면은 다른 의원을 보는 중이어도 숨김이 없다(읽기만 바탕을 쓰지 않는다, AC-8012.4).
 // 앱 틀(위쪽 띠·탭 띠·<main>)은 (app)/layout의 AppShell이 준다
 
-// multi-admin requirements.md '화면 글자' INTRO 전체(지금 두 문장 끝에 한 문장을 더함)
-const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요.'
+// multi-admin requirements.md '화면 글자' INTRO 전체(지금 두 문장 끝에 한 문장을 더함) + admin-view 한 문장(시안 T.adminIntro)
+const INTRO =
+  '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요. 의원 이름을 누르면 그 의원 화면을 읽기만 할 수 있어요.'
+// 지역 모름 고르기 상자의 마우스 글(admin-view design.md '화면 글자')
+const REGION_UNKNOWN_TIP = '병원 정보에 주소가 없어 지역을 몰라요. 골라 주세요.'
 
 // 확인 창 셋: 제목·본문·확인 단추 글자·확인 단추 모양만 다르다(multi-admin design.md 기본값 12).
 // 거절 창 문구는 시안에 없어 말끝만 "~요"로 바꾼다(ui-90 design.md '시안과 다른 점' 11). 정하기·빼기는 multi-admin '화면 글자' 그대로
@@ -56,8 +70,9 @@ const CONFIRM: Record<ConfirmKind, { title: string; body: string; confirmLabel: 
   },
 }
 
-// 실패 카드 번호: 가입 상태 바꾸기(승인·거절·되돌리기)는 E-ADMIN-FAILED, 관리자 정하기·빼기는 E-ADMIN-ROLE(multi-admin 기본값 11)
-type FailCode = 'E-ADMIN-FAILED' | 'E-ADMIN-ROLE'
+// 실패 카드 번호: 가입 상태 바꾸기(승인·거절·되돌리기)는 E-ADMIN-FAILED, 관리자 정하기·빼기는 E-ADMIN-ROLE(multi-admin 기본값 11),
+// 다른 의원 보기 시작은 E-VIEW-START, 지역 고치기는 E-REGION-SAVE(admin-view AC-8012.1·AC-8012.2). 모두 같은 자리(탭 줄과 표 사이)
+type FailCode = 'E-ADMIN-FAILED' | 'E-ADMIN-ROLE' | 'E-VIEW-START' | 'E-REGION-SAVE'
 
 // 화면 안 탭: 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 첫 탭은 왼쪽 12px을 당겨 글자를 제목 끝에 맞춘다.
 // 키보드 초점은 탭 안쪽 2px accent 고리
@@ -77,7 +92,7 @@ const cellPhone = 'max-md:h-auto max-md:border-b-0 max-md:p-0 max-md:first:pl-0 
 // 긴 이름(DB는 30자까지)은 첫 칸 안에서 줄바꿈한다 → 셋째 칸(신청일·단추)은 늘 화면 안에 남는다:
 //   1줄 의원 이름(600, 말줄임) · 오른쪽 신청일(caption muted)
 //   2줄 쓰는 EMR(small ink-2, emr-signup AC-7304.1)
-//   3줄 신청자 · 이메일(small ink-2)
+//   3줄 신청자 · 이메일(small ink-2, 한 칸 안에 이름 / 메일 두 줄 — admin-view AC-8022.1, 격자는 그대로)
 //   4줄 연락처(small muted) · 오른쪽 동작 단추(44px)
 // 768~1023px(태블릿)은 글 칸(의원 이름·신청자·이메일)이 좁아 말줄임 대신 줄바꿈한다 — title은 마우스로만 보이니 터치·키보드로도
 // 전체 값을 보고 [승인]을 누르게(1024px 이상은 말줄임 그대로, 휴대폰 의원 이름도 말줄임 그대로)
@@ -89,28 +104,39 @@ const cell = {
   date: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-3 max-md:row-start-1 max-md:ml-3 max-md:justify-self-end max-md:text-caption`,
   clinic: `${ds.table.td} ${cellPhone} truncate ${wrapTablet} text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
   emr: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-1 max-md:col-end-4 max-md:row-start-2`,
-  applicant: `${ds.table.td} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-1 max-md:row-start-3 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
-  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapEmail} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-3 max-md:self-start max-md:whitespace-normal max-md:before:px-1 max-md:before:content-['·']`,
+  // 신청자 · 이메일 한 칸(admin-view AC-8022.1): 칸은 몸 칸, 안의 두 줄(whoName·whoEmail)이 말줄임·줄바꿈을 맡는다. 폰 격자 자리는 지금 셋째 줄 전체 폭
+  who: `${ds.table.td} ${cellPhone} md:text-body max-md:col-start-1 max-md:col-end-4 max-md:row-start-3 max-md:self-start max-md:whitespace-normal max-md:text-ink-2`,
+  // 지역 칸(admin-view AC-8012.2, '승인' 탭만): 고르기 상자 하나
+  region: `${ds.table.td} ${cellPhone}`,
   phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-4 max-md:mt-1.5 max-md:text-muted`,
   action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-4 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
+// 신청자 · 이메일 칸의 두 줄: 첫 줄 이름(몸 글자), 둘째 줄 메일(small ink-2). PC는 줄마다 말줄임 + title, 768~1023px은 줄바꿈(메일은 "@" 뒤에서만)
+const whoName = `md:truncate ${wrapTablet} wrap-anywhere`
+const whoEmail = `text-small text-ink-2 md:truncate ${wrapEmail}`
+// 승인 줄 의원 이름 단추(시안 .vlink): 눈 14 + accent-strong 600 글자, 올리면 밑줄. 이름만 말줄임
+const viewLink = `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-control font-semibold text-accent-strong underline-offset-3 not-disabled:hover:underline disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
+// 지역 고르기 상자(시안 .sel, 설정 예약 칸 SELECT와 같은 32px 모양). 지역 모름은 주황 글자 500(시안 .sel.unknown)
+const regionSelect = `h-8 cursor-pointer rounded-control border border-line-strong bg-surface px-1.5 text-small not-disabled:hover:border-muted disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
 // 빈 탭 안내: 제목과 설명을 따로 줄로(목업 <p> 둘). 두 줄이라 위아래 여백을 둔다
 const emptyClass = `${ds.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:px-4`
 // PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
-// 신청일·신청자 120px, EMR 112px('그 밖의 EMR'이 칸 여백 빼고도 들어간다), 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩.
-// 글 칸(의원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
-// 표에는 최소 폭이 없다: 768~1023px(본문 720~975px)에서는 정한 칸을 글자 폭에 맞춰 줄여(신청일 116 · EMR 96 · 신청자 80 · 연락처 136, 합 578px)
+// 신청일 120px, EMR 112px('그 밖의 EMR'이 칸 여백 빼고도 들어간다), 연락처·동작 150px, 의원 이름·신청자 · 이메일은 남은 폭을 반씩.
+// 글 칸(의원 이름·신청자 · 이메일의 두 줄)은 넘치면 말줄임 + title로 전체 값.
+// 대기·거절 표에는 최소 폭이 없다: 768~1023px(본문 720~975px)에서는 정한 칸을 글자 폭에 맞춰 줄여(신청일 116 · EMR 96 · 연락처 136)
 // 옆으로 밀지 않고도 모든 칸과 [승인]·[거절]이 보인다(768px에서는 의원 이름·이메일 칸이 좁아 여러 줄로 바뀐다). 동작 칸은 그 폭에서도 150px 그대로 —
 // 140px이면 [관리자로 정하기]가 겨우 들어간다(multi-admin 기본값 9, 시안 notes.md '칸 폭'). 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
-const COLUMNS = [
+const COLUMNS: readonly { label: string; width: string }[] = [
   { label: '신청일', width: 'w-30 max-lg:w-29' },
   { label: '의원 이름', width: '' },
   { label: 'EMR', width: 'w-28 max-lg:w-24' },
-  { label: '신청자', width: 'w-30 max-lg:w-20' },
-  { label: '이메일', width: '' },
+  { label: '신청자 · 이메일', width: '' },
   { label: '연락처', width: 'w-37.5 max-lg:w-34' },
   { label: '동작', width: 'w-37.5 md:text-right' },
-] as const
+]
+// '승인' 탭은 의원 이름 다음에 지역 칸 120px(admin-view AC-8012.2). 칸이 늘어 표가 1120px보다 좁으면 옆으로 밀린다(design.md 기본값 25)
+const APPROVED_COLUMNS: readonly { label: string; width: string }[] = [...COLUMNS.slice(0, 2), { label: '지역', width: 'w-30' }, ...COLUMNS.slice(2)]
+const APPROVED_MIN = 'md:min-w-280'
 
 // 이메일 글자: "@" 바로 뒤에 줄을 바꿀 자리(<wbr>). 글자(textContent)·복사한 글자는 그대로다.
 // 크롬은 nowrap 안에서도 <wbr>에서 줄을 바꾼다 → 말줄임하는 1024px 이상에서는 <wbr>을 뺀다(lg:hidden)
@@ -229,10 +255,13 @@ function ConfirmDialog({
 }
 
 // top: 제목 묶음 바로 아래·신청 탭 위에 그릴 칸(관리자 화면의 '설치 파일' 칸, helper-download AC-5104.3)
-export function AdminApplications({ top }: { top?: ReactNode } = {}) {
+// bottom: 신청 표 아래에 그릴 칸(관리자 화면의 '본 기록' 칸, admin-view AC-8012.3)
+export function AdminApplications({ top, bottom }: { top?: ReactNode; bottom?: ReactNode } = {}) {
   const [rows, setRows] = useState<Application[] | null>(null) // null = 읽는 중
   // 관리자 표시(admin_hospitals): 신청 목록과 같이 온다 — rows가 null이 아니면 이것도 읽힌 값이다
   const [marks, setMarks] = useState<AdminMark[]>([])
+  // 보기 목록(admin_view_hospitals: 주소·정한 지역·내 의원): 이것도 같이 온다(admin-view AC-8012.5)
+  const [views, setViews] = useState<ViewHospital[]>([])
   const [loadError, setLoadError] = useState<{ error: unknown } | null>(null)
   const [tab, setTab] = useState<Tab>('pending')
   const [message, setMessage] = useState('')
@@ -251,11 +280,12 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
 
   useEffect(() => {
     let alive = true // 떠난 뒤 온 결과는 버린다
-    // 신청 목록과 관리자 표시를 한 번씩 읽고, 둘 다 온 뒤에 탭·표를 그린다(틀린 단추를 잠깐이라도 보이지 않게)
-    Promise.all([listApplications(), listAdminHospitals()]).then(
-      ([list, adminMarks]) => {
+    // 신청 목록·관리자 표시·보기 목록을 한 번씩 읽고, 셋 다 온 뒤에 탭·표를 그린다(틀린 단추·지역을 잠깐이라도 보이지 않게)
+    Promise.all([listApplications(), listAdminHospitals(), listViewHospitals()]).then(
+      ([list, adminMarks, viewList]) => {
         if (!alive) return
         setMarks(adminMarks)
+        setViews(viewList)
         setRows(list)
       },
       (error: unknown) => {
@@ -267,7 +297,7 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
     }
   }, [])
 
-  // 둘 중 하나라도 읽지 못하면 그리기를 멈춘다 → 화면 오류(app/error.tsx: E-PAGE-FAILED + [다시 시도]·[로그아웃])가 안내한다
+  // 셋 중 하나라도 읽지 못하면 그리기를 멈춘다 → 화면 오류(app/error.tsx: E-PAGE-FAILED + [다시 시도]·[로그아웃])가 안내한다
   if (loadError !== null) throw loadError.error
 
   const select = (key: Tab) => {
@@ -296,15 +326,23 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
   }, [focusTick, tab])
 
   // 함수가 성공한 뒤에만 손에 든 자료를 고친다(목록을 다시 읽지 않는다). 실패하면 그대로 두고 그 번호의 카드(저절로 다시 보내지 않는다).
-  // 보내는 동안 표의 동작 단추는 모두 막힌다(busy)
-  const send = async (call: () => Promise<void>, apply: () => void, done: string, failCode: FailCode, origin: HTMLElement | null) => {
+  // 보내는 동안 표의 동작 단추·이름 단추·지역 상자는 모두 막힌다(busy). 성공 뒤 초점: 줄이 옮겨 가는 바꾸기는 지금 탭('tab'),
+  // 그 자리에 남는 지역 고치기는 그 상자('origin')
+  const send = async (
+    call: () => Promise<void>,
+    apply: () => void,
+    done: string,
+    failCode: FailCode,
+    origin: HTMLElement | null,
+    after: 'tab' | 'origin' = 'tab',
+  ) => {
     setBusy(true)
     try {
       await call()
       apply()
       setFailed(null)
       setMessage(done)
-      focusAfterRef.current = 'tab'
+      focusAfterRef.current = after === 'tab' ? 'tab' : origin
     } catch {
       setMessage('')
       setFailed(failCode)
@@ -334,6 +372,35 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
       'E-ADMIN-ROLE',
       origin,
     )
+
+  // 지역 고치기(admin-view AC-8012.2): setHospitalRegion 한 번(지역 모름 = null) → 되면 손에 든 보기 목록의 그 줄만 고친다. 실패는 E-REGION-SAVE, 값은 그대로
+  const changeRegion = (row: Application, value: string, origin: HTMLElement) => {
+    const sido = REGION_CHOICES.find((c) => (c.value ?? '') === value)?.value ?? null
+    return send(
+      () => setHospitalRegion(row.id, sido),
+      () => setViews((prev) => withRegion(prev, row.id, sido)),
+      regionDoneMessage(row.name, sido),
+      'E-REGION-SAVE',
+      origin,
+      'origin',
+    )
+  }
+
+  // 다른 의원 보기(admin-view AC-8012.1): 확인 창 없이 startAdminView → 보기 열쇠 쿠키(setViewKey) → /dashboard를 새로 연다
+  // (ViewPicker와 같은 흐름을 이 파일이 스스로 쓴다). 여는 동안 표는 막히고, 실패하면 E-VIEW-START 카드 + 초점은 누른 이름
+  const startView = async (row: Application, origin: HTMLElement) => {
+    setBusy(true)
+    try {
+      setViewKey(await startAdminView(row.id))
+      window.location.assign('/dashboard')
+    } catch {
+      setMessage('')
+      setFailed('E-VIEW-START')
+      focusAfterRef.current = origin
+      setBusy(false)
+      setFocusTick((n) => n + 1)
+    }
+  }
 
   // 거절·정하기·빼기는 먼저 확인 창(아직 함수를 부르지 않는다)
   const ask = (row: Application, kind: ConfirmKind, opener: HTMLButtonElement) => {
@@ -379,19 +446,24 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
   const counts = rows === null ? null : countByTab(rows)
   const list = rows === null ? [] : rowsOf(rows, tab)
   const label = TABS.find((t) => t.key === tab)?.label ?? ''
+  const approvedTab = tab === 'approved'
+  const columns = approvedTab ? APPROVED_COLUMNS : COLUMNS
 
   return (
     <div aria-busy={rows === null} className="flex flex-col gap-4 max-md:gap-3">
-      {/* 제목 묶음(시안 .loc · .ad-h1 · .ad-p): 작은 "관리자" 표시(small 600 muted + userCheck 14) → h1 → 안내. 줄 사이 4px.
-          안내 최대 폭은 시안 40em × body 14px = 560px → max-w-140 */}
-      <div className="flex flex-col gap-1">
-        <p className="flex items-center gap-1.5 text-small font-semibold text-muted">
-          <Icon name="userCheck" size={14} className="shrink-0" />
-          관리자
-        </p>
-        <h1 className="text-title font-semibold text-ink">가입 승인</h1>
-        <p className="max-w-140 text-body text-ink-2">{INTRO}</p>
+      {/* 머리(시안 .ahead): 제목 묶음(.loc · .ad-h1 — 작은 "관리자" 표시(small 600 muted + userCheck 14) → h1, 사이 4px) → 안쪽 메뉴(사이 12px, admin-view AC-8012.4).
+          읽는 중에도 그린다. 안내(시안 .intro)는 그 아래 16px, 최대 폭은 시안 40em × body 14px = 560px → max-w-140 */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <p className="flex items-center gap-1.5 text-small font-semibold text-muted">
+            <Icon name="userCheck" size={14} className="shrink-0" />
+            관리자
+          </p>
+          <h1 className="text-title font-semibold text-ink">가입 승인</h1>
+        </div>
+        <AdminNav current="/admin" />
       </div>
+      <p className="max-w-140 text-body text-ink-2">{INTRO}</p>
 
       {top}
 
@@ -445,11 +517,11 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
             <div className={`${ds.table.wrap} max-md:-mx-4 max-md:overflow-visible`}>
               <table
                 aria-label={`${label} 신청`}
-                className={`${ds.table.table} border-y border-line bg-surface md:table-fixed max-md:block`}
+                className={`${ds.table.table} border-y border-line bg-surface md:table-fixed max-md:block${approvedTab ? ` ${APPROVED_MIN}` : ''}`}
               >
                 <thead className="max-md:hidden">
                   <tr>
-                    {COLUMNS.map((c) => (
+                    {columns.map((c) => (
                       <th key={c.label} scope="col" className={`${ds.table.th} ${c.width}`}>
                         {c.label}
                       </th>
@@ -459,7 +531,7 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
                 <tbody className="max-md:flex max-md:flex-col">
                   {list.length === 0 ? (
                     <tr>
-                      <td colSpan={COLUMNS.length} className={emptyClass}>
+                      <td colSpan={columns.length} className={emptyClass}>
                         <p className="font-medium">{EMPTY[tab].title}</p>
                         <p>{EMPTY[tab].body}</p>
                       </td>
@@ -467,29 +539,69 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
                   ) : (
                     list.map((row) => {
                       // 관리자인 승인 줄: 의원 이름 바로 뒤 표(주 관리자 줄 '주 관리자', 그 밖 '관리자', multi-admin AC-7703.3)
-                      const badge = row.status === 'approved' ? adminBadgeOf(marks, row.id) : null
+                      const approved = row.status === 'approved'
+                      const badge = approved ? adminBadgeOf(marks, row.id) : null
+                      // 보기 목록(admin_view_hospitals)에 있고 내 줄이 아닌 승인 줄: 이름이 보기 단추(admin-view AC-8012.1).
+                      // 내 줄·대기·거절 줄과 목록에 아직 없는 줄(이 화면에서 막 승인함 — 다시 읽으면 생긴다)은 보통 글자
+                      const viewable = approved && views.some((v) => v.hospitalId === row.id) && !isMine(views, marks, row.id)
+                      const region = approved ? regionOfRow(views, row.id) : null
                       return (
                         <tr key={row.id} className={rowClass}>
                           <td className={cell.date}>
                             <span className="tabular-nums text-muted">{appliedOn(row.createdAt)}</span>
                           </td>
                           <td className={cell.clinic} title={row.name}>
-                            {badge === null ? (
+                            {badge === null && !viewable ? (
                               row.name
                             ) : (
                               // 이름 뒤 6px에 표(ds.chip.accent). 이름만 말줄임되고 표는 늘 보인다(시안 notes.md '모양 결정'). 칸 title은 이름 그대로
                               <div className="flex min-w-0 items-center gap-1.5">
-                                <span className="truncate">{row.name}</span>
-                                <span className={ds.chip.accent}>{badge}</span>
+                                {viewable ? (
+                                  <button
+                                    type="button"
+                                    title={viewTitle(row.name)}
+                                    disabled={busy}
+                                    onClick={(e) => void startView(row, e.currentTarget)}
+                                    className={viewLink}
+                                  >
+                                    <Icon name="eye" size={14} className="shrink-0" />
+                                    <span className="truncate">{row.name}</span>
+                                  </button>
+                                ) : (
+                                  <span className="truncate">{row.name}</span>
+                                )}
+                                {badge !== null && <span className={ds.chip.accent}>{badge}</span>}
                               </div>
                             )}
                           </td>
+                          {approvedTab && (
+                            <td className={cell.region}>
+                              <select
+                                aria-label={`${row.name} 지역`}
+                                value={region ?? ''}
+                                disabled={busy}
+                                title={region === null ? REGION_UNKNOWN_TIP : undefined}
+                                onChange={(e) => void changeRegion(row, e.currentTarget.value, e.currentTarget)}
+                                className={`${regionSelect} ${region === null ? 'font-medium text-warning' : 'text-ink'}`}
+                              >
+                                {REGION_CHOICES.map((c) => (
+                                  <option key={c.label} value={c.value ?? ''}>
+                                    {c.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          )}
                           <td className={cell.emr}>{EMR_LABEL[row.emr]}</td>
-                          <td className={cell.applicant} title={row.applicantName}>
-                            {row.applicantName}
-                          </td>
-                          <td className={cell.email} title={row.email}>
-                            <EmailText email={row.email} />
+                          <td className={cell.who}>
+                            <div className="flex min-w-0 flex-col">
+                              <span title={row.applicantName} className={whoName}>
+                                {row.applicantName}
+                              </span>
+                              <span title={row.email} className={whoEmail}>
+                                <EmailText email={row.email} />
+                              </span>
+                            </div>
                           </td>
                           <td className={cell.phone}>
                             {phoneText(row.phone)}
@@ -543,6 +655,8 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
           </div>
         </>
       )}
+
+      {bottom}
 
       {confirming !== null && (
         <ConfirmDialog row={confirming.row} {...CONFIRM[confirming.kind]} onCancel={cancelConfirm} onConfirm={confirm} />
