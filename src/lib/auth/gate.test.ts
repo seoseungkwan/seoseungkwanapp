@@ -126,6 +126,13 @@ describe('decideRoute() — 승인됨', () => {
     expect(decideRoute(signedIn(path, 'approved', false))).toBe('/dashboard')
   })
 
+  it('AC-8017.1: /admin/compare(의원 비교)는 관리자 경로다 — 관리자는 연다, 관리자 아닌 원장 /dashboard, 데스크 /sunap, 로그인 안 함 /login', () => {
+    expect(decideRoute(signedIn('/admin/compare', 'approved', true))).toBeNull()
+    expect(decideRoute(signedIn('/admin/compare', 'approved', false))).toBe('/dashboard')
+    expect(decideRoute(signedIn('/admin/compare', 'desk', true))).toBe('/sunap')
+    expect(decideRoute({ path: '/admin/compare', signedIn: false, hospital: 'approved', isAdmin: true })).toBe('/login')
+  })
+
   it('AC-002.5: /administrator 같은 이름은 관리자 경로로 보지 않는다', () => {
     expect(decideRoute(signedIn('/administrator', 'approved', false))).toBeNull()
   })
