@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERP 마감일지 입력 목록</title>
+<!-- 'ERP 마감일지 입력 목록' 화면(spec erp-copy-list design.md 6절). 글·모양은 승인된 시안 docs/mockups/erp-copy-list/index.html 그대로이고
+     시안 띠(노란 상태 단추 줄)만 없다. PC 화면만 만든다(넓은 표는 표 상자 안에서만 옆으로 밀린다).
+     고정 글(탭 제목·머리·[설정 열기]·시작일·끝일·[목록 만들기]·[엑셀로 받기]·도움 줄·맨 아래 줄)은 스크립트가 돌기 전에도 보이도록 여기 복사해 둔다.
+     글 한 곳은 src/listTypes.ts LIST_TEXT와 지금 확장 상수(panel.ts TEXT·rangeView.ts RANGE_TEXT)이고, 같은지는 src/view.test.ts가 본다.
+     경고 상자(.warns)는 지금 extension-erp/src/panel.ts 세 줄 그대로 + 상자 안에서 밀림 -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;
+--negative:#C2410C;--negative-soft:#FDF0EA;--warning:#B45309;--warning-soft:#FDF4E3;--r-control:4px;--r-float:8px;
+--shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+ul{list-style:none}
+.nw{white-space:nowrap}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--surface);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
+.btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn-2:hover{background:var(--canvas)}
+.btn-2:disabled{color:var(--muted);background:var(--canvas);border-color:var(--line);cursor:default}
+.btn-1{background:var(--accent);color:var(--surface);font-weight:600}
+.btn-1:hover{background:var(--accent-strong)}
+.btn-1:disabled{background:#93A6C9;cursor:default}
+
+
+/* 화면 머리 (설정 화면과 같은 모양) */
+.top{border-bottom:1px solid var(--line)}
+.top .in{max-width:1440px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:10px}
+.top i{width:20px;height:20px;border-radius:5px;background:var(--accent);flex:none}
+.top h1{font-size:18px;font-weight:600}
+.top .set{margin-left:auto}
+main{max-width:1440px;margin:0 auto;padding:20px 24px 40px;display:flex;flex-direction:column;gap:16px}
+
+/* 기간 고르기 */
+.ctrl .row1{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.ctrl label{display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:18px;color:var(--muted)}
+.ctrl input{height:36px;width:160px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;font-size:14px;color:var(--ink);background:var(--surface)}
+.ctrl input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.ctrl input:disabled{background:var(--canvas);color:var(--muted)}
+.ctrl .tilde{padding-bottom:7px;color:var(--muted)}
+.ctrl #make{margin-left:8px}
+.help{margin-top:6px;font-size:13px;line-height:20px;color:var(--muted)}
+.help.why{font-weight:500;color:var(--negative)}
+
+/* 안내 상자 */
+.hint{background:var(--accent-soft);border-radius:var(--r-control);padding:12px 16px;color:var(--ink-2);max-width:780px;display:flex;flex-direction:column;gap:4px}
+.hint .lead{color:var(--accent-strong)}
+.box{border:1px solid var(--line);border-radius:var(--r-float);padding:16px 18px;display:flex;flex-direction:column;gap:10px;max-width:640px;background:var(--surface);color:var(--ink-2)}
+.box.err{background:var(--negative-soft);border-color:#F1D3C4}
+.lead{font-size:15px;line-height:23px;font-weight:600;color:var(--ink)}
+.lead.err{color:var(--negative)}
+.lead.err::before{content:'!';display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-right:6px;border-radius:50%;background:var(--negative);color:#fff;font-size:12px;vertical-align:1px}
+.small{font-size:13px;line-height:20px;color:var(--muted)}
+.prog{height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent);transition:width .2s}
+.acts{display:flex;justify-content:flex-end;gap:8px}
+
+/* 목록 위 한 줄 */
+.sum{display:flex;justify-content:space-between;align-items:flex-end;gap:4px 16px;flex-wrap:wrap}
+.sum .l{display:flex;flex-direction:column;gap:2px}
+.sum .l b{font-weight:600;color:var(--ink)}
+.sum .made{font-size:13px;color:var(--muted);white-space:nowrap}
+.slide{font-size:13px;line-height:20px;color:var(--accent-strong);margin-bottom:-8px}
+
+/* 목록 표: 표 상자 안에서만 옆·아래로 밀림, 항목 칸은 왼쪽에, 날짜 줄은 위에 붙음 */
+.tbox{width:fit-content;max-width:100%;max-height:calc(100vh - 250px);min-height:300px;overflow:auto;border:1px solid var(--line-strong);border-radius:var(--r-float);background:var(--surface)}
+.tbox::-webkit-scrollbar{width:12px;height:12px}
+.tbox::-webkit-scrollbar-thumb{background:#C4C9D2;border-radius:6px;border:3px solid #fff}
+.tbox::-webkit-scrollbar-corner{background:#fff}
+.tbl{border-collapse:separate;border-spacing:0;font-size:13px;line-height:18px}
+.tbl th,.tbl td{border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl thead th{position:sticky;top:0;z-index:3;background:#F3F4F6;height:46px;padding:4px 12px;border-bottom:1px solid var(--line-strong);text-align:right;vertical-align:middle;font-weight:600;color:var(--ink)}
+.tbl thead th.lab{left:0;z-index:4;text-align:left;background:#F3F4F6}
+.tbl thead th .wd{font-weight:400;color:var(--muted)}
+.tbl thead th.sun .wd{color:var(--negative)}
+.tbl thead th .zt{display:block;font-size:11px;line-height:14px;font-weight:500;color:var(--muted)}
+.tbl th.lab{position:sticky;left:0;z-index:2;background:var(--surface);width:330px;min-width:330px;max-width:330px;text-align:left;font-weight:400;padding:0 10px 0 24px;border-right:1px solid var(--line-strong)}
+.tbl td{min-width:92px;padding:1px 3px;text-align:right;background:var(--surface)}
+.lw{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nm{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.nm .cl{color:var(--muted)}
+tr.s1 th.lab,tr.s1 td{background:#E9EDF3;height:34px}
+tr.s1 th.lab{padding-left:14px;font-size:14px;font-weight:600;color:var(--ink)}
+tr.s2 th.lab,tr.s2 td{background:var(--canvas);height:30px}
+tr.s2 th.lab{padding-left:14px;font-weight:600;color:var(--ink-2)}
+tr.s2 th.lab .sub{font-weight:400;color:var(--muted);margin-left:6px}
+tr.r th.lab{height:32px}
+tr:has(+ tr.g) > *{border-bottom-color:#CBD0D8}
+tr.r:hover th.lab,tr.r:hover td{background:#F6F9FF}
+tr.off .nm{color:var(--ink-2)}
+td.na{background:#F9FAFB}
+tr.r:hover td.na{background:#F1F4FA}
+.nt{display:inline-block;padding-right:9px;font-size:11px;color:var(--muted);cursor:help}
+.tag{flex:none;display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:10px;font-size:12px;line-height:18px;background:#F0F1F3;color:var(--muted);cursor:help}
+.tag.held,.tag.noName{background:var(--warning-soft);color:var(--warning)}
+.v{display:block;width:100%;height:30px;padding:0 9px;text-align:right;border-radius:3px;color:var(--ink);font-variant-numeric:tabular-nums}
+.v:hover{background:var(--accent-soft);box-shadow:inset 0 0 0 1px #BFD3FB;color:var(--accent-strong)}
+.v:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.v.done{background:var(--positive-soft);color:var(--positive)}
+.v.done::before{content:'✓';font-size:11px;margin-right:5px}
+.v.now{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent);color:var(--accent-strong);font-weight:600}
+td.z .v:not(.done):not(.now){color:var(--muted)}
+
+/* 빈 칸 까닭 */
+.legend{border:1px solid var(--line);border-radius:var(--r-float);padding:12px 16px;display:flex;flex-direction:column;gap:8px;max-width:980px}
+.legend h2{font-size:14px;font-weight:600}
+.legend li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:start;color:var(--ink-2)}
+.legend li .tag{justify-self:start;margin-top:1px;cursor:default}
+.legend .ovl{border-top:1px solid var(--line);padding-top:8px;font-size:13px;color:var(--ink-2)}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+/* 쪽지 */
+.toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:12px;background:#111827;color:#fff;border-radius:var(--r-float);padding:10px 18px;box-shadow:var(--shadow-float);font-size:14px;white-space:nowrap}
+.toast b{font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.toast b::before{content:'✓';display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;border-radius:50%;background:#22C55E;color:#fff;font-size:11px}
+.toast.bad b::before{content:'!';background:var(--negative)}
+.toast span{color:#D1D5DB;font-size:13px}
+
+/* 목록 상자 묶음(요약 · 경고 · 밀기 줄 · 표 · 빈 칸 까닭) */
+.list{display:flex;flex-direction:column;gap:16px}
+.legend .ovl:first-child{border-top:0;padding-top:0}
+
+/* 경고 상자(panel.ts .warns 그대로, 길면 상자 안에서 밀림) */
+.warns{display:flex;flex-direction:column;gap:8px;background:var(--warning-soft);border-radius:var(--r-control);padding:10px 12px}
+.warns li{display:flex;gap:8px;align-items:flex-start;color:var(--ink-2)}
+.warns li::before{content:'!';flex:none;display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--warning);color:#fff;font-size:12px;font-weight:600}
+.warns{max-height:200px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="top"><div class="in"><i></i><h1>ERP 마감일지 입력 목록</h1><button type="button" class="btn btn-2 set" id="openSettings">설정 열기</button></div></div>
+<main id="listMain">
+  <section class="ctrl" aria-label="기간">
+    <div class="row1">
+      <label>시작일<input type="date" id="from"></label>
+      <span class="tilde">~</span>
+      <label>끝일<input type="date" id="to"></label>
+      <button type="button" class="btn btn-1" id="make">목록 만들기</button>
+      <button type="button" class="btn btn-2" id="xlsx" disabled>엑셀로 받기</button>
+    </div>
+    <p class="help" id="help">오늘 뒤 날짜는 고를 수 없어요.</p>
+  </section>
+  <div id="stage" style="display:flex;flex-direction:column;gap:16px"></div>
+  <p class="foot">환자 이름 · 차트번호는 이 PC의 도우미 밖으로 나가지 않아요. 이 화면은 ERP를 건드리지 않아요. 숫자는 직접 붙여 넣고, 저장은 ERP에서 직접 눌러요.</p>
+</main>
+<div class="toast" id="toast" role="status" hidden></div>
+<script type="module" src="extension-erp-list/src/list.js"></script>
+</body>
+</html>
