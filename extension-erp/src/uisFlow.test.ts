@@ -321,7 +321,7 @@ describe('AC-4211.1 decideSource — 단추 이름 정하기(저장 여부 → �
     expect(got).toBe('bit')
   })
 
-  it('AC-4211.1 (명세와 다름): 둘 다 없으면 도우미를 부르지 않고 비트다 — 설정 저장 전 비트 화면은 도우미를 부르지 않는다(AC-3609.2·AC-3701.3 시험 그대로, AC-4215.2)', async () => {
+  it('AC-4211.1 (고침 13): 둘 다 없으면 도우미를 부르지 않고 비트다 — 설정 저장 전 비트 화면은 도우미를 부르지 않는다(AC-3609.2·AC-3701.3 시험 그대로, AC-4215.2)', async () => {
     fakeStorage({})
     const send = sendWith(ok({ source: 'uisarang' }))
     expect(await decideSource(send)).toBe('bit')

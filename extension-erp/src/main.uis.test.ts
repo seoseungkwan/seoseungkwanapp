@@ -282,7 +282,7 @@ describe('AC-4211.1 단추 이름 정하기(startPage)', () => {
     expect(t.sourceCalls()).toHaveLength(1)
   })
 
-  it('AC-4211.1 (명세와 다름) AC-4215.3: 둘 다 없으면 도우미를 부르지 않고 비트 단추 줄이며, 누르면 지금처럼 설정 화면만 연다', async () => {
+  it('AC-4211.1 (고침 13) AC-4215.3: 둘 다 없으면 도우미를 부르지 않고 비트 단추 줄이며, 누르면 지금처럼 설정 화면만 연다', async () => {
     const t = start({})
     await flush()
     expect(t.sendMessage).not.toHaveBeenCalled()
