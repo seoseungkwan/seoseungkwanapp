@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { loadCashFloatSetting, saveCashFloatSetting } from '@/lib/storage/worklogSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
@@ -10,7 +11,8 @@ import { CASH_FLOAT_MAX } from '@/types/worklog'
 
 // 설정 탭 '현금 시재' 칸 (specs/worklog-cash-float REQ-1608, design.md '설정 칸', 시안 '설정 · 시재 금액').
 // 병원 시재 금액 하나를 읽고 쓴다(worklogSettings.ts, RLS). 바꾸면 그 뒤에 세는 날부터 쓰고, 이미 센 날은 그날 일지의 금액 그대로다.
-// 읽기는 효과에서만 한다(서버 그리기에서 부르지 않는다). 실패는 종류와 상관없이 E-SETTINGS-FAILED 카드, 읽기 실패에는 [다시 불러오기]
+// 읽기는 효과에서만 한다(서버 그리기에서 부르지 않는다). 실패는 종류와 상관없이 E-SETTINGS-FAILED 카드, 읽기 실패에는 [다시 불러오기].
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 칸이 읽기 전용(금액은 보인다)이고 [저장]이 없으며 Enter도 저장하지 않는다
 
 type Load = 'loading' | 'failed' | 'ready'
 // 칸 아래 한 줄: 평소 안내 → 틀린 값 안내 또는 저장 끝 안내로 바뀐다(시안 그대로)
@@ -24,6 +26,7 @@ const TOO_BIG = `시재 금액은 ${wonText(CASH_FLOAT_MAX)}까지 적을 수 �
 const FLOAT_INPUT = `${ds.input} h-9! w-36! text-right tabular-nums max-md:h-11!`
 
 export function CashFloatSetting() {
+  const readOnly = useReadOnly()
   const [load, setLoad] = useState<Load>('loading')
   const [text, setText] = useState('')
   const [line, setLine] = useState<Line>({ kind: 'note' })
@@ -97,19 +100,22 @@ export function CashFloatSetting() {
               aria-invalid={wrong || undefined}
               aria-describedby={lineId}
               className={FLOAT_INPUT}
+              readOnly={readOnly}
               value={text}
               onChange={(event) => {
                 setText(event.target.value)
                 setLine({ kind: 'note' })
               }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') void save()
+                if (event.key === 'Enter' && !readOnly) void save()
               }}
             />
             <span className="text-body text-ink-2">원</span>
-            <button type="button" className={ds.button.primary} aria-busy={saving || undefined} onClick={() => void save()}>
-              저장
-            </button>
+            <WriteOnly>
+              <button type="button" className={ds.button.primary} aria-busy={saving || undefined} onClick={() => void save()}>
+                저장
+              </button>
+            </WriteOnly>
           </div>
           {line.kind === 'saved' ? (
             <p id={lineId} role="status" className="text-small text-ink-2">

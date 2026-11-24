@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { WriteOnly } from '@/components/shell/viewing'
 import { useRxCatalog } from '@/components/stats/useRxCatalog'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
@@ -22,6 +23,7 @@ import { saveDiffRows } from './phrases/saveDiffRows'
 import { TryTab } from './phrases/TryTab'
 import { TRY_CHART, TRY_RX, type TryText } from './phrases/tryVisit'
 import { WordsTab } from './phrases/WordsTab'
+import { ReadOnlyFields } from './ReadOnlyFields'
 
 // 설정의 '병원 문구' 칸(AC-018.7·AC-018.18·AC-018.19, memo-settings REQ-3007·시안 docs/mockups/memo-settings). 저장하는 값의 모양은 AC-014.3 + memoRules 그대로다(묶음은 화면 배치일 뿐이다).
 // 묶음 단추 여섯 개(기본 · 시술별 문구와 약 · 처방코드 · 표기 규칙 · 사유 문장 · 메모 시험)와 아래 저장 줄 하나. 고치는 값(draft)·읽은 값(opened)·저장·비교 상태는 여기 하나에 둔다.
@@ -29,7 +31,9 @@ import { WordsTab } from './phrases/WordsTab'
 // 처방코드 묶음의 목록은 통계에 저장된 날별 처방(집계)을 찾기 목록과 같은 길(useRxCatalog)로 한 번 읽어 만든다. 메모 시험 글은 화면 상태에만 둔다(AC-3007.4).
 // 병원 설정 줄이 없거나 검사를 지나지 못하면 잠금 칸이고 저장 단추가 없다(AC-018.18). 잠금 칸은 파란 안내 + [처음 질문 하기](/settings/first-run)·[기본 문구로 바로 시작](중립 기본 문구로
 // 줄을 만들고 다시 읽는다)이다(clinic-profile AC-6607.1·AC-6607.2, design.md 9절). Worker 답 없이 같은 판단을 한다. 환자 자료가 오지 않는다.
-// 묶음 '차트 줄임말'(chartWords, AC-6612.1)은 '메모 시험' 앞에 있다. 숨어 있던 칸(AC-6613)은 사유 문장·시술별 문구와 약 묶음에 있다
+// 묶음 '차트 줄임말'(chartWords, AC-6612.1)은 '메모 시험' 앞에 있다. 숨어 있던 칸(AC-6613)은 사유 문장·시술별 문구와 약 묶음에 있다.
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 [처음 질문 다시 하기]·[처음 질문 하기]·[기본 문구로 바로 시작]·저장 줄을 그리지 않고(WriteOnly)
+// 고치는 묶음의 칸을 막는다(ReadOnlyFields, 처방코드 묶음은 그 안에서 표만). 묶음 단추·'메모 시험'(이 화면에서만 만들어 보는 글)은 그대로다
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'blocked' } | { kind: 'ready' }
 type Tab = 'basic' | 'proc' | 'codes' | 'rules' | 'reason' | 'words' | 'try'
@@ -89,14 +93,16 @@ function StartChoice({ busy, failed, onStart }: { busy: boolean; failed: boolean
       <div role="status" aria-label="처음 질문" className="rounded-control bg-accent-soft px-4 py-3 text-small font-semibold text-accent-strong">
         아직 병원 문구가 없어요. 처음 질문으로 우리 병원 메모 모양을 맞추거나, 기본 문구로 바로 시작할 수 있어요.
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href={FIRST_RUN_HREF} className={`${ds.button.primary} no-underline`}>
-          처음 질문 하기
-        </Link>
-        <button type="button" className={ds.button.secondary} aria-busy={busy || undefined} onClick={onStart}>
-          기본 문구로 바로 시작
-        </button>
-      </div>
+      <WriteOnly>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={FIRST_RUN_HREF} className={`${ds.button.primary} no-underline`}>
+            처음 질문 하기
+          </Link>
+          <button type="button" className={ds.button.secondary} aria-busy={busy || undefined} onClick={onStart}>
+            기본 문구로 바로 시작
+          </button>
+        </div>
+      </WriteOnly>
       {failed && <ErrorCard code="E-SETTINGS-FAILED" />}
     </div>
   )
@@ -259,9 +265,11 @@ export function HospitalPhrases() {
           <p className="text-small text-ink-2">청구메모에 들어가는 말을 우리 병원에 맞게 고쳐요. 저장하기 전까지 실제 메모는 바뀌지 않아요.</p>
         </div>
         {load.kind === 'ready' && (
-          <Link href={FIRST_RUN_HREF} className={ds.button.secondarySmall}>
-            처음 질문 다시 하기
-          </Link>
+          <WriteOnly>
+            <Link href={FIRST_RUN_HREF} className={ds.button.secondarySmall}>
+              처음 질문 다시 하기
+            </Link>
+          </WriteOnly>
         )}
       </div>
       {load.kind === 'loading' && <p className="text-small text-muted">병원 문구를 읽는 중이에요…</p>}
@@ -309,12 +317,16 @@ export function HospitalPhrases() {
             })}
           </div>
           <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
-            {tab === 'basic' && <BasicTab draft={draft} errors={errors} onChange={update} />}
-            {tab === 'proc' && <ProcTab draft={draft} errors={errors} onChange={update} />}
+            {tab !== 'codes' && tab !== 'try' && (
+              <ReadOnlyFields>
+                {tab === 'basic' && <BasicTab draft={draft} errors={errors} onChange={update} />}
+                {tab === 'proc' && <ProcTab draft={draft} errors={errors} onChange={update} />}
+                {tab === 'rules' && <RulesTab draft={draft} errors={errors} onChange={update} />}
+                {tab === 'reason' && <ReasonTab draft={draft} errors={errors} onChange={update} />}
+                {tab === 'words' && <WordsTab draft={draft} errors={errors} onChange={update} />}
+              </ReadOnlyFields>
+            )}
             {tab === 'codes' && <CodesTab draft={draft} saved={saved ?? draft} errors={errors} onChange={update} days={catalog.days} state={catalog.state} today={today} onRetry={catalog.retry} />}
-            {tab === 'rules' && <RulesTab draft={draft} errors={errors} onChange={update} />}
-            {tab === 'reason' && <ReasonTab draft={draft} errors={errors} onChange={update} />}
-            {tab === 'words' && <WordsTab draft={draft} errors={errors} onChange={update} />}
             {tab === 'try' && <TryTab draft={draft} text={tryText} onText={setTryText} />}
           </div>
           {confirm && <SaveDiff rows={confirm.rows} busy={saving} onConfirm={() => void save(confirm.value)} onCancel={() => setConfirm(null)} />}
@@ -325,13 +337,15 @@ export function HospitalPhrases() {
             </div>
           )}
           {saveFailed && <ErrorCard code="E-SETTINGS-FAILED" />}
-          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
-            <button type="button" className={ds.button.primary} aria-busy={saving || undefined} onClick={askSave}>
-              {saveFailed ? '다시 저장' : '저장'}
-            </button>
-            {nothing && <span role="status" className="text-small text-ink-2">바뀐 것이 없어요</span>}
-            {savedNote && <span role="status" className="text-small text-ink-2">저장했어요. 다음에 만드는 메모부터 바뀌어요.</span>}
-          </div>
+          <WriteOnly>
+            <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+              <button type="button" className={ds.button.primary} aria-busy={saving || undefined} onClick={askSave}>
+                {saveFailed ? '다시 저장' : '저장'}
+              </button>
+              {nothing && <span role="status" className="text-small text-ink-2">바뀐 것이 없어요</span>}
+              {savedNote && <span role="status" className="text-small text-ink-2">저장했어요. 다음에 만드는 메모부터 바뀌어요.</span>}
+            </div>
+          </WriteOnly>
         </>
       )}
     </section>

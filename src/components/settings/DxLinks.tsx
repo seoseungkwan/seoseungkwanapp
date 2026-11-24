@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { validatePhrases } from '@/lib/precheck/memo'
@@ -12,7 +13,8 @@ import type { DxLink } from '@/types/precheck'
 
 // 설정의 '상병 연결표' 칸(AC-018.7·AC-018.18). 줄: 처방코드 · 상병코드 · 상병명 · 배제상병으로 · 출처(이 칸에서 더한 줄은 직접 추가 's'). 환자 자료가 아니다.
 // 저장은 NOT NULL phrases를 함께 쓴다(design.md 19-3): 문구 줄이 없거나 틀린 병원은 저장 단추가 없다. 빈 문구 줄이 생기면 실패하거나 메모 막음이 풀린다.
-// 그때 잠금 글은 E-MEMO-NO-SETTINGS 글(lib/errors)과 [설정으로 가기]다(clinic-profile AC-6607.4: precheck AC-018.18의 '처음 질문을 먼저' 글을 대신한다)
+// 그때 잠금 글은 E-MEMO-NO-SETTINGS 글(lib/errors)과 [설정으로 가기]다(clinic-profile AC-6607.4: precheck AC-018.18의 '처음 질문을 먼저' 글을 대신한다).
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 잠금 칸처럼 칸을 막고(읽기 전용·빼기 칸 없음) 줄 더하기·저장 줄을 그리지 않는다
 
 type Load = 'loading' | 'failed' | 'blocked' | 'ready'
 
@@ -59,7 +61,8 @@ export function DxLinks() {
     void read()
   }, [read])
 
-  const locked = load !== 'ready'
+  const readOnly = useReadOnly()
+  const locked = load !== 'ready' || readOnly
   const change = (index: number, next: DxLink) => {
     setSavedNote(false)
     setRows(rows.map((row, at) => (at === index ? next : row)))
@@ -177,7 +180,7 @@ export function DxLinks() {
             </table>
           </div>
           {load === 'blocked' && <NoPhrases />}
-          {load === 'ready' && (
+          {load === 'ready' && !readOnly && (
             <>
               {blank && <p className={ds.fieldError}>처방코드와 상병코드를 넣어 주세요.</p>}
               {saveFailed && <ErrorCard code="E-SETTINGS-FAILED" />}

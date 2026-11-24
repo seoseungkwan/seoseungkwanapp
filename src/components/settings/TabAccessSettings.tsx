@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { TAB_ACCESS_MENU, adminOnlyTabs, type MenuPath } from '@/components/shell/menu'
+import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { readTabAccess, readTabOwner, saveTabAccess } from '@/lib/storage/tabAccess'
 
@@ -19,7 +20,13 @@ const TITLE = '관리자만 보는 탭'
 const INTRO =
   '켜 둔 탭은 관리자 계정에만 보여요. 다른 원장 계정과 데스크 계정에서는 메뉴에서 사라지고, 주소로 들어와도 대시보드로 돌아가요. 새로 생긴 탭은 처음에 켜져 있어요.'
 
+// 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 칸 전체를 그리지 않고 주 관리자 확인·목록 읽기도 하지 않는다(공용 표라 보는 의원과 상관없다)
 export function TabAccessSettings() {
+  if (useReadOnly()) return null
+  return <TabAccessPanel />
+}
+
+function TabAccessPanel() {
   const titleId = useId()
   const [load, setLoad] = useState<Load>('checking')
   const [checked, setChecked] = useState<ReadonlySet<MenuPath>>(new Set())

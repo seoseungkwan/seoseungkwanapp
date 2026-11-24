@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { Icon } from '@/components/common/Icon'
+import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { canGoNext, canGoPrev, compareLine, firstMonth, longMonth, reportCopyText } from '@/lib/ai/reportScreen'
 import { addMonths } from '@/lib/analytics/dates'
@@ -12,7 +13,9 @@ import { analyzeMonth, loadMonth } from './reportClient'
 import { UsageAside } from './UsageAside'
 
 // AI 리포트 화면(spec ai-report-screen REQ-708~711·713, design.md '화면 상태'·'달을 옮겨도 저장하지 않는다', 시안 main). 상태와 동작은 모두 여기서 맡고 그리기는 부품에 넘긴다.
-// 고른 달은 화면 상태에만 둔다. 늦게 온 답은 요청 번호로 버린다: 읽기·분석이 시작할 때와 화면을 떠날 때 번호가 오르니, 받은 뒤 번호가 다르면 아무것도 하지 않는다
+// 고른 달은 화면 상태에만 둔다. 늦게 온 답은 요청 번호로 버린다: 읽기·분석이 시작할 때와 화면을 떠날 때 번호가 오르니, 받은 뒤 번호가 다르면 아무것도 하지 않는다.
+// 보는 중(admin-view AC-8011.2, 관리자가 다른 의원을 읽기만)에는 [다시 분석]을 그리지 않는다(WriteOnly, [AI 분석]은 ReportBody) — 분석 확인 창도 열 길이 없다.
+// 저장된 리포트 읽기(GET)·[복사]·달 옮기기는 그대로다(서버 읽기가 보기 머리로 보는 의원 리포트를 준다)
 
 type ReadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ok'; view: ReportView }
 
@@ -208,16 +211,18 @@ export function AiReportScreen({ today }: { today: string }): JSX.Element {
             </button>
           </div>
           {report !== null && (
-            // [다시 분석]과 "분석 중"은 같은 요소다. 초점이 그대로 남아야 한다
-            <button
-              ref={headButton}
-              type="button"
-              aria-busy={busy ? 'true' : undefined}
-              onClick={busy ? undefined : () => setConfirming(true)}
-              className={`${stale && !busy ? ds.button.primary : ds.button.secondary} max-md:flex-1`}
-            >
-              {busy ? '분석 중' : '다시 분석'}
-            </button>
+            <WriteOnly>
+              {/* [다시 분석]과 "분석 중"은 같은 요소다. 초점이 그대로 남아야 한다 */}
+              <button
+                ref={headButton}
+                type="button"
+                aria-busy={busy ? 'true' : undefined}
+                onClick={busy ? undefined : () => setConfirming(true)}
+                className={`${stale && !busy ? ds.button.primary : ds.button.secondary} max-md:flex-1`}
+              >
+                {busy ? '분석 중' : '다시 분석'}
+              </button>
+            </WriteOnly>
           )}
         </div>
       </div>
