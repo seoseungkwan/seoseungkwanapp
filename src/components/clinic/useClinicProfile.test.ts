@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { ClinicProfile } from '@/types/clinicProfile'
+import { ViewingProvider } from '@/components/shell/viewing'
 import { useClinicProfile } from './useClinicProfile'
 
 // 병원 정보 공용 훅(spec clinic-profile design.md 2절, TASK-2 · 가입 EMR 기본값은 spec emr-signup design.md 2절). 서식·문자·통계·대시보드·설정이 쓴다.
@@ -199,5 +201,62 @@ describe('AC-7302.3 병원 정보 줄이 없을 때 가입 때 고른 EMR', () =
     act(() => result.current.reload())
     await waitFor(() => expect(result.current.profile.emr).toBe('uisarang'))
     expect(loadSignupEmr).toHaveBeenCalledTimes(2)
+  })
+})
+
+// admin-view REQ-8006 AC-8006.6: 관리자가 다른 의원을 보는 중(ViewingProvider viewing)이면 이름은 보는 의원 이름이다.
+// 병원 정보 줄은 RLS가 보는 의원 줄을 주지만, 가입 이름·전화(loadSignup — 내 가입 줄)로 돌아가지 않는다. 보는 중이 아니면 지금 그대로(위 시험들)
+describe('AC-8006.6 보는 중 useClinicProfile 이름', () => {
+  const VIEWING = { hospitalId: '22222222-2222-4222-8222-222222222222', name: '다라 정형외과의원' }
+  // createElement는 children을 셋째 인자로 받는다(필수 children prop 타입을 선택으로 본다)
+  const Provider = ViewingProvider as (props: { viewing: typeof VIEWING | null; children?: ReactNode }) => ReactNode
+  const inView = (viewing: typeof VIEWING | null) =>
+    function InView({ children }: { children: ReactNode }) {
+      return createElement(Provider, { viewing }, children)
+    }
+
+  it('AC-8006.6: 보는 중이면 읽는 동안에도·다 읽은 뒤에도 이름은 보는 의원 이름이다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue({ ...SAVED, displayName: '다라 정형외과의원(옛 이름)' })
+    const { result } = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    expect(result.current.name).toBe('다라 정형외과의원')
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(result.current.name).toBe('다라 정형외과의원')
+  })
+
+  it('AC-8006.6: 보는 의원에 병원 정보 이름이 없어도(줄 없음·이름 비움) 내 가입 이름을 쓰지 않는다 — 가입 이름·전화도 내 것이 아니다', async () => {
+    for (const profile of [null, { ...SAVED, displayName: null }] as const) {
+      vi.mocked(loadClinicProfile).mockResolvedValue(profile)
+      const { result, unmount } = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+      await waitFor(() => expect(result.current.state).toBe('ready'))
+      expect(result.current.name).toBe('다라 정형외과의원')
+      expect(result.current.signupName).toBe('다라 정형외과의원')
+      expect(result.current.signupPhone).toBeNull()
+      expect(JSON.stringify(result.current)).not.toContain('가짜의원(가입)')
+      expect(JSON.stringify(result.current)).not.toContain('01012345678')
+      unmount()
+    }
+  })
+
+  it('AC-8006.6: 읽기 실패여도 보는 중이면 이름은 보는 의원 이름이다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue('failed')
+    const { result } = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    await waitFor(() => expect(result.current.state).toBe('failed'))
+    expect(result.current.name).toBe('다라 정형외과의원')
+  })
+
+  it('AC-8006.6: viewing={null}(보는 중 아님·관리자 화면)이면 지금 그대로 — 병원 정보 이름, 없으면 가입 이름', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(null)
+    const { result } = renderHook(() => useClinicProfile(), { wrapper: inView(null) })
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(result.current.name).toBe('가짜의원(가입)')
+    expect(result.current.signupName).toBe('가짜의원(가입)')
+    expect(result.current.signupPhone).toBe('01012345678')
+  })
+
+  it('AC-8006.6: 보는 중에도 읽기는 지금과 같다(병원 정보 줄은 RLS가 보는 의원 것을 준다 — 같은 부르기 모양)', async () => {
+    const { result } = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(result.current.profile).toEqual(SAVED)
+    expect(loadClinicProfile).toHaveBeenCalledWith({ fake: true })
   })
 })

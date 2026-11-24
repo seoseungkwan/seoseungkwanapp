@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useViewing } from '@/components/shell/viewing'
 import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr, type Signup } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { DEFAULT_EMR, type ClinicProfile, type EmrKind } from '@/types/clinicProfile'
@@ -10,6 +11,8 @@ import { DEFAULT_EMR, type ClinicProfile, type EmrKind } from '@/types/clinicPro
 // 쓰는 쪽은 실패를 '줄 없음'처럼 다뤄 지금처럼 돈다(SQL을 넣기 전 배포에도, design.md '위험'). [다시 불러오기]는 reload.
 // 로고는 { logo: true }일 때만 받는다(1MB까지라 필요한 화면만). 그때는 로고까지 받은 뒤에 ready다(받는 중에는 인쇄·그림 파일을 막는다, AC-6604.2)
 // 병원 정보 줄이 없을 때(ready, saved 거짓)만 쓰는 EMR은 가입 신청 때 고른 EMR이다(spec emr-signup AC-7302.3). 줄이 있으면 줄 값, 읽는 중·실패·가입 EMR 없음은 'bit'
+// 관리자가 다른 의원을 보는 중(useViewing, admin-view AC-8006.6)이면 이름은 늘 보는 의원 이름이다 — 병원 정보 줄은 RLS가 보는 의원 것을 주지만
+// 가입 줄(loadSignup)은 내 것이라, 가입 이름·전화로 돌아가지 않는다(가입 이름 = 보는 의원 이름, 가입 전화 없음). 읽기는 그대로다
 
 export type ClinicProfileState = 'loading' | 'ready' | 'failed'
 
@@ -52,6 +55,7 @@ const read = (withLogo: boolean): Promise<Read> =>
 
 export function useClinicProfile(options: { logo?: boolean } = {}): ClinicProfileView {
   const withLogo = options.logo === true
+  const viewing = useViewing()
   const [attempt, setAttempt] = useState(0)
   const key = `${attempt}|${withLogo}`
   const [held, setHeld] = useState<Held | null>(null)
@@ -77,16 +81,16 @@ export function useClinicProfile(options: { logo?: boolean } = {}): ClinicProfil
   return useMemo((): ClinicProfileView => {
     const stored = shown === null || shown.profile === 'failed' ? null : shown.profile
     const profile = shown !== null && shown.profile === null ? { ...defaultProfile(), emr: shown.signupEmr ?? DEFAULT_EMR } : (stored ?? defaultProfile())
-    const signupName = shown?.signup?.name ?? ''
+    const signupName = viewing ? viewing.name : (shown?.signup?.name ?? '')
     return {
       state: shown === null ? 'loading' : shown.profile === 'failed' ? 'failed' : 'ready',
       profile,
       saved: stored !== null,
       signupName,
-      signupPhone: shown?.signup?.phone ?? null,
-      name: profile.displayName ?? signupName,
+      signupPhone: viewing ? null : (shown?.signup?.phone ?? null),
+      name: viewing ? viewing.name : (profile.displayName ?? signupName),
       logoDataUrl: shown?.logo ?? null,
       reload,
     }
-  }, [shown, reload])
+  }, [shown, reload, viewing])
 }

@@ -5,6 +5,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { startIdleLogout } from '@/lib/auth/idle'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import { dropViewKey } from '@/lib/supabase/viewKey'
 
 const IDLE_MS = 30 * 60 * 1000
 const WARN_MS = 60_000 // 로그아웃 1분 전에 안내한다(ui-90 REQ-418)
@@ -21,8 +22,9 @@ const NOTICE = `app-ui ${ds.layer} fixed right-3 bottom-3 left-3 z-40 p-4 md:rig
 
 type Notice = 'none' | 'warn' | 'extended'
 
-// SignOutButton과 같은 길: 끊기를 기다리고, 실패해도 /login을 새로 연다(메모리의 화면 상태까지 사라진다)
+// SignOutButton과 같은 길: 보기 쿠키를 지우고(admin-view AC-8006.5) 끊기를 기다리고, 실패해도 /login을 새로 연다(메모리의 화면 상태까지 사라진다)
 async function signOutAndLeave() {
+  dropViewKey()
   try {
     await supabaseBrowser().auth.signOut()
   } catch {

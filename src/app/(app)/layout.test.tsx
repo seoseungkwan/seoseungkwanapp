@@ -7,8 +7,9 @@ import { AppShell } from '@/components/shell/AppShell'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
 import { TabAccessReadError, readTabAccessRows } from '@/lib/auth/tabAccess.server'
+import { AdminViewReadError, readAdminView } from '@/lib/auth/adminView.server'
 import type { TabAccessRow } from '@/components/shell/menu'
-import { currentMe } from './currentMe.server'
+import { currentMe, currentView } from './currentMe.server'
 import AppLayout, { generateMetadata } from './layout'
 
 // 앱 화면 틀((app) 레이아웃): 그리기 전에 guard가 병원 상태를 보고, 승인된 사람만 AppShell + IdleLogout 안에 페이지를 그린다
@@ -33,8 +34,13 @@ vi.mock('@/lib/auth/guard.server', async (importOriginal) => {
 // 시험(react-server 밖)에서 React cache는 그냥 부르기라 부를 때마다 guard가 한 번 돈다 — 요청 안 한 번 읽기는 Next 서버 몫
 vi.mock('./currentMe.server', async (importOriginal) => {
   const real = await importOriginal<typeof import('./currentMe.server')>()
-  return { ...real, currentMe: vi.fn(real.currentMe) }
+  return { ...real, currentMe: vi.fn(real.currentMe), currentView: vi.fn(real.currentView) }
 })
+// 보는 의원 읽기(admin-view AC-8006.1)도 흉내 낸다 — 실제 Supabase에 붙지 않는다. 기본은 '보는 중 아님'(null)이라 아래 지금 시험들은 그대로 지난다
+vi.mock('@/lib/auth/adminView.server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/adminView.server')>()),
+  readAdminView: vi.fn(),
+}))
 // 진짜 AppShell을 감싸 레이아웃이 넘긴 값(병원 이름·메일·관리자·데스크)만 본다 (desk-feedback AC-6305.3)
 vi.mock('@/components/shell/AppShell', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/components/shell/AppShell')>()
@@ -55,6 +61,8 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { sig
 vi.mock('@/components/shell/IdleLogout', () => ({ IdleLogout: () => <span data-testid="idle-logout" /> }))
 
 const read = vi.mocked(readMe)
+const readView = vi.mocked(readAdminView)
+const currentViewMock = vi.mocked(currentView)
 const readTabs = vi.mocked(readTabAccessRows)
 // migration 씨앗: 지금 탭 12개 모두 '모두에게'(multi-admin AC-7705.3)
 const SEED_PATHS = ['/stats', '/claim', '/notices', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/staff', '/inventory', '/contacts']
@@ -83,6 +91,9 @@ beforeEach(() => {
   read.mockResolvedValue(me('approved'))
   readTabs.mockReset()
   readTabs.mockResolvedValue(SEED)
+  readView.mockReset()
+  readView.mockResolvedValue(null)
+  currentViewMock.mockClear()
   guard.mockClear()
   current.mockClear()
   shell.mockClear()
@@ -387,5 +398,139 @@ describe('(app) 레이아웃 — 관리자만 보는 탭 (multi-admin AC-7706.2)
     expect(source).toMatch(/import \{[^}]*\breadTabAccessRows\b[^}]*\} from '@\/lib\/auth\/tabAccess\.server'/)
     expect(source).toMatch(/\badminOnlyTabs\(/)
     expect(source).not.toMatch(/tab_access|supabase/)
+  })
+})
+
+// admin-view REQ-8006 AC-8006.1·AC-8006.2·AC-8006.5: 관리자(데스크 아님, 승인)를 그릴 때만 보는 의원(readAdminView — 보기 쿠키가 있을 때만 DB)을
+// currentView로 한 번 읽어 AppShell viewing으로 넘긴다. 그리기와 탭 이름(generateMetadata)이 같은 요청에서 한 번(React cache — 시험에서는 그냥 부르기라
+// 그리기 한 번·탭 이름 한 번씩 센다). 관리자 아님·데스크·승인 전은 읽지 않는다. 읽기 실패는 던진다 → 오류 화면(E-PAGE-FAILED)
+describe('(app) 레이아웃 — 다른 의원 보기 (admin-view AC-8006.1)', () => {
+  const VIEW = { hospitalId: '22222222-2222-4222-8222-222222222222', name: '다라 정형외과의원' }
+  const DESK = { hospitalId: 'h1', hospitalName: '가나 정형외과의원' }
+  const deskMe = (isAdmin = false): Me => ({ email: 'desk@example.com', hospital: null, isAdmin, desk: DESK })
+  const shellProps = () => {
+    expect(shell).toHaveBeenCalled()
+    return shell.mock.calls[shell.mock.calls.length - 1]![0]
+  }
+  let cookieWrites: string[] = []
+
+  beforeEach(() => {
+    cookieWrites = []
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => 'ssk_view=33333333-3333-4333-8333-333333333333',
+      set: (text: string) => void cookieWrites.push(text),
+    })
+  })
+  afterEach(() => {
+    delete (document as unknown as Record<string, unknown>).cookie
+  })
+
+  it('AC-8006.1: 관리자(승인)면 그리기마다 readAdminView()를 currentView로 한 번 읽어 AppShell viewing으로 넘긴다 — 병원 이름은 내 의원 그대로, 머리 이름은 보는 의원', async () => {
+    read.mockResolvedValue(me('approved', true))
+    readView.mockResolvedValue(VIEW)
+    render(await AppLayout({ children: page }))
+    expect(readView).toHaveBeenCalledTimes(1)
+    expect(readView).toHaveBeenCalledWith()
+    expect(currentViewMock).toHaveBeenCalledTimes(1)
+    expect(shellProps()).toMatchObject({ hospitalName: '가나 정형외과의원', email: 'manager@example.com', isAdmin: true, viewing: VIEW })
+    const banner = screen.getByRole('banner')
+    expect(within(banner).getByText('다라 정형외과의원')).toBeTruthy()
+    expect(document.querySelector('[data-view-band]')!.textContent).toContain('다라 정형외과의원 보는 중 · 읽기만')
+    expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('페이지')
+  })
+
+  it("AC-8006.1·AC-8006.2: 보는 중 탭 이름(generateMetadata)은 보는 의원 이름이다 — '%s · {보는 의원}'", async () => {
+    read.mockResolvedValue(me('approved', true))
+    readView.mockResolvedValue(VIEW)
+    expect(await generateMetadata()).toEqual({ title: { template: '%s · 다라 정형외과의원', default: '다라 정형외과의원' } })
+    expect(readView).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8006.1: 그리기와 탭 이름은 같은 읽기 currentView를 쓴다(그리기 한 번·탭 이름 한 번 — 요청 안에서는 React cache가 하나로 묶는다)', async () => {
+    read.mockResolvedValue(me('approved', true))
+    readView.mockResolvedValue(VIEW)
+    await generateMetadata()
+    render(await AppLayout({ children: page }))
+    expect(currentViewMock).toHaveBeenCalledTimes(2)
+    expect(readView).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-8006.1: 관리자인데 보는 의원이 없으면(null) viewing이 없고 이름·탭 이름은 내 의원이다', async () => {
+    read.mockResolvedValue(me('approved', true))
+    render(await AppLayout({ children: page }))
+    expect(readView).toHaveBeenCalledTimes(1)
+    expect(shellProps().viewing ?? null).toBeNull()
+    expect(within(screen.getByRole('banner')).getByText('가나 정형외과의원')).toBeTruthy()
+    expect(document.querySelector('[data-view-band]')).toBeNull()
+    expect(await generateMetadata()).toEqual({ title: { template: '%s · 가나 정형외과의원', default: '가나 정형외과의원' } })
+  })
+
+  it('AC-8006.1: 관리자가 아닌 원장은 읽지 않고 viewing이 없다(그리기·탭 이름 모두)', async () => {
+    readView.mockResolvedValue(VIEW)
+    render(await AppLayout({ children: page }))
+    await generateMetadata()
+    expect(readView).not.toHaveBeenCalled()
+    expect(currentViewMock).not.toHaveBeenCalled()
+    expect(shellProps().viewing ?? null).toBeNull()
+    expect(within(screen.getByRole('banner')).getByText('가나 정형외과의원')).toBeTruthy()
+  })
+
+  it('AC-8006.1: 데스크면(admins에 있는 데스크도) 읽지 않고 viewing이 없다', async () => {
+    readView.mockResolvedValue(VIEW)
+    for (const isAdmin of [false, true]) {
+      read.mockResolvedValue(deskMe(isAdmin))
+      pathname.mockReturnValue('/sunap')
+      render(await AppLayout({ children: page }))
+      await generateMetadata()
+      expect(shellProps().viewing ?? null, String(isAdmin)).toBeNull()
+      cleanup()
+    }
+    expect(readView).not.toHaveBeenCalled()
+  })
+
+  it('AC-8006.1: currentView는 관리자·승인된 병원 줄일 때만 readAdminView를 부른다(데스크·관리자 아님·승인 전은 null, DB 안 부름)', async () => {
+    readView.mockResolvedValue(VIEW)
+    for (const who of [me('approved'), me('pending', true), me('rejected', true), deskMe(true), deskMe()]) {
+      guard.mockResolvedValueOnce(who)
+      expect(await currentView()).toBeNull()
+    }
+    expect(readView).not.toHaveBeenCalled()
+    guard.mockResolvedValueOnce(me('approved', true))
+    expect(await currentView()).toEqual(VIEW)
+    expect(readView).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8006.1: 보는 의원 읽기가 실패하면 그리지 않고 그대로 던진다 → 오류 화면(E-PAGE-FAILED). 탭 이름도 던진다', async () => {
+    read.mockResolvedValue(me('approved', true))
+    readView.mockRejectedValue(new AdminViewReadError('보는 의원을 읽지 못했어요'))
+    await expect(AppLayout({ children: page })).rejects.toBeInstanceOf(AdminViewReadError)
+    await expect(generateMetadata()).rejects.toBeInstanceOf(AdminViewReadError)
+    expect(shell).not.toHaveBeenCalled()
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
+  it('AC-8006.5: 새로 고쳐도(다시 그리기) 보던 의원 그대로 — 쿠키가 남아 같은 의원을 다시 읽고, 앱 틀은 쿠키를 지우지 않는다', async () => {
+    read.mockResolvedValue(me('approved', true))
+    readView.mockResolvedValue(VIEW)
+    for (let i = 0; i < 2; i += 1) {
+      render(await AppLayout({ children: page }))
+      expect(document.querySelector('[data-view-band]')!.textContent, String(i)).toContain('다라 정형외과의원 보는 중')
+      cleanup()
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(readView).toHaveBeenCalledTimes(2)
+    expect(cookieWrites).toEqual([])
+  })
+
+  it('AC-8006.1: currentView는 요청 안에서 한 번 캐시한 읽기이고(React cache) readAdminView를 쓴다. currentMe 줄은 그대로다', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/(app)/currentMe.server.ts'), 'utf8')
+    expect(source).toMatch(/^import 'server-only'$/m)
+    expect(source).toMatch(/export const currentMe = cache\(\(\) => guardPage\('\/dashboard'\)\)/)
+    expect(source).toMatch(/export const currentView = cache\(async \(\)/)
+    expect(source).toMatch(/import \{ readAdminView \} from '@\/lib\/auth\/adminView\.server'/)
+    const layout = readFileSync(join(process.cwd(), 'src/app/(app)/layout.tsx'), 'utf8')
+    expect(layout).toMatch(/import \{[^}]*\bcurrentView\b[^}]*\} from '\.\/currentMe\.server'/)
+    expect(layout).not.toMatch(/readAdminView|supabase/)
   })
 })
