@@ -42,13 +42,14 @@ function codeFiles(): string[] {
 }
 
 describe('AC-3601.1 extension-erp/manifest.json', () => {
-  it("AC-3601.1 AC-3706.1 AC-3708.4: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.3.0이다(기간 채우기. 짝인 ERP 도우미는 0.3.0)", () => {
+  it("AC-3601.1 AC-3706.1 AC-3708.4 AC-4216.1: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.4.0이다(의사랑판. 짝인 ERP 도우미는 0.4.0)", () => {
     const m = readJson(MANIFEST)
     expect(m.manifest_version).toBe(3)
     expect(m.name).toBe('ERP 마감일지 채우기')
     // spec erp-closing-range AC-3706.1: 0.2.0(AC-3610.4)에서 0.3.0으로. AC-3708.4: 확장은 0.3.0 그대로, ERP 도우미가 0.2.0에서 0.3.0으로
-    expect(m.version).toBe('0.3.0')
-    expect(readFileSync(path.join(ROOT, 'helper-erp', 'Directory.Build.props'), 'utf8')).toContain('<Version>0.3.0</Version>')
+    // spec erp-uisarang AC-4216.1(design.md 12-4, TASK-16): 의사랑 명령을 쓰므로 확장·ERP 도우미 둘 다 0.3.0에서 0.4.0으로
+    expect(m.version).toBe('0.4.0')
+    expect(readFileSync(path.join(ROOT, 'helper-erp', 'Directory.Build.props'), 'utf8')).toContain('<Version>0.4.0</Version>')
     expect(String(m.description ?? '').trim()).not.toBe('')
   })
 
