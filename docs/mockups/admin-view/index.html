@@ -146,6 +146,10 @@ td.sub { color: var(--ink-2); }
 .stepbox button { display: flex; width: 32px; align-items: center; justify-content: center; color: var(--ink-2); }
 .stepbox button:not(:disabled):hover { background: var(--canvas); }
 .stepbox button:disabled { cursor: not-allowed; opacity: .4; }
+.stepbox select { height: 100%; cursor: pointer; border: 0; border-left: 1px solid var(--line); background: var(--surface); padding: 0 6px 0 10px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.stepbox select:hover { background: var(--canvas); }
+.stepbox select + button { border-left: 1px solid var(--line); }
+.mhint { padding-bottom: 7px; font-size: 12px; line-height: 16px; color: var(--muted); }
 .stepbox span { display: flex; min-width: 120px; align-items: center; justify-content: center; white-space: nowrap; border-inline: 1px solid var(--line); padding: 0 8px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
 .sel { height: 32px; cursor: pointer; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); padding: 0 6px; font-size: 13px; line-height: 20px; color: var(--ink); }
 .sel:hover { border-color: var(--muted); }
@@ -177,18 +181,34 @@ main.st .subnav { border-color: var(--st-line-2); }
 .itab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
 .itab .n { font-weight: 500; color: var(--muted); }
 
-.apps { table-layout: fixed; min-width: 1120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.apps { table-layout: fixed; min-width: 1232px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
 .apps tbody tr { height: 56px; }
 .apps td { font-size: 14px; line-height: 22px; }
 .apps td.act { font-size: 13px; line-height: 20px; }
 .apps td.clinic { font-weight: 600; }
 .apps td.trunc { overflow: hidden; text-overflow: ellipsis; }
 .apps td .dt { color: var(--muted); }
-.apps col.c-date, .apps col.c-who { width: 120px; }
-.apps col.c-emr { width: 112px; }
-.apps col.c-region { width: 120px; }
-.apps col.c-tel { width: 150px; }
-.apps col.c-act { width: 150px; }
+.apps col.c-date { width: 112px; }
+.apps col.c-name { width: 184px; }
+.apps col.c-region { width: 108px; }
+.apps col.c-fill { width: 88px; }
+.apps col.c-auto { width: 248px; }
+.apps col.c-emr { width: 60px; }
+.apps col.c-tel { width: 132px; }
+.apps col.c-act { width: 144px; }
+/* 2차: 신청자·이메일 한 칸 두 줄 · 저절로 올림 칸 · 안내 줄 */
+.who2 { display: flex; min-width: 0; flex-direction: column; }
+.who2 .w { overflow: hidden; text-overflow: ellipsis; }
+.who2 .e { overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 18px; color: var(--muted); }
+.au { display: flex; min-width: 0; flex-direction: column; }
+.au .l1 { overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 20px; color: var(--ink); }
+.au .l2 { overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 18px; color: var(--muted); }
+.au .l2.fill { color: var(--accent-strong); }
+.au.err .l1 { font-weight: 500; color: var(--negative); }
+.au.none .l1 { color: var(--muted); }
+.tnote { max-width: 920px; display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.tnote svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
+.tnote b { font-weight: 600; color: var(--ink); }
 .apps th.r { text-align: right; }
 .nm { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .nm > .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -319,6 +339,7 @@ svg.big { display: block; width: 100%; height: 200px; margin-top: 16px; }
 .cn .rk { display: inline-block; width: 20px; text-align: right; font-weight: 600; color: var(--st-muted); }
 .cn .nmt { font-weight: 600; color: var(--st-ink); }
 .cn .rg { font-size: 12px; color: var(--st-muted); }
+.stk > .rg { font-size: 12px; font-weight: 400; color: var(--st-muted); }
 .sortb { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; min-height: 28px; border-radius: var(--r-control); padding: 0 2px; margin-right: -2px; font-weight: 600; color: var(--st-muted); white-space: nowrap; }
 .sortb:hover { color: var(--st-ink); background: var(--st-canvas); }
 .sortb .ar { display: inline-flex; width: 14px; justify-content: center; }
@@ -407,6 +428,23 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
     adminIntro: '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요. 의원 이름을 누르면 그 의원 화면을 읽기만 할 수 있어요.',
     regionChanged: (n, r) => `${n} 지역을 ${r}${ro(r)} 바꿨어요.`,
     regionUnknownTitle: '병원 정보에 주소가 없어 지역을 몰라요. 골라 주세요.',
+    // 2차 · 저절로 올리기
+    whoCol: '신청자 · 이메일',
+    fillCol: '채울 기간',
+    autoCol: '저절로 올림',
+    autoNoteB: '저절로 올림',
+    autoNote: '의원 비트 PC에서 그날 처음 앱을 열면, 어제까지 아직 안 올라온 날의 매출·통계 숫자를 사이트에 올려요. 채울 기간이 길면 최근 달부터 한 번에 5분쯤씩 나눠 채우고, 다음에 열 때 이어서 채워요. 의원 화면에는 아무것도 보이지 않아요.',
+    autoDay: (md) => `${Number(md.slice(0, 2))}월 ${Number(md.slice(3))}일까지`,
+    autoReach: (ym) => `${ym}까지 채움`,
+    autoNone: '아직 없음',
+    autoNoneTitle: '이 의원 비트 PC에서 아직 올라온 날이 없어요.',
+    autoAt: (t) => `마지막으로 올린 때 ${t}`,
+    autoFillingTitle: (label, ym) => `채울 기간 ${label} 가운데 ${ym}까지 채웠어요. 앱을 열 때마다 5분쯤씩 더 채워요.`,
+    fillLonger: (n, l) => `${n} 채울 기간을 ${l}${ro(l)} 바꿨어요. 그 의원 PC에서 다음에 앱을 열 때부터 더 채워요.`,
+    fillShorter: (n, l) => `${n} 채울 기간을 ${l}${ro(l)} 바꿨어요. 이미 올라온 숫자는 지우지 않아요.`,
+    monthYear: '연도', monthMon: '월',
+    sumOnly: (n) => `· 숫자 있는 ${n}곳 합`,
+    monthHint: (a, b) => `${a}부터 ${b}까지 고를 수 있어요 · 저장된 숫자가 있는 달, 10년까지`,
     seenTitle: '본 기록',
     seenCount: (n) => `최근 30일 · ${n}번`,
     seenDesc: '관리자가 다른 의원 화면을 열 때마다 적어요.',
@@ -443,9 +481,9 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
   const JOBS = ['간호사', '간호조무사', '물리치료사', '방사선사', '원무', '기타'];
   const OWN = 'gana';
   const TODAY_CLOCK = '2026년 11월 24일 (화) 10:05 (KST)';
-  const LAST_MONTH = '2026-10'; // 지난달(기본)
-  const FIRST_MONTH = '2025-11'; // 고를 수 있는 가장 이른 달(최근 12달)
-  const DATA_FROM = '2026-05'; // 합성 자료: 이 달부터 저장된 숫자가 있다
+  const LAST_MONTH = '2026-10'; // 지난달(기본). 이번 달(2026-11)은 고를 수 없다
+  const MAX_BACK = 120; // 2차: 의원 비교 달은 저장된 숫자가 있는 달까지, 10년(120달)까지
+  const DATA_FROM = '2026-05'; // 합성 자료: 급여(직원 탭)는 이 달부터 있다
 
   // ─────────────────────────── 합성 자료(모두 지어낸 값) ───────────────────────────
   // 승인된 의원(신청일 내림차순). region = 병원 정보 주소에서 정한 값(null = 주소 없음 → 지역 모름)
@@ -467,6 +505,28 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
   ];
   const REJECTED = [{ id: 'r1', name: '시험 정형외과', date: '2026-11-02', emr: '그 밖의 EMR', who: '오시험', email: 'test@example.com', tel: null }];
   const byId = (id) => CLINICS.find((c) => c.id === id);
+
+  // 2차 · 저절로 올림(합성). fill = 채울 기간(달) · last = 올라온 마지막 날(MM-DD) · at = 마지막으로 올린 때
+  // reach = 아직 채우는 중이면 지금까지 채운 가장 이른 달 · err = 마지막에 실패한 오류 번호(lib/errors.ts에 있는 번호)
+  const FILL = [[1, '1달'], [2, '2달'], [3, '3달'], [6, '6달'], [12, '1년'], [24, '2년'], [36, '3년'], [60, '5년'], [120, '10년']];
+  const AUTO = {
+    dara:   { fill: 2,   last: '11-23', at: '11월 24일 (화) 08:52' },
+    reomeo: { fill: 2,   last: null },
+    maba:   { fill: 12,  last: '11-23', at: '11월 24일 (화) 09:30', reach: '2026-02' },
+    kata:   { fill: 3,   last: '11-20', at: '11월 21일 (토) 08:47', err: 'E-HELPER-OLD' },
+    saa:    { fill: 36,  last: '11-23', at: '11월 24일 (화) 08:15' },
+    paha:   { fill: 2,   last: '11-22', at: '11월 23일 (월) 09:02' },
+    geoneo: { fill: 60,  last: '11-23', at: '11월 24일 (화) 09:41', reach: '2025-07' },
+    deoreo: { fill: 6,   last: '11-21', at: '11월 22일 (일) 10:12', err: 'E-STATS-SAVE-FAILED' },
+    jacha:  { fill: 12,  last: '11-23', at: '11월 24일 (화) 08:38' },
+    gana:   { fill: 120, last: '11-23', at: '11월 24일 (화) 08:05', reach: '2024-03' },
+  };
+  // 오류 번호 → 짧은 까닭(lib/errors.ts 의 what 글을 그대로 씀)
+  const ERR_WHAT = { 'E-HELPER-OLD': '도우미를 업데이트하세요', 'E-STATS-SAVE-FAILED': '통계 숫자를 저장하지 못했어요' };
+  // 의원마다 저장된 숫자가 있는 가장 이른 달(채운 곳까지 · 러머는 전에 손으로 저장한 달)
+  const FROM = { gana: '2024-03', dara: '2026-09', reomeo: '2026-08', maba: '2026-02', kata: '2026-08', saa: '2023-11', paha: '2026-09', geoneo: '2025-07', deoreo: '2026-05', jacha: '2025-11' };
+  // 고를 수 있는 가장 이른 달 = 저장된 숫자가 있는 가장 이른 달(모든 의원 중). 10년보다 앞은 안 됨
+  const FIRST_MONTH = [addMonth(LAST_MONTH, -(MAX_BACK - 1)), Object.values(FROM).sort()[0]].sort()[1];
 
   // 10월 숫자. rev 원 · visits 건 · days 진료한 날 · newp 신환 명 · f90 90일초진 건 · 비율 % · rsvCount 건 · goalWon 목표(원, null = 안 적음)
   const OCT = {
@@ -510,7 +570,7 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
   function seeded(seed) { let x = seed % 2147483647; if (x <= 0) x += 2147483646; return () => (x = (x * 16807) % 2147483647) / 2147483647; }
   const hash = (s) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
   function monthData(id, ym) {
-    if (ym < DATA_FROM || ym > LAST_MONTH) return null;
+    if (ym < FROM[id] || ym > LAST_MONTH) return null;
     const base = OCT[id];
     if (ym === LAST_MONTH) return base;
     const r = seeded(hash(id + ym));
@@ -616,8 +676,9 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
     find: '',
     regions: Object.fromEntries(CLINICS.map((c) => [c.id, c.region])),
     message: '',
-    cmpRegion: S === 'compare-region' ? '서울' : S === 'empty' ? (q.get('e') === 'month' ? '서울' : '제주') : '전체',
-    cmpMonth: S === 'empty' && q.get('e') === 'month' ? '2026-03' : LAST_MONTH,
+    cmpRegion: S === 'compare-region' ? '서울' : S === 'empty' ? (q.get('e') === 'month' ? '부산' : '제주') : '전체',
+    cmpMonth: S === 'empty' && q.get('e') === 'month' ? '2026-03' : /^\d{4}-\d{2}$/.test(q.get('m') || '') ? q.get('m') : LAST_MONTH,
+    fills: Object.fromEntries(CLINICS.map((c) => [c.id, AUTO[c.id].fill])),
     sort: { key: 'rev', dir: 'desc' },
     revTab: 0,
   };
@@ -634,6 +695,10 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
       sub = `<span class="msub">화면
         <span class="mseg">${link('s=viewing' + (open ? '&open=1' : ''), '대시보드', p === 'dash')}${link('s=viewing&p=stats' + (open ? '&open=1' : ''), '통계', p === 'stats')}</span>
         <label class="mchk"><input type="checkbox" id="mOpen" ${open ? 'checked' : ''}> 보는 의원 판 열기</label></span>`;
+    }
+    if (S === 'compare') {
+      const old = q.get('m') === '2025-09';
+      sub = `<span class="msub">달 <span class="mseg">${link('s=compare', '지난달', !old)}${link('s=compare&m=2025-09', '옛 달 · 2025년 9월', old)}</span></span>`;
     }
     if (S === 'empty') {
       const e = q.get('e') === 'month' ? 'month' : 'region';
@@ -845,6 +910,18 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
     const opts = [...REGIONS.map((r) => `<option ${v === r ? 'selected' : ''}>${r}</option>`), `<option value="" ${v ? '' : 'selected'}>${UNKNOWN}</option>`].join('');
     return `<select class="sel${v ? '' : ' unknown'}" data-act="region" data-id="${c.id}" aria-label="${esc(c.name)} 지역" ${v ? '' : `title="${T.regionUnknownTitle}"`}>${opts}</select>`;
   }
+  function fillSelect(c) {
+    const v = st.fills[c.id];
+    return `<select class="sel" data-act="fill" data-id="${c.id}" aria-label="${esc(c.name)} ${T.fillCol}">${FILL.map(([n, l]) => `<option value="${n}" ${n === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  }
+  function autoCell(c) {
+    const a = AUTO[c.id];
+    if (!a.last) return `<div class="au none" title="${T.autoNoneTitle}"><span class="l1">${T.autoNone}</span></div>`;
+    if (a.err) return `<div class="au err" title="${esc(T.autoAt(a.at))}"><span class="l1">${ERR_WHAT[a.err]}</span><span class="l2">${a.err} · ${T.autoDay(a.last)}</span></div>`;
+    const label = FILL.find(([n]) => n === st.fills[c.id])[1];
+    const title = a.reach ? `${T.autoAt(a.at)} · ${T.autoFillingTitle(label, ymText(a.reach))}` : T.autoAt(a.at);
+    return `<div class="au" title="${esc(title)}"><span class="l1">${T.autoDay(a.last)}</span>${a.reach ? `<span class="l2 fill">${T.autoReach(ymText(a.reach))}</span>` : ''}</div>`;
+  }
   function pageAdmin() {
     const rows = CLINICS.map((c) => {
       const own = c.id === OWN;
@@ -858,9 +935,10 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
         <td><span class="dt">${c.date}</span></td>
         <td class="clinic" title="${esc(c.name)}">${name}</td>
         <td>${regionSelect(c)}</td>
+        <td>${fillSelect(c)}</td>
+        <td>${autoCell(c)}</td>
         <td class="sub">${c.emr}</td>
-        <td class="trunc">${esc(c.who)}</td>
-        <td class="sub trunc">${esc(c.email)}</td>
+        <td><div class="who2"><span class="w">${esc(c.who)}</span><span class="e">${esc(c.email)}</span></div></td>
         <td class="sub">${phoneText(c.tel)}</td>
         <td class="act"><div class="acts">${act}</div></td>
       </tr>`;
@@ -876,11 +954,12 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
         <button type="button" role="tab" class="itab" aria-selected="true">승인 <span class="n">${CLINICS.length}</span></button>
         <button type="button" role="tab" class="itab" aria-selected="false">거절 <span class="n">${REJECTED.length}</span></button>
       </div>
+      <p class="tnote">${ic(I.upload, 16)}<span><b>${T.autoNoteB}</b> · ${T.autoNote}</span></p>
       <p role="status" class="status">${st.message ? `${ic(I.check)}${esc(st.message)}` : ''}</p>
       <div class="twrap">
         <table class="apps" aria-label="승인 신청">
-          <colgroup><col class="c-date"><col><col class="c-region"><col class="c-emr"><col class="c-who"><col><col class="c-tel"><col class="c-act"></colgroup>
-          <thead><tr><th>신청일</th><th>의원 이름</th><th>지역</th><th>EMR</th><th>신청자</th><th>이메일</th><th>연락처</th><th class="r">동작</th></tr></thead>
+          <colgroup><col class="c-date"><col class="c-name"><col class="c-region"><col class="c-fill"><col class="c-auto"><col class="c-emr"><col><col class="c-tel"><col class="c-act"></colgroup>
+          <thead><tr><th>신청일</th><th>의원 이름</th><th>지역</th><th>${T.fillCol}</th><th>${T.autoCol}</th><th>EMR</th><th>${T.whoCol}</th><th>연락처</th><th class="r">동작</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -999,7 +1078,7 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
       const trs = rows.map((r) => `<tr>${nameCell(r.c, null)}${SALES.map((s) => (r.m ? `<td>${s.text(r.m)}</td>` : `<td class="na">–</td>`)).join('')}</tr>`).join('');
       const has = rows.filter((r) => r.m);
       const sum = (f) => has.reduce((a, r) => a + f(r.m), 0);
-      const foot = `<tr><td class="stk">${T.total} ${rows.length}곳</td><td>${manWon(sum((m) => m.rev))}</td><td>${fmt(sum((m) => m.visits))}건</td><td>${fmt(sum((m) => m.newp))}명</td><td>${fmt(sum((m) => m.visits - m.newp - m.f90))}건</td><td>의원 평균 ${one(sum((m) => m.visits / m.days) / Math.max(1, has.length))}건</td></tr>`;
+      const foot = `<tr><td class="stk">${T.total} ${rows.length}곳${has.length < rows.length ? ` <span class="rg">${T.sumOnly(has.length)}</span>` : ''}</td><td>${manWon(sum((m) => m.rev))}</td><td>${fmt(sum((m) => m.visits))}건</td><td>${fmt(sum((m) => m.newp))}명</td><td>${fmt(sum((m) => m.visits - m.newp - m.f90))}건</td><td>의원 평균 ${one(sum((m) => m.visits / m.days) / Math.max(1, has.length))}건</td></tr>`;
       body = `<div class="rank-wrap"><table class="rank" aria-label="${T.salesTitle}" style="width:100%"><thead>${head}</thead><tbody>${trs}</tbody><tfoot>${foot}</tfoot></table></div>`;
     }
     return `<section class="stc" id="cmp-sales"><div class="stc-h"><h2>${T.salesTitle}</h2><span class="d">${ymText(st.cmpMonth)} · ${T.salesDesc}</span></div><div class="stc-b"><div>${body}</div></div></section>`;
@@ -1039,7 +1118,7 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
       if (bands.length < 3) bands.push(['30대', 12 + r() * 3]);
       const maxB = Math.max(...bands.map((b) => b[1]));
       return `<div class="mc">${who}
-        ${sub('일별 내원', `${barSvg(days.map((x) => [x.n, x.v - x.n]), ['var(--accent)', 'var(--chart-3)'])}<div class="ax"><span>10월 1일</span><span>10월 31일</span></div>`)}
+        ${sub('일별 내원', `${barSvg(days.map((x) => [x.n, x.v - x.n]), ['var(--accent)', 'var(--chart-3)'])}<div class="ax"><span>${mNum(st.cmpMonth)}월 1일</span><span>${mNum(st.cmpMonth)}월 ${lastDayOf(st.cmpMonth)}일</span></div>`)}
         ${sub('환자 구성', `<div class="hb">${bands.map(([b, v]) => `<div><span>${b}</span><i style="width:${(v / maxB) * 100}%"></i><b>${one(v)}%</b></div>`).join('')}</div>`)}
         ${sub('신환 재방문율', `<div class="mk mk3"><p>7일 안<strong>${one(m.revisit * 0.42)}<small>%</small></strong></p><p>14일 안<strong>${one(m.revisit * 0.68)}<small>%</small></strong></p><p>30일 안<strong>${one(m.revisit)}<small>%</small></strong></p></div>`)}
         ${sub('몇 번까지 받나', `<div class="hb">${[['1번', 100], ['2번', 52 + r() * 22], ['3번 이상', m.three]].map(([b, v]) => `<div><span>${b}</span><i style="width:${v}%;background:var(--st-f90)"></i><b>${one(v)}%</b></div>`).join('')}</div>`)}
@@ -1048,7 +1127,7 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
     if (rowIdx === 2) {
       const cov = 100 - m.nonpay - 4.2;
       return `<div class="mc">${who}
-        ${sub('매출 추이', `${barSvg(days.map((x) => Math.round((x.v * m.rev) / m.visits)), ['var(--accent)'])}<div class="ax"><span>10월 1일</span><span>10월 31일</span></div><p class="ln">합계 <b>${manWon(m.rev)}</b></p>`)}
+        ${sub('매출 추이', `${barSvg(days.map((x) => Math.round((x.v * m.rev) / m.visits)), ['var(--accent)'])}<div class="ax"><span>${mNum(st.cmpMonth)}월 1일</span><span>${mNum(st.cmpMonth)}월 ${lastDayOf(st.cmpMonth)}일</span></div><p class="ln">합계 <b>${manWon(m.rev)}</b></p>`)}
         ${sub('급여·비급여·기타', `<div class="split"><i style="width:${cov}%;background:var(--cat-1)"></i><i style="width:${m.nonpay}%;background:var(--cat-2)"></i><i style="width:4.2%;background:var(--cat-3)"></i></div>
           <div class="lg" style="flex-wrap:wrap"><span><i style="background:var(--cat-1)"></i>급여 ${one(cov)}%</span><span><i style="background:var(--cat-2)"></i>비급여 ${one(m.nonpay)}%</span><span><i style="background:var(--cat-3)"></i>기타 4.2%</span></div>`)}
       </div>`;
@@ -1103,6 +1182,9 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
     const empty = noClinic ? T.emptyRegion(st.cmpRegion) : noData ? T.emptyMonth(ymText(st.cmpMonth)) : null;
     const payEmpty = noClinic ? T.emptyRegion(st.cmpRegion) : rows.every((r) => !r.p) ? T.emptyMonthPay(ymText(st.cmpMonth)) : null;
     const prevOff = st.cmpMonth <= FIRST_MONTH, nextOff = st.cmpMonth >= LAST_MONTH;
+    const cy = Number(st.cmpMonth.slice(0, 4)), cmo = mNum(st.cmpMonth);
+    const yearOpts = Array.from({ length: Number(LAST_MONTH.slice(0, 4)) - Number(FIRST_MONTH.slice(0, 4)) + 1 }, (_, i) => Number(LAST_MONTH.slice(0, 4)) - i).map((y) => `<option value="${y}" ${y === cy ? 'selected' : ''}>${y}년</option>`).join('');
+    const monOpts = Array.from({ length: 12 }, (_, i) => i + 1).filter((mo) => { const ym = `${cy}-${String(mo).padStart(2, '0')}`; return ym >= FIRST_MONTH && ym <= LAST_MONTH; }).map((mo) => `<option value="${mo}" ${mo === cmo ? 'selected' : ''}>${mo}월</option>`).join('');
     const regionOpts = [`<option ${st.cmpRegion === '전체' ? 'selected' : ''}>${T.regionAll}</option>`, ...REGIONS.map((r) => `<option ${st.cmpRegion === r ? 'selected' : ''}>${r}</option>`)].join('');
     const where = st.cmpRegion === '전체' ? `의원 ${rows.length}곳` : `${st.cmpRegion} 의원 ${rows.length}곳`;
     return `<div class="admin" style="gap:0">
@@ -1111,7 +1193,8 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
       <div class="pline">
         <div class="cmp-pick">
           <label><p class="cap">${T.region}</p><select class="sel" data-act="cmpRegion" aria-label="${T.region}">${regionOpts}</select></label>
-          <div><p class="cap">${T.month}</p><div class="stepbox" role="group" aria-label="달 옮기기"><button type="button" aria-label="앞 달" data-act="month" data-d="-1" ${prevOff ? 'disabled' : ''}>${ic(I.chev, 16, 'style="transform:rotate(90deg)"')}</button><span aria-live="polite">${ymText(st.cmpMonth)}</span><button type="button" aria-label="다음 달" data-act="month" data-d="1" ${nextOff ? 'disabled' : ''}>${ic(I.chev, 16, 'style="transform:rotate(-90deg)"')}</button></div></div>
+          <div><p class="cap">${T.month}</p><div class="stepbox" role="group" aria-label="달 고르기"><button type="button" aria-label="앞 달" data-act="month" data-d="-1" ${prevOff ? 'disabled' : ''}>${ic(I.chev, 16, 'style="transform:rotate(90deg)"')}</button><select data-act="cmpYear" aria-label="${T.monthYear}">${yearOpts}</select><select data-act="cmpMon" aria-label="${T.monthMon}">${monOpts}</select><button type="button" aria-label="다음 달" data-act="month" data-d="1" ${nextOff ? 'disabled' : ''}>${ic(I.chev, 16, 'style="transform:rotate(-90deg)"')}</button></div></div>
+          <p class="mhint">${T.monthHint(ymText(FIRST_MONTH), ymText(LAST_MONTH))}</p>
         </div>
         <p class="rng"><b>${ymText(st.cmpMonth)}</b> · ${mNum(st.cmpMonth)}월 1일 – ${mNum(st.cmpMonth)}월 ${lastDayOf(st.cmpMonth)}일 · ${where}</p>
       </div>
@@ -1175,6 +1258,21 @@ th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var
       st.message = T.regionChanged(c.name, el.value || UNKNOWN);
       render();
     } else if (el.dataset.act === 'cmpRegion') { st.cmpRegion = el.value; render(); }
+    else if (el.dataset.act === 'fill') {
+      const c = byId(el.dataset.id);
+      const before = st.fills[c.id], n = Number(el.value);
+      st.fills[c.id] = n;
+      const label = FILL.find(([k]) => k === n)[1];
+      st.message = n > before ? T.fillLonger(c.name, label) : T.fillShorter(c.name, label);
+      render();
+    } else if (el.dataset.act === 'cmpYear' || el.dataset.act === 'cmpMon') {
+      const y = el.dataset.act === 'cmpYear' ? Number(el.value) : Number(st.cmpMonth.slice(0, 4));
+      const mo = el.dataset.act === 'cmpMon' ? Number(el.value) : mNum(st.cmpMonth);
+      let ym = `${y}-${String(mo).padStart(2, '0')}`;
+      if (ym < FIRST_MONTH) ym = FIRST_MONTH;
+      if (ym > LAST_MONTH) ym = LAST_MONTH;
+      st.cmpMonth = ym; render();
+    }
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.pickerOpen) { st.pickerOpen = false; render(); document.querySelector('[data-act="picker"]')?.focus(); } });
 
