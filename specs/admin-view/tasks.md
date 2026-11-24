@@ -189,6 +189,14 @@
 - Tests: supabase/deskUpload.rls.test.ts, supabase/adminSync.rls.test.ts, supabase/adminView.rls.test.ts, supabase/stats-rls.test.ts, supabase/statsSections.rls.test.ts
 - TDD: required — design.md '데스크 계정 올리기'(사용자 "데스크 계정도 올리기 (추천)")·'ADR-049'·'문서 줄'(데스크 줄). SQL은 Write 도구로 새 파일에 쓴다(머리 주석에 "20261124010000_admin_sync.sql 다음에 붙인다", 두 번 실행 안전, **더하기만** — 새 표·정책·표 권한·기본값 바꿈 없음, 앞 파일 함수는 부르기만). 함수 열하나는 정의자·`search_path = ''`·`authenticated`만, 병원은 함수 안 `my_desk_hospital_id()`로만(병원 id 인자 없음), 보는 중(`admin_view_hospital_id()`)이면 42501. `desk_save_revenue_range`는 지금 `save_revenue_range`의 마지막 정의를 글자 그대로 옮기고 `hospital_id` 자리만 데스크 병원으로. 잡기·보고·계획은 TASK-17 함수와 같은 규칙을 데스크 병원에(TASK-17 함수는 고치지 않음 — 데스크에게 지금처럼 줄 없음·42501). 시험은 TASK-17의 `adminSync.rls.test.ts` PGlite 흉내를 옮겨 모든 migration → TASK-1 파일 → TASK-17 파일 → 이 파일(없으면 RED), 데스크 시험 계정은 `hospital_members` 줄로 만든다(가짜 메일 `@fake.test`). 옛 RLS 시험·TASK-1·TASK-17 시험은 고치지 않고 돌려 보기만 한다. 문서는 `docs/ADR.md` 끝에 ADR-049, `docs/ARCHITECTURE.md`에 '문서 줄' 데스크 줄만. **실제 Supabase에 붙여 넣지 않는다**. 브라우저 파일은 TASK-18 몫이다
 
+## TASK-21: 보는 중 통계 탭 — 비트 전용 칸을 저장 합계로
+- Phase: 3
+- AC: AC-8025.1, AC-8025.2
+- REQ: REQ-8025
+- Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/**, src/components/stats/viewSums.ts, src/components/stats/viewSums.test.ts, src/components/stats/viewMode.test.tsx, src/components/stats/useStatsData.ts, src/components/stats/useStatsData.test.ts, src/components/stats/view.ts, src/components/stats/view.test.ts
+- Tests: src/components/stats/viewSums.test.ts, src/components/stats/viewMode.test.tsx, src/components/stats/
+- TDD: required — TASK-8이 보는 중 통계 탭에서 비트 전용 칸을 안내 글로 둔 것을 저장 합계로 바꾼다(design.md 6번 줄의 '비트 PC에서 불러오면 보여요' 카드들). 합계 읽기·셈은 새 `viewSums.ts`(보는 의원 `readAdminRows`, 고른 기간 달·날)에 두고, 셈은 TASK-13 `src/components/admin/compare/statsInput.ts`의 순수 함수를 불러 쓴다(고치지 않음). 같은 Phase의 TASK-18(`loadPlan.ts`·`lib/storage/stats.ts`)과 파일이 겹치지 않는다. 새 화면 글자 없음, 폰 전용 모양 없음
+
 ## TASK-16: 마무리 — 전체 검사 · 진짜 Supabase 머리 확인 · 화면 사진 · 독립 검토 한 번
 - Phase: 4
 - AC: AC-8002.2, AC-8002.4, AC-8004.2, AC-8006.7, AC-8015.5, AC-8017.4, AC-8018.5, AC-8019.4, AC-8021.4, AC-8022.2, AC-8024.2
