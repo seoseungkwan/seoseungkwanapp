@@ -1,0 +1,2 @@
+{"ts": "2026-11-24T00:16:49Z", "task": "TASK-1", "reqs": ["REQ-8001", "REQ-8002", "REQ-8003"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'supabase/adminView.rls.test.ts'", "tests": ["supabase/adminView.rls.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-11-24T00:30:41Z", "task": "TASK-1", "reqs": ["REQ-8001", "REQ-8002", "REQ-8003"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/adminView.rls.test.ts'", "tests": ["supabase/adminView.rls.test.ts"], "expect": "green", "source": "tdd-run"}
