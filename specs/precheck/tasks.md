@@ -438,3 +438,32 @@
 - TDD: exempt
 - 예외 이유: 끝난 step을 적는 기록 파일이라 시험할 동작이 없다. 이 줄이 없으면 훅이 Edit을 막아 끝난 step을 적지 못한다
 - 할 일: 승인 뒤 `phases/precheck-2-rules/index.json` step 2(TASK-9)를 메모에 적힌 요약과 함께 completed로 하고, TASK-35~38 줄은 `index.json`에 더하지 않는다(`scripts/execute.py`는 step 파일이 없으면 멈춘다). 그 진행은 `sdd status`로 본다. 다른 칸은 건드리지 않는다
+
+## TASK-43: 다른 의원 비트에서도 처음 등록되게 (도우미 + 오류 글)
+- Step: 어느 Phase에도 속하지 않는 고침 (2026-11-23 사용자 '다른 곳에서도 다 열려야 해 · 사람이 확인하면 열리게', design.md 9-1)
+- AC: AC-005.13, AC-005.14, AC-005.15
+- REQ: REQ-005
+- Files: helper/src/Precheck.Core/Bit/BitErrors.cs, helper/src/Precheck.Core/Bit/HospitalCheck.cs, helper/src/Precheck.Core/Bit/StatsMenu.cs, helper/src/Precheck.Core/Bit/BitCheck.cs, helper/src/Precheck.Core/Registration/RegisterFlow.cs, helper/src/Precheck.Core/Registration/RegisterPrompt.cs, helper/src/Precheck.Core/Registration/HospitalRegistration.cs, helper/src/Precheck.Core/Claim/ClaimDates.cs, helper/src/Precheck.Core/Claim/ClaimMonthPayload.cs, helper/src/Precheck.Core/Claim/MemoRowsRead.cs, helper/src/Precheck.Core/Contact/ContactTargets.cs, helper/tests/Precheck.Core.Tests/Registration/RegisterFlow.test.cs, helper/tests/Precheck.Core.Tests/Registration/RegisterPrompt.test.cs, helper/tests/Precheck.Core.Tests/Registration/RegistrationFile.test.cs, helper/tests/Precheck.Core.Tests/Bit/HospitalCheck.test.cs, helper/tests/Precheck.Core.Tests/Bit/StatsScreens.test.cs, helper/tests/Precheck.Core.Tests/Bit/BitCheck.test.cs, helper/tests/Precheck.Core.Tests/Registration/HospitalGate.test.cs, helper/tests/Precheck.Core.Tests/Claim/ClaimDates.test.cs, helper/tests/Precheck.Core.Tests/Claim/ClaimMonth.test.cs, helper/tests/Precheck.Core.Tests/Claim/MemoRows.test.cs, helper/tests/Precheck.Core.Tests/Claim/ClaimFakes.test.cs, helper/tests/Precheck.Core.Tests/Contact/Read/ContactTargets.test.cs, helper/tests/Precheck.Core.Tests/Contact/Read/Support.test.cs, helper/tests/bit-connect.dotnet.test.ts, helper/tests/claim-read.dotnet.test.ts, helper/tests/contact-read.dotnet.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts, src/components/claim/ClaimScreen.tsx, src/components/claim/ClaimScreen.test.tsx, src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/SetupScreen.test.tsx
+- Tests: helper/tests/bit-connect.dotnet.test.ts, helper/tests/claim-read.dotnet.test.ts, helper/tests/contact-read.dotnet.test.ts, src/lib/errors.test.ts, src/components/claim/ClaimScreen.test.tsx, src/components/claim/setup/SetupScreen.test.tsx
+- TDD: required
+- 처음 등록(`RegisterFlow`)·매번 확인(`HospitalCheck.VerifyCurrent`)·통계 화면 확인(`StatsAccess`)을 AC-005.13 기준으로 바꾸고, 기간 번호 확인(`VerifyPeriod`) 부름을 뺀다(AC-005.15 — 함수는 지우고 `Sql.PeriodIdentitySql` 상수·원본 사본 시험은 그대로). 원본 검사 함수(`ValidateScope`·`ValidateInstitutionNumbers`·`ReadUserScope` 등, AC-005.4 원본 시험 사례)는 그대로다. 기간 번호로 막던 시험(`ClaimDates`·`ClaimMonth`·`MemoRows`·`ContactTargets`)과 SQL 차례 시험은 새 뜻(부르지 않음·읽음)으로 고친다(지우지 않음)
+- 화면: 위 오류 상자(`SetupAlert`)는 그대로 `errorInfo(번호)`를 그린다. '이 PC' 요양기관기호 칸에 `번호 없음` 한 경우만 더한다. 도우미 판 번호·태그·릴리스와 `MIN_HELPER`·`LATEST_HELPER`는 사용자가 말할 때만(ssk-clinic-pc-files)
+
+## TASK-44: 도우미 0.13.1 내보내기 (TASK-43 판)
+- Step: 어느 Phase에도 속하지 않는 고침 (2026-11-23 사용자 'ㅇㅇ 여기로 줘' — 다른 의원 PC에 깔 판)
+- AC: AC-005.16
+- REQ: REQ-005
+- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
+- Tests: helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- 판 번호가 박힌 시험(도우미 판 0.13.0)을 0.13.1로 고친다. `lib/revenue/sync.ts`의 `FULL_HELPER`('0.13.0 이상') 같은 '이 판부터' 값은 그대로다. 태그 `helper-v0.13.1`·릴리스는 ssk-clinic-pc-files 나), 웹 배포는 판이 나온 뒤 사용자가 말할 때만
+
+## TASK-45: 비트 설치 위치 상관없이 찾기 + 도우미 0.13.2 (도우미)
+- Step: 어느 Phase에도 속하지 않는 고침 (사용자 2026-11-23 '근데 비트 경로가 이상한 곳에 있으면' → 답(지금은 C:\DrBIT50만, ERP 도우미는 오늘 풀었음) → 'ㅇㅇ')
+- AC: AC-005.17, AC-005.16
+- REQ: REQ-005
+- Files: helper/src/Precheck.Core/Bit/BitInstallRules.cs, helper/tests/Precheck.Core.Tests/Bit/BitInstallRules.test.cs, helper/tests/Precheck.Core.Tests/Bit/Fakes.test.cs, helper/tests/bit-connect.dotnet.test.ts, helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
+- Tests: helper/tests/bit-connect.dotnet.test.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- `BitInstallRules.MatchesEnvironment`의 마지막 조건(`C:\DrBIT50`)을 빼고 환경 파일 자리 하나를 더한다. `FindRoot`·필요한 파일 셋·후보 모으기(`InstallationLocator`)는 그대로다(ERP 시험이 `FindRoot` 몸통을 글자로 견준다). 옛 시험 'C:\DrBIT50이 아니면 거절'은 새 뜻(고름)으로 고친다(지우지 않음). 판 0.13.2 태그·릴리스는 ssk-clinic-pc-files 나).
+- 알아 둘 것: 아직 운영에 안 합친 갈래 feat-erp-bit-anywhere의 ERP 시험(AC-3801.1·AC-3801.4)은 '청구 도우미 규칙은 C:\DrBIT50만'을 본다. 그 갈래가 이 판 위로 합쳐지면 그 두 시험을 새 뜻으로 고쳐야 한다(ERP 코드는 그대로 돌아간다).

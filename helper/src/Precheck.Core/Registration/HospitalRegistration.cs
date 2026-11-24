@@ -47,7 +47,7 @@ public sealed class HospitalRegistration
     /// <summary>모든 칸이 차 있고(공백만 아님, 길이 안), 기관기호 8자리 숫자, 프로필 ID 32자리 16진수.</summary>
     public bool IsValid =>
         new[] { Scope, InstallPath, Server, Database }.All(Filled) &&
-        InstitutionShape.IsMatch(InstitutionCode) && ProfileShape.IsMatch(ProfileId);
+        (InstitutionCode.Length == 0 || InstitutionShape.IsMatch(InstitutionCode)) && ProfileShape.IsMatch(ProfileId);
 
     private static bool Filled(string value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= MaxFieldLength && value.All(c => !char.IsControl(c));

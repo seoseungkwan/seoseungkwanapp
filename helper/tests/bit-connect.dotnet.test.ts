@@ -67,6 +67,18 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
   it('AC-005.7 bit.check: steps find·db·registration을 {name, ok, code?}로, 실패한 단계 뒤는 ok:false·그 번호, 등록됐으면 기관기호만(병원 이름은 주지 않음)', () => {
     expectAc('AC-005.7')
   })
+
+  it('AC-005.13 처음 등록은 계정과 상관없이 DB 안 의원 하나로(빈 값 뺌), 기관기호는 못 찾아도 빈 값으로, 막는 것은 E-BIT-REG-NONE·MANY·PLACE뿐, 매번 확인·통계 확인도 같은 기준', () => {
+    expectAc('AC-005.13')
+  })
+
+  it('AC-005.15 bit.check는 빈 기관기호를 주지 않고, 확인 창은 기관기호 못 찾음', () => {
+    expectAc('AC-005.15')
+  })
+
+  it('AC-005.17 비트 설치 위치(드라이브·폴더 이름) 상관없이 환경 파일이 가리키는 로컬 설치를 고르고, 네트워크·UNC는 그대로 막는다', () => {
+    expectAc('AC-005.17')
+  })
 })
 
 /** 주석(//·///·블록 주석)을 뺀 C# 글자. ReadOnlyConnection.cs의 문자열 안에는 //가 없다 */

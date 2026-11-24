@@ -66,7 +66,7 @@ public class RegisterFlowTests
         // 비트 로그인 → 읽은 SQL은 모두 허용 목록 안, 세션은 닫음
         Assert.Equal(new[] { Synthetic.Root }, rig.Login.Calls);
         Assert.All(rig.Session.Sqls, sql => Assert.Contains(sql, Sql.All));
-        Assert.Contains(Sql.UserScopeSql, rig.Session.Sqls);
+        Assert.DoesNotContain(Sql.UserScopeSql, rig.Session.Sqls); // 계정 범위는 읽지 않는다(AC-005.13)
         Assert.Contains(Sql.ScopesSql, rig.Session.Sqls);
         Assert.Contains(Sql.InstitutionSql, rig.Session.Sqls);
         Assert.Equal(1, rig.Session.Disposed);
@@ -93,28 +93,147 @@ public class RegisterFlowTests
         Assert.Null(rig.Store.Load());
     }
 
-    [Fact(DisplayName = "AC-005.5 범위가 하나가 아니거나 기관기호가 8자리가 아니면 확인 창 없이 E-BIT-HOSPITAL-MISMATCH")]
-    public void BadHospitalStops()
+    /// <summary>막혔을 때: 그 번호이고, 확인 창을 띄우지 않고, 저장하지 않고, 세션을 닫았다</summary>
+    private static void StopsWith(Rig rig, string code)
+    {
+        Assert.Equal(code, ErrorCode(Handle(rig)));
+        Assert.Empty(rig.Confirm.Shown);
+        Assert.Null(rig.Store.Load());
+        Assert.Equal(1, rig.Session.Disposed);
+    }
+
+    /// <summary>등록됐을 때: 확인 창 한 번, 저장한 범위·기관기호가 그 값</summary>
+    private static void SavesWith(Rig rig, string scope, string institution)
+    {
+        Assert.True(Registered(Handle(rig)));
+        Assert.Single(rig.Confirm.Shown);
+        var saved = rig.Store.Load();
+        Assert.NotNull(saved);
+        Assert.Equal(scope, saved!.Scope);
+        Assert.Equal(institution, saved.InstitutionCode);
+        Assert.Equal(1, rig.Session.Disposed);
+    }
+
+    [Fact(DisplayName = "AC-005.13 로그인한 계정의 범위가 없거나 둘이어도, 계정·작업일 모양이 틀려도 DB 안 범위 하나로 등록한다(계정 범위를 읽지 않음)")]
+    public void AccountDoesNotDecide()
     {
         using (var rig = new Rig())
         {
-            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope, "FOREIGN");
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", ErrorCode(Handle(rig)));
-            Assert.Empty(rig.Confirm.Shown);
-            Assert.Null(rig.Store.Load());
+            rig.Session.Answer(Sql.UserScopeSql);
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+            Assert.DoesNotContain(Sql.UserScopeSql, rig.Session.Sqls);
         }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope, "FOREIGN");
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+        }
+        foreach (var user in new[] { new VendorUser("", "20261030"), new VendorUser("NINECHARS", "20261030"), new VendorUser("SYNUSER", "2026-10-30"), new VendorUser("SYNUSER", "") })
+        {
+            using var rig = new Rig();
+            rig.Login.User = user;
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.13 DB 안 범위에 빈 값·NULL 줄이 섞여 있어도 빼고 하나면 등록한다")]
+    public void BlankScopesIgnored()
+    {
+        using var rig = new Rig();
+        rig.Session.Answer(Sql.ScopesSql, "", Synthetic.Scope + " ", null, "   ");
+        SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+    }
+
+    [Fact(DisplayName = "AC-005.13 DB 안 범위가 (빈 값을 빼고) 없으면 E-BIT-REG-NONE")]
+    public void NoHospitalStops()
+    {
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql);
+            StopsWith(rig, "E-BIT-REG-NONE");
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, "", null, "  ");
+            StopsWith(rig, "E-BIT-REG-NONE");
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.13 DB 안 병원 범위가 그것 하나가 아니면 E-BIT-REG-MANY")]
+    public void ManyHospitalsStop()
+    {
         using (var rig = new Rig())
         {
             rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", ErrorCode(Handle(rig)));
-            Assert.Empty(rig.Confirm.Shown);
+            StopsWith(rig, "E-BIT-REG-MANY");
         }
         using (var rig = new Rig())
         {
-            rig.Session.Answer(Sql.InstitutionSql, "1234567");
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", ErrorCode(Handle(rig)));
-            Assert.Empty(rig.Confirm.Shown);
-            Assert.Equal(1, rig.Session.Disposed);
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "", "FOREIGN ");
+            StopsWith(rig, "E-BIT-REG-MANY");
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.13 그날 8자리 기관기호가 없거나 서로 다른 값이 둘이면 빈 기관기호로 등록한다(막지 않음, 확인 창은 '기관기호 못 찾음')")]
+    public void InstitutionMissingStillRegisters()
+    {
+        foreach (var rows in new[] { new string?[] { "1234567" }, new string?[0], new string?[] { Synthetic.Institution, Synthetic.OtherInstitution } })
+        {
+            using var rig = new Rig();
+            rig.Session.Answer(Sql.InstitutionSql, rows);
+            SavesWith(rig, Synthetic.Scope, "");
+            Assert.Contains("기관기호 못 찾음", rig.Confirm.Shown.Single().Text);
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.13 다시 등록: 기관기호가 같아도 범위가 다르면 새 프로필 ID, 기관기호가 둘 다 비었고 범위가 같으면 프로필 ID를 그대로 둔다")]
+    public void ReRegisterNeedsSameScope()
+    {
+        var previous = Synthetic.Registration(scope: "OLDSCOPE");
+        using (var rig = new Rig().Registered(previous))
+        {
+            Assert.True(Registered(Handle(rig)));
+            Assert.Equal(rig.IssuedIds.Single(), rig.Store.Load()!.ProfileId);
+            Assert.NotEqual(previous.ProfileId, rig.Store.Load()!.ProfileId);
+        }
+        var noCode = Synthetic.Registration(institution: "");
+        using (var rig = new Rig().Registered(noCode))
+        {
+            rig.Session.Answer(Sql.InstitutionSql);
+            Assert.True(Registered(Handle(rig)));
+            Assert.Equal(noCode.ProfileId, rig.Store.Load()!.ProfileId);
+            Assert.Empty(rig.IssuedIds);
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.13 오늘 기관기호 줄 가운데 8자리 숫자가 아닌 줄·빈 줄·같은 값 거듭은 빼고 하나면 등록한다")]
+    public void InstitutionNoiseIgnored()
+    {
+        using var rig = new Rig();
+        rig.Session.Answer(Sql.InstitutionSql, Synthetic.Institution, "1234567", null, "", Synthetic.Institution + " ", "ABCDEFGH");
+        SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+    }
+
+    [Fact(DisplayName = "AC-005.13 저장할 설치 위치·서버·DB 이름이 등록 모양에 맞지 않으면 E-BIT-REG-PLACE")]
+    public void PlaceStops()
+    {
+        using var rig = new Rig();
+        rig.Session.Target = Synthetic.Target(server: "");
+        StopsWith(rig, "E-BIT-REG-PLACE");
+    }
+
+    [Fact(DisplayName = "AC-005.13 읽기 실패 같은 다른 번호는 그대로 낸다")]
+    public void OtherCodesPassThrough()
+    {
+        using (var rig = new Rig())
+        {
+            rig.Session.Fail(Sql.ScopesSql, BitErrors.ReadFailed);
+            StopsWith(rig, "E-BIT-READ-FAILED");
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Fail(Sql.InstitutionSql, BitErrors.ReadFailed);
+            StopsWith(rig, "E-BIT-READ-FAILED");
         }
     }
 
@@ -135,20 +254,16 @@ public class RegisterFlowTests
         }
     }
 
-    [Fact(DisplayName = "AC-005.5 비트 작업일이 오늘과 다르면 그날과 오늘의 기관기호를 모두 확인한다(원본 Authorize)")]
-    public void ChecksWorkDayAndToday()
+    [Fact(DisplayName = "AC-005.13 비트 작업일이 오늘과 달라도 오늘 날짜의 기관기호만 본다")]
+    public void ChecksTodayOnly()
     {
         using var rig = new Rig();
         rig.Login.User = new VendorUser("SYNUSER", "20261029");
-        Assert.True(Registered(Handle(rig)));
+        rig.Session.Answer(Sql.InstitutionSql, args => new[] { new object?[] { (string)args["@day"]! == "20261030" ? Synthetic.Institution : Synthetic.OtherInstitution } });
+        SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
         var days = rig.Session.Calls.Where(c => c.Sql == Sql.InstitutionSql).Select(c => (string)c.Args["@day"]!).ToArray();
-        Assert.Equal(new[] { "20261029", "20261030" }, days);
-
-        using var other = new Rig();
-        other.Login.User = new VendorUser("SYNUSER", "20261029");
-        other.Session.Answer(Sql.InstitutionSql, args => new[] { new object?[] { (string)args["@day"]! == "20261029" ? Synthetic.Institution : Synthetic.OtherInstitution } });
-        Assert.Equal("E-BIT-HOSPITAL-MISMATCH", ErrorCode(Handle(other)));
-        Assert.Empty(other.Confirm.Shown);
+        Assert.Equal(new[] { "20261030" }, days);
+        Assert.Equal(Synthetic.Scope, rig.Session.Calls.Single(c => c.Sql == Sql.InstitutionSql).Args["@scope"]);
     }
 
     [Fact(DisplayName = "AC-005.5 다시 등록: 전 값과 새 값을 함께 보이고, 기관기호가 같으면 프로필 ID를 그대로 두고 바꿔 쓴다")]

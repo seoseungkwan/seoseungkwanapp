@@ -67,17 +67,14 @@ public class ClaimDatesTests
         Assert.Equal(2, days[1].GetProperty("memoInBit").GetInt32());
     }
 
-    [Fact(DisplayName = "AC-008.5 등록 병원 확인 → 기간 기관기호 → 세기 SQL 하나(@from·@to 끝 다음 날 0시·@hospital, 시간 제한 120초), 로그인 창·통계 화면은 쓰지 않는다")]
+    [Fact(DisplayName = "AC-008.5 AC-005.15 등록 병원 확인 → 세기 SQL 하나(@from·@to 끝 다음 날 0시·@hospital, 시간 제한 120초, 기간 기관기호 확인 없음), 로그인 창·통계 화면은 쓰지 않는다")]
     public void ReadsOnlyCounts()
     {
         using var rig = Rig(new object?[] { "20261001", 3L, 1 });
         Dispatch.Run(rig.Rig.Services, "claim.dates", "2026-09-01", "2026-10-31");
 
-        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, Sql.PeriodIdentitySql, Sql.ClaimDatesSql }, rig.Db.Sqls);
-        var identity = rig.Db.Calls[2];
-        Assert.Equal("20260901", identity.Args["@firstDay"]);
-        Assert.Equal("20261031", identity.Args["@lastDay"]);
-        var count = rig.Db.Calls[3];
+        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, Sql.ClaimDatesSql }, rig.Db.Sqls);
+        var count = rig.Db.Calls[2];
         Assert.Equal("202609010000", count.Args["@from"]);
         Assert.Equal("202611010000", count.Args["@to"]);
         Assert.Equal(Synthetic.Scope, count.Args["@hospital"]);
@@ -87,7 +84,18 @@ public class ClaimDatesTests
         Assert.Equal(1, rig.Db.Disposed);
     }
 
-    [Fact(DisplayName = "AC-008.5 등록 없음·다른 병원·기간 기관기호 다름·읽기 실패는 그 번호 error")]
+    [Fact(DisplayName = "AC-005.15 claim.dates는 기간 기관기호를 확인하지 않는다(그 기간에 다른 번호 줄이 있어도 센다)")]
+    public void NoPeriodCheck()
+    {
+        using var rig = Rig(new object?[] { "20261001", 3L, 1 });
+        rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 0L, 2L } });
+        var replies = Dispatch.Run(rig.Rig.Services, "claim.dates", "2026-10-01", "2026-10-31");
+        Assert.DoesNotContain(replies, reply => reply.GetProperty("type").GetString() == "error");
+        Assert.Contains(Sql.ClaimDatesSql, rig.Db.Sqls);
+        Assert.DoesNotContain(Sql.PeriodIdentitySql, rig.Db.Sqls);
+    }
+
+    [Fact(DisplayName = "AC-008.5 등록 없음·다른 병원·읽기 실패는 그 번호 error")]
     public void Failures()
     {
         using (var rig = new ClaimRig(registered: false))
@@ -97,12 +105,6 @@ public class ClaimDatesTests
         using (var rig = Rig())
         {
             rig.Db.Answer(Sql.InstitutionSql, Synthetic.OtherInstitution);
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.dates", "2026-10-01", "2026-10-31")));
-            Assert.DoesNotContain(Sql.ClaimDatesSql, rig.Db.Sqls);
-        }
-        using (var rig = Rig())
-        {
-            rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 1L, 2L } });
             Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.dates", "2026-10-01", "2026-10-31")));
             Assert.DoesNotContain(Sql.ClaimDatesSql, rig.Db.Sqls);
         }

@@ -1569,6 +1569,30 @@ describe('AC-013.6 다른 탭에 다녀와도 결과가 남는다', () => {
     await gone(made)
   })
 
+  it('AC-005.15·AC-013.6: 도우미에 기관기호가 없어도(번호 못 찾은 등록) 남기고, 돌아오면 같은 결과를 보인다', async () => {
+    const { institutionCode: _code, ...noCode } = REGISTERED
+    void _code
+    const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(noCode))
+    const made = await toResult(fakeWorker(), bridge({ check }))
+    expect(made.channel.kept()).not.toBeNull()
+    made.unmount()
+    show(made.worker, made.link)
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    expect(screen.getByRole('button', { name: '가상환자A' })).toBeTruthy()
+    expect(made.worker.of('loadStart')).toHaveLength(1)
+  })
+
+  it('AC-005.15·AC-013.6: 기관기호 없이 남긴 뒤 번호가 생기면(다시 등록) 버린다', async () => {
+    const { institutionCode: _code, ...noCode } = REGISTERED
+    void _code
+    const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(noCode))
+    const made = await toResult(fakeWorker(), bridge({ check }))
+    made.unmount()
+    check.mockImplementation(() => Promise.resolve(REGISTERED))
+    show(made.worker, made.link)
+    await gone(made)
+  })
+
   it('AC-013.6: 도우미 등록을 확인하지 못해도 같다(모르면 보이지 않는다)', async () => {
     const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(REGISTERED))
     const made = await toResult(fakeWorker(), bridge({ check }))

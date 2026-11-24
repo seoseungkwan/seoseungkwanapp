@@ -71,9 +71,6 @@ public static class ClaimMonthPayload
         var today = services.Today().Date;
         var trendFrom = today.AddDays(-TrendDaysBefore);
 
-        HospitalCheck.VerifyPeriod(db, registration, historyFrom, to);
-        HospitalCheck.VerifyPeriod(db, registration, trendFrom, today);
-
         var screens = services.Screens ?? throw new BitException(BitErrors.ExportFailed);
         var menu = StatsMenu.Parse(screens.ReadMenu(install));
         var user = login.Ensure(services.Login, install);

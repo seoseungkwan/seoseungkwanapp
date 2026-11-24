@@ -42,6 +42,18 @@ public class BitCheckTests
         Assert.All(rig.Session.Sqls, sql => Assert.Contains(sql, Sql.All));
     }
 
+    [Fact(DisplayName = "AC-005.15 등록 기관기호가 비었으면 institutionCode 칸을 주지 않는다(세 단계는 ok)")]
+    public void EmptyInstitutionIsOmitted()
+    {
+        using var rig = new Rig().Registered(Synthetic.Registration(institution: ""));
+        rig.Session.Answer(Sql.InstitutionSql, Synthetic.OtherInstitution);
+        var result = BitCheck.Run(rig.Services);
+        Assert.Equal(new[] { "find:ok", "db:ok", "registration:ok" }, Steps(result));
+        Assert.True(result.Registered);
+        Assert.Null(result.InstitutionCode);
+        Assert.DoesNotContain("institutionCode", System.Text.Json.JsonSerializer.Serialize(result));
+    }
+
     [Fact(DisplayName = "AC-005.7 비트를 못 찾으면 find부터 모두 ok:false·E-BIT-NOT-FOUND(DB를 열지 않음)")]
     public void FindFails()
     {

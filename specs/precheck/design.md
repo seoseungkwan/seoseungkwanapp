@@ -172,7 +172,15 @@ type Reply =
 - `checkVersions` 결과: `ok` · `ok + helperUpdateAvailable` · `update-helper` · `update-extension` · `no-extension` · `no-helper`
 
 ### 4-5. 오류 번호 (`lib/errors.ts`에 문구)
-`E-EXT-MISSING`(확장 없음) · `E-HELPER-MISSING`(도우미 없음) · `E-HELPER-OLD` · `E-EXT-OLD` · `E-BRIDGE-BUSY`(다른 창에서 작업 중) · `E-BRIDGE-DISCONNECTED` · `E-BRIDGE-REJECTED` · `E-BRIDGE-BAD-REPLY` · `E-HELPER-BAD-MESSAGE` · `E-HELPER-UNKNOWN-COMMAND` · `E-BIT-NOT-FOUND` · `E-BIT-DB-FAILED` · `E-BIT-NOT-REGISTERED` · `E-BIT-HOSPITAL-MISMATCH` · `E-BIT-READ-FAILED` · `E-BIT-EXPORT-FAILED` · `E-CLAIM-PARTIAL` · `E-RULES-LOAD-FAILED` · `E-SETTINGS-FAILED` · `E-STORE-FAILED` · `E-STORE-BROKEN` · `E-BIT-UI-CHANGED` · `E-BIT-UNSAVED-RX` · `E-INPUT-STOPPED` · `E-MEMO-NO-SETTINGS`(병원 설정이 없어 메모를 만들지 않음, 19-3) · `E-SAM-NOT-FOUND` · `E-COUNTS-FAILED` · `E-BACKUP-FAILED`
+`E-EXT-MISSING`(확장 없음) · `E-HELPER-MISSING`(도우미 없음) · `E-HELPER-OLD` · `E-EXT-OLD` · `E-BRIDGE-BUSY`(다른 창에서 작업 중) · `E-BRIDGE-DISCONNECTED` · `E-BRIDGE-REJECTED` · `E-BRIDGE-BAD-REPLY` · `E-HELPER-BAD-MESSAGE` · `E-HELPER-UNKNOWN-COMMAND` · `E-BIT-NOT-FOUND` · `E-BIT-DB-FAILED` · `E-BIT-NOT-REGISTERED` · `E-BIT-HOSPITAL-MISMATCH` · `E-BIT-READ-FAILED` · `E-BIT-EXPORT-FAILED` · `E-CLAIM-PARTIAL` · `E-RULES-LOAD-FAILED` · `E-SETTINGS-FAILED` · `E-STORE-FAILED` · `E-STORE-BROKEN` · `E-BIT-UI-CHANGED` · `E-BIT-UNSAVED-RX` · `E-INPUT-STOPPED` · `E-MEMO-NO-SETTINGS`(병원 설정이 없어 메모를 만들지 않음, 19-3) · `E-SAM-NOT-FOUND` · `E-COUNTS-FAILED` · `E-BACKUP-FAILED` · `E-BIT-REG-NONE` · `E-BIT-REG-MANY` · `E-BIT-REG-PLACE`(처음 등록이 막힌 곳, 9-1·아래 표)
+
+처음 등록이 막힌 곳 번호의 글(AC-005.14, TASK-43 — 화면 글은 이 표 그대로):
+
+| 번호 | 무엇이 | 어떻게 고치나 |
+|---|---|---|
+| `E-BIT-REG-NONE` | 이 비트에서 의원 정보를 찾지 못했어요 | 비트에 의원 정보가 들어 있는지 비트 업체에 물어봐 주세요. 고친 뒤 등록을 다시 해 주세요. |
+| `E-BIT-REG-MANY` | 이 비트에 의원이 둘 이상 들어 있어요 | 다른 의원 자료가 섞이지 않게 여기서 멈췄어요. 오류 번호와 함께 문의해 주세요. |
+| `E-BIT-REG-PLACE` | 비트 설치 위치나 자료 연결 정보를 알아보지 못했어요 | 비트를 켜서 로그인되는지 확인한 뒤 등록을 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요. |
 
 ## 5. 환자 자료 길과 울타리
 
@@ -342,11 +350,12 @@ create table public.contact_counts (
 ## 9. 도우미 안
 
 ### 9-1. 처음 등록과 매번 확인 (TASK-5)
-- 비트 찾기: 원본 `InstallationLocator.FindCandidates`·`NormalizeAndValidate`·`NativeEnvironmentGuard.Validate`(지원 위치는 원본처럼 `C:\DrBIT50`)
+- 비트 찾기: 원본 `InstallationLocator.FindCandidates`·`NormalizeAndValidate`·`NativeEnvironmentGuard.Validate`(지원 위치는 원본처럼 `C:\DrBIT50`였으나 TASK-45부터 위치 조건 없음 — 환경 파일 `Path`·`Bin`이 가리키는 로컬 설치면 어디든, 윈도우 드라이브에 환경 파일이 없으면 설치 드라이브의 것, AC-005.17. 비트 DLL·통계 화면·차트 창은 모두 고른 설치 위치를 쓴다)
 - 접속: 원본 `ReadOnlyConnection`처럼 비트 DLL(`BITDataBaseCommon`)의 접속 정보를 쓰고, `ConnectTimeout=10`, 서버 이름은 `CheckPrivateServer`(내 PC·사설 IP만). 읽기는 정해 둔 매개변수 SELECT만, 끝내지 않는 트랜잭션 안에서(원본 그대로)
-- 처음 등록(`bit.register`): 비트 로그인 창(원본 `BITUserLogIn` `bitDisplayDialog`) → 그 사용자의 병원 범위(`ValidateScope`) → 기관기호(`VerifyInstitutionNumber`, 8자리) → **PC 확인 창** "이 병원으로 등록할까요? 기관기호 1234**** · 비트 병원 범위·설치 위치·DB" → [확인]이면 등록 파일(DPAPI)에 저장(기관기호·범위·설치 위치·서버·DB 이름·프로필 ID)
+- 처음 등록(`bit.register`): 비트 로그인 창(원본 `BITUserLogIn` `bitDisplayDialog`) → DB 안 의원 하나와 그 의원의 오늘 기관기호(아래 '어느 의원인지 찾기', TASK-43) → **PC 확인 창** "이 병원으로 등록할까요? 기관기호 1234****(못 찾으면 `기관기호 못 찾음`) · 비트 병원 범위·설치 위치·DB" → [확인]이면 등록 파일(DPAPI)에 저장(기관기호(빈 글자 가능)·범위·설치 위치·서버·DB 이름·프로필 ID)
 - 다시 등록: 이미 등록돼 있어도 같은 길로 다시 등록할 수 있다(설치 화면의 [다시 등록], `E-BIT-HOSPITAL-MISMATCH`일 때). 확인 창에 전 등록 값과 새 값을 함께 보인다. 기관기호가 같으면 프로필 ID를 그대로 두어 작업 저장을 이어 읽고, 다르면 새 ID라 전 병원의 작업 파일은 읽지 않는다(9-3, AC-005.5)
-- 매번: 모든 읽기·입력 명령 전에 등록 파일과 비트 DB의 기관기호·범위·설치 위치·서버·DB 이름을 비교한다(원본 `VerifyCurrentInstitution`). 다르면 `E-BIT-HOSPITAL-MISMATCH`로 멈춘다
+- 어느 의원인지 찾기(TASK-43, AC-005.13·AC-005.15 — 원본과 다름, 사용자 2026-11-23 '다른 곳에서도 다 열려야 해 · 사람이 확인하면 열리게(비트 하나에 의원이 둘 이상일 때만 막기)' → '청구에서도 [요양기관번호를] 안 쓰면 안 돼?' → 'ㅇㅇ'): 비트 로그인은 그대로 하되(취소면 등록 없음) 계정의 범위·작업일로 고르지 않는다. 빈 값을 뺀 DB 안 범위가 하나면 그것(없음 `E-BIT-REG-NONE`, 둘 이상 `E-BIT-REG-MANY` — 다른 의원 자료가 섞이는 것을 막는 단 하나의 막음), 그 범위의 오늘 기관기호 줄 가운데 8자리 숫자만 보아 서로 다른 값이 하나면 그것, 아니면 빈 기관기호(막지 않음), 저장 값 모양이 틀리면 `E-BIT-REG-PLACE`. 맞는지는 사람이 PC 확인 창에서 본다. 자료는 그 PC의 비트에서 바로 읽으므로 기관기호는 '같은 의원인가' 맞춰 보는 데만 쓴다: 매번 확인은 등록 기관기호가 있을 때만 번호를 보고, 청구·메모·연락 대상 읽기 전 기간 번호 확인(`VerifyPeriod`)은 하지 않는다. 까닭: 다른 의원 PC에서 [처음 등록]이 `E-BIT-HOSPITAL-MISMATCH`('등록한 의원과 달라요 · [다시 등록]')로만 막혔고, DB에 의원이 하나면 계정의 범위는 그 의원 말고 될 수 없어 계정 확인이 더 지켜 주는 것이 없다. 기간 번호 확인은 NULL·8자리 아닌 줄도 '다른 번호'로 세어 등록 기준보다 엄격했다(등록은 되고 청구에서 막힘, 2026-11-23 검토)
+- 매번: 모든 읽기·입력 명령 전에 등록 파일과 비트 DB의 기관기호·범위·설치 위치·서버·DB 이름을 비교한다(원본 `VerifyCurrentInstitution`). 다르면 `E-BIT-HOSPITAL-MISMATCH`로 멈춘다. TASK-43부터 처음 등록과 같은 기준이다: DB 안 범위는 빈 값을 빼고 등록 범위 하나뿐, 등록 기관기호가 있으면 오늘 8자리 기관기호가 그 번호 하나뿐(비었으면 번호를 보지 않음). 통계 화면 확인(`StatsAccess`)은 계정 범위를 하나로 읽었는데 등록 범위와 다를 때만 막는다
 - 기관기호는 서버에 올리지 않는다(2026-10-28 사용자: 요양기관번호는 받지 않는다). 화면에는 뒤 4자리를 가려 보인다 **(Claude 판단)**
 - **병원 이름은 도우미가 갖지 않는다** (사용자 결정 2026-10-30 "사이트 이름 쓰기"): 원본 비트 읽기에는 병원 이름을 읽는 SQL이 없고, 양지바른은 자기 프로필 파일에서 가져왔다. 그래서 도우미는 병원 이름을 저장하지도 돌려주지도 않는다(`bit.check`에 `hospitalName` 없음). 확인 창은 비트에서 읽은 값(가린 기관기호·범위 등)만 보인다. 설치 화면은 앱이 이미 가진 로그인한 사용자의 병원 이름(`(app)/layout.tsx`가 앱 틀에 넘기는 `me.hospital.name`과 같은 값)을 가린 기관기호 옆에 보인다 (TASK-33·TASK-6)
 

@@ -1,13 +1,13 @@
 using System;
-using System.Globalization;
 using Precheck.Core.Bit;
 
 namespace Precheck.Core.Registration;
 
 /// <summary>
-/// bit.register(AC-005.5, design.md 9-1). 원본 HospitalIdentity.Configure + HospitalSecurity.Authorize 순서:
-/// 비트 찾기 → DB 열기(서버 검사) → 비트 로그인 창 → 그 사용자의 병원 범위 하나 → 그 범위의 기관기호(8자리) →
-/// (작업일이 오늘이 아니면 오늘도) → DB 안 범위가 그것 하나뿐 → DB를 닫고 → PC 확인 창 → [확인]일 때만 저장.
+/// bit.register(AC-005.5, design.md 9-1). 비트 찾기 → DB 열기(서버 검사) → 비트 로그인 창 → DB 안 병원 범위 하나(빈 값 뺌) →
+/// 그 범위의 오늘 8자리 기관기호 하나 → DB를 닫고 → PC 확인 창 → [확인]일 때만 저장.
+/// 원본(HospitalSecurity.Authorize)과 다르게 로그인한 계정의 범위·작업일로 고르지 않는다(AC-005.13, 사용자 2026-11-23 '사람이 확인하면 열리게'):
+/// DB에 의원이 하나면 계정의 범위는 그 의원 말고 될 수 없다. 막는 것은 범위 없음·둘 이상, 기관기호 없음·둘 이상, 저장 값 모양뿐이다.
 /// 이미 등록돼 있으면 같은 길로 바꿔 쓴다: 확인 창에 전 값과 새 값을 함께 보이고, 기관기호가 같으면 전 프로필 ID를 둔다.
 /// 등록 파일이 깨지고 .bak도 못 쓰면(E-STORE-BROKEN) 처음 등록처럼 한다: 전 값 없이, 새 프로필 ID(AC-005.12).
 /// 저장할 때 깨진 파일은 RegistrationStore.Save가 이름을 바꿔 둔다(지우지 않음).
@@ -27,18 +27,19 @@ public static class RegisterFlow
         HospitalRegistration? previous;
         using (var session = services.Connector.Open(root))
         {
-            var user = services.Login.Login(root);
-            if (user == null) return false;
+            // 비트 로그인은 그대로 한다(비트를 쓰는 사람만 등록한다). 취소면 등록 없음
+            if (services.Login.Login(root) == null) return false;
 
-            var today = services.Today().Date;
-            var scope = HospitalCheck.ReadUserScope(session, user);
-            var workDay = DateTime.ParseExact(user.WorkDate, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None);
-            var code = HospitalCheck.ReadInstitutionCode(session, scope, workDay);
-            if (workDay.Date != today) HospitalCheck.VerifyInstitutionNumber(session, scope, today, code);
-            HospitalCheck.VerifyOnlyScope(session, scope);
+            var scopes = HospitalCheck.ReadScopes(session);
+            if (scopes.Count == 0) throw new BitException(BitErrors.RegisterNone);
+            if (scopes.Count > 1) throw new BitException(BitErrors.RegisterMany);
+            var scope = scopes[0];
+            var codes = HospitalCheck.ReadCodes(session, scope, services.Today().Date);
+            var code = codes.Count == 1 ? codes[0] : ""; // 못 찾으면 빈 기관기호로 등록한다(AC-005.13, 사람이 확인 창에서 본다)
 
             previous = LoadPrevious(services.Store);
-            var sameHospital = previous != null && string.Equals(previous.InstitutionCode, code, StringComparison.Ordinal);
+            var sameHospital = previous != null && string.Equals(previous.InstitutionCode, code, StringComparison.Ordinal)
+                && string.Equals(previous.Scope, scope, StringComparison.Ordinal);
             var target = session.Target;
             // 병원 이름은 저장하지 않는다(AC-005.9): 원본 비트 읽기(HospitalSecurity)에 병원 이름 SQL이 없고, 화면은 사이트 값을 쓴다
             candidate = new HospitalRegistration(
@@ -49,7 +50,7 @@ public static class RegisterFlow
                 database: target.Database,
                 profileId: sameHospital ? previous!.ProfileId : services.NewProfileId());
         }
-        if (!candidate.IsValid) throw new BitException(BitErrors.HospitalMismatch);
+        if (!candidate.IsValid) throw new BitException(BitErrors.RegisterPlace);
 
         // DB를 닫은 뒤 창을 띄운다(사람이 5분까지 생각하는 동안 DB 연결을 붙잡지 않는다)
         if (!services.Confirm.Show(RegisterPrompt.Build(candidate, previous), ConfirmTimeout)) return false;

@@ -18,6 +18,15 @@ public class RegisterPromptTests
         Assert.Equal("8765****", RegisterPrompt.MaskInstitution("87654321"));
     }
 
+    [Fact(DisplayName = "AC-005.15 기관기호가 비었으면 확인 창의 기관기호 줄은 '기관기호 못 찾음'이다")]
+    public void EmptyInstitutionIsNotFound()
+    {
+        Assert.Equal("못 찾음", RegisterPrompt.MaskInstitution(""));
+        var text = RegisterPrompt.Build(Synthetic.Registration(institution: ""));
+        Assert.Contains("기관기호 못 찾음", text);
+        Assert.DoesNotContain("****", text);
+    }
+
     [Fact(DisplayName = "AC-005.5 처음 등록 글: 이 병원으로 등록할까요? 기관기호 1234**** 와 범위·설치·서버·DB")]
     public void FirstRegistration()
     {

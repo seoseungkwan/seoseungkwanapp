@@ -1127,6 +1127,14 @@ describe('AC-604.3 도우미 업데이트 순서', () => {
 })
 
 describe('AC-006.4·AC-412.5 이 PC 값', () => {
+  it('AC-005.15: 5단계가 됐는데 도우미에 기관기호가 없으면(번호 못 찾은 등록) "번호 없음 · 의원 이름"이다', async () => {
+    fakeExtension({ hello: HELLO, check: [check(true, true, true, { institutionCode: undefined })] })
+    renderSetup()
+    await screen.findByText('준비됨')
+    expect(pcValue('요양기관기호').textContent).toBe(`번호 없음 · ${CLINIC}`)
+    expect(screen.queryByText('등록한 번호와 달라요')).toBeNull()
+  })
+
   it('AC-006.4·AC-412.5: 기관기호는 뒤 4자리를 가리고 그 옆 의원 이름은 사이트의 이름이다, 확장·도우미는 Icon check "맞아요"(positive)', async () => {
     fakeExtension({ hello: HELLO })
     renderSetup()

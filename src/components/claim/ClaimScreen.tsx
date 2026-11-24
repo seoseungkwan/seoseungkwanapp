@@ -54,12 +54,12 @@ async function readServerSettings(): Promise<CheckSettings | null> {
   }
 }
 
-/** 지금 누구인가: 로그인한 사람과 도우미에 등록한 기관기호(도우미는 병원 이름을 주지 않는다). 하나라도 모르면 null이다. 기관기호는 등록 파일 값이라 비트가 다른 의원이어도 오므로 단계가 하나라도 안 됐으면 모르는 것이다(AC-005.7) */
+/** 지금 누구인가: 로그인한 사람과 도우미에 등록한 기관기호(도우미는 병원 이름을 주지 않는다). 로그인을 모르거나 단계가 하나라도 안 됐으면 null이다. 기관기호는 등록 파일 값이라 비트가 다른 의원이어도 오므로 단계가 하나라도 안 됐으면 모르는 것이다(AC-005.7). 번호를 못 찾은 등록은 기관기호 칸이 없어 빈 글자로 안다(AC-005.15) */
 async function readOwner(call: UseBridge['call']): Promise<ClaimOwner | null> {
   try {
     const [{ data }, check] = await Promise.all([supabaseBrowser().auth.getSession(), call('bit.check', {})])
     const user = data.session?.user.id
-    return user && check.institutionCode && check.steps.every((step) => step.ok) ? { user, institution: check.institutionCode } : null
+    return user && check.registered && check.steps.every((step) => step.ok) ? { user, institution: check.institutionCode ?? '' } : null
   } catch {
     return null
   }

@@ -92,7 +92,7 @@ public class ClaimMonthTests
         }
     }
 
-    [Fact(DisplayName = "AC-008.1 순서: 등록 병원 확인 → 기간 기관기호 → 로그인 사용자 범위·통계 권한 → 83·83D·47 표 → 이력 → 상병 추세 → 처방 목록(매개변수·시간 제한은 원본 값)")]
+    [Fact(DisplayName = "AC-008.1 AC-005.15 순서: 등록 병원 확인 → 로그인 사용자 범위·통계 권한 → 83·83D·47 표 → 이력 → 상병 추세 → 처방 목록(매개변수·시간 제한은 원본 값, 기간 기관기호 확인 없음)")]
     public void ReadsInOrderWithOriginalParameters()
     {
         using var rig = new ClaimRig();
@@ -107,7 +107,6 @@ public class ClaimMonthTests
         Assert.Equal(new[]
         {
             Sql.ScopesSql, Sql.InstitutionSql,                       // 등록 병원(오늘)
-            Sql.PeriodIdentitySql, Sql.PeriodIdentitySql,            // 이력 기간·추세 기간의 기관기호
             Sql.UserScopeSql, Sql.UserPermissionsSql,                // 로그인 사용자의 범위·통계 권한
             Sql.HistoryVisitSql, Sql.HistoryCodeSql,
             Sql.TrendCountSql, Sql.TrendTotalsSql, Sql.TrendPairsSql, Sql.TrendVisitRxSql, Sql.TrendVisitDxSql,
@@ -116,29 +115,23 @@ public class ClaimMonthTests
         Assert.Equal(3, gridsBeforeHistory);
 
         var calls = rig.Db.Calls;
-        Assert.Equal("20251001", calls[2].Args["@firstDay"]);
-        Assert.Equal("20261031", calls[2].Args["@lastDay"]);
-        Assert.Equal(Synthetic.Scope, calls[2].Args["@scope"]);
-        Assert.Equal(Synthetic.Institution, calls[2].Args["@institution"]);
-        Assert.Equal("20251031", calls[3].Args["@firstDay"]);
-        Assert.Equal("20261030", calls[3].Args["@lastDay"]);
-        Assert.Equal("202510010000", calls[6].Args["@from"]);
-        Assert.Equal("202610010000", calls[6].Args["@focus"]);
-        Assert.Equal("202611010000", calls[6].Args["@to"]);
-        Assert.Equal(Synthetic.Scope, calls[6].Args["@hospital"]);
-        Assert.Equal("202510310000", calls[8].Args["@from"]);
-        Assert.Equal("202610310000", calls[8].Args["@to"]);
-        Assert.Equal(2, calls[10].Args["@minimum"]);
-        Assert.Equal("20261030", calls[13].Args["@today"]);
-        Assert.Equal("LA[0-9]%", calls[14].Args["@prefix"]);
+        Assert.Equal("202510010000", calls[4].Args["@from"]);
+        Assert.Equal("202610010000", calls[4].Args["@focus"]);
+        Assert.Equal("202611010000", calls[4].Args["@to"]);
+        Assert.Equal(Synthetic.Scope, calls[4].Args["@hospital"]);
+        Assert.Equal("202510310000", calls[6].Args["@from"]);
+        Assert.Equal("202610310000", calls[6].Args["@to"]);
+        Assert.Equal(2, calls[8].Args["@minimum"]);
+        Assert.Equal("20261030", calls[11].Args["@today"]);
+        Assert.Equal("LA[0-9]%", calls[12].Args["@prefix"]);
 
         Assert.Equal(Sql.MetaTimeout, calls[2].Timeout);
-        Assert.Equal(Sql.MetaTimeout, calls[5].Timeout);
-        Assert.Equal(Sql.HistoryTimeout, calls[6].Timeout);
-        Assert.Equal(Sql.HistoryTimeout, calls[7].Timeout);
-        Assert.All(calls.Skip(8).Take(5), call => Assert.Equal(Sql.TrendTimeout, call.Timeout));
-        Assert.Equal(Sql.PrescriptionCatalogTimeout, calls[13].Timeout);
-        Assert.Equal(Sql.LaCatalogTimeout, calls[14].Timeout);
+        Assert.Equal(Sql.MetaTimeout, calls[3].Timeout);
+        Assert.Equal(Sql.HistoryTimeout, calls[4].Timeout);
+        Assert.Equal(Sql.HistoryTimeout, calls[5].Timeout);
+        Assert.All(calls.Skip(6).Take(5), call => Assert.Equal(Sql.TrendTimeout, call.Timeout));
+        Assert.Equal(Sql.PrescriptionCatalogTimeout, calls[11].Timeout);
+        Assert.Equal(Sql.LaCatalogTimeout, calls[12].Timeout);
 
         Assert.Equal(new[] { "83", "83D", "47" }, rig.Screens.Calls.Select(c => c.Key));
         Assert.All(rig.Screens.Calls, call =>
@@ -309,7 +302,20 @@ public class ClaimMonthTests
         }
     }
 
-    [Fact(DisplayName = "AC-008.4 등록이 없거나 다른 병원·기간의 기관기호가 다르면 그 번호 error 하나만, 로그인 창·표 없음")]
+    [Fact(DisplayName = "AC-005.15 claim.month는 기간 기관기호를 확인하지 않는다(그 기간에 다른 번호 줄이 있어도 읽는다)")]
+    public void NoPeriodCheck()
+    {
+        foreach (var counts in new[] { new object?[] { 0L, 0L }, new object?[] { 1L, 1L } })
+        {
+            using var rig = new ClaimRig();
+            rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { counts });
+            Dispatch.Join(Dispatch.Run(rig.Rig.Services, "claim.month", "2026-10-01", "2026-10-31"));
+            Assert.DoesNotContain(Sql.PeriodIdentitySql, rig.Db.Sqls);
+            Assert.NotEmpty(rig.Screens.Calls);
+        }
+    }
+
+    [Fact(DisplayName = "AC-008.4 등록이 없거나 다른 병원이면 그 번호 error 하나만, 로그인 창·표 없음")]
     public void HospitalFailureSendsOnlyError()
     {
         using (var rig = new ClaimRig(registered: false))
@@ -321,14 +327,6 @@ public class ClaimMonthTests
         {
             rig.Db.Answer(Sql.ScopesSql, "FOREIGN");
             Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.month", "2026-10-01", "2026-10-31")));
-            Assert.Empty(rig.Screens.Calls);
-        }
-        foreach (var counts in new[] { new object?[] { 0L, 0L }, new object?[] { 1L, 1L } })
-        {
-            using var rig = new ClaimRig();
-            rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { counts });
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.month", "2026-10-01", "2026-10-31")));
-            Assert.Empty(rig.Rig.Login.Calls);
             Assert.Empty(rig.Screens.Calls);
         }
     }

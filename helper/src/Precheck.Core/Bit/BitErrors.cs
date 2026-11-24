@@ -17,6 +17,17 @@ public static class BitErrors
     /// <summary>비트의 범위·기관기호·설치 위치·서버·DB가 등록한 병원과 다르거나 확인되지 않는다(AC-005.4·AC-005.6).</summary>
     public const string HospitalMismatch = "E-BIT-HOSPITAL-MISMATCH";
 
+    /// <summary>처음 등록: DB 안 병원 범위가 (빈 값을 빼고) 없다(AC-005.13).</summary>
+    public const string RegisterNone = "E-BIT-REG-NONE";
+
+    /// <summary>처음 등록: DB 안 병원 범위가 둘 이상이다 — 다른 의원 자료가 섞인 비트(AC-005.13).</summary>
+    public const string RegisterMany = "E-BIT-REG-MANY";
+
+    /// <summary>처음 등록: 그 범위의 오늘 8자리 기관기호가 없거나 서로 다른 값이 둘 이상이다(AC-005.13).</summary>
+
+    /// <summary>처음 등록: 저장할 설치 위치·서버·DB 이름 값이 등록 모양에 맞지 않는다(AC-005.13).</summary>
+    public const string RegisterPlace = "E-BIT-REG-PLACE";
+
     /// <summary>읽기가 실패했다: SQL 오류·시간 지남, 또는 허용 목록 밖 SQL(AC-005.3).</summary>
     public const string ReadFailed = "E-BIT-READ-FAILED";
 

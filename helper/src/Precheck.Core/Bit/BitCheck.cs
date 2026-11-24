@@ -34,7 +34,7 @@ public sealed class BitCheckResult
     {
         Steps = steps;
         Registered = registration != null;
-        InstitutionCode = registration?.InstitutionCode;
+        InstitutionCode = string.IsNullOrEmpty(registration?.InstitutionCode) ? null : registration!.InstitutionCode; // 못 찾은 등록은 칸을 주지 않는다(AC-005.15)
     }
 
     [JsonPropertyName("steps")]

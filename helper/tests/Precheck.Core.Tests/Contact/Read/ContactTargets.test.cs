@@ -90,7 +90,7 @@ public class ContactTargetsTests
         Assert.DoesNotContain("B12", rx.GetRawText(), StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "AC-605.1 차례: 등록 병원 확인 → 기간 기관기호 → 통계 메뉴·로그인 사용자 범위·통계 권한(83·47) → 83 → 47(기간·시간 제한 그대로)")]
+    [Fact(DisplayName = "AC-605.1 AC-005.15 차례: 등록 병원 확인 → 통계 메뉴·로그인 사용자 범위·통계 권한(83·47) → 83 → 47(기간·시간 제한 그대로, 기간 기관기호 확인 없음)")]
     public void ReadsInOrder()
     {
         using var rig = new ContactRig();
@@ -102,13 +102,8 @@ public class ContactTargetsTests
         });
         Replies.Join(rig.Send("followup", "2026-09-30", "2026-10-30"));
 
-        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, Sql.PeriodIdentitySql, Sql.UserScopeSql, Sql.UserPermissionsSql }, rig.Db.Sqls);
+        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, Sql.UserScopeSql, Sql.UserPermissionsSql }, rig.Db.Sqls);
         Assert.Equal(0, gridsBeforePermission);
-        var period = rig.Db.Calls[2];
-        Assert.Equal("20260930", period.Args["@firstDay"]);
-        Assert.Equal("20261030", period.Args["@lastDay"]);
-        Assert.Equal(Synthetic.Scope, period.Args["@scope"]);
-        Assert.Equal(Synthetic.Institution, period.Args["@institution"]);
 
         Assert.Equal(new[] { Synthetic.Root }, rig.Screens.MenuReads);
         Assert.Equal(new[] { "83", "47" }, rig.Screens.Calls.Select(c => c.Key));
@@ -132,7 +127,17 @@ public class ContactTargetsTests
         Assert.False(rig.BitTouched);
     }
 
-    [Fact(DisplayName = "AC-605.1 등록 병원과 다르거나(오늘·기간 기관기호) 통계 권한·로그인이 없으면 표를 읽지 않고 error 하나만")]
+    [Fact(DisplayName = "AC-005.15 contact.targets는 기간 기관기호를 확인하지 않는다(그 기간에 다른 번호 줄이 있어도 읽는다)")]
+    public void NoPeriodCheck()
+    {
+        using var rig = new ContactRig();
+        rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 1L, 1L } });
+        Replies.Join(rig.Send("followup", "2026-09-30", "2026-10-30"));
+        Assert.DoesNotContain(Sql.PeriodIdentitySql, rig.Db.Sqls);
+        Assert.Equal(new[] { "83", "47" }, rig.Screens.Calls.Select(c => c.Key));
+    }
+
+    [Fact(DisplayName = "AC-605.1 등록 병원과 다르거나(오늘 기관기호) 통계 권한·로그인이 없으면 표를 읽지 않고 error 하나만")]
     public void HospitalOrAccessFailureReadsNoGrid()
     {
         using (var rig = new ContactRig())
@@ -140,13 +145,6 @@ public class ContactTargetsTests
             rig.Rig.Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
             Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Replies.OnlyError(rig.Send("injection", "2026-10-01", "2026-10-30")));
             Assert.Empty(rig.Screens.Calls);
-        }
-        using (var rig = new ContactRig())
-        {
-            rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 1L, 1L } });
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Replies.OnlyError(rig.Send("injection", "2026-10-01", "2026-10-30")));
-            Assert.Empty(rig.Screens.Calls);
-            Assert.Equal(1, rig.Db.Disposed);
         }
         using (var rig = new ContactRig())
         {
@@ -329,7 +327,6 @@ public class ContactTargetsTests
             rig => rig.Screens.Sheets["47"][0] = rig.Screens.Sheets["47"][0].Select(c => c == "차트번호" ? "가상칸" : c).ToArray(),
             rig => rig.Screens.Sheets["83"][0] = rig.Screens.Sheets["83"][0].Select(c => c == "증상" ? "가상칸" : c).ToArray(),
             rig => rig.Screens.Fail["47"] = "E-BIT-READ-FAILED",
-            rig => rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 1L, 1L } }),
         };
         var patientValues = new[] { "가상환자", "900001", "900002", "010-0000-", "가상 증상", "f/u", "V1", "A49" };
 

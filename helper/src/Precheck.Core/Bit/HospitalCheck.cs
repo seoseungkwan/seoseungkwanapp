@@ -11,6 +11,8 @@ namespace Precheck.Core.Bit;
 /// 병원 확인(AC-005.4·AC-005.6). 원본 HospitalSecurity의 ValidateScope·ValidateInstitutionNumbers·VerifyInstitutionNumber·
 /// Authorize(범위 읽기)·VerifyCurrentInstitution 규칙 그대로. 막히면 BitException(E-BIT-HOSPITAL-MISMATCH).
 /// 병원 메타(범위·기관기호)만 읽고 환자·보고 표는 읽지 않는다. 성공을 기억해 두지 않는다(매번 다시 읽는다).
+/// TASK-43(AC-005.13, 원본과 다름): 처음 등록·매번 확인은 ReadScopes·ReadCodes(빈 범위·8자리 아닌 기관기호 줄은 뺌)로,
+/// 통계 화면 확인은 UserScopeOrNull로 본다. 원본 검사 함수(ValidateScope 등)는 원본 시험 사례(AC-005.4) 그대로 둔다.
 /// </summary>
 public static class HospitalCheck
 {
@@ -41,13 +43,37 @@ public static class HospitalCheck
     /// </summary>
     public static string ReadUserScope(IBitDb db, VendorUser user)
     {
-        if (user == null || string.IsNullOrWhiteSpace(user.UserId) || user.UserId.Length > 8 || !TryDay(user.WorkDate, out _)) throw Mismatch();
+        if (!LoginShapeOk(user)) throw Mismatch();
         var rows = ReadOnlyGuard.Query(db, Sql.UserScopeSql, Args(("@user", user.UserId), ("@workDate", user.WorkDate)), Sql.MetaTimeout);
         var scopes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in rows) scopes.Add((First(row) ?? "").Trim());
         if (scopes.Count != 1 || string.IsNullOrWhiteSpace(scopes.First())) throw Mismatch();
         return scopes.First();
     }
+
+    /// <summary>로그인 창이 준 값 모양: 사용자 ID 1~8자, 작업일 yyyyMMdd(원본 Authorize 앞부분).</summary>
+    public static bool LoginShapeOk(VendorUser? user) =>
+        user != null && !string.IsNullOrWhiteSpace(user.UserId) && user.UserId.Length <= 8 && TryDay(user.WorkDate, out _);
+
+    /// <summary>
+    /// 통계 화면 확인(AC-005.13): 로그인한 계정의 그날 범위를 하나로 읽으면 그것, 아니면 null —
+    /// 계정·작업일 모양이 틀리면 읽지 않고 null, 빈 값을 빼고 없거나 둘 이상이어도 null.
+    /// </summary>
+    public static string? UserScopeOrNull(IBitDb db, VendorUser user)
+    {
+        if (!LoginShapeOk(user)) return null;
+        var rows = ReadOnlyGuard.Query(db, Sql.UserScopeSql, Args(("@user", user.UserId), ("@workDate", user.WorkDate)), Sql.MetaTimeout);
+        var scopes = Filled(rows.Select(First));
+        return scopes.Count == 1 ? scopes[0] : null;
+    }
+
+    /// <summary>DB 안 병원 범위: 빈 값·NULL을 빼고 뒤 공백을 지운 서로 다른 값(AC-005.13). 하나여야 '의원 하나'다.</summary>
+    public static IReadOnlyList<string> ReadScopes(IBitDb db) =>
+        Filled(ReadOnlyGuard.Query(db, Sql.ScopesSql, NoArgs, Sql.MetaTimeout).Select(First));
+
+    /// <summary>그날 그 범위의 기관기호 가운데 8자리 숫자인 것만, 뒤 공백을 지운 서로 다른 값(AC-005.13).</summary>
+    public static IReadOnlyList<string> ReadCodes(IBitDb db, string scope, DateTime day) =>
+        Filled(ReadInstitutionNumbers(db, scope, day)).Where(value => EightDigits.IsMatch(value)).ToList();
 
     /// <summary>처음 등록: 그날 그 범위의 기관기호. 줄이 모두 같은 8자리 숫자 하나일 때만 그것을 준다.</summary>
     public static string ReadInstitutionCode(IBitDb db, string scope, DateTime day)
@@ -72,6 +98,7 @@ public static class HospitalCheck
     /// <summary>
     /// 원본 VerifyCurrentInstitution(AC-005.6): 등록이 없으면 E-BIT-NOT-REGISTERED. 설치 위치·서버·DB 이름이 등록과 다르면
     /// 읽기 전에 E-BIT-HOSPITAL-MISMATCH. 그다음 DB 안 범위가 등록 범위 하나뿐인지, 오늘 날짜의 기관기호가 등록과 같은지 다시 읽는다.
+    /// 처음 등록과 같은 기준이다(AC-005.13): 빈 범위 줄과 8자리 아닌 기관기호 줄은 빼고 본다.
     /// </summary>
     public static void VerifyCurrent(IBitSession session, HospitalRegistration? registration, DateTime today)
     {
@@ -84,34 +111,15 @@ public static class HospitalCheck
         {
             throw Mismatch();
         }
-        VerifyOnlyScope(session, registration.Scope);
-        VerifyInstitutionNumber(session, registration.Scope, today, registration.InstitutionCode);
+        var scopes = ReadScopes(session);
+        if (scopes.Count != 1 || scopes[0] != registration.Scope) throw Mismatch();
+        if (registration.InstitutionCode.Length == 0) return; // 못 찾은 등록은 번호를 보지 않는다(AC-005.13)
+        var codes = ReadCodes(session, registration.Scope, today);
+        if (codes.Count != 1 || codes[0] != registration.InstitutionCode) throw Mismatch();
     }
 
-    /// <summary>
-    /// 원본 TreatmentUsage.IdentitySql 확인(RxHistory·ClaimMemoHistory·RxDiagnosisTrend가 자료 전에 돌림): 조회 기간(first~last)에
-    /// 등록 범위의 기관기호가 등록한 것인 줄이 하나 이상이고 다른 기관기호 줄이 없어야 한다. 아니면 E-BIT-HOSPITAL-MISMATCH.
-    /// </summary>
-    public static void VerifyPeriod(IBitDb db, HospitalRegistration registration, DateTime first, DateTime last)
-    {
-        if (registration == null) throw new BitException(BitErrors.NotRegistered);
-        var rows = ReadOnlyGuard.Query(db, Sql.PeriodIdentitySql, Args(
-            ("@scope", registration.Scope), ("@institution", registration.InstitutionCode), ("@firstDay", Day(first)), ("@lastDay", Day(last))), Sql.MetaTimeout);
-        var row = rows.FirstOrDefault();
-        if (row == null || row.Count < 2 || Count(row[0]) < 1 || Count(row[1]) != 0) throw Mismatch();
-    }
-
-    private static long Count(object? value)
-    {
-        try
-        {
-            return value == null ? -1 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
-        }
-        catch (Exception e) when (e is FormatException || e is InvalidCastException || e is OverflowException)
-        {
-            return -1;
-        }
-    }
+    // 원본 TreatmentUsage.IdentitySql(기간 기관기호 확인, Sql.PeriodIdentitySql)은 TASK-43부터 부르지 않는다(AC-005.15):
+    // 자료는 그 PC 비트에서 바로 읽고, 같은 의원인지는 매번 확인(VerifyCurrent)이 본다.
 
     /// <summary>yyyyMMdd 글자(원본 작업일 모양).</summary>
     public static string Day(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
@@ -137,6 +145,10 @@ public static class HospitalCheck
         foreach (var pair in pairs) args[pair.Name] = pair.Value;
         return args;
     }
+
+    /// <summary>빈 값·NULL을 빼고 뒤 공백을 지운 서로 다른 값(처음 나온 차례).</summary>
+    private static List<string> Filled(IEnumerable<string?> values) =>
+        values.Select(value => (value ?? "").Trim()).Where(value => value.Length > 0).Distinct(StringComparer.Ordinal).ToList();
 
     private static BitException Mismatch() => new BitException(BitErrors.HospitalMismatch);
 }
