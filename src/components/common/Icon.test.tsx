@@ -65,9 +65,9 @@ describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
     for (const name of NAMES) expect(MOCK[name], name).toBeTruthy()
   })
 
-  it('AC-204.6·AC-315.1·AC-416.7·AC-017.9·AC-1507.3: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout, logout 뒤에 info·reload, reload 뒤에 alert를 더한 22개뿐이다', () => {
-    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout', 'info', 'reload', 'alert'])
-    expect(ICON_NAMES).toHaveLength(22)
+  it('AC-204.6·AC-315.1·AC-416.7·AC-017.9·AC-1507.3·AC-8006.2: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout, logout 뒤에 info·reload, reload 뒤에 alert, alert 뒤에 eye를 더한 23개뿐이다', () => {
+    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout', 'info', 'reload', 'alert', 'eye'])
+    expect(ICON_NAMES).toHaveLength(23)
   })
 
   it.each(NAMES)('AC-204.6: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
@@ -258,9 +258,9 @@ describe('AC-1507.3 아이콘 alert (worklog-memo-font REQ-1507, 시안 docs/moc
     expect(tagsOf(WARN_SVG?.[2] ?? '')).toEqual(['circle', 'path'])
   })
 
-  it('AC-1507.3: alert는 ICON_NAMES 끝(reload 뒤)에 있다', () => {
-    expect(ICON_NAMES.at(-1)).toBe('alert')
-    expect(ICON_NAMES.at(-2)).toBe('reload')
+  it('AC-1507.3: alert는 reload 바로 뒤에 있다(그 뒤에는 admin-view의 eye 하나뿐)', () => {
+    expect(ICON_NAMES.indexOf('alert')).toBe(ICON_NAMES.indexOf('reload') + 1)
+    expect(ICON_NAMES.slice(ICON_NAMES.indexOf('alert') + 1)).toEqual(['eye'])
   })
 
   it('AC-1507.3: alert는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', () => {
@@ -304,5 +304,61 @@ describe('AC-1507.3 아이콘 alert (worklog-memo-font REQ-1507, 시안 docs/moc
     const head = src.slice(0, src.indexOf('export const ICON_NAMES'))
     expect(head).toContain('docs/mockups/worklog/memo-font.html')
     expect(head).toContain('ICON_WARN')
+  })
+})
+
+// admin-view(AC-8006.2·AC-8006.4·AC-8012.1): eye는 보는 의원 단추·맨 위 띠·승인 목록 이름 앞의 눈 그림이다.
+// 그림은 시안 docs/mockups/admin-view/index.html의 I.eye 그대로다(시안 ic()도 Icon.tsx와 같은 16칸·선 1.5). 다른 그림은 그대로다
+const ADMIN_VIEW = readFileSync(join(ROOT, 'docs/mockups/admin-view/index.html'), 'utf8')
+const AV_I_BLOCK = ADMIN_VIEW.slice(ADMIN_VIEW.indexOf('const I = {'), ADMIN_VIEW.indexOf('\n  };', ADMIN_VIEW.indexOf('const I = {')))
+const AV_I: Record<string, string> = Object.fromEntries([...AV_I_BLOCK.matchAll(/^\s+(\w+): '([^']*)',$/gm)].map((m) => [m[1], m[2]]))
+const AV_SVG_TAG = ADMIN_VIEW.match(/const ic = \([^)]*\) => `(<svg\b[^>]*>)/)?.[1] ?? ''
+// 시안 I 가운데 Icon.tsx에도 있는 이름(eye 말고) — 시안이 Icon.tsx 모양 그대로 옮긴 그림
+const AV_SHARED = Object.keys(AV_I).filter((name) => name !== 'eye' && (ICON_NAMES as readonly string[]).includes(name)) as IconName[]
+
+describe('AC-8006.2·AC-8006.4·AC-8012.1 아이콘 eye (admin-view, 시안 docs/mockups/admin-view/index.html의 I.eye)', () => {
+  it('AC-8006.2: 시안에서 I.eye 그림과 ic()의 svg 태그를 읽었다(시험 준비 확인)', () => {
+    expect(tagsOf(AV_I.eye ?? '')).toEqual(['path', 'circle'])
+    expect(AV_SVG_TAG).toMatch(/^<svg\b/)
+    expect(AV_SHARED.length).toBeGreaterThan(0)
+  })
+
+  it('AC-8006.2: 시안의 ic()도 viewBox 0 0 16 16·선 1.5·currentColor·aria-hidden이다(시안이 같은 규칙으로 그렸다)', () => {
+    expect(attrsOf(AV_SVG_TAG)).toMatchObject(SVG_ATTRS)
+  })
+
+  it('AC-8006.2: eye는 ICON_NAMES 끝(alert 뒤)에 있다', () => {
+    expect(ICON_NAMES.at(-1)).toBe('eye')
+    expect(ICON_NAMES.at(-2)).toBe('alert')
+  })
+
+  it('AC-8006.2: eye는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', () => {
+    const html = draw('eye')
+    expect(attrsOf(openTag(html))).toEqual({ ...SVG_ATTRS, width: '16', height: '16' })
+    expect(html.endsWith('</svg>')).toBe(true)
+  })
+
+  it('AC-8006.2: eye의 안쪽 그림은 시안 I.eye와 같고(눈 모양 path + 눈동자 circle), 안쪽 원소에 색·style·글자가 없다', () => {
+    const inner = innerOf(draw('eye'))
+    expect(elementsOf(inner)).toEqual(elementsOf(AV_I.eye ?? ''))
+    expect(tagsOf(inner)).toEqual(['path', 'circle'])
+    expect(inner).not.toMatch(/\b(?:fill|stroke|style|class)=/)
+    expect(inner.replace(/<[^>]*>/g, ''), 'eye 글자').toBe('')
+  })
+
+  it.each(AV_SHARED)('AC-8006.2: 시안 I의 %s는 지금 Icon.tsx 그림과 같다(다른 그림은 그대로)', (name) => {
+    expect(elementsOf(innerOf(draw(name))), name).toEqual(elementsOf(AV_I[name] ?? ''))
+  })
+
+  it.each([12, 14, 16])('AC-8006.2·AC-8012.1: eye에 size=%i를 주면 너비·높이가 되고 viewBox·선 굵기는 그대로다', (size) => {
+    const attrs = attrsOf(openTag(draw('eye', { size })))
+    expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
+  })
+
+  it('AC-8006.2: Icon.tsx 머리 주석이 그림 출처(docs/mockups/admin-view/index.html의 I.eye)를 적는다', () => {
+    const src = readFileSync(join(ROOT, 'src/components/common/Icon.tsx'), 'utf8')
+    const head = src.slice(0, src.indexOf('export const ICON_NAMES'))
+    expect(head).toContain('docs/mockups/admin-view/index.html')
+    expect(head).toContain('I.eye')
   })
 })
