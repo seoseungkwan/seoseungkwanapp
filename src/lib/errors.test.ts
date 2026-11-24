@@ -133,6 +133,11 @@ const ALL_CODES = [
   'E-LOC-SOURCE',
   'E-LOC-MAP',
   'E-LOC-PHOTO',
+  'E-VIEW-START',
+  'E-VIEW-LOG',
+  'E-REGION-SAVE',
+  'E-COMPARE-READ',
+  'E-VIEW-READONLY',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1459,5 +1464,54 @@ describe('AC-7917.3 입지 분석 오류 번호 다섯', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(LOCATION)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 다른 의원 보기·의원 비교(specs/admin-view design.md '화면 글자' 오류 표, TASK-3). 글은 그 표 글자 그대로다
+const ADMIN_VIEW = {
+  'E-VIEW-START': {
+    what: '다른 의원 화면을 열지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 골라 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-VIEW-LOG': { what: '본 기록을 불러오지 못했어요', fix: '[다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.' },
+  'E-REGION-SAVE': {
+    what: '지역을 바꾸지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 골라 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-COMPARE-READ': { what: '이 의원 숫자를 불러오지 못했어요', fix: '[다시 불러오기]를 눌러 주세요. 다른 의원 칸은 그대로 볼 수 있어요.' },
+  'E-VIEW-READONLY': {
+    what: '보는 중에는 저장할 수 없어요',
+    fix: '다른 의원 화면은 읽기만 해요. 고치려면 [내 의원으로]를 누른 뒤 해 주세요.',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-8005.3 다른 의원 보기·의원 비교 오류 번호 다섯', () => {
+  it.each(Object.keys(ADMIN_VIEW) as Array<keyof typeof ADMIN_VIEW>)(
+    "AC-8005.3: %s는 번호가 있고 무엇이·어떻게 고치나가 design.md '화면 글자' 표 글자 그대로다",
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(ADMIN_VIEW[code])
+    },
+  )
+
+  it('AC-8005.3: 이 명세가 더하는 E-VIEW-·E-REGION-·E-COMPARE- 번호는 표의 다섯뿐이고, 그 밖 번호 수는 그대로다', () => {
+    expect(Object.keys(ERRORS).filter((code) => /^E-(VIEW|REGION|COMPARE)-/.test(code)).sort()).toEqual(Object.keys(ADMIN_VIEW).sort())
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  it('AC-8005.3: 다른 번호의 글은 그대로다 — 관리자 화면이 함께 쓰는 E-ADMIN-FAILED·E-ADMIN-ROLE', () => {
+    expect(errorInfo('E-ADMIN-FAILED').what).toBe('신청 상태를 바꾸지 못했어요')
+    expect(errorInfo('E-ADMIN-ROLE')).toEqual({
+      what: '관리자를 정하거나 빼지 못했어요',
+      fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-8005.3: 다섯 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(ADMIN_VIEW)) expect(union).toContain(`'${code}'`)
   })
 })

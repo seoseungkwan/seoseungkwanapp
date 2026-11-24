@@ -72,5 +72,7 @@ export type ErrorCode =
   | 'E-CONTACTS-FILE-FORM' | 'E-CONTACTS-FILE-NOT-XLSX' | 'E-CONTACTS-FILE-LOCKED' | 'E-CONTACTS-FILE-EMPTY' | 'E-CONTACTS-FILE-BIG'
   // 입지 분석(specs/location design.md 15절): 읽기 · 저장 · 바깥 자료 · 지도 · 사진 올리기 실패
   | 'E-LOC-READ-FAILED' | 'E-LOC-SAVE-FAILED' | 'E-LOC-SOURCE' | 'E-LOC-MAP' | 'E-LOC-PHOTO'
+  // 다른 의원 보기·의원 비교(specs/admin-view design.md '화면 글자' 오류 표): 보기 시작 · 본 기록 읽기 · 지역 바꾸기 · 비교 숫자 읽기 · 보는 중 저장
+  | 'E-VIEW-START' | 'E-VIEW-LOG' | 'E-REGION-SAVE' | 'E-COMPARE-READ' | 'E-VIEW-READONLY'
 
 export type ErrorInfo = { what: string; fix: string }
