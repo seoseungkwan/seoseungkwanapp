@@ -7,7 +7,8 @@ import { ETC_NAMES, mountErpPage, sampleDay, type ErpPage, type ErpPageOptions }
 import type { Dock } from './panel'
 import { SETTINGS_KEY } from './types'
 import { readUisDay, stopOf, uisCells } from './uisCells'
-import { createUisFlow, decideSource, downloadBytes, SOURCE_TIMEOUT_MS, type Send } from './uisFlow'
+import { createUisFlow, decideSource, downloadBytes, SOURCE_TIMEOUT_MS } from './uisFlow'
+import type { Send } from './uisTypes'
 import { toUisArgs } from './uisSettings'
 import { UIS_SHEET_NAME, UIS_SHEET_WIDTHS, uisFileName, uisSheetRows } from './uisSheet'
 import { UIS_KINDS, UIS_SETTINGS_KEY } from './uisTypes'
@@ -200,7 +201,7 @@ function setup(
   })
   const dock = fakeDock(events, o)
   const openSettings = vi.fn(() => void events.push(['openSettings']))
-  const flow = createUisFlow({ doc: document, dock: dock as unknown as Dock, send: send as Send, openSettings, today: () => TODAY })
+  const flow = createUisFlow({ doc: document, dock: dock as unknown as Dock, send: ((cmd, args) => send({ cmd, args })) as Send, openSettings, today: () => TODAY })
   const views = () => dock.showUis.mock.calls.map(([v]) => v as UisView)
   return {
     page: page as ErpPage,
@@ -282,7 +283,7 @@ describe('AC-4211.1 decideSource — 단추 이름 정하기(저장 여부 → �
     fakeStorage({ bit: true, uis: uisSettings() })
     const send = sendWith(ok({ source: 'uisarang' }))
     expect(await decideSource(send)).toBe('uisarang')
-    expect(send.mock.calls).toEqual([[{ cmd: 'closing.source', args: {} }]])
+    expect(send.mock.calls).toEqual([['closing.source', {}]])
   })
 
   it.each([

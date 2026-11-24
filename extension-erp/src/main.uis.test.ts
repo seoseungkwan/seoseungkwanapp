@@ -495,7 +495,7 @@ describe('AC-4211.2 AC-4212.3 AC-4213.3 의사랑 단추 줄 흐름(진짜 안�
     answer.resolve(ok(uisDay({ income: { state: 'twice' } })))
     await flush()
     expect(head()).toBe('엑셀로 받기')
-    expect(lead()).toBe('일일수입통계 엑셀이 2개 있어요.')
+    expect(lead()).toBe('일일수입통계 엑셀이 여러 개 있어요.')
     expect(actLabels()).toEqual([])
     expect(blobs).toHaveLength(0)
     expect(rowLabels()).toEqual(UIS_ROW)

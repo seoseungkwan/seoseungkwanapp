@@ -23,8 +23,8 @@ import { rangeDays, runRange, scanRange, type RangeDeps } from './range.js'
 import type { RangeAction, RunSummary, ScanSummary } from './rangeTypes.js'
 import { load, overlapAsks, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
-import { createUisFlow, decideSource, type Send } from './uisFlow.js'
-import type { Source } from './uisTypes.js'
+import { createUisFlow, decideSource } from './uisFlow.js'
+import type { Send, Source } from './uisTypes.js'
 
 /** 단추를 붙이는 화면 주소 */
 export const PAGE_PATH = '/h/closing'
@@ -163,7 +163,7 @@ export function startPage(doc: Document = document): { stop(): void } {
   let deciding = false
   /** 정하기 전에 누른 단추(마지막 것 하나). 정해지면 그 흐름으로 */
   let queued: (() => void) | null = null
-  const send: Send = (message) => chrome.runtime.sendMessage(message)
+  const send: Send = (cmd, args) => chrome.runtime.sendMessage({ cmd, args })
   const dock: Dock = createDock(doc, {
     onFill: () => press(() => (source === 'uisarang' ? void uis.fill() : void run())),
     onOpenSettings: openSettings,

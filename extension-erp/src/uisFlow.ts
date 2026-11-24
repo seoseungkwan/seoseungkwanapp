@@ -19,12 +19,9 @@ import type { ClosingCommand } from './types.js'
 import { planUisCells, readUisDay, stopOf, uisCells } from './uisCells.js'
 import { loadUis, savedSources, toUisArgs } from './uisSettings.js'
 import { UIS_SHEET_NAME, UIS_SHEET_WIDTHS, uisFileName, uisSheetRows } from './uisSheet.js'
-import type { Source, UisDay, UisSettings } from './uisTypes.js'
+import type { Send, Source, UisDay, UisSettings } from './uisTypes.js'
 import type { UisAction, UisView } from './uisView.js'
 import { workbookBytes, XLSX_TYPE } from './xlsxWrite.js'
-
-/** 서비스 워커에 도우미 명령 하나를 보낸다(main.ts는 chrome.runtime.sendMessage를 넘긴다) */
-export type Send = (message: { cmd: ClosingCommand; args: Record<string, unknown> }) => Promise<unknown>
 
 /** closing.source 답을 기다리는 가장 긴 시간(넘으면 비트) */
 export const SOURCE_TIMEOUT_MS = 5_000
@@ -45,7 +42,7 @@ async function ask(send: Send, cmd: ClosingCommand, args: Record<string, unknown
   })
   let reply: unknown
   try {
-    reply = await Promise.race([send({ cmd, args }), late])
+    reply = await Promise.race([send(cmd, args), late])
   } catch {
     return { code: E_BRIDGE_DISCONNECTED }
   } finally {
