@@ -151,3 +151,11 @@
 - Tests: extension-erp/src/uisText.test.ts, extension-erp/src/uisView.test.ts, extension-erp/src/panel.test.ts, extension-erp/src/uisOptions.test.ts, extension-erp/src/uisFlow.test.ts, fixtures/make-fake-fixtures.test.ts
 - TDD: required — design.md 2-1 고침 1·2·4②·7·9·10·12, 10-1·10-6. (1) `uisText.ts`: ⑩ `cond.leadLabel` 뺌(`cond.lead`만), ⑪ `dup.lead(report)` 수 없이 '{보고서} 엑셀이 여러 개 있어요.'·환자별 '모두 지웠어요', 설정 `codes.twice` 수 없이, 저장법 `reports.howTo[2]`를 10-6 ★ 셋째 줄로, `reports.suffix` 뺌, `UIS_OPTIONS_FOLDER = 'ERP마감 폴더'`와 맨 위 상자 자리 설명, 진료 0건·이미 적힌 칸 의사랑 첫 줄 두 글 더함. `uisView.ts`는 `dup.lead`에 수를 넘기지 않음. (2) `panel.ts` `askZero`·`askWritten`: 자료원이 의사랑이면 첫 줄만 의사랑 글, 비트는 `FLOW_TEXT` 그대로(지금 panel 시험 기대값 그대로 + 의사랑 새 시험). (3) `uisOptions.ts`: `FOLDER = UIS_FOLDER_TEXT.desktop` 대신 `UIS_OPTIONS_FOLDER`, 표 밑 '-환자별' 줄 뺌, `Send` 정의 뺌. (4) `Send`는 `uisTypes.ts`에서만 내보내고 `uisOptions.ts`·`uisFlow.ts`·`options.ts`가 가져다 씀(uisFlow에 따로 정한 것이 있으면 뺌. 시험은 소스 글자로 'type Send' 한 곳). (5) `fixtures/make-fake-fixtures.test.ts` AC-005.2: 되살림 기대값에 `UIS_FIXTURE_NAMES` → `!fixtures/fake-uisarang/{이름}` 더함(design.md 12-4, 글롭 없음은 그대로). 기능 TASK가 만든 시험(uisText·uisView·uisOptions·uisFlow)의 옛 글 기대값은 새 글로 고친다. 비트 글·비트 시험 기대값은 바꾸지 않는다. 끝에 `npm test -- extension-erp fixtures`·`npm run lint`
 - 차례: Phase 4 (TASK-12·TASK-14 뒤, TASK-15와 함께 — Files 안 겹침)
+
+## TASK-18: 실제 PC 고침 — 예약 아래쪽 표 예약일 날짜 찾기 넓힘·라벨로 대신 보기
+- REQ: REQ-4208
+- AC: AC-4208.1, AC-4208.4
+- Files: helper-erp/src/Erp.Core/Uisarang/UisPatients.cs, helper-erp/src/Erp.Core/Uisarang/UisDay.cs, helper-erp/tests/Erp.Core.Tests/Uisarang/Patients/UisPatients.test.cs, helper-erp/tests/Erp.Core.Tests/Uisarang/Day/UisDayRead.test.cs, helper-erp/tests/uis-patients.dotnet.test.ts, helper-erp/tests/uis-day.dotnet.test.ts
+- Tests: helper-erp/tests/uis-patients.dotnet.test.ts, helper-erp/tests/uis-day.dotnet.test.ts
+- TDD: required — design.md 2-1 고침 15. `UisPatients`에 예약일 날짜 찾기 하나(공개, UisDay.RsvDays도 이것을 씀), `RsvPatientFacts`에 날짜를 찾은 줄이 있는지 표시. 지금 시험 RsvOtherDay의 빈 칸·'내일'·'11/23/2026'·'20261123'·숫자 칸 기대값은 고침 15대로 바뀜(빈 칸·'내일'은 판단에서 빠짐, 나머지는 그날). UisDay: 날짜를 찾은 줄이 없으면 조회일 라벨로 state·from·to. 환자 칸 값은 지금처럼 답·로그에 없음(AC-4209)
+- 차례: TASK-16 뒤(실제 PC 확인 중 고침)

@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-uisarang",
-  "approved_at": "2026-11-24T06:44:11Z",
+  "approved_at": "2026-11-24T07:42:52Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "c00fb05f23a2b51f60daf76cb25cf592b22b08b50b6d4e7ed4b4eebe8c03f403",
+  "spec_sha256": "4de5513cc2d0d7c6bd668732ca05441c0bdc3508924ea742726288cd741d9380",
   "scope": [
     ".gitignore",
     "extension-erp/README.md",
@@ -76,8 +76,10 @@
     "helper-erp/tests/Erp.Core.Tests/ErpCommandTable.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/CodePagesSetup.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/Day/*.test.cs",
+    "helper-erp/tests/Erp.Core.Tests/Uisarang/Day/UisDayRead.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/Folder/*.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/Patients/*.test.cs",
+    "helper-erp/tests/Erp.Core.Tests/Uisarang/Patients/UisPatients.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/Report/*.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/Rules/*.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Uisarang/Sums/*.test.cs",
