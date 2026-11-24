@@ -429,7 +429,8 @@ describe('AC-3611.2 저장 자리: %LOCALAPPDATA%\\Seoseungkwan\\ErpHelper\\ 의
   it('AC-3611.2: Erp.Helper 코드·프로젝트에 기존 도우미 폴더·이름(PrecheckHelper·Precheck.Helper)이 없다', () => {
     const files = filesUnder(ERP_HELPER)
     // spec erp-bit-anywhere AC-3804.3·AC-3805.1·AC-3806.1로 ERP 접속 부품·DLL 미리 불러오기·등록 단계 파일이 더해짐
-    expect(files.sort()).toEqual([CSPROJ, BIT_DB, LOCATOR, LOG, SERVICES, PROGRAM, READ_ONLY, PRELOAD, STAGE].sort())
+    // spec erp-uisarang design.md 4-3(TASK-15)으로 의사랑 부품 UisHelperServices.cs가 더해짐
+    expect(files.sort()).toEqual([CSPROJ, BIT_DB, LOCATOR, LOG, SERVICES, PROGRAM, READ_ONLY, PRELOAD, STAGE, `${ERP_HELPER}/UisHelperServices.cs`].sort())
     for (const file of files) {
       const text = read(file)
       for (const old of OLD_NAMES) expect(text, `${file}: ${old}`).not.toContain(old)
@@ -550,8 +551,38 @@ describe('AC-3801.4 청구 도우미 쪽은 갈래 시작(6754571c) 그대로', 
     expect(run.status, run.output).toBe(0)
   })
 
-  it('AC-3801.4: ERP 명령 표(helper-erp/commands.json)·확장(extension-erp/)도 6754571c 그대로다', () => {
-    const run = gitDiffQuiet(['helper-erp/commands.json', 'extension-erp'])
+  // spec erp-uisarang design.md 12-4(TASK-15): 명령 표는 3-1에서 더한 것만 다르고(JSON으로 견줌), 확장은 AC-4215.1 목록(비트 파일)만 그대로다
+  const UIS_SALES = {
+    type: 'array',
+    optional: true,
+    min: 0,
+    max: 10,
+    items: {
+      type: 'object',
+      fields: {
+        key: { type: 'enum', values: ['carm', 'sono', 'arthro', 'manual', 'eswt', 'pt', 'etc1', 'etc2', 'etc3', 'etc4'] },
+        codes: { type: 'array', min: 1, max: 20, items: { type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' } },
+      },
+    },
+  }
+  const BIT_EXTENSION = ['cells.ts', 'fill.ts', 'settings.ts', 'range.ts', 'rangeView.ts', 'rangeTypes.ts', 'erpday.ts', '__tests__'].map((f) => `extension-erp/src/${f}`)
+
+  it('AC-3801.4: ERP 명령 표(helper-erp/commands.json)는 6754571c와 견주어 spec erp-uisarang design.md 3-1에서 더한 것(closing.source·closing.uisCodes·closing.day sales)만 다르고, 확장(extension-erp/)은 비트 파일(AC-4215.1 목록)만 6754571c 그대로다', () => {
+    const show = spawnSync('git', ['show', `${BASE}:${COMMANDS}`], { cwd: ROOT, encoding: 'utf8' })
+    expect(show.status, `${show.stderr ?? ''}${show.error?.message ?? ''}`).toBe(0)
+    const base = JSON.parse(show.stdout.replace(/^﻿/, '')) as Record<string, unknown>
+    const now = readJson(COMMANDS)
+    const commands = { ...(now.commands as Record<string, Record<string, unknown>>) }
+    expect(commands['closing.source']).toEqual({ patient: false, args: {} })
+    expect(commands['closing.uisCodes']).toEqual({ patient: false, args: {} })
+    delete commands['closing.source']
+    delete commands['closing.uisCodes']
+    const day = structuredClone(commands['closing.day']) as { args: Record<string, unknown> }
+    expect(day.args.sales).toEqual(UIS_SALES)
+    delete day.args.sales
+    expect({ ...now, commands: { ...commands, 'closing.day': day } }).toEqual(base)
+    for (const file of BIT_EXTENSION) expect(existsSync(path.join(ROOT, file)), file).toBe(true)
+    const run = gitDiffQuiet(BIT_EXTENSION)
     expect(run.status, run.output).toBe(0)
   })
 
@@ -852,13 +883,22 @@ describe('AC-3804.3·AC-3805·AC-3806 ERP 접속 부품·받은 파일 표시·�
     const text = code(read(STAGE))
     expect(text).toMatch(/^namespace Erp\.Helper;$/m)
     const values = Object.fromEntries([...text.matchAll(/public const string (\w+) = "([^"]*)";/g)].map((m) => [m[1], m[2]]))
-    expect(values).toEqual({ Find: 'FIND', Load: 'LOAD', Server: 'SERVER', Connect: 'CONNECT', Login: 'LOGIN' })
+    // spec erp-uisarang design.md 4-3(TASK-15): 의사랑 등록 단계 UIS(엑셀 폴더·자료원 파일, 비트 저장 뒤 자료원 파일 지우기)가 더해짐
+    expect(values).toEqual({ Find: 'FIND', Load: 'LOAD', Server: 'SERVER', Connect: 'CONNECT', Login: 'LOGIN', Uis: 'UIS' })
     expect(text).toMatch(/private static volatile string\? current;/)
     expect(text).toMatch(/public static string\? Current => current;/)
     expect(text).toMatch(/public static void Set\(string stage\) => current = stage;/)
     const sets = sources().flatMap((file) => [...code(read(file)).matchAll(/ErpStage\.Set\(ErpStage\.(\w+)\)/g)].map((m) => `${path.basename(file)}:${m[1]}`))
     expect(sets.sort()).toEqual(
-      ['ErpInstallationLocator.cs:Find', 'ErpReadOnlyConnection.cs:Load', 'ErpReadOnlyConnection.cs:Server', 'ErpBitDb.cs:Connect', 'ErpBitDb.cs:Login'].sort(),
+      [
+        'ErpInstallationLocator.cs:Find',
+        'ErpReadOnlyConnection.cs:Load',
+        'ErpReadOnlyConnection.cs:Server',
+        'ErpBitDb.cs:Connect',
+        'ErpBitDb.cs:Login',
+        'UisHelperServices.cs:Uis',
+        'UisHelperServices.cs:Uis',
+      ].sort(),
     )
     // 단계는 기록 파일·크롬 응답에 넣지 않는다
     expect(code(read(LOG))).not.toMatch(/ErpStage/)
@@ -888,8 +928,9 @@ describe('AC-3804.3·AC-3805·AC-3806 ERP 접속 부품·받은 파일 표시·�
     expect(before).not.toMatch(/WriteRegisterError|OpenStandardOutput/)
     const write = methodBody(text, /private static void WriteRegisterError\(string code\)/)
     expectOrder(write, ['try', 'var stage = ErpStage.Current;', '"STEP-" + stage', 'Encoding.ASCII.GetBytes(', 'Console.OpenStandardOutput()', 'catch (Exception)'], 'WriteRegisterError')
-    // 표준 출력을 여는 곳은 이것과 크롬 메시지 고리 둘뿐이고, Main 첫 줄 버림은 그대로
-    expect(text.match(/Console\.OpenStandardOutput\(\)/g)).toHaveLength(2)
+    // 표준 출력을 여는 곳은 이것·의사랑 등록 끝 두 줄(spec erp-uisarang AC-4201.2, WriteRegisterSource)·크롬 메시지 고리 셋뿐이고, Main 첫 줄 버림은 그대로
+    expect(text.match(/Console\.OpenStandardOutput\(\)/g)).toHaveLength(3)
+    expect(methodBody(text, /private static void WriteRegisterSource\(UisFolderKind folder\)/)).toContain('Console.OpenStandardOutput()')
     expect(methodBody(text, /static int Main\(string\[\] args\)/)).toMatch(/^\{\s*Console\.SetOut\(TextWriter\.Null\);/)
   })
 
