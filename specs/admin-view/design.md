@@ -22,7 +22,7 @@
 15. 보이는 탭의 서버 표에는 정해 둔 환자 칸이 없고, 환자 이름·차트가 화면에 나오는 곳은 이 PC 비트에서 읽는 수납일지 장부뿐이다('환자 칸 숨김'). [저장된 숫자 새로고침]은 `stats_days`를 다시 읽기만 한다(기본값 9).
 16. **도우미 0.13.2로 충분**(2026-11-24 조사): `revenue.days` 한 번 31일(`commands.json` maxDays·`RevenueDays.cs:116,149`, 하루씩 읽음 0.3초쯤·달 9초쯤 잼), `stats.rows` 한 번 800일(`loadPlan.ts` `MAX_READ_DAYS`, 조각 하나 1분쯤 어림·잰 적 없음, 명령마다 SQL 150초). 달·12달·24달씩 나눠 읽으면 10년도 된다. 0.13.2는 비트 설치 위치 찾기만 바뀐 판(`3cbb68fb`, 명령·통계·매출 코드 그대로). 31일·800일을 늘리려면 새 판이 든다(이번에는 안 함).
 17. 매출 탭은 따로 없고(`/revenue` → `/stats`) 매출은 통계 [비트에서 불러오기]가 `useStatsRevenue.sync` → `planRevenue`(저장 안 된 날·다 저장 안 된 날 + 어제, 31일 덩어리 새것부터) → `syncRanges` → `save_revenue_range`(그 범위 **날마다 한 줄** upsert — 쉬는 날도 줄이 생겨 다시 읽지 않음)로 한다. 통계는 저장된 날을 거르지 않고 늘 다 읽는다(`stats_coverage`가 0명 날까지 덮은 기간을 적음, 덮음 줄은 넣기만).
-18. 통계·매출 줄은 **원장 계정만** 저장한다(RLS `my_hospital_id()`, 데스크 정책 없음, 데스크는 통계 화면도 못 엶). 서버에는 의원 요양기관번호가 없다(`bit.check`의 `institutionCode`는 청구 화면만 씀).
+18. 통계·매출 줄은 **원장 계정만** 저장한다(RLS `my_hospital_id()`, 데스크 정책 없음, 데스크는 통계 화면도 못 엶) — 저절로 올리기의 데스크 길은 '데스크 계정 올리기'의 정의자 함수로만 쓴다. 서버에는 의원 요양기관번호가 없다(`bit.check`의 `institutionCode`는 청구 화면만 씀).
 19. 확장은 웹 연결을 한 번에 하나만 받고(`E-BRIDGE-BUSY`), 화면은 `useBridge`로 떠 있는 동안 연결을 쥔다. 대시보드 `readBitDays`만 읽는 동안만 쥔다(본보기). 앱 코드에 브라우저 저장소(localStorage 등)가 없다 — '하루 한 번' 본보기는 DB에 날을 적는 `useLocationWatch`.
 20. TASK-6(커밋 `904eb776`): 가장 새 조각이 아닌 조각은 `sunap`·`dropoff`를 뺌, `dropoff`는 달 전체가 읽기 안인 달만·`asOf` = 읽기 끝, `sunap`은 수납일지 Block·물리치료 묶음을 다 읽은 뒤에만, `sunapPct`는 `sunapView.ts`.
 
@@ -98,7 +98,8 @@
 
 ## 2차 사용자가 정한 것 (2차 시안 승인 2026-11-24 — requirements.md '이미 정한 것' 14~19)
 - 2차 시안 **"이대로 승인"**(물을 때 `채울 기간을 줄여도 이미 올라온 숫자는 지우지 않아요`를 함께 보임).
-- 저절로 올리기: 비트 PC에서 그날 처음 열면 어제까지 안 올라온 매출·통계를 뒤에서 올림 · 늘 켜짐(끄기 없음) · 의원 화면에 아무것도 없음 · 수납 마감 안 함 · 보는 중·주인 계정 아니면 안 돎 · 지금 도우미 명령만.
+- 저절로 올리기: 비트 PC에서 그날 처음 열면 어제까지 안 올라온 매출·통계를 뒤에서 올림 · 늘 켜짐(끄기 없음) · 의원 화면에 아무것도 없음 · 수납 마감 안 함 · 보는 중·그 병원 계정 아니면 안 돎 · 지금 도우미 명령만.
+- **"데스크 계정도 올리기 (추천)"**: 그 병원 데스크 계정으로 로그인한 비트 PC에서도 올린다. 데스크는 값을 읽지 못하고 화면은 그대로, 올리기만('데스크 계정 올리기').
 - 채울 기간: 관리자가 의원마다 · `1달`~`10년` 아홉 · 처음 `2달` · 달 단위 · 줄여도 안 지움 · 최근 달부터 · 열 때마다 어제 먼저 + 옛 달 5분쯤.
 - 상태: 의원마다 저장 · 승인 표 `저절로 올림` 칸 · 관리자만 읽음 · 의원 브라우저는 자기 병원만 씀.
 - 의원 비교 달: 모든 의원 기준 가장 이른 달 ~ 지난달(10년까지) · ◀ [연도 ▾] [월 ▾] ▶ · 숫자 없는 의원은 `–` · `· 숫자 있는 {k}곳 합`.
@@ -112,7 +113,7 @@
 5. 연 뒤 **15초** 기다린 뒤, 탭이 보이고 비트 화면이 통로를 안 쓸 때만 돈다. 비트 화면이 열리거나 탭이 숨으면 바로 멈춘다(다음에 열 때 이어서).
 6. **5분** = 첫 도우미 요청부터 5분이 지나면 새 일을 시작하지 않음(하던 요청은 끝냄 — 통계 조각 하나는 1분쯤 어림, 잰 적 없음).
 7. **다른 의원 비트 막기**: 처음 올린 비트 PC의 요양기관번호 SHA-256을 그 병원에 묶고, 다른 번호의 비트 PC에서는 올리지 않고 `E-AUTO-OTHER-BIT`를 적는다(관리자가 다른 의원 PC에서 자기 계정으로 로그인한 경우 등). 번호 글자는 서버에 두지 않는다.
-8. 의원 쪽은 자기 병원 `months`·`through_day` 두 칸만 읽는다(그날 처음인지 알려고). 오류·시각·잡음은 관리자만 읽는다.
+8. 의원 쪽(원장·데스크)은 자기 병원 `months`·`through_day` 두 칸만 읽는다(그날 처음인지 알려고). 오류·시각·잡음은 관리자만 읽는다. 데스크는 저장된 날의 날짜·참거짓만 받는다.
 9. 비트 PC가 아닌 PC(확장·도우미 없음·등록 안 됨)에서는 아무것도 알리지 않는다. 도우미 판이 낡았으면(`E-HELPER-OLD`) 알린다.
 10. 오류 번호 셋(`E-AUTO-MONTHS`·`E-AUTO-UPLOAD`·`E-AUTO-OTHER-BIT`)의 글은 Claude가 정했다('화면 글자').
 11. 상태에 적는 오류는 번호만(글은 관리자 화면이 `lib/errors.ts`에서) — 오류 글·환자 자료가 상태 표로 가지 않게.
@@ -148,6 +149,14 @@
 **이유**: 환자 자료가 의원 PC 밖으로 나가지 않는 지금 규칙(ADR-020)을 그대로 지키고, 숫자 뜻이 통계 탭과 같아진다. 도우미 0.13.2 명령(31일·800일 한도)으로 달마다 나눠 읽을 수 있어 새 판이 없다.
 **대안**: 도우미가 스스로 올리기 — 도우미가 서버에 붙어야 해 ADR-016·020을 바꿈. 서버가 끌어오기 — 비트는 의원 PC에만 있음. 브라우저 저장소에 '오늘 했음' 표시 — 지금 앱은 브라우저 저장소를 쓰지 않고 PC·탭마다 달라짐.
 **트레이드오프**: 의원이 앱을 열어야 올라간다(PC를 안 켜면 날짜가 멈춤). 진료 중 비트 DB에 읽기가 더해진다(5분·한 번에 한 요청·비트 화면이 열리면 멈춤). 다른 탭에서 비트 화면을 막 연 순간과 겹치면 그 화면이 `E-BRIDGE-BUSY`를 볼 수 있다.
+
+## ADR-049 (TASK-20이 ADR-048 다음에 넣는 글)
+### ADR-049: 데스크 계정 올리기 — 값은 못 읽고 자기 병원 줄만 쓰는 정의자 함수
+**맥락**: 2026-11-24 사용자 "데스크 계정도 올리기 (추천)": 비트 PC가 데스크 계정으로 로그인돼 있어도 저절로 올리기가 돌아야 한다. 데스크는 매출·통계 값을 읽지 못해야 한다.
+**결정**: 데스크용 정의자 함수 열하나(계획·잡기·보고, 날짜·참거짓만 주는 표시 넷, 쓰기 넷)를 새 SQL 파일에 더한다. 병원은 함수 안 `my_desk_hospital_id()`로만, 보는 중이면 막음. 표·정책·기본값은 그대로.
+**이유**: upsert는 옛 줄이 SELECT 정책을 지나야 해 RLS 쓰기 정책으로는 읽기까지 열린다. 표 기본값도 데스크에게 `null`이다.
+**대안**: 데스크에 RLS 읽기·쓰기 정책 — 값이 읽힘. 데스크는 올리지 않음 — 비트 PC가 데스크로만 켜진 의원은 아무것도 안 올라감.
+**트레이드오프**: 지금 저장 함수(`save_revenue_range`)를 데스크용으로 한 벌 더 두어, 앞으로 저장 규칙을 바꾸면 두 곳을 고쳐야 한다. 데스크 세션이 그 병원 매출·통계 줄을 쓸 수 있다('위험').
 
 ## 병원별 표 (보는 중에 무엇이 되나)
 '보기 ○' = 정책 둘(보는 의원 줄 읽기 + 보는 중 그 의원만·쓰기 없음). '보기 ×' = restrictive 하나(보는 중 아무 줄도·쓰기 없음). '함수로만' = 사용자 표 권한·정책이 없어 건드리지 않음.
@@ -853,6 +862,39 @@ TASK-6 일꾼 보고(커밋 `904eb776`): 긴 기간을 여러 조각으로 읽�
 - `useCompareData`(TASK-15): `readCompareFirstMonth()`를 화면을 여는 때 한 번(지역과 상관없이) → `compareMonths` → `ComparePickers`. 의원마다 읽는 기간은 `compareRanges(고른 달)` 그대로(옛 달도 두 달·12달 — `admin_rows`의 400일 한도 안).
 - 몇 번까지 받나 셈(TASK-13·14, TASK-6 보고 4): 달 줄 `dropoff.lines`의 `average`·`drop`은 그 달·그 묶음 하나의 값이라 **더하거나 평균 내지 않는다**. 비율은 늘 수(`n`·`atLeast[]`·`ten`·`once`)에서 새로 센다(3번 이상 = `atLeast[2] ÷ n`, 1번 = `once ÷ n`, 2번 = (`atLeast[1]` − `atLeast[2]`) ÷ `n`). 묶음·달을 합칠 일이 생기면 수를 더한 뒤 나눈다. 평균 횟수는 그 달 그 묶음 하나일 때만 그 줄 값을 쓴다.
 
+## 데스크 계정 올리기 (TASK-20 SQL · TASK-18 브라우저 — 사용자 "데스크 계정도 올리기 (추천)")
+조사: 데스크 계정(`hospital_members`, `my_desk_hospital_id()` — 승인된 병원의 데스크 메일이고 원장이 아님)은 매출·통계 표에 읽기·쓰기 정책이 없고(`20261118100000_desk_accounts.sql`은 업무일지·수납·예약·처방 묶음만), 그 표들의 `hospital_id` 기본값은 `my_hospital_id()`(데스크면 `null`)다. 데스크는 `sunap_settings`·`stats_rx_groups`는 읽을 수 있다(묶음 정의는 지금 함수로 읽음).
+
+**고른 길: 정의자 함수(SECURITY DEFINER). RLS 쓰기 정책은 안 씀.**
+- RLS 쓰기 정책을 데스크에 열면: (1) 지금 저장은 PostgREST upsert(`insert … on conflict do update`)인데, 이것은 부딪친 옛 줄이 **SELECT 정책을 지나야** 해서 데스크에게 읽기를 열어야 한다 — 사용자 조건 '값을 읽지 못함'과 부딪친다. (2) 표 기본값 `hospital_id = my_hospital_id()`가 데스크에게 `null`이라 기본값을 바꿔야 한다(더하기만이 아님). (3) 저장된 날 거르기(`planRevenue`·`savedMark`·`stats_coverage`)도 줄을 읽어야 한다.
+- 정의자 함수는 병원을 함수 안에서 `my_desk_hospital_id()`로만 정하고(병원 id 인자 없음), 보는 중이면 막고, 돌려주는 것은 없음(쓰기) 또는 **날짜·참거짓만**(표시)이다. 표 제약(판 번호·크기)·트리거('덜 된 줄이 다 된 줄을 덮지 않음')는 정의자로 써도 그대로 걸린다. 새 함수만 더하고 표·정책·기본값·지금 함수는 하나도 고치지 않는다.
+- 원장 길은 그대로 둔다(통계 탭·저절로 올리기 모두 지금 RLS 저장). 데스크 함수는 원장이 부르면 42501이다(원장은 `my_desk_hospital_id()`가 `null`).
+
+`supabase/migrations/20261124020000_desk_upload.sql`(TASK-20, `20261124010000_admin_sync.sql` 다음에 붙임). 모든 함수 처음: `h := public.my_desk_hospital_id()`, `h is null or public.admin_view_hospital_id() is not null` → 42501(계획 함수만 줄 없음). `security definer set search_path = ''`, `revoke … from public, anon`, `grant execute … to authenticated`.
+
+| 함수 | 하는 일 |
+|---|---|
+| `desk_upload_plan() returns table (months smallint, through_day date)` | `my_auto_upload_plan()`과 같은 값을 데스크 병원으로(계획 줄 없으면 2, 상태 줄 없으면 `null`) |
+| `desk_claim_upload(p_tab uuid, p_bit_mark text) returns boolean` | `claim_auto_upload`와 같은 규칙(표시 `null` 허락·모양 검사·`bit_mark` 묶기·다르면 `E-AUTO-OTHER-BIT`·7분 잡음)을 데스크 병원 상태 줄에 — 원장 탭과 같은 줄이라 둘 중 한 곳만 잡는다 |
+| `desk_report_upload(p_tab uuid, p_through date, p_filled_from date, p_error text, p_done boolean) returns void` | `report_auto_upload`와 같은 검사·쓰기(잡은 탭만) |
+| `desk_sales_marks(p_from date, p_to date) returns table (day date, day_codes boolean, unconfirmed boolean, has_rough boolean)` | 그 병원 `sales_days` 기간 안 줄의 표시만(`has_rough = rough_total is not null`). 금액·수 없음 |
+| `desk_stats_day_marks(p_from date, p_to date) returns table (day date, partial boolean, has_sunap boolean)` | `stats_days` 표시만(`payload ? 'sunap'`) |
+| `desk_stats_month_marks(p_from date, p_to date) returns table (month date, partial boolean, dropoff_as_of date)` | `stats_months` 표시만(`(payload -> 'dropoff' ->> 'asOf')::date`) |
+| `desk_stats_coverage(p_from date, p_to date) returns table (from_day date, to_day date)` | `stats_coverage`에서 기간과 겹치는 줄의 두 날만 |
+| `desk_save_revenue_range(p_from date, p_to date, p_days jsonb, p_day_codes jsonb) returns void` | 지금 `save_revenue_range`(`20261115000000_sales_day_rough.sql:34-75`)의 검사·upsert 칸·코드 줄 바꿈을 글자 그대로 옮기고, 넣는 줄마다 `hospital_id = h`, 지우는 것도 `hospital_id = h` |
+| `desk_upsert_stats_months(p_rows jsonb) returns void` | 줄마다 `month, partial, payload, sections`를 `hospital_id = h`, `source = 'bit'`로 `insert … on conflict (hospital_id, month) do update`(바꾸는 칸 = 지금 PostgREST upsert가 보내는 칸) |
+| `desk_upsert_stats_days(p_rows jsonb) returns void` | 같은 꼴로 `day, partial, payload` → `stats_days` |
+| `desk_add_stats_coverage(p_from date, p_to date) returns void` | `stats_coverage`에 (`h`, 시작, 끝, `'bit'`) 한 줄(800일 이하·시작 ≤ 끝, 아니면 22023) |
+
+- 표시 함수 넷은 기간 3,700일 이하(10년 + 여유)·시작 ≤ 끝, 아니면 22023.
+
+브라우저(TASK-18):
+- `src/lib/storage/deskUpload.ts`(새): `readDeskUploadPlan`·`deskClaimUpload`·`deskReportUpload`·`readDeskSalesMarks`(→ 원장 `readSavedSalesDays`와 같은 모양 — `roughTotal`은 `has_rough`면 표시용 0, 아니면 `null`: `savedMark`는 숫자인지만 봄)·`readDeskStatsMarks`·`readDeskCoverage`(→ `readCoverage`와 같은 합친 기간).
+- `src/lib/storage/stats.ts` `saveStats(input, { desk: true })`: 지금 검사(`allChecked`·`checkedDay`·`fitDay`·`monthSectionsPicker`·`coverageRow`)와 묶음 나누기를 그대로 쓰고 보내는 곳만 rpc 셋으로. 데스크는 `source = 'bit'`만(파일이면 거부).
+- `src/lib/storage/revenue.ts` `createRevenueStore(client, { desk: true })`: `saveRange`가 같은 인자로 `desk_save_revenue_range`를 부름.
+- 돌리는 쪽: `UploadAccess`(계획·잡기·보고·표시 읽기 셋·저장 둘) 하나를 받아 돈다. 원장 = TASK-17 함수 + 지금 읽기·저장, 데스크 = 위 함수들. 계획·차례·한도는 같다.
+- 브라우저 쪽을 TASK-20이 아니라 TASK-18에 두는 까닭: 돌리는 쪽(TASK-18)이 이 함수들을 불러야 하는데 같은 Phase의 새 파일은 서로 부르지 않는다. rpc는 이름으로만 부르므로 TASK-18 시험은 가짜 `supabaseBrowser`로 SQL 없이 돈다.
+
 ## 화면 글자 (시안 `docs/mockups/admin-view/notes.md` '화면 글자' 그대로 — 사용자 2026-11-24 "이대로 승인")
 > 아래 '시안 글'은 `notes.md` 35~57줄(2차로 줄 번호가 밀림)을 한 글자도 바꾸지 않고 옮긴 것이다(글자 안 `{…}`는 채울 값). 이 글과 시안 `index.html`이 다르면 `index.html`의 `T` 글이 이긴다(같은 글로 확인함 2026-11-24).
 
@@ -925,6 +967,7 @@ TASK-6 일꾼 보고(커밋 `904eb776`): 긴 기간을 여러 조각으로 읽�
 - `plan.md` §2-1 끝에 "- 관리자는 다른 승인된 의원 화면을 읽기만 하며 볼 수 있다(예약·환자·청구 빼고, 볼 때마다 기록, 그 의원에는 알리지 않음). 관리자 탭 '의원 비교'에서 지역·달로 의원을 견준다 **(사용자, 2026-11-24, ADR-046·047)**", §5 DB 표에 `admin_views`·`hospital_regions` 줄.
 
 - (2차, TASK-17) `docs/ADR.md` 끝(ADR-047 다음)에 'ADR-048' 글. `docs/ARCHITECTURE.md` DB 표에 `auto_upload_plans`·`auto_upload_status` 두 줄(함수로만, ADR-048)과 브라우저 쪽에 "저절로 올리기: 원장 계정 비트 PC 탭이 지금 통계 저장 길로 매출·통계를 뒤에서 올림(ADR-048)" 한 줄. `CLAUDE.md`·`plan.md`는 고치지 않는다(서버 경로·환자 자료 규칙이 그대로라서).
+- (데스크, TASK-20) `docs/ADR.md` 끝(ADR-048 다음)에 'ADR-049' 글. `docs/ARCHITECTURE.md`에 "데스크 계정은 매출·통계를 정의자 함수로 쓰기만 한다(값 못 읽음, ADR-049)" 한 줄.
 ## 시험 계획 (시험 이름에 AC ID)
 | 파일 | 보는 것 |
 |---|---|
@@ -952,6 +995,8 @@ TASK-6 일꾼 보고(커밋 `904eb776`): 긴 기간을 여러 조각으로 읽�
 | `src/components/admin/compare/useCompareData.test.tsx` (TASK-15) | AC-8023.4: 가장 이른 달 한 번 읽기·지역 바꿔도 다시 안 읽음·실패 카드 |
 | `src/lib/autoUpload/plan.test.ts`·`src/components/autoUpload/runUpload.test.ts`·`AutoUpload.test.tsx`·`src/components/stats/loadPlan.test.ts` (TASK-18) | AC-8021.1~7·9~11: 조건마다 아무것도 안 함(보는 중·쿠키·숨은 탭·15초 전·원장 아님·비트 PC 아님), 할 일 목록(어제 먼저·최근 달 먼저·저장된 날 빼기·새 조각/옛 조각 경계·800일·달째), 그날 두 번째는 서버 읽기만, 잠금·잡음 못 받으면 멈춤, 5분 가짜 시계, 숨기·화면 열기로 끊기, 실패 번호 계속/멈춤, 진행 보고 값, 설정 다 읽기 전 통계 요청 없음, `partSave` 새 규칙(옛 조각 `sunap` 남음·석 달 지켜본 달만 `dropoff`) |
 | `src/components/admin/UploadCells.test.tsx`·`AdminApplications.test.tsx` (TASK-19) | AC-8022.2~5: 칸 차례·폭·안내 줄, 채울 기간 바꾸기(한 번 부름·완료 줄 둘·실패 카드), 상태 칸 네 모양, 넷 다 온 뒤 그림 |
+| `supabase/deskUpload.rls.test.ts` (TASK-20) | AC-8024.1~5: 세 파일 차례로(두 번), 함수 열하나의 원장·데스크·대기 데스크·남·보는 중 결과, 데스크 바로 `select` 0줄 그대로, 표시 함수 칸 목록이 정해 둔 것뿐, 데스크 쓰기가 자기 병원 줄만·다른 병원 그대로, 덜 된 줄이 다 된 줄을 못 덮음, 원장·데스크 탭이 같은 잡음을 다툼 |
+| `src/lib/storage/deskUpload.test.ts`·`src/lib/storage/stats.test.ts`·`src/lib/storage/revenue.test.ts`·`src/components/autoUpload/runUpload.test.ts` (TASK-18) | AC-8024.6~7: 데스크 길은 같은 검사 뒤 rpc, 원장 부르기 모양 그대로, 데스크로 돌 때 값 읽기 부르기 없음 |
 | `e2e/adminView.spec.ts` (TASK-16, 사용자가 SQL을 붙인 뒤) | 진짜 Supabase에서 머리 `x-ssk-view`가 REST·RPC에서 먹는지, 보는 중 쓰기가 막히는지, 바구니 파일 받기 — 시험 계정 둘(관리자·다른 승인 의원) |
 - 탭마다 '보는 중' 시험(`viewMode.test.tsx`)은 화면 부품을 `ViewingProvider viewing={가짜}` 안에서 그려 '탭마다 읽기만' 표의 단추가 없고 저절로 쓰기 흉내가 불리지 않는지, `viewing={null}`이면 지금과 같은지 본다. 지금 그 탭 시험은 고치지 않고 지나야 한다.
 
@@ -974,6 +1019,7 @@ TASK-6 일꾼 보고(커밋 `904eb776`): 긴 기간을 여러 조각으로 읽�
 - **덜 지켜본 '몇 번까지 받나'**: 최근 석 달의 달 `dropoff`는 아직 받는 중인 사람이 빠져 3번 이상 비율이 낮게 나온다(통계 탭과 같은 규칙). 그 달들은 그날 처음 열 때마다 다시 읽고, 석 달이 지나면 굳는다. 처음 값인 지난달 비교도 그렇다.
 - **저장 크기**: 10년을 채우면 의원마다 날 줄 3,650개쯤(+ 달 줄 120개). 지금 날 줄 크기로 의원마다 수십 MB까지 될 수 있다(Supabase 무료 500MB). 채울 기간을 길게 잡은 의원이 많아지면 크기를 본다.
 - **24달보다 옛 저장된 달**: TASK-6 전에 저장된 옛 달은 다시 읽으면 `after30`·`once`가 비워질 수 있어 합계를 채우지 않는다 — 그 달 Block 전환·몇 번까지 받나는 `–`로 남는다(범위 밖).
+- **데스크 세션이 통계·매출 줄을 씀**: 이제 데스크 계정(데스크 PC에 로그인된 세션)이 자기 병원의 `sales_days`·`sales_day_codes`·`stats_days`·`stats_months`·`stats_coverage` 줄을 정의자 함수로 넣고 고칠 수 있다. 값을 읽지는 못하지만, 데스크 세션이 잘못 쓰이면(남이 데스크 PC를 쓰거나 데스크 비밀번호가 새면) 그 병원 숫자를 덮어쓸 수 있다. 줄이는 것: 자기 병원만·보는 중 막음·표 모양·크기 검사·'다 된 줄을 덜 된 줄이 덮지 않음' 트리거·값은 그 PC 비트에서 온 것만(같은 Worker 셈). 덮어쓴 숫자는 원장이 통계 탭에서 다시 불러오면 바로잡힌다. 데스크 저장 함수는 지금 `save_revenue_range`를 옮긴 한 벌이라 저장 규칙을 바꿀 때 두 곳을 고쳐야 한다.
 - 다른 갈래와 겹칠 수 있는 파일: `CLAUDE.md`·`docs/ADR.md`(번호 046·047)·`docs/ARCHITECTURE.md`·`plan.md`·`src/types/errors.ts`·`src/lib/errors.ts`·`src/components/shell/AppShell.tsx`·`src/app/(app)/layout.tsx`·`src/lib/supabase/browser.ts`·`server.ts`·`src/components/admin/AdminApplications.tsx`·통계 부품. 합칠 때 앞 갈래를 먼저 받고 번호·목록만 맞춘다.
 
 ## 물었던 것 (2026-11-24 시안 승인 때 닫음)
@@ -985,7 +1031,7 @@ TASK-6 일꾼 보고(커밋 `904eb776`): 긴 기간을 여러 조각으로 읽�
 
 ## 배포 순서
 1. 모두 합친 뒤 전체 검사(ssk-finish-check)·화면 확인·독립 검토 한 번.
-2. 사용자: Supabase SQL Editor에 **두 파일을 이 차례로** 붙여 넣고 Run(ssk-supabase-sql) — ① `supabase/migrations/20261124000000_admin_view.sql` 전체 → ② `supabase/migrations/20261124010000_admin_sync.sql` 전체. ②는 ①의 함수(`my_hospital_id()`·`admin_view_hospital_id()`)를 쓰므로 ①이 먼저다. 멈추면 그 글을 Claude에게 알린다. Claude는 실제 Supabase에 붙지 않는다.
+2. 사용자: Supabase SQL Editor에 **세 파일을 이 차례로** 붙여 넣고 Run(ssk-supabase-sql) — ① `supabase/migrations/20261124000000_admin_view.sql` 전체 → ② `supabase/migrations/20261124010000_admin_sync.sql` 전체 → ③ `supabase/migrations/20261124020000_desk_upload.sql` 전체. ②는 ①의 함수(`my_hospital_id()`·`admin_view_hospital_id()`)를, ③은 ①·②의 함수·표(`admin_view_hospital_id()`·`auto_upload_*`)를 쓰므로 이 차례다. 멈추면 그 글을 Claude에게 알린다. Claude는 실제 Supabase에 붙지 않는다.
 3. SQL을 붙인 뒤 E2E `e2e/adminView.spec.ts`를 한 번(머리·쓰기 막기·저절로 올리기 함수 확인, `.env.local` 시험 계정).
-4. 웹 배포는 사용자가 말할 때만(ssk-deploy, 운영 갈래 `origin/feat-dashboard-saved`). **SQL 둘 → 웹** 차례(웹이 먼저 올라가면 저절로 올리기 rpc가 없어 그날은 아무것도 안 올라가고, 관리자 화면 승인 표가 읽기 오류다). 도우미·확장 새 판은 없다(지금 0.13.2로 됨).
+4. 웹 배포는 사용자가 말할 때만(ssk-deploy, 운영 갈래 `origin/feat-dashboard-saved`). **SQL 셋 → 웹** 차례(웹이 먼저 올라가면 저절로 올리기 rpc가 없어 그날은 아무것도 안 올라가고, 관리자 화면 승인 표가 읽기 오류다). 도우미·확장 새 판은 없다(지금 0.13.2로 됨).
 5. 배포 뒤 의원 PC마다 열려 있던 앱 탭을 한 번 새로 고침('위험' 옛 화면). 채울 기간 처음 값은 모든 의원 `2달`이라 첫날은 9월부터 채운다(관리자가 늘리면 그다음 열기부터).

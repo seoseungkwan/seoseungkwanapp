@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "admin-view",
-  "approved_at": "2026-11-24T00:40:23Z",
+  "approved_at": "2026-11-24T00:57:40Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "a421f01c7d2ce4d5598207608f87fa34048df54d9626e937cb710c055b1c00c6",
+  "spec_sha256": "9e2506a133b421d941c054ac13cdd05cdc4fc9c4973a59a484de0e267c043dea",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -169,6 +169,10 @@
     "src/lib/storage/adminRows.ts",
     "src/lib/storage/autoUpload.test.ts",
     "src/lib/storage/autoUpload.ts",
+    "src/lib/storage/deskUpload.test.ts",
+    "src/lib/storage/deskUpload.ts",
+    "src/lib/storage/revenue.test.ts",
+    "src/lib/storage/revenue.ts",
     "src/lib/storage/staff.test.ts",
     "src/lib/storage/staff.ts",
     "src/lib/storage/stats.test.ts",
@@ -190,8 +194,10 @@
     "src/workers/statsClient.ts",
     "supabase/adminSync.rls.test.ts",
     "supabase/adminView.rls.test.ts",
+    "supabase/deskUpload.rls.test.ts",
     "supabase/migrations/20261124000000_admin_view.sql",
     "supabase/migrations/20261124010000_admin_sync.sql",
+    "supabase/migrations/20261124020000_desk_upload.sql",
     "supabase/stats-rls.test.ts",
     "supabase/statsSections.rls.test.ts"
   ]

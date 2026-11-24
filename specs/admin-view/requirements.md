@@ -1,7 +1,7 @@
 # 요구사항: 다른 의원 보기 · 의원 비교 (관리자만)
 
 > 기능 ID: `admin-view` · 형식: `### REQ-8001: 제목` 아래 `- AC-8001.1: Given/When/Then`. 시험 이름에 AC ID를 넣는다.
-> 번호: REQ-8001~8023(80xx는 저장소 모든 갈래의 specs에서 안 쓴 묶음, 2026-11-24 `git grep`으로 확인). ADR은 046·047·048(지금 `docs/ADR.md` 끝이 045). 2차(저절로 올리기·10년, REQ-8019~8023)는 Phase 1 뒤에 더한 것이라 SQL을 새 파일 `20261124010000_admin_sync.sql`에 둔다.
+> 번호: REQ-8001~8024(80xx는 저장소 모든 갈래의 specs에서 안 쓴 묶음, 2026-11-24 `git grep`으로 확인). ADR은 046·047·048·049(지금 `docs/ADR.md` 끝이 045). 2차(저절로 올리기·10년, REQ-8019~8023)는 Phase 1 뒤에 더한 것이라 SQL을 새 파일 `20261124010000_admin_sync.sql`에 둔다.
 > **MVP 모드**(사용자 규칙: 계획 최소 · Phase별 step · 같은 Phase는 병렬 · 검토는 마지막 한 번). SQL 파일 하나(새 표 둘 · 함수 · 정책) · 새 서버 경로 없음 · 새 패키지 없음 · 도우미·확장 새 판 없음.
 > **화면 글자는 승인된 시안 `docs/mockups/admin-view`(`index.html`·`notes.md`, 사용자 2026-11-24 "이대로 승인") 그대로**. 자리·모양도 시안이 이긴다. 시안 글은 design.md '화면 글자'에 한 글자도 바꾸지 않고 옮겼다. **폰 전용 모양은 만들지 않는다**(사용자 규칙 2026-11-21, 시안 사진도 PC 너비만).
 > 근거: 사용자 인터뷰(2026-11-24, 아래 '이미 정한 것'), 코드 조사(design.md '조사로 안 것').
@@ -39,6 +39,7 @@
 17. **상태**는 의원마다 저장하고 '승인' 표 `저절로 올림` 칸에 시안 글 그대로(마지막으로 올라온 날 · 어디까지 채웠나 · 마지막 오류 번호와 글) 보인다. 상태를 읽는 것은 관리자만이고, 의원 브라우저는 자기 병원 상태만 쓴다.
 18. **의원 비교 달 10년**: '지난 12달' 대신 모든 승인된 의원 가운데 저장된 숫자가 있는 가장 이른 달(지역과 상관없음, 10년 앞까지)부터 지난달까지(이번 달 뺌). 고르기는 ◀ [연도 ▾] [월 ▾] ▶. 그달 숫자가 없는 의원은 줄을 두고 `–`, 매출·환자 수 아래 줄에 `· 숫자 있는 {k}곳 합`.
 19. **신청자·이메일** 한 칸 두 줄 — '승인'·'대기'·'거절' 탭 모두.
+20. **"데스크 계정도 올리기 (추천)"**(2026-11-24): 의원 비트 PC가 **데스크 계정**으로 로그인돼 있어도 저절로 올리기가 돈다(15의 '주인 계정'에 그 병원 데스크 계정도 든다). 데스크 계정은 여전히 매출·통계 **값을 읽지 못하고** 화면도 지금 그대로이며 올리기만 한다. 자기 병원 줄만 쓰고, 다른 병원·보는 중에는 쓰지 않는다. SQL은 더하기만 한다(새 파일 `20261124020000_desk_upload.sql`).
 
 ## 요구사항
 
@@ -175,7 +176,7 @@
 - AC-8020.4: Given 오류 목록, When 보면, Then `E-AUTO-MONTHS`·`E-AUTO-UPLOAD`·`E-AUTO-OTHER-BIT` 세 줄이 design.md '화면 글자' 오류 표 글자 그대로다
 
 ### REQ-8021: 저절로 올리기 — 돌리기 (`src/components/autoUpload/` · `src/lib/autoUpload/plan.ts` · 비트 통로 차례 `src/components/claim/bitLane.ts`)
-- AC-8021.1: Given 앱 틀, When 열리면, Then `AutoUpload`는 아무것도 그리지 않고(빈 자리, 알림·표시 없음) 다음이 모두 참일 때만 일을 한다: 보는 중이 아님(`useReadOnly()` 거짓이고 보기 쿠키(`readViewKey()`)도 없음), 탭이 보이는 중(`document.visibilityState === 'visible'`), 연 뒤 15초가 지남, 비트 통로를 쓰는 화면이 없음(`bitLane`). 그다음 `readMyUploadPlan()`이 `null`(원장 아님·데스크·승인 전·보는 중)이면 멈추고 도우미에 붙지 않는다
+- AC-8021.1: Given 앱 틀, When 열리면, Then `AutoUpload`는 아무것도 그리지 않고(빈 자리, 알림·표시 없음) 다음이 모두 참일 때만 일을 한다: 보는 중이 아님(`useReadOnly()` 거짓이고 보기 쿠키(`readViewKey()`)도 없음), 탭이 보이는 중(`document.visibilityState === 'visible'`), 연 뒤 15초가 지남, 비트 통로를 쓰는 화면이 없음(`bitLane`). 그다음 `readMyUploadPlan()`(원장)이 줄을 주면 원장 길, 아니면 `readDeskUploadPlan()`(데스크, REQ-8024)이 줄을 주면 데스크 길로 하고, 둘 다 `null`(승인 전·다른 계정·보는 중)이면 멈추고 도우미에 붙지 않는다
 - AC-8021.2: Given 채울 기간·`through_day`·저장된 매출 날(`readSavedSalesDays`)·통계 덮은 날(`readCoverage`)·통계 표시(`readStatsMarks`)·그 의원 묶음 정의(처방 묶음, 수납일지 Block·물리치료 묶음), When `uploadPlan(…)`을 부르면, Then 일 목록은 **어제 묶음 먼저**(어제가 든 매출 덩어리 + 어제까지 저장하는 통계 '새 조각'), 그다음 남은 일을 끝날이 늦은 것부터(최근 달 먼저)다. 매출은 지금 `planRevenue`·`savedMark` 그대로(31일 이하 덩어리, 저장 안 된 날·다 저장 안 된 날만, 어제는 그날 처음일 때만 다시). 통계는 design.md '저절로 올리기 — 통계 조각' 규칙대로 **할 달**(덮지 않은 날이 있는 달 · 최근 24달 안에서 Block·물리치료 묶음이 있는데 `sunap` 없는 날 줄이 있는 달 · 최근 24달 안에서 처방 묶음이 있는데 다 끝난 달의 `dropoff`가 없거나 `asOf` < min(그 달 + 석 달 끝, 어제)인 달)을 골라, 최근 24달 안의 할 달은 '새 조각' 하나(저장 = 가장 이른 할 달 1일 ~ 어제, 읽기 = 저장 앞 31일 ~ 어제)로, 그보다 옛 할 달은 이어진 12달 이하 '옛 조각'(저장 = 그 달들, 읽기 = 앞 31일 ~ 저장 끝 달 + 석 달의 끝 · 어제를 넘지 않음)으로 묶는다. 저장은 늘 달째(지금 달만 어제까지)이고 읽기는 800일 이하다. 할 일이 없으면 빈 목록이다
 - AC-8021.3: Given 빈 목록이고 `through_day` ≥ 어제, When 돌면, Then 도우미에 붙지 않고 rpc도 더 부르지 않는다(그날 두 번째 열기부터는 서버 읽기 셋뿐). 빈 목록이지만 `through_day` < 어제면 잡고(`claimUpload`) 상태만 알린다
 - AC-8021.4: Given 할 일, When 돌면, Then 같은 브라우저 다른 탭과는 `navigator.locks.request('ssk-auto-upload', { ifAvailable: true })`로, 다른 PC와는 `claimUpload(탭 id, 비트 표시)`로 한 곳만 돈다(못 잡으면 아무것도 안 함). 통로는 `readBitDays`처럼 스스로 붙고(hello → `bit.check` 등록·모든 단계 ok) 비트 표시 = `institutionCode`의 SHA-256 16진 글이다. 요양기관번호를 못 찾은 PC(`institutionCode` 없음, precheck AC-005.13 — 번호 없이 등록한 의원)도 올린다: 표시는 `null`(묶기·검사 없이 잡기만). 확장·도우미가 없거나 등록 안 된 PC면 알리지 않고 멈춘다. hello가 판 오류(`E-HELPER-OLD`)면 그 번호를 알린다
@@ -199,6 +200,15 @@
 - AC-8023.2: Given 달 고르기, When 그리면, Then ◀ [연도 ▾] [월 ▾] ▶(읽기용 이름 `달 고르기`·`연도`·`월`·`앞 달`·`다음 달`)이고 옆 글 `{YYYY년 M월}부터 {YYYY년 M월}까지 고를 수 있어요 · 저장된 숫자가 있는 달, 10년까지`가 있다. 연도를 바꿀 때 그 해에 없는 달이면 가장 가까운 고를 수 있는 달로 가고, 첫 달에서 ◀, 지난달에서 ▶가 막힌다. 처음 값은 지난달이다
 - AC-8023.3: Given 고른 달에 숫자가 없는 의원이 있는 자료, When 순위·월급·매출 표를 그리면, Then 그 의원 줄은 남고 칸은 `–`(순위 표에서 늘 아래)이며, 매출·환자 수 아래 줄은 `전체 {n}곳` 뒤에 `· 숫자 있는 {k}곳 합`이 붙고 합·`의원 평균`은 숫자 있는 의원만 센다(모두 있으면 덧붙임 없음)
 - AC-8023.4: Given 비교 화면, When 열면, Then `readCompareFirstMonth()`를 한 번 읽어 달 고르기에 넘기고(지역을 바꿔도 다시 읽지 않음), 실패하면 지금 화면 오류(`E-PAGE-FAILED`)와 같은 자리에 [다시 불러오기]다. 고른 달이 아무리 옛 달이어도 의원마다 읽는 기간은 `compareRanges(그 달)` 그대로다(한 번에 두 달·휴일 칸 12달)
+
+### REQ-8024: 데스크 계정 올리기 (`supabase/migrations/20261124020000_desk_upload.sql` · `src/lib/storage/deskUpload.ts` — 사용자 "데스크 계정도 올리기 (추천)")
+- AC-8024.1: Given 세 SQL 파일을 차례로 붙인 DB, When 함수 열하나(design.md '데스크 계정 올리기' 표)를 보면, Then 모두 정의자·`search_path = ''`·`authenticated`만 부를 수 있고, 새 표·새 정책·표 권한·기본값 바꿈이 없다(더하기만 — 옛 RLS 시험과 TASK-1·TASK-17 시험이 고치지 않고 지난다). 데스크 계정이 `sales_days`·`sales_day_codes`·`stats_days`·`stats_months`·`stats_coverage`를 바로 `select`하면 지금처럼 0줄이고, `my_auto_upload_plan()`은 지금처럼 줄이 없다
+- AC-8024.2: Given 승인된 병원 HA의 데스크 계정, When `desk_upload_plan()`·`desk_claim_upload(탭, 표시)`·`desk_report_upload(…)`를 부르면, Then HA에 대해 원장 함수(AC-8019.4·AC-8019.5)와 같은 값·잡음·비트 표시 묶기·검사를 한다(원장 탭과 데스크 탭이 같은 잡음을 다툼 — 한 곳만 `true`). 원장·대기 병원 데스크·데스크 아님·보는 중(요청 머리)이면 `desk_upload_plan()`은 줄이 없고 나머지는 42501이다. 병원 id를 받는 인자가 없어 다른 병원 줄은 어떤 부르기로도 바뀌지 않는다
+- AC-8024.3: Given HA 데스크, When `desk_sales_marks(시작, 끝)`·`desk_stats_day_marks`·`desk_stats_month_marks`·`desk_stats_coverage`를 부르면, Then HA 줄의 **날짜와 참·거짓만** 온다(칸은 design.md 표 그대로 — 매출은 `day, day_codes, unconfirmed, has_rough`, 통계 날은 `day, partial, has_sunap`, 달은 `month, partial, dropoff_as_of`, 덮음은 `from_day, to_day`). 금액·환자 수·payload·sections는 오지 않는다. 기간이 거꾸로이거나 3,700일을 넘으면 22023이다
+- AC-8024.4: Given HA 데스크, When `desk_save_revenue_range(시작, 끝, 날 줄, 코드 줄)`을 부르면, Then 지금 `save_revenue_range`와 같은 검사(31일 이하·날 수 = 날 줄 수·날이 범위 안·코드 줄 9,300개 이하)를 하고 HA의 `sales_days` upsert·그 범위 `sales_day_codes` 바꿈을 하며 아무것도 돌려주지 않는다. 다른 병원 줄은 그대로다
+- AC-8024.5: Given HA 데스크, When `desk_upsert_stats_months(줄들)`·`desk_upsert_stats_days(줄들)`·`desk_add_stats_coverage(시작, 끝)`을 부르면, Then HA 줄만 `source = 'bit'`로 넣거나 고치고(지금 표 제약 — 판 번호 2·크기 한도 — 과 '덜 된 줄이 다 된 줄을 덮지 않음' 트리거가 그대로 걸림) 아무것도 돌려주지 않는다. 덮음은 800일 이하만이다
+- AC-8024.6: Given 가짜 `supabaseBrowser`, When `deskUpload.ts` 함수·`saveStats(입력, { desk: true })`·`createRevenueStore(client, { desk: true }).saveRange`를 부르면, Then 지금과 **같은 줄 검사·크기 줄이기·묶음 나누기**를 한 뒤 표 대신 위 rpc를 부르고(원장 부르기 모양은 지금 그대로 — 지금 `stats.test.ts`·`revenue.test.ts`가 고치지 않고 지남), 데스크 표시 함수 답을 원장 읽기와 같은 모양(`SavedRevenueDay` 표시 칸·덮은 기간·통계 표시)으로 바꾼다. 실패 번호는 원장 길과 같다(`E-STATS-SAVE-FAILED`·`E-REVENUE-SAVE-FAILED`·`E-STATS-READ-FAILED`)
+- AC-8024.7: Given 데스크 계정으로 연 비트 PC, When 저절로 올리기가 돌면, Then 원장 길과 같은 계획·차례·5분·멈춤·보고(AC-8021.2~11)를 데스크 함수로 한다. 데스크 화면(탭·메뉴·통계 숨김)은 바뀌지 않고, 데스크 브라우저가 서버에서 매출·통계 값을 읽는 부르기는 하나도 없다(가짜로 부르기 목록을 본다)
 
 ## 범위 밖
 - 다른 의원 화면에서 고치기·저장하기·비트에서 불러오기(사용자 결정 2), 예약·환자·청구 탭 보기(사용자 결정 3).
