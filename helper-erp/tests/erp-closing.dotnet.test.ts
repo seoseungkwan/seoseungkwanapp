@@ -162,14 +162,15 @@ describe('REQ-3616 ERP 도우미 고침 (TASK-16, C# Erp.Core.Tests.Closing + �
     expectAc('AC-3616.2')
   })
 
-  it("AC-3616.2: ClosingCommands.FutureDate = 'E-CLOSING-FUTURE-DATE'이고 closing.day 처리기는 날짜 검사를 HospitalGate.Open보다 먼저 한다(closing.codes는 날짜 검사 없음)", () => {
+  it("AC-3616.2: ClosingCommands.FutureDate = 'E-CLOSING-FUTURE-DATE'이고 closing.day 처리기는 날짜 검사를 등록 확인(ErpHospital.Open, erp-bit-anywhere AC-3807.3)보다 먼저 한다(closing.codes는 날짜 검사 없음)", () => {
     const commands = code(read(path.join(CLOSING, 'ClosingCommands.cs')))
     expect(commands).toMatch(/public const string FutureDate = "E-CLOSING-FUTURE-DATE";/)
     const day = commands.slice(commands.indexOf('dispatcher.Register(DayName'))
     const check = day.search(/services\.Today\(\)\.Date/)
     expect(check).toBeGreaterThan(-1)
     expect(day.indexOf('new HelperException(FutureDate)')).toBeGreaterThan(-1)
-    expect(check).toBeLessThan(day.indexOf('HospitalGate.Open('))
+    expect(day.indexOf('ErpHospital.Open(')).toBeGreaterThan(-1)
+    expect(check).toBeLessThan(day.indexOf('ErpHospital.Open('))
     const codesHandler = commands.slice(commands.indexOf('dispatcher.Register(CodesName'), commands.indexOf('dispatcher.Register(DayName'))
     expect(codesHandler).not.toContain('FutureDate')
   })

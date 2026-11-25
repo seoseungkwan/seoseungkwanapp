@@ -11,7 +11,7 @@ namespace Erp.Core.Closing;
 
 /// <summary>
 /// closing.codes·closing.day·closing.findCodes(erp-closing-range REQ-3708) 처리기를 Dispatcher에 붙인다(spec erp-closing-fill design.md 3-4). 모두 숫자 명령(patient: false)이라
-/// 답은 result 하나다. 맨 처음에 등록 확인 관문을 지난다(revenue.days와 같음, AC-3606.3). closing.day는 그 전에 날짜가 도우미 PC 오늘보다 뒤면
+/// 답은 result 하나다. 맨 처음에 등록 확인 관문(ErpHospital.Open — 기존 HospitalGate와 같고 범위가 여럿인 비트도 받음, erp-bit-anywhere AC-3807.2)을 지난다(AC-3606.3). closing.day는 그 전에 날짜가 도우미 PC 오늘보다 뒤면
 /// E-CLOSING-FUTURE-DATE로 막는다(TASK-16, AC-3616.2: 등록 저장소·비트에 닿지 않음). 막히거나 읽기가 실패하면
 /// HelperException 번호로 error 하나만 답하고, 진단 기록에는 Dispatcher가 명령 이름·오류 번호만 남긴다.
 /// ERP 도우미 명령 표(helper-erp/commands.json, ErpCommandTable)에만 있는 이름이라 ERP 도우미에서만 붙는다(AC-3601.3).
@@ -38,7 +38,7 @@ public static class ClosingCommands
         dispatcher.Register(CodesName, (request, sink) =>
         {
             ClosingCodesResult result;
-            using (var hospital = HospitalGate.Open(services))
+            using (var hospital = ErpHospital.Open(services))
             {
                 result = ClosingCodes.Read(hospital.Db, hospital.Registration.Scope, services.Today());
             }
@@ -52,7 +52,7 @@ public static class ClosingCommands
             if (day > services.Today().Date) throw new HelperException(FutureDate);
 
             ClosingDayResult result;
-            using (var hospital = HospitalGate.Open(services))
+            using (var hospital = ErpHospital.Open(services))
             {
                 // 같은 key 두 번 같은 묶음 검사는 ClosingDay.Read가 DB에 닿기 전에 한다(E-HELPER-BAD-MESSAGE)
                 result = ClosingDay.Read(hospital.Db, hospital.Registration.Scope, day, Groups(request));
@@ -66,7 +66,7 @@ public static class ClosingCommands
             if (!Field(request, "text", out var value) || !TryGetString(value, out var text)) throw Bad(request);
 
             ClosingFindCodesResult result;
-            using (var hospital = HospitalGate.Open(services))
+            using (var hospital = ErpHospital.Open(services))
             {
                 result = ClosingCodes.Find(hospital.Db, text, services.Today());
             }

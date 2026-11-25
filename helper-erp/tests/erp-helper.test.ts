@@ -372,14 +372,15 @@ describe('AC-3611.3 Program: --register 하나일 때만 등록, 아니면 ERP �
     expectOrder(main, ['if (IsRegister(args)) return Register(log);', 'ErpCommandTable.Load()', 'MessageLoop.Run('], 'Main')
   })
 
-  it('AC-3611.3: 등록 모드는 기존 RegisterFlow.Run(ErpServices.Create())이고 종료 번호는 저장 0 · 취소 1 · 예외 2', () => {
+  // erp-bit-anywhere AC-3807.3: 등록 자리는 기존 RegisterFlow.Run에서 ERP 부품 ErpHospital.Register로 바뀐다(기대 글자만 바꿈)
+  it('AC-3611.3 AC-3807.3: 등록 모드는 ErpHospital.Register(ErpServices.Create())이고 종료 번호는 저장 0 · 취소 1 · 예외 2', () => {
     const text = program()
     expect(text).toMatch(/const int RegisterSaved = 0;/)
     expect(text).toMatch(/const int RegisterCancelled = 1;/)
     expect(text).toMatch(/const int RegisterFailed = 2;/)
     const register = methodBody(text, /static int Register\(ErpLog log\)/)
-    expect(register.match(/RegisterFlow\.Run\(/g)).toHaveLength(1)
-    expect(register).toMatch(/var saved = RegisterFlow\.Run\(ErpServices\.Create\(\)\);/)
+    expect(register.match(/ErpHospital\.Register\(/g)).toHaveLength(1)
+    expect(register).toMatch(/var saved = ErpHospital\.Register\(ErpServices\.Create\(\)\);/)
     expect(register).toMatch(/return saved \? RegisterSaved : RegisterCancelled;/)
     // 오류 번호가 있는 예외(HelperException)도, 그 밖 예외도 2
     expectOrder(register, ['catch (HelperException e)', 'return RegisterFailed;', 'catch (Exception)', 'return RegisterFailed;'], 'Register')
@@ -559,6 +560,31 @@ describe('AC-3803.1 ErpInstallRules.FindRoot 몸통은 기존 BitInstallRules.Fi
   })
 })
 
+describe('AC-3807.3 등록·등록 확인은 ERP 부품 ErpHospital로만', () => {
+  it('AC-3807.3: 등록 모드는 ErpHospital.Register를, ClosingCommands의 세 명령은 ErpHospital.Open을 부른다', () => {
+    const register = methodBody(code(read(PROGRAM)), /static int Register\(ErpLog log\)/)
+    expect(register).toMatch(/var saved = ErpHospital\.Register\(ErpServices\.Create\(\)\);/)
+    const commands = code(read('helper-erp/src/Erp.Core/Closing/ClosingCommands.cs'))
+    expect(commands.match(/using \(var hospital = ErpHospital\.Open\(services\)\)/g)).toHaveLength(3)
+  })
+
+  it('AC-3807.3: helper-erp/src 안에 RegisterFlow.Run(·HospitalGate.Open(·VerifyOnlyScope(·HospitalCheck.VerifyCurrent(·ValidateScope( 부름이 없다', () => {
+    const sources = filesUnder('helper-erp/src').filter((f) => f.endsWith('.cs'))
+    expect(sources).toContain('helper-erp/src/Erp.Core/ErpHospital.cs')
+    for (const file of sources) {
+      const text = code(read(file))
+      for (const old of [/\bRegisterFlow\.Run\(/, /\bHospitalGate\.Open\(/, /\bVerifyOnlyScope\(/, /\bHospitalCheck\.VerifyCurrent\(/, /\bValidateScope\(/]) {
+        expect(text, `${file} ${old}`).not.toMatch(old)
+      }
+    }
+  })
+
+  it('AC-3807.3: git diff --quiet a278577f -- helper src extension 가 0으로 끝난다(청구 도우미·웹·기존 확장 그대로)', () => {
+    const run = spawnSync('git', ['diff', '--quiet', 'a278577f', '--', 'helper', 'src', 'extension'], { cwd: ROOT, encoding: 'utf8' })
+    expect(run.status, `${run.stdout ?? ''}${run.stderr ?? ''}${run.error?.message ?? ''}`).toBe(0)
+  })
+})
+
 describe('AC-3801.4 청구 도우미 쪽은 갈래 시작(6754571c) 그대로', () => {
   const BASE = '6754571c'
 
@@ -717,9 +743,15 @@ describe('AC-3902.4·AC-3902.5 ERP 도우미 하나가 목록 확장도 받는�
     expect(text.match(/ErpCallers\.ForMessageLoop\(/g)).toHaveLength(1)
     expect(now).toContain('spec erp-copy-list AC-3902.4')
     // 주석을 뺀 코드는 이 기능 전 Program에서 그 한 줄만 바꾼 것과 같다
+    // (spec erp-bit-anywhere AC-3807.3: 등록 줄 RegisterFlow.Run → ErpHospital.Register 하나도 바뀜. 기대 글자만 바꿈)
     const before = csBody(readAt(BASE, PROGRAM))
     expect(before).toContain(LOOP_BEFORE)
-    expect(csBody(now)).toBe(before.replace(LOOP_BEFORE, LOOP_LINE))
+    expect(before).toContain('var saved = RegisterFlow.Run(ErpServices.Create());')
+    expect(csBody(now)).toBe(
+      before
+        .replace(LOOP_BEFORE, LOOP_LINE)
+        .replace('var saved = RegisterFlow.Run(ErpServices.Create());', 'var saved = ErpHospital.Register(ErpServices.Create());'),
+    )
   })
 
   it('AC-3902.4: 등록 틀 allowed_origins는 정확히 [지금 확장, 목록 확장](목록 확장 ID는 extension-erp-list/manifest.json key로 계산)이고 *가 없으며 다른 칸은 ec536578 그대로다', () => {

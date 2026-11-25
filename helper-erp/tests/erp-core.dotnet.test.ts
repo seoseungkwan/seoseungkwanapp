@@ -137,6 +137,15 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
     expectAc('AC-3801.1')
   })
 
+  // spec erp-bit-anywhere AC-3807.1·AC-3807.2: C# ErpHospitalTests(namespace Erp.Core.Tests, 거르기 Erp.Core.Tests.Erp에 든다)
+  it('AC-3807.1 ErpHospital.Register는 기존 등록 차례 그대로이고, 범위 확인만 DB 안 범위(빈 값·NULL 뺌)에 계정 범위가 들어 있으면 통과한다(계정 범위가 없거나 둘이면 E-BIT-HOSPITAL-MISMATCH)', () => {
+    expectAc('AC-3807.1')
+  })
+
+  it('AC-3807.2 ErpHospital.Open은 기존 등록 확인 관문 그대로이고, 범위 확인만 등록 범위가 DB 안 범위에 들어 있으면 통과한다(막히면 세션을 닫음)', () => {
+    expectAc('AC-3807.2')
+  })
+
   it('AC-3801.2 ErpInstallRules.Choose는 UNC·네트워크 드라이브·상대 경로·빈 값·파일 빠짐·환경 파일 없음·Path·Bin 다름을 건너뛰고 다음 후보를 보며, 같은 설치는 한 번만, 없으면 E-BIT-NOT-FOUND', () => {
     expectAc('AC-3801.2')
   })
@@ -317,14 +326,14 @@ describe('TASK-10 closing.findCodes·묶음 exclude (erp-closing-range design.md
     for (const table of ['Pbs', 'OcmInf', 'OdrInf', 'OrpInf', 'OrcInf', 'RsvInf', 'RsvLog', 'DepMst', 'ChtNum', 'BirDte']) expect(sql, table).not.toContain(table)
   })
 
-  it('AC-3708.1: ErpReadGuard는 ClosingSql.FindParameters도 보고(문장 표), closing.findCodes 처리기는 HospitalGate를 지나 ClosingCodes.Find를 부른다', () => {
+  it('AC-3708.1: ErpReadGuard는 ClosingSql.FindParameters도 보고(문장 표), closing.findCodes 처리기는 등록 확인(ErpHospital.Open, erp-bit-anywhere AC-3807.3)을 지나 ClosingCodes.Find를 부른다', () => {
     const guard = code(read(path.join(CORE, 'ErpReadGuard.cs')))
     expect(guard).toContain('ClosingSql.FindParameters')
     const commands = code(read(path.join(CLOSING, 'ClosingCommands.cs')))
     expect(commands).toMatch(/public const string FindCodesName = "closing\.findCodes";/)
     const handler = commands.slice(commands.indexOf('dispatcher.Register(FindCodesName'))
-    expect(handler.indexOf('HospitalGate.Open(')).toBeGreaterThan(-1)
-    expect(handler.indexOf('HospitalGate.Open(')).toBeLessThan(handler.indexOf('ClosingCodes.Find('))
+    expect(handler.indexOf('ErpHospital.Open(')).toBeGreaterThan(-1)
+    expect(handler.indexOf('ErpHospital.Open(')).toBeLessThan(handler.indexOf('ClosingCodes.Find('))
   })
 })
 
@@ -364,6 +373,7 @@ describe('AC-3611.1 Erp.Core 틀', () => {
       'Closing/ClosingSql.cs',
       'ErpCallers.cs', // spec erp-copy-list AC-3902.1
       'ErpCommandTable.cs',
+      'ErpHospital.cs', // spec erp-bit-anywhere AC-3807.1
       'ErpInstallRules.cs',
       'ErpLogLine.cs',
       'ErpReadGuard.cs',

@@ -11,7 +11,7 @@ namespace Erp.Helper;
 
 /// <summary>
 /// ERP 마감일지 도우미 입구(spec erp-closing-fill design.md 3-4, AC-3611.3). 두 가지로 켜진다.
-/// - 등록 모드: 인자가 정확히 [--register] 하나(설치 파일 install.ps1이 부른다). 기존 등록 흐름(RegisterFlow: 비트 로그인 창 → 병원 확인 →
+/// - 등록 모드: 인자가 정확히 [--register] 하나(설치 파일 install.ps1이 부른다). ERP 등록 흐름(ErpHospital.Register = 기존 RegisterFlow 차례, 범위가 여럿인 비트도 받음: 비트 로그인 창 → 병원 확인 →
 ///   PC 확인 창 5분)으로 ERP 도우미 자기 등록 파일을 쓰고 끝난다. 종료 번호 0 = 저장, 1 = 취소, 2 = 오류. 기록엔 register와 오류 번호만.
 /// - 그 밖: 크롬이 켠다(첫 인자가 호출 origin이라 등록 창은 뜨지 않는다). 기존 도우미 Program과 같은 차례로 ERP 명령 표·마감일지 두 명령만 붙여
 ///   표준 입력·출력으로 메시지 틀을 주고받는다(MessageLoop). hello·다른 명령은 붙이지 않는다(표에 없는 명령은 E-HELPER-UNKNOWN-COMMAND).
@@ -66,7 +66,7 @@ internal static class Program
     {
         try
         {
-            var saved = RegisterFlow.Run(ErpServices.Create());
+            var saved = ErpHospital.Register(ErpServices.Create());
             log.WriteRegister(null);
             return saved ? RegisterSaved : RegisterCancelled;
         }
