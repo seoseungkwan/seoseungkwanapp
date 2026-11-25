@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>자료실 탭 시안</title>
+<!--
+  자료실 탭(library) 시안. 관리자가 올린 파일(설치 파일·설명서·그 밖)을 승인된 사람 누구나 받는 화면.
+  옛 '설치 파일' 칸 둘(관리자 화면 · 설정 탭)은 자료실로 가는 작은 칸이 된다. 결정·상태 목록은 notes.md.
+  ?s=user(기본) · admin · upload · uploading · too-big · done · delete · empty · error · settings · admin-tab · menu · desk
+  색·글자는 앱 토큰(src/app/globals.css :root)만 쓴다. 파일·크기·날짜는 모두 지어낸 값이다.
+  오늘은 2026-11-25 (수) 10:40으로 고정. 어디로도 보내지 않는다. PC 화면만(폰 모양 없음).
+-->
+<style>
+@font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+/* 앱 토큰(src/app/globals.css :root) */
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --r: 4px; --r-float: 8px;
+  --elev: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --ui: 'AppPretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 400 14px/22px var(--ui); word-break: keep-all; font-variant-numeric: tabular-nums; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+h1, h2, h3, h4, p { margin: 0; }
+svg { flex: none; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; font-weight: 600; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mdesc { font-size: 13px; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; line-height: 18px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.mnote { font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.mnote b { font-size: 12px; }
+/* 시안 표시(만들지 않음): 새로 생기거나 바뀌는 자리 */
+.mark-new { outline: 2px dashed #F59E0B; outline-offset: 4px; }
+.mark-new-in { outline: 2px dashed #F59E0B; outline-offset: -3px; }
+.mark-tag { display: inline-block; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap; }
+
+/* 앱 틀 */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-weight: 500; white-space: nowrap; background: var(--surface); }
+.tabsbar { position: relative; background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs-in { max-width: 1280px; margin: 0 auto; display: flex; }
+.tabs { display: flex; min-width: 0; flex: 1; padding: 0 24px; }
+.tabs > :first-child { margin-left: -12px; }
+.tabs a, .more { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; flex: none; border: 0; background: none; border-radius: var(--r); }
+.tabs a:hover, .more:hover { color: var(--ink); }
+.tabs a[aria-current="page"], .more.on { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after, .more.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.morewrap { position: relative; display: flex; flex: none; margin-right: 12px; }
+.more svg { transition: transform .15s; }
+.more[aria-expanded="true"] svg { transform: rotate(180deg); }
+.mpanel { position: absolute; top: 100%; right: 12px; margin-top: 1px; z-index: 15; width: 320px; padding: 4px 16px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); }
+.mpanel .mh { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.mpanel ul { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.mpanel li:last-child a { border-bottom: 0; }
+.mpanel a { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 44px; padding: 0 4px; border-bottom: 1px solid var(--line); font-weight: 500; color: var(--ink); text-decoration: none; }
+.mpanel a:hover { background: var(--canvas); }
+.mpanel a span:first-child { flex: 1; }
+.mpanel a[aria-current="page"] { font-weight: 600; color: var(--accent-strong); }
+.mpanel a[aria-current="page"]::before { content: ""; width: 2px; height: 20px; margin-left: -4px; background: var(--accent); flex: none; }
+main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+main > * { min-width: 0; }
+
+/* 단추 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; line-height: 22px; font-weight: 500; white-space: nowrap; text-decoration: none; transition: background-color .15s; }
+.btn:hover:not(:disabled):not([aria-busy="true"]) { background: var(--canvas); }
+.btn:active:not(:disabled):not([aria-busy="true"]) { transform: translateY(1px); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn[aria-busy="true"] { opacity: .6; cursor: progress; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled):not([aria-busy="true"]) { background: var(--accent-strong); }
+.btn.danger { color: var(--negative); }
+.tbtn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px; margin-left: -4px; border: 0; background: none; color: var(--accent); font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; border-radius: var(--r); }
+.tbtn:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* 칩 */
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; vertical-align: 1px; }
+.chip.neutral { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip.pos { background: var(--positive-soft); color: var(--positive); }
+.chip.warn { background: var(--warning-soft); color: var(--warning); }
+
+/* 머리 줄 */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+.tl { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tl h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.tl .cnt { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.lead { margin-top: 4px; color: var(--ink-2); }
+.cats { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+.fc { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink-2); font-size: 14px; font-weight: 500; white-space: nowrap; }
+.fc:hover { background: var(--canvas); }
+.fc .n { color: var(--muted); font-weight: 500; }
+.fc[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.fc[aria-pressed="true"] .n { color: var(--accent-strong); }
+.fc.zero .n { color: var(--faint); }
+
+/* 알림 · 오류 카드 */
+.okc, .errc { display: flex; align-items: flex-start; gap: 8px; padding: 12px 16px; border-radius: var(--r); }
+.okc { margin-top: 16px; background: var(--positive-soft); }
+.okc svg { margin-top: 3px; color: var(--positive); }
+.okc .t { font-weight: 600; color: var(--ink); }
+.okc .s { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.okc .x { margin-left: auto; }
+.errc { background: var(--negative-soft); }
+.errc svg { margin-top: 2px; color: var(--negative); }
+.errc .w { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--negative); }
+.errc .f { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.errc .no { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.errc > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* 표 */
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.list { margin-top: 12px; }
+.tbw { min-width: 0; overflow-x: auto; }
+.tb { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.tb th { height: 40px; padding: 0 12px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.tb td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--ink); }
+.tb th:first-child, .tb td:first-child { padding-left: 20px; }
+.tb th:last-child, .tb td:last-child { padding-right: 20px; }
+.tb tbody tr:last-child td { border-bottom: 0; }
+.tb tr.r:hover td { background: var(--canvas); }
+.tb th.num, .tb td.num { text-align: right; }
+.tb .c-cat { width: 112px; }
+.tb .c-size { width: 96px; }
+.tb .c-at { width: 112px; }
+.tb .c-act { width: 1%; }
+.tb td.sub { color: var(--ink-2); }
+.tb td.nmc { white-space: normal; padding-top: 10px; padding-bottom: 10px; }
+.tb td.act { text-align: right; }
+.tb td.act .acts { display: inline-flex; gap: 8px; }
+.fn { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.fn b { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.fd { display: block; color: var(--muted); }
+.tb tr.hasold td { border-bottom: 0; }
+.tb tr.tg td { height: auto; padding-top: 0; padding-bottom: 8px; }
+.tb tr.old td { background: var(--canvas); }
+.tb tr.old td.nmc { padding-left: 20px; }
+.tb tr.old .fn b { font-weight: 500; color: var(--ink-2); }
+.oldwrap { display: flex; gap: 8px; align-items: flex-start; }
+.oldwrap > svg { margin-top: 3px; color: var(--faint); }
+.tb tr.fresh td { background: var(--accent-soft); }
+.tb td.emptyc { height: auto; padding: 32px 20px; white-space: normal; }
+.emptyc b { display: block; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.emptyc p { margin-top: 4px; color: var(--muted); }
+.emptyc .btn { margin-top: 16px; }
+.foot { margin-top: 12px; padding-left: 20px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.retry { margin-top: 12px; }
+
+/* 확인 창 · 올리기 창 */
+.scrim { position: fixed; inset: 0; z-index: 40; background: rgb(17 24 39 / 36%); }
+.dlg { position: fixed; z-index: 50; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 400px; max-width: calc(100% - 32px); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); padding: 24px; display: grid; gap: 12px; }
+.dlg.wide { width: 520px; gap: 20px; }
+.dlg h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.dlg p.t { color: var(--ink-2); }
+.dlg p.sm { font-size: 13px; line-height: 20px; color: var(--muted); }
+.dlg .foot2 { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.dlg.wide .foot2 { margin-top: 4px; }
+.field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.field > label, .field > .lb { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.field .req { font-size: 12px; font-weight: 400; color: var(--muted); }
+.help { font-size: 12px; line-height: 16px; color: var(--muted); }
+.ferr { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--negative); }
+.inp { width: 100%; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 14px; color: var(--ink); }
+.inp::placeholder { color: var(--faint); }
+.inp:hover:not(:disabled) { border-color: var(--muted); }
+.inp:focus { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.inp[aria-invalid="true"] { border-color: var(--negative); }
+.inp:disabled { background: var(--canvas); border-color: var(--line); color: var(--ink-2); cursor: not-allowed; }
+.pick { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.fname { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink); }
+.fname > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fname > svg { color: var(--muted); }
+.fname em { font-style: normal; color: var(--muted); white-space: nowrap; }
+.fname em.big { color: var(--negative); font-weight: 600; }
+.fname.none { color: var(--muted); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ob { margin: 0; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; white-space: nowrap; }
+.ob:hover:not(:disabled) { background: var(--canvas); }
+.ob[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.ob:disabled { opacity: .4; cursor: not-allowed; }
+.prog { display: grid; gap: 6px; padding: 12px 16px; border-radius: var(--r); background: var(--canvas); }
+.prog .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.prog .row b { font-weight: 600; color: var(--ink); }
+.bar { height: 6px; border-radius: var(--r); background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); transition: width .2s linear; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; padding: 10px 16px; border-radius: var(--r-float); background: var(--ink); color: #fff; font-size: 13px; line-height: 20px; box-shadow: var(--elev); max-width: calc(100vw - 32px); }
+.toast:empty { display: none; }
+
+/* 설정 · 관리자 화면(잘라 보기) */
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.head3 { display: flex; flex-direction: column; gap: 12px; }
+.loc { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.head3 h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.subnav { display: flex; border-bottom: 1px solid var(--line); }
+.subnav > a, .subnav > span { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border-radius: var(--r); white-space: nowrap; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+.subnav > :first-child { margin-left: -12px; }
+.subnav [aria-current="page"], .subnav [aria-selected="true"] { font-weight: 600; color: var(--ink); }
+.subnav [aria-current="page"]::after, .subnav [aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
+.subnav .n { color: var(--muted); font-weight: 500; }
+.intro { max-width: 560px; color: var(--ink-2); }
+.card { padding: 20px; }
+.card h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.card .s { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.mini-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.mini-card .txt { min-width: 0; }
+.mini-card .txt p.m { margin-top: 2px; color: var(--ink-2); }
+.same { padding: 20px; }
+.same h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.same .s { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.same .blk { margin-top: 12px; height: 72px; border-radius: var(--r); background: var(--canvas); }
+.tagrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>자료실 탭 시안</b><span class="ex">예시</span> <span class="mdesc">파일 이름·크기·날짜는 모두 지어낸 값이에요. 오늘은 11월 25일 (수)로 정해 두었어요. 점선과 노란 표시는 시안에서만 보이는 표시예요(만들지 않음).</span></div>
+  <div class="seg" id="seg"></div>
+  <div class="mnote" id="mnote"></div>
+</div></div>
+
+<div class="app" id="app">
+  <header class="top"><div class="top-in">
+    <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+    <div class="top-r" id="topr"></div>
+  </div></header>
+  <nav class="tabsbar" aria-label="메뉴"><div class="tabs-in" id="tabs"></div></nav>
+  <main id="main"></main>
+  <div id="layer"></div>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ───────── 상태 고르기 ───────── */
+const STATES = [
+  ['user', '받기만 (원장)', "관리자가 아닌 원장이 [더보기] → 자료실을 연 모습이에요. [받기]만 있어요. 분류 칩을 누르면 그 분류만 보이고, 칩 숫자는 그 분류의 파일 수(옛 판 포함)예요. 판 번호가 붙은 청구 도우미·크롬 확장은 가장 높은 판에 '최신'이 붙고, 옛 판은 접혀 있어요."],
+  ['admin', '관리자', '관리자가 본 모습이에요. 오른쪽 위 [파일 올리기]와 줄마다 [지우기]가 더 있고, 표 아래에 한 줄 안내가 있어요. 올리기·지우기는 모든 의원의 자료실에 똑같이 보여요.'],
+  ['upload', '올리기 창', "[파일 올리기] → [파일 고르기]로 파일을 고른 뒤예요. 이름은 파일 이름으로 채워지고 고칠 수 있어요. 분류는 파일 끝(zip·pdf·xlsx…)을 보고 먼저 골라 두고, 바꿀 수 있어요. 시안에서 [파일 고르기]를 누르면 예시 파일이 차례로 바뀌어요."],
+  ['uploading', '올리는 중', '[올리기]를 누른 뒤예요. 칸은 잠기고 얼마나 올라갔는지 보여요. [취소]를 누르면 멈추고 아무것도 남지 않아요.'],
+  ['too-big', '50MB 넘음', '50MB가 넘는 파일을 골랐을 때예요. 올리기 전에 바로 알려 주고 [올리기]는 눌리지 않아요. 다른 파일을 고르면 사라져요.'],
+  ['done', '올린 뒤', '다 올라간 뒤예요. 창이 닫히고 표 위에 알림이 남아요. 새 도우미 0.14.0이 맨 위에 파랗게 잠깐 보이고 최신이 돼요. 0.13.3은 옛 판으로 들어가요.'],
+  ['delete', '지우기 확인', '옛 판을 펼친 뒤 0.11.0의 [지우기]를 누른 모습이에요. 한 번 더 물어요. 최신 판을 지우면 그다음 판이 최신이 된다는 줄이 더 붙어요.'],
+  ['empty', '빈 자료실', "파일이 하나도 없을 때(관리자 화면)예요. 관리자가 아닌 사람에게는 [파일 올리기] 없이 '관리자가 파일을 올리면 여기에 보여요.'만 보여요."],
+  ['error', '목록 못 읽음', '목록을 읽지 못했을 때예요. 오류 카드(무엇이 · 어떻게 고치나 · 번호) 아래 [다시 읽기]가 있어요.'],
+  ['settings', '설정 탭', "설정 탭의 옛 '비트 PC 연결 · 설치 파일' 칸(받기 표)이 자료실로 가는 작은 칸 하나로 바뀌어요(점선). 나머지 칸은 그대로예요."],
+  ['admin-tab', '관리자 화면', "관리자 화면(가입 승인)의 옛 '설치 파일' 칸(올리기 표)이 자료실로 가는 작은 칸 하나로 바뀌어요(점선). 신청 목록은 그대로예요."],
+  ['menu', '더보기 판', '[더보기]를 연 모습이에요. 자료실은 주소록 다음, 설정 앞이에요(관리자는 입지 분석 다음). 승인된 사람 모두에게 보여요.'],
+  ['desk', '데스크', '데스크 계정은 [더보기]가 없어서 탭 띠 맨 끝(예약 다음)에 자료실이 붙어요. 받기만 해요.'],
+]
+const Q = new URLSearchParams(location.search)
+let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'user'
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+const curState = STATES.find(x => x[0] === S)
+document.getElementById('mnote').innerHTML = `<b>${curState[1]}</b> — ${curState[2]}`
+
+/* ───────── 도움 ───────── */
+const $ = s => document.querySelector(s)
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const KB = 1024, MB = 1024 * 1024, LIMIT = 50 * MB
+const sizeTxt = n => n >= 900 * KB ? `${(n / MB).toFixed(1)}MB` : `${Math.max(1, Math.round(n / KB))}KB`
+const mbTxt = n => `${(n / MB).toFixed(1)}MB`
+const dayTxt = s => { const [, m, d] = s.slice(0, 10).split('-').map(Number); return `${m}월 ${d}일` }
+const CAT = { install: '설치 파일', guide: '설명서', etc: '그 밖' }
+const CAT_KEYS = ['install', 'guide', 'etc']
+// 파일 끝으로 분류를 먼저 골라 둔다(바꿀 수 있음)
+const guessCat = name => /\.(zip|exe|msi|crx)$/i.test(name) ? 'install' : /\.(pdf|hwp|hwpx|docx?|pptx?)$/i.test(name) ? 'guide' : 'etc'
+// 판 번호 붙은 설치 파일: precheck-helper-X.Y.Z.zip · precheck-extension-X.Y.Z.zip (올린 때의 파일 이름으로 본다)
+const verOf = file => { const m = /^precheck-(helper|extension)-(\d+)\.(\d+)\.(\d+)\.zip$/.exec(file); return m ? { kind: m[1], v: [+m[2], +m[3], +m[4]] } : null }
+const cmpVer = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
+const KIND_LABEL = { helper: '도우미', extension: '확장' }
+const ICON = {
+  plus: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>',
+  upload: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10"/></svg>',
+  download: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v8M5 7.5l3 3 3-3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3.5 8.5 3 3 6-6.5"/></svg>',
+  close: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  chev: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>',
+  chevUp: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
+  arrow: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>',
+  file: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5H13"/></svg>',
+  corner: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2.5v5a2 2 0 0 0 2 2h7M10 6.5l3 3-3 3"/></svg>',
+  err: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>',
+  userCheck: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6.5" cy="5.25" r="2.5"/><path d="M1.75 13.5c.5-2.4 2.4-3.75 4.75-3.75 1.15 0 2.2.3 3.05.9"/><path d="m10 12 1.6 1.6 3-3.35"/></svg>',
+  eye: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 8s2.4-4.75 6.5-4.75S14.5 8 14.5 8 12.1 12.75 8 12.75 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>',
+}
+let toastTimer = 0
+function toast(msg) { const t = $('#toast'); t.textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.textContent = '' }, 2600) }
+
+/* ───────── 지어낸 자료 ───────── */
+const HELPER_DESC = '청구 도우미 · 비트 자료를 읽는 PC 프로그램'
+const BASE = [
+  { id: 'f1', file: '마감일지도우미_비트판_20261125.zip', cat: 'install', size: 2.4 * MB, at: '2026-11-25T09:12', desc: '마감일지 채우기 도우미 · 비트 PC에 깔아요' },
+  { id: 'f2', file: '비트시트_프로그램_새판.zip', cat: 'install', size: 3.8 * MB, at: '2026-11-24T17:40', desc: '비트 숫자를 구글 시트에 넣는 프로그램' },
+  { id: 'f3', file: '비트시트_설치_설명서.pdf', cat: 'guide', size: 640 * KB, at: '2026-11-24T17:38', desc: '비트시트 프로그램 까는 순서(사진 12장)' },
+  { id: 'h133', file: 'precheck-helper-0.13.3.zip', cat: 'install', size: 1.1 * MB, at: '2026-11-23T11:05', desc: HELPER_DESC },
+  { id: 'e040', file: 'precheck-extension-0.4.0.zip', cat: 'install', size: 8 * KB, at: '2026-11-20T15:30', desc: '크롬 확장 · 크롬에 붙이는 작은 프로그램' },
+  { id: 'x1', file: '수납일지_샘플.xlsx', cat: 'etc', size: 46 * KB, at: '2026-11-18T10:20', desc: '수납일지 엑셀 예시(숫자는 가짜)' },
+  { id: 'h120', file: 'precheck-helper-0.12.0.zip', cat: 'install', size: 1.0 * MB, at: '2026-11-16T14:00', desc: HELPER_DESC },
+  { id: 'h110', file: 'precheck-helper-0.11.0.zip', cat: 'install', size: 0.9 * MB, at: '2026-11-12T09:30', desc: HELPER_DESC },
+].map(f => ({ ...f, name: f.file }))
+// 시안의 [파일 고르기]가 차례로 고르는 예시 파일
+const PICKS = [
+  { file: 'precheck-helper-0.14.0.zip', size: 1.2 * MB },
+  { file: '마감일지_쓰는법.pdf', size: 1.6 * MB },
+  { file: '비트_사진_모음.zip', size: 63.4 * MB },
+]
+const NEW_HELPER = { id: 'h140', file: 'precheck-helper-0.14.0.zip', name: 'precheck-helper-0.14.0.zip', cat: 'install', size: 1.2 * MB, at: '2026-11-25T10:38', desc: HELPER_DESC }
+
+/* ───────── 상태 ───────── */
+const st = {
+  role: 'owner', // owner(원장) · admin(관리자) · desk(데스크)
+  page: 'library', // library · settings · admin
+  files: BASE.map(f => ({ ...f })),
+  filter: 'all',
+  open: {}, // 옛 판 펼침 {helper: true}
+  dlg: null, // {kind:'upload', pick, name, cat, desc, phase:'form'|'uploading', pct} · {kind:'delete', id}
+  notice: null, // {file, kind}
+  fresh: null, // 방금 올린 줄 id
+  menu: false,
+  failed: false,
+}
+const pickOf = i => ({ ...PICKS[i], i })
+const uploadDlg = (i, extra = {}) => { const p = i == null ? null : pickOf(i); return { kind: 'upload', pick: p, name: p && p.size <= LIMIT ? p.file : '', cat: p ? guessCat(p.file) : 'install', desc: '', phase: 'form', pct: 0, ...extra } }
+switch (S) {
+  case 'admin': st.role = 'admin'; break
+  case 'upload': st.role = 'admin'; st.dlg = uploadDlg(0); break
+  case 'uploading': st.role = 'admin'; st.dlg = uploadDlg(0, { desc: HELPER_DESC, phase: 'uploading', pct: 62 }); break
+  case 'too-big': st.role = 'admin'; st.dlg = uploadDlg(2); break
+  case 'done': st.role = 'admin'; st.files.push({ ...NEW_HELPER }); st.notice = { file: NEW_HELPER.file, kind: 'helper' }; st.fresh = NEW_HELPER.id; break
+  case 'delete': st.role = 'admin'; st.open.helper = true; st.dlg = { kind: 'delete', id: 'h110' }; break
+  case 'empty': st.role = 'admin'; st.files = []; break
+  case 'error': st.failed = true; break
+  case 'settings': st.page = 'settings'; break
+  case 'admin-tab': st.role = 'admin'; st.page = 'admin'; break
+  case 'menu': st.menu = true; break
+  case 'desk': st.role = 'desk'; break
+}
+const isAdmin = () => st.role === 'admin'
+
+/* ───────── 판 묶기 ───────── */
+// 판 번호 붙은 파일을 종류마다 묶어 가장 높은 판을 최신으로, 나머지를 옛 판으로
+function versionGroups(files) {
+  const g = {}
+  for (const f of files) { const v = verOf(f.file); if (v) (g[v.kind] = g[v.kind] || []).push({ f, v: v.v }) }
+  for (const k of Object.keys(g)) g[k].sort((a, b) => cmpVer(b.v, a.v))
+  return g
+}
+
+/* ───────── 그리기: 틀 ───────── */
+const OWNER_MORE = ['AI 리포트', '서식', '직원', '재고', '주소록', '자료실', '설정']
+const ADMIN_MORE = ['AI 리포트', '서식', '직원', '재고', '주소록', '입지 분석', '자료실', '설정']
+function topHtml() {
+  const view = isAdmin() ? `<span class="acct">${ICON.eye}보는 의원${ICON.chev}</span>` : ''
+  const acct = st.role === 'desk' ? `<span class="acct"><span class="chip warn">데스크</span>desk@example.com${ICON.chev}</span>` : `<span class="acct">계정${ICON.chev}</span>`
+  return `${view}<time>2026년 11월 25일 (수) 10:40 (KST)</time>${acct}`
+}
+function tabsHtml() {
+  if (st.role === 'desk') {
+    const T = ['업무일지', '수납일지', '예약']
+    return `<div class="tabs">${T.map(t => `<a href="#">${t}</a>`).join('')}<a href="?s=desk" aria-current="page" class="mark-new-in">자료실</a></div>`
+  }
+  const T = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약']
+  const cur = st.page === 'library' ? '자료실' : st.page === 'settings' ? '설정' : null
+  const items = isAdmin() ? ADMIN_MORE : OWNER_MORE
+  const panel = st.menu ? `<div class="mpanel" id="mpanel"><p class="mh"><span>다른 메뉴 ${items.length}개</span></p><ul>${items.map(m => `<li><a href="${m === '자료실' ? (isAdmin() ? '?s=admin' : '?s=user') : m === '설정' ? '?s=settings' : '#'}" ${m === cur ? 'aria-current="page"' : ''} class="${m === '자료실' ? 'mark-new-in' : ''}"><span>${m}</span>${m === '입지 분석' ? '<span class="chip neutral">관리자만</span>' : ''}</a></li>`).join('')}</ul></div>` : ''
+  return `<div class="tabs">${T.map(t => `<a href="#">${t}</a>`).join('')}</div>`
+    + `<div class="morewrap"><button class="more ${cur ? 'on' : ''}" data-act="menu" aria-expanded="${st.menu}">${cur ? `더보기 · ${cur}` : '더보기'}${ICON.chev}</button>${panel}</div>`
+}
+function render() {
+  $('#topr').innerHTML = topHtml()
+  $('#tabs').innerHTML = tabsHtml()
+  $('#main').innerHTML = st.page === 'settings' ? settingsHtml() : st.page === 'admin' ? adminHtml() : libraryHtml()
+  $('#layer').innerHTML = layerHtml()
+}
+
+/* ───────── 그리기: 자료실 ───────── */
+function errCard(what, fix, code) {
+  return `<div class="errc" role="alert">${ICON.err}<div><p class="w">${what}</p><p class="f">${fix}</p><p class="no">오류 번호 ${code}</p></div></div>`
+}
+function rowHtml(f, opt = {}) {
+  const chip = opt.latest ? '<span class="chip pos">최신</span>' : ''
+  const name = `<span class="fn"><b>${esc(f.name)}</b>${chip}</span>${f.desc ? `<span class="fd">${esc(f.desc)}</span>` : ''}`
+  const cls = ['r', opt.old ? 'old' : '', opt.hasOld ? 'hasold' : '', f.id === st.fresh ? 'fresh' : ''].filter(Boolean).join(' ')
+  const del = isAdmin() ? `<button class="btn sm danger" data-act="del" data-id="${f.id}" aria-label="${esc(f.name)} 지우기">지우기</button>` : ''
+  return `<tr class="${cls}">
+    <td class="nmc">${opt.old ? `<div class="oldwrap">${ICON.corner}<div>${name}</div></div>` : name}</td>
+    <td class="sub">${CAT[f.cat]}</td>
+    <td class="num">${sizeTxt(f.size)}</td>
+    <td class="sub">${dayTxt(f.at)}</td>
+    <td class="act"><span class="acts"><button class="btn sm" data-act="get" data-id="${f.id}" aria-label="${esc(f.name)} 받기">${ICON.download}받기</button>${del}</span></td>
+  </tr>`
+}
+function tableBody() {
+  const shown = st.files.filter(f => st.filter === 'all' || f.cat === st.filter).sort((a, b) => b.at.localeCompare(a.at))
+  if (!shown.length) {
+    if (!st.files.length) {
+      return `<tr><td colspan="5" class="emptyc"><b>아직 올린 파일이 없어요</b>${isAdmin()
+        ? `<p>[파일 올리기]로 첫 파일을 올려 보세요. 올린 파일은 모든 의원이 여기서 받아요.</p><button class="btn primary" data-act="upload">${ICON.upload}파일 올리기</button>`
+        : '<p>관리자가 파일을 올리면 여기에 보여요.</p>'}</td></tr>`
+    }
+    return `<tr><td colspan="5" class="emptyc"><p style="margin:0">이 분류에는 파일이 없어요.</p></td></tr>`
+  }
+  const groups = versionGroups(shown)
+  const out = []
+  for (const f of shown) {
+    const v = verOf(f.file)
+    if (!v) { out.push(rowHtml(f)); continue }
+    const g = groups[v.kind]
+    if (g[0].f !== f) continue // 옛 판은 최신 줄 아래에서 그린다
+    const olds = g.slice(1).map(x => x.f)
+    out.push(rowHtml(f, { latest: true, hasOld: olds.length > 0 }))
+    if (olds.length) {
+      const on = !!st.open[v.kind]
+      out.push(`<tr class="tg"><td colspan="5"><button class="tbtn" data-act="old" data-k="${v.kind}" aria-expanded="${on}">${on ? `옛 판 ${olds.length}개 접기${ICON.chevUp}` : `옛 판 ${olds.length}개 보기${ICON.chev}`}</button></td></tr>`)
+      if (on) olds.forEach(o => out.push(rowHtml(o, { old: true })))
+    }
+  }
+  return out.join('')
+}
+function libraryHtml() {
+  const n = st.files.length
+  const head = `<div class="toolbar"><div class="tl"><h1>자료실</h1>${!st.failed && n ? `<span class="cnt">파일 ${n}개</span>` : ''}</div>
+    ${isAdmin() && !st.failed ? `<button class="btn primary" data-act="upload">${ICON.upload}파일 올리기</button>` : ''}</div>
+    <p class="lead">의원 PC에 깔 파일과 설명서를 여기서 받아요.</p>`
+  if (st.failed) {
+    return head + `<div style="margin-top:16px;max-width:640px">${errCard('자료실 목록을 읽지 못했어요.', '인터넷 연결을 확인하고 [다시 읽기]를 눌러 보세요. 계속되면 오류 번호와 함께 알려 주세요.', 'E-LIBRARY-READ-FAILED')}</div>
+      <div class="retry"><button class="btn" data-act="retry">다시 읽기</button></div>`
+  }
+  const notice = st.notice ? `<div class="okc" role="status">${ICON.check}<div><p class="t">${esc(st.notice.file)} 파일을 올렸어요</p><p class="s">${st.notice.kind ? `이제 모든 의원이 받을 수 있어요. 비트 PC 연결 화면의 [${KIND_LABEL[st.notice.kind]} 내려받기]도 이 판을 줘요.` : '이제 모든 의원이 자료실에서 받을 수 있어요.'}</p></div></div>` : ''
+  const cnt = k => k === 'all' ? n : st.files.filter(f => f.cat === k).length
+  const chips = n ? `<div class="cats" role="group" aria-label="분류">${['all', ...CAT_KEYS].map(k => { const c = cnt(k); return `<button class="fc ${c ? '' : 'zero'}" data-act="cat" data-k="${k}" aria-pressed="${st.filter === k}">${k === 'all' ? '전체' : CAT[k]}<span class="n">${c}</span></button>` }).join('')}</div>` : ''
+  const table = `<div class="panel list${n ? '' : ''}" style="${n ? '' : 'margin-top:16px'}"><div class="tbw"><table class="tb" aria-label="자료실 파일">
+    <thead><tr><th>이름</th><th class="c-cat">분류</th><th class="c-size num">크기</th><th class="c-at">올린 날</th><th class="c-act"><span hidden>받기</span></th></tr></thead>
+    <tbody>${tableBody()}</tbody></table></div></div>`
+  const foot = isAdmin() && n ? `<p class="foot">로그인하고 승인된 사람(데스크 포함)은 누구나 받을 수 있어요. 올리기·지우기는 관리자만 해요. 어떤 파일이든 한 파일에 50MB까지 올릴 수 있어요.</p>` : ''
+  return head + notice + chips + table + foot
+}
+
+/* ───────── 그리기: 설정 · 관리자 화면(잘라 보기) ───────── */
+function miniCard(title, text) {
+  return `<div class="mark-new"><section class="panel card mini-card" aria-label="${title}">
+    <div class="txt"><h2>${title}</h2><p class="m">${text}</p></div>
+    <a class="btn" href="${isAdmin() ? '?s=admin' : '?s=user'}">자료실 열기${ICON.arrow}</a></section></div>`
+}
+const sameBlock = (title, sub) => `<section class="panel same"><h2>${title}</h2><p class="s">${sub}</p><div class="blk"></div></section>`
+function settingsHtml() {
+  return `<div class="stack">
+    <div class="head3"><h1>설정</h1><nav class="subnav" aria-label="설정 안 메뉴"><a href="#" aria-current="page">설정</a><a href="#">비트 PC 연결</a></nav></div>
+    ${sameBlock('병원 정보', '(지금 칸 그대로 · 바뀌지 않음)')}
+    <div><div class="tagrow"><span class="mark-tag">바뀜 · 옛 '비트 PC 연결 · 설치 파일' 받기 표 자리</span></div>
+    ${miniCard('설치 파일', '설치 파일은 자료실에서 받아요. 청구 도우미·크롬 확장과 설명서가 모두 거기 있어요.')}</div>
+    ${sameBlock('청구 · 병원 문구 · 진단 링크 · 시재금 · 데스크 계정 …', '(지금 칸들 그대로 · 바뀌지 않음)')}
+  </div>`
+}
+function adminHtml() {
+  return `<div class="stack">
+    <div class="head3"><div style="display:flex;flex-direction:column;gap:4px"><p class="loc">${ICON.userCheck}관리자</p><h1>가입 승인</h1></div>
+      <nav class="subnav" aria-label="관리자 안 메뉴"><a href="#" aria-current="page">가입 승인</a><a href="#">의원 비교</a></nav></div>
+    <p class="intro">승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요. 의원 이름을 누르면 그 의원 화면을 읽기만 할 수 있어요.</p>
+    <div><div class="tagrow"><span class="mark-tag">바뀜 · 옛 '설치 파일' 올리기 표 자리</span></div>
+    ${miniCard('설치 파일', '설치 파일은 이제 자료실에서 올리고 지워요. 자료실에는 설명서 같은 다른 파일도 올릴 수 있어요.')}</div>
+    <div class="subnav" role="tablist" aria-label="신청 상태"><span role="tab" aria-selected="true">대기 <span class="n">2</span></span><span role="tab" aria-selected="false">승인 <span class="n">14</span></span><span role="tab" aria-selected="false">거절 <span class="n">1</span></span></div>
+    ${sameBlock('신청 목록 · 본 기록', '(지금 화면 그대로 · 바뀌지 않음)')}
+  </div>`
+}
+
+/* ───────── 그리기: 창 ───────── */
+function layerHtml() {
+  const d = st.dlg
+  if (!d) return ''
+  if (d.kind === 'delete') {
+    const f = st.files.find(x => x.id === d.id)
+    const v = verOf(f.file)
+    let extra = ''
+    if (v) {
+      const g = versionGroups(st.files)[v.kind]
+      if (g[0].f === f) extra = g[1] ? `지우면 ${g[1].f.file}이 최신이 되고, 비트 PC 연결 화면의 [${KIND_LABEL[v.kind]} 내려받기]도 그 판을 줘요.` : `지우면 비트 PC 연결 화면의 [${KIND_LABEL[v.kind]} 내려받기]가 눌리지 않아요.`
+    }
+    return `<div class="scrim" data-act="close"></div>
+      <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dt">
+        <h2 id="dt">${esc(f.name)} 파일을 지울까요?</h2>
+        <p class="t">모든 의원의 자료실에서 사라져요.${extra ? ` ${extra}` : ''}</p>
+        <p class="sm">지우면 되돌릴 수 없어요.</p>
+        <div class="foot2"><button class="btn" data-act="close" id="first">취소</button><button class="btn danger" data-act="do-del">지우기</button></div>
+      </div>`
+  }
+  // 올리기 창
+  const p = d.pick, big = p && p.size > LIMIT, up = d.phase === 'uploading'
+  const lock = up || big || !p ? 'disabled' : ''
+  const fileLine = p
+    ? `<span class="fname">${ICON.file}<span>${esc(p.file)}</span><em class="${big ? 'big' : ''}">· ${sizeTxt(p.size)}</em></span>`
+    : '<span class="fname none">아직 고른 파일이 없어요.</span>'
+  const nameErr = d.nameErr ? `<p class="ferr">이름을 적어 주세요.</p>` : ''
+  const prog = up ? `<div class="prog" role="status"><div class="row"><b>올리는 중… ${d.pct}%</b><span>${mbTxt(p.size * d.pct / 100)} / ${mbTxt(p.size)}</span></div><div class="bar"><i style="width:${d.pct}%"></i></div><p class="help">다 올라갈 때까지 이 창을 열어 두세요.</p></div>` : ''
+  return `<div class="scrim" ${up ? '' : 'data-act="close"'}></div>
+    <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="ut">
+      <h2 id="ut">파일 올리기</h2>
+      <div class="field"><span class="lb">파일</span>
+        <div class="pick"><button class="btn sm" data-act="pick" ${up ? 'disabled' : ''}>파일 고르기</button>${fileLine}</div>
+        ${big ? errCard('파일이 너무 커요.', '한 파일에 50MB까지 올릴 수 있어요. 나눠서 압축하거나 더 작은 파일을 고르세요.', 'E-LIBRARY-FILE-SIZE') : '<p class="help">어떤 파일이든 돼요. 한 파일에 50MB까지.</p>'}
+      </div>
+      <div class="field"><label for="u-name">이름</label>
+        <input class="inp" id="u-name" value="${esc(d.name)}" ${lock} ${d.nameErr ? 'aria-invalid="true"' : ''} autocomplete="off">
+        ${nameErr || '<p class="help">자료실 목록에 보이는 이름이에요. 파일을 고르면 파일 이름으로 채워지고, 고쳐도 돼요.</p>'}
+      </div>
+      <div class="field"><span class="lb">분류</span>
+        <div class="opts" role="group" aria-label="분류">${CAT_KEYS.map(k => `<button class="ob" data-act="ucat" data-k="${k}" aria-pressed="${!lock && d.cat === k}" ${lock}>${CAT[k]}</button>`).join('')}</div>
+      </div>
+      <div class="field"><label for="u-desc">설명 한 줄 <span class="req">선택 · 60자까지</span></label>
+        <input class="inp" id="u-desc" maxlength="60" value="${esc(d.desc)}" placeholder="예) 청구 도우미 · 비트 자료를 읽는 PC 프로그램" ${lock} autocomplete="off">
+      </div>
+      ${prog}
+      <div class="foot2"><button class="btn" data-act="${up ? 'stop' : 'close'}">취소</button><button class="btn primary" data-act="send" ${!p || big ? 'disabled' : ''} ${up ? 'aria-busy="true"' : ''}>${ICON.upload}${up ? '올리는 중…' : '올리기'}</button></div>
+    </div>`
+}
+
+/* ───────── 움직임 ───────── */
+let upTimer = 0
+function startUpload() {
+  const d = st.dlg
+  d.name = ($('#u-name')?.value || '').trim()
+  d.desc = ($('#u-desc')?.value || '').trim()
+  if (!d.name) { d.nameErr = true; render(); $('#u-name')?.focus(); return }
+  d.nameErr = false; d.phase = 'uploading'; d.pct = 0; render()
+  clearInterval(upTimer)
+  upTimer = setInterval(() => {
+    if (!st.dlg || st.dlg.phase !== 'uploading') { clearInterval(upTimer); return }
+    st.dlg.pct = Math.min(100, st.dlg.pct + 9)
+    if (st.dlg.pct >= 100) { clearInterval(upTimer); finishUpload(); return }
+    render()
+  }, 180)
+}
+function finishUpload() {
+  const d = st.dlg, p = d.pick
+  const id = 'n' + Date.now()
+  st.files.push({ id, file: p.file, name: d.name, cat: d.cat, size: p.size, at: '2026-11-25T10:40', desc: d.desc })
+  const v = verOf(p.file)
+  st.notice = { file: p.file, kind: v ? v.kind : null }
+  st.fresh = id; st.dlg = null; st.filter = 'all'
+  render(); window.scrollTo(0, 0)
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]')
+  if (st.menu && !e.target.closest('#mpanel') && !(t && t.dataset.act === 'menu')) { st.menu = false; $('#tabs').innerHTML = tabsHtml() }
+  if (!t) return
+  const a = t.dataset.act
+  if (t.tagName === 'A' && t.getAttribute('href') === '#') e.preventDefault()
+  switch (a) {
+    case 'menu': st.menu = !st.menu; $('#tabs').innerHTML = tabsHtml(); break
+    case 'cat': st.filter = t.dataset.k; render(); break
+    case 'old': st.open[t.dataset.k] = !st.open[t.dataset.k]; render(); break
+    case 'get': { const f = st.files.find(x => x.id === t.dataset.id); toast(`${f.file} 파일을 받아요. (시안이라 실제로 받지는 않아요)`); break }
+    case 'retry': st.failed = false; render(); toast('다시 읽었어요.'); break
+    case 'upload': st.dlg = uploadDlg(null); st.notice = null; render(); break
+    case 'pick': { const d = st.dlg; const next = d.pick == null ? 0 : (d.pick.i + 1) % PICKS.length; st.dlg = uploadDlg(next, { desc: ($('#u-desc')?.value || '') }); render(); break }
+    case 'ucat': st.dlg.cat = t.dataset.k; st.dlg.name = $('#u-name').value; st.dlg.desc = $('#u-desc').value; render(); break
+    case 'send': if (st.dlg.phase !== 'uploading') startUpload(); break
+    case 'stop': clearInterval(upTimer); st.dlg.phase = 'form'; st.dlg.pct = 0; render(); toast('올리기를 멈췄어요. 아무것도 올라가지 않았어요.'); break
+    case 'close': if (st.dlg && st.dlg.phase === 'uploading') break; st.dlg = null; render(); break
+    case 'del': st.dlg = { kind: 'delete', id: t.dataset.id }; render(); setTimeout(() => $('#first')?.focus(), 0); break
+    case 'do-del': { const f = st.files.find(x => x.id === st.dlg.id); st.files = st.files.filter(x => x.id !== st.dlg.id); st.dlg = null; render(); toast(`${f.name} 파일을 지웠어요.`); break }
+  }
+})
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return
+  if (st.menu) { st.menu = false; $('#tabs').innerHTML = tabsHtml(); return }
+  if (st.dlg && st.dlg.phase !== 'uploading') { st.dlg = null; render() }
+})
+render()
+</script>
+</body>
+</html>
