@@ -4,6 +4,7 @@
 // 화면이 아직 없는 기능은 그 주소의 '준비 중' 화면이다. 비트 PC 연결 화면(/claim/setup)은 설정 탭 자리에 속한다(owns).
 // 관리자 화면은 탭이 아니라 계정 메뉴의 [가입 승인](ADMIN_LINK)이다.
 // 입지 분석(/location)은 관리자만 보는 탭이라 MENU 밖 상수 LOCATION_TAB 하나다 — [더보기] 판이 관리자에게만 주소록 다음에 끼운다(specs/location AC-7901.1)
+// 자료실(/library)은 승인된 사람 모두에게 늘 보이는 탭이라 MENU 밖 상수 LIBRARY_TAB 하나다 — [더보기] 판이 설정 바로 앞에, 데스크 탭 띠가 끝에 둔다(specs/library AC-8108.1)
 export type MenuLabel =
   | '대시보드'
   | '통계'
@@ -19,6 +20,7 @@ export type MenuLabel =
   | '재고'
   | '주소록'
   | '입지 분석'
+  | '자료실'
   | '설정'
 export type MenuPath =
   | '/dashboard'
@@ -35,9 +37,10 @@ export type MenuPath =
   | '/inventory'
   | '/contacts'
   | '/location'
+  | '/library'
   | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/staff' | '/inventory' | '/worklog' | '/contacts' | '/location' | '/settings'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/staff' | '/inventory' | '/worklog' | '/contacts' | '/location' | '/library' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
@@ -92,28 +95,35 @@ export const MORE_MENU: readonly MenuItem[] = MENU.filter((item) => !item.primar
 // /location만 자기 CSP(카카오 origin)를 쓰므로 이 탭을 오가는 셸 링크는 평범한 <a>다(MoreMenu.tsx ShellLink)
 export const LOCATION_TAB: MenuItem = { label: '입지 분석', path: '/location', href: '/location', ready: true, primary: false }
 
+// 자료실 /library — 관리자가 올린 설치 파일·설명서를 승인된 사람 모두(원장·데스크·관리자)가 받는 탭(specs/library AC-8108.1, ADR-051).
+// MENU·대시보드 목차·준비 중 목록·'관리자만 보는 탭' 목록(TAB_ACCESS_MENU) 밖이라 숨김 판정(adminOnlyTabs·isHiddenPath·TabGate)에 들지 않는다 → 늘 보인다.
+// [더보기] 판이 설정 바로 앞에 끼우고(관리자는 입지 분석 다음, MoreMenu.tsx), 데스크는 [더보기]가 없어 탭 띠 끝에 둔다(DESK_TABS)
+export const LIBRARY_TAB: MenuItem = { label: '자료실', path: '/library', href: '/library', ready: true, primary: false }
+
 // 관리자만, 계정 메뉴 첫 항목(REQ-304)
 export const ADMIN_LINK: { label: '가입 승인'; href: '/admin' } = { label: '가입 승인', href: '/admin' }
 
 /** 그 경로이거나 그 아래 경로 */
 export const isUnder = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`)
 
-// 데스크 계정(desk-feedback REQ-6306, ADR-031): 탭은 업무일지·수납일지·예약 셋뿐이고 첫 화면은 수납일지다.
+// 데스크 계정(desk-feedback REQ-6306, ADR-031): 탭은 업무일지·수납일지·예약 셋과 끝의 자료실(specs/library AC-8108.3)이고 첫 화면은 수납일지다.
 // 다른 주소는 DeskGate가 막힌 화면으로 바꾼다(자료는 서버 RLS가 막는다). 비트 PC 연결 화면(/claim/setup)만 탭 밖에서 연다(desk-setup)
 const DESK_PATHS: readonly MenuPath[] = ['/worklog', '/sunap', '/calendar']
-/** 데스크 탭 띠(MENU 차례, MENU 항목 그대로) */
+/** 데스크 세 탭(MENU 차례, MENU 항목 그대로). 첫 화면(deskHomeOf)은 이 셋에서 고른다 */
 export const DESK_MENU: readonly MenuItem[] = MENU.filter((item) => DESK_PATHS.includes(item.path))
+/** 데스크 탭 띠: 세 탭 다음 끝(예약 다음)에 자료실(specs/library AC-8108.3, 시안 ?s=desk) — 넷 */
+export const DESK_TABS: readonly MenuItem[] = [...DESK_MENU, LIBRARY_TAB]
 /** 데스크 첫 화면. 로그인 뒤 첫 주소 /dashboard는 여기로 바꾼다 */
 export const DESK_HOME: MenuPath = '/sunap'
 // 탭은 아니지만 데스크도 여는 주소: 비트 PC 연결 화면(desk-setup AC-7001.1 — 데스크 PC에 확장·도우미를 깔고 연결한다)
 const DESK_EXTRA: readonly string[] = ['/claim/setup']
-/** 데스크가 열 수 있는 주소: 세 탭 주소와 비트 PC 연결 화면, 그 아래 */
-export const isDeskPath = (pathname: string) => [...DESK_PATHS, ...DESK_EXTRA].some((base) => isUnder(pathname, base))
+/** 데스크가 열 수 있는 주소: 탭 띠 네 주소(세 탭·자료실)와 비트 PC 연결 화면, 그 아래 */
+export const isDeskPath = (pathname: string) => [...DESK_TABS.map((item) => item.path), ...DESK_EXTRA].some((base) => isUnder(pathname, base))
 
-/** 지금 화면의 탭 이름. 탭(MENU와 LOCATION_TAB)의 path·owns 중 가장 길게 맞는 경로가 이긴다(/claim/setup은 청구 /claim보다 설정 /claim/setup이 길게 맞는다, AC-302.4) */
+/** 지금 화면의 탭 이름. 탭(MENU와 LOCATION_TAB·LIBRARY_TAB)의 path·owns 중 가장 길게 맞는 경로가 이긴다(/claim/setup은 청구 /claim보다 설정 /claim/setup이 길게 맞는다, AC-302.4) */
 export function currentMenuLabel(pathname: string): MenuLabel | null {
   let best: { label: MenuLabel; length: number } | null = null
-  for (const item of [...MENU, LOCATION_TAB]) {
+  for (const item of [...MENU, LOCATION_TAB, LIBRARY_TAB]) {
     for (const base of [item.path, ...(item.owns ?? [])]) {
       if (isUnder(pathname, base) && (best === null || base.length > best.length)) {
         best = { label: item.label, length: base.length }

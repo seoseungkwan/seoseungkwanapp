@@ -4,10 +4,10 @@ import Link from 'next/link'
 import { useEffect, useId, useRef, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { LOCATION_TAB, MORE_MENU, isUnder, type MenuItem, type MenuLabel, type MenuPath } from './menu'
+import { LIBRARY_TAB, LOCATION_TAB, MORE_MENU, isUnder, type MenuItem, type MenuLabel, type MenuPath } from './menu'
 
 // [더보기] (dashboard-ux REQ-2702 AC-2702.1~2702.5, design.md §3, 시안 docs/mockups/dashboard-ux .more·.morewrap·.morepanel).
-// 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 여섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
+// 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 여섯 밖의 나머지(MORE_MENU, MENU 차례 — 설정 앞에 자료실)를 판으로 펼친다.
 // 지금 경로(또는 방금 누른 주소)가 판 안 항목이면 단추가 지금 탭 모양이고 글자가 "더보기 · {이름}"이다. 판 안 링크를 누르면 단추에 data-pending.
 // 판 자리: 768px 이상은 판 오른쪽 끝을 본문 오른쪽 정렬선에 맞춘 320px 떠 있는 판(화면 폭 − 좌우 24px을 넘지 않는다, AC-2702.4 2026-11-08).
 // 감싸개를 오른쪽 12px 띄워(md:mr-3) 단추 글자 끝(단추 안쪽 12px)이 그 선에 오고, 판은 감싸개 끝에서 12px 안쪽(md:right-3)이다.
@@ -15,6 +15,7 @@ import { LOCATION_TAB, MORE_MENU, isUnder, type MenuItem, type MenuLabel, type M
 // 판은 열릴 때만 그린다: 나타날 때만 흐림 → 보임(starting:, 기본 transition 150ms)이고 닫으면 바로 사라진다. 꺾쇠는 열린 동안 180° 돈다.
 // 닫힘: 단추 다시 누름 · Esc(초점은 단추로) · 판 안 링크 누름 · 판 밖 누름 · 경로 바뀜. 열 때 초점은 단추에 남는다(펼침 단추)
 // 관리자(isAdmin)면 판에 입지 분석(LOCATION_TAB)을 주소록 다음·설정 앞에 끼우고 이름 뒤에 중립 칩 '관리자만'을 붙인다(specs/location AC-7901.1, 시안 menu)
+// 자료실(LIBRARY_TAB)은 원장·관리자 판 모두 설정 바로 앞(관리자는 입지 분석 다음)에 끼우고 칩이 없다(specs/library AC-8108.2, 시안 docs/mockups/library ?s=menu)
 
 // 셸 링크 하나(탭 띠·[더보기] 판이 같이 쓴다, specs/location AC-7901.1). /location만 자기 CSP(카카오 origin, next.config.ts)를 쓴다.
 // Next <Link>는 문서를 새로 받지 않고 옮겨 첫 문서의 CSP가 그대로 남는다 — 다른 탭에서 넘어가면 지도가 막히고, /location에서 떠나면 넓은 CSP가 남는다.
@@ -33,11 +34,17 @@ export function ShellLink({
   return opensNewDocument(from, href) ? <a href={href} {...rest} /> : <Link href={href} {...rest} />
 }
 
-// 관리자 판: MORE_MENU 차례에서 주소록 다음에 입지 분석을 끼운다(MENU·준비 중 수는 그대로)
-const ADMIN_MORE: readonly MenuItem[] = MORE_MENU.flatMap((item) => (item.path === '/contacts' ? [item, LOCATION_TAB] : [item]))
+// 판 목록에서 설정 바로 앞에 자료실을 끼운다(MENU·준비 중 수는 그대로)
+const withLibrary = (items: readonly MenuItem[]): readonly MenuItem[] =>
+  items.flatMap((item) => (item.path === '/settings' ? [LIBRARY_TAB, item] : [item]))
+// 원장 판: MORE_MENU 차례 + 설정 앞 자료실
+const OWNER_MORE: readonly MenuItem[] = withLibrary(MORE_MENU)
+// 관리자 판: 원장 판의 주소록 다음에 입지 분석을 끼운다
+const ADMIN_MORE: readonly MenuItem[] = withLibrary(MORE_MENU.flatMap((item) => (item.path === '/contacts' ? [item, LOCATION_TAB] : [item])))
 
-// 머리 글자의 숫자는 판에 보이는 항목(MORE_MENU — 관리자는 입지 분석을 더한 목록 — 에서 숨긴 탭을 뺀 것)에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다).
-// 관리자만 보는 탭(hidden, multi-admin AC-7706.3)은 판 목록·수·지금 항목에서 빠진다. 판에는 늘 설정이 있어 비지 않는다
+// 머리 글자의 숫자는 판에 보이는 항목(MORE_MENU에 자료실 — 관리자는 입지 분석도 — 을 더한 목록에서 숨긴 탭을 뺀 것)에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다).
+// 관리자만 보는 탭(hidden, multi-admin AC-7706.3)은 판 목록·수·지금 항목에서 빠진다. 자료실은 늘 보이는 탭이라 숨김 거르기가 빼지 않는다(AC-8108.2).
+// 판에는 늘 자료실·설정이 있어 비지 않는다
 
 // 감싸개: 단추가 nav 높이만큼 늘어난다. 768px 미만은 static → 판의 기준이 nav가 된다(그 폭 배치는 그대로)
 const wrapClass = 'relative flex shrink-0 md:mr-3 max-md:static'
@@ -88,8 +95,8 @@ export function MoreMenu({
   /** 숨긴 탭(multi-admin). 없으면 빈 목록 = 지금 그대로 */
   hidden?: readonly MenuPath[]
 }) {
-  // 판에 보이는 항목(MORE_MENU 차례, 관리자는 주소록 다음에 입지 분석)과 머리 숫자
-  const items = (isAdmin ? ADMIN_MORE : MORE_MENU).filter((item) => !hidden.includes(item.path))
+  // 판에 보이는 항목(MORE_MENU 차례 + 설정 앞 자료실, 관리자는 주소록 다음에 입지 분석)과 머리 숫자
+  const items = (isAdmin ? ADMIN_MORE : OWNER_MORE).filter((item) => item === LIBRARY_TAB || !hidden.includes(item.path))
   const others = items.length
   const notReady = items.filter((m) => !m.ready).length
   // 판을 연 경로. 지금 경로에서 연 판만 열린 판이다 → 경로가 바뀌면 닫히고, 그 경로로 돌아와도 다시 열리지 않게 지운다

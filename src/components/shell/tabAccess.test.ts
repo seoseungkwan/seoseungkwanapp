@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DESK_HOME,
   DESK_MENU,
+  LIBRARY_TAB,
   MENU,
   MORE_MENU,
   PRIMARY_MENU,
@@ -213,6 +214,32 @@ describe('AC-7706.1 isHiddenPath — 지금 주소가 숨긴 탭 자리인가', 
       const tab = TAB_ACCESS_MENU.find((item) => item.label === label)
       expect(isHiddenPath(pathname, hidden), pathname).toBe(tab !== undefined && hidden.includes(tab.path))
     }
+  })
+})
+
+// 자료실(library AC-8108.1)은 MENU 밖 LIBRARY_TAB이라 '관리자만 보는 탭' 목록 밖 — 늘 보이는 탭이다(tab_access 줄이 없어도 숨기지 않음)
+describe('AC-8108.1 자료실은 관리자만 보는 탭 목록 밖', () => {
+  it('AC-8108.1: TAB_ACCESS_MENU(12개 그대로)에 자료실·/library가 없다', () => {
+    expect(TAB_ACCESS_MENU.map((item) => item.path)).toEqual(TAB_PATHS)
+    expect(TAB_ACCESS_MENU.map((item) => item.label as string)).not.toContain('자료실')
+    expect(TAB_ACCESS_MENU).not.toContain(LIBRARY_TAB)
+  })
+
+  it('AC-8108.1: adminOnlyTabs는 /library를 내지 않는다 — 줄이 하나도 없어도, /library 관리자만 줄이 와도', () => {
+    expect(adminOnlyTabs([]) as string[]).not.toContain('/library')
+    expect(adminOnlyTabs([...everyone(), { path: '/library', adminOnly: true }])).toEqual([])
+  })
+
+  it.each(['/library', '/library/x'])('AC-8108.1: isHiddenPath(%s, 어떤 숨김)은 거짓이다(자료실 탭 자리는 숨긴 탭 자리가 아니다)', (pathname) => {
+    expect(currentMenuLabel(pathname)).toBe('자료실')
+    expect(isHiddenPath(pathname, [])).toBe(false)
+    expect(isHiddenPath(pathname, TAB_PATHS)).toBe(false)
+    expect(isHiddenPath(pathname, [...TAB_PATHS, '/dashboard', '/settings', '/library'])).toBe(false)
+  })
+
+  it('AC-8108.1: 데스크 첫 화면(deskHomeOf)은 자료실과 상관없다 — 자료실을 숨김에 넣어도 수납일지, 세 데스크 탭을 숨기면 null', () => {
+    expect(deskHomeOf(['/library'])).toBe('/sunap')
+    expect(deskHomeOf(['/worklog', '/sunap', '/calendar', '/library'])).toBeNull()
   })
 })
 

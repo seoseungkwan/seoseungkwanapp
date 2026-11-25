@@ -11,7 +11,8 @@ import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
 import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { AppShell } from '@/components/shell/AppShell'
-import { LOCATION_TAB, MENU, MORE_MENU } from '@/components/shell/menu'
+import { PREVIEW_TABS } from '@/components/preview/sample'
+import { LIBRARY_TAB, LOCATION_TAB, MENU, MORE_MENU, TAB_ACCESS_MENU } from '@/components/shell/menu'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { decideRoute } from '@/lib/auth/gate'
 import DashboardPage from './dashboard/page'
@@ -387,6 +388,68 @@ describe('입지 분석 탭 — 관리자만, 목차·준비 중 그대로 (loca
       expect(decideRoute({ path, signedIn: true, hospital: 'approved', isAdmin: true }), path).toBeNull()
       expect(decideRoute({ path, signedIn: true, hospital: 'approved', isAdmin: false }), path).toBe('/dashboard')
       expect(decideRoute({ path, signedIn: true, hospital: 'desk', isAdmin: false }), path).toBe('/sunap')
+      expect(decideRoute({ path, signedIn: false, hospital: 'unknown', isAdmin: false }), path).toBe('/login')
+    }
+  })
+})
+
+// specs/library REQ-8108: 자료실은 모두에게 늘 보이는 탭이라 MENU 밖 상수 LIBRARY_TAB 하나다 — 세 곳(menu · features · notReady)과
+// '관리자만 보는 탭' 목록(TAB_ACCESS_MENU)·미리보기 탭(PREVIEW_TABS)은 그대로다(입지 분석과 같은 모양)
+describe('자료실 탭 — 늘 보임, 목차·준비 중·관리자만 보는 탭 목록 그대로 (library REQ-8108)', () => {
+  it('AC-8108.1: LIBRARY_TAB은 MENU 밖이라 다섯 곳이 그대로다 — MENU 14개, 목차 = MENU에서 대시보드를 뺀 칸, 준비 중 자료·[더보기] 준비 중 수, 관리자만 보는 탭 목록 12개, 미리보기 탭 = MENU 이름이고 어디에도 자료실·/library가 없다', () => {
+    expect(LIBRARY_TAB).toMatchObject({ label: '자료실', path: '/library', href: '/library', ready: true, primary: false })
+    expect(MENU).toHaveLength(14)
+    expect(MENU).not.toContain(LIBRARY_TAB)
+    expect(MORE_MENU).not.toContain(LIBRARY_TAB)
+    expect(TAB_ACCESS_MENU).toHaveLength(12)
+    expect(TAB_ACCESS_MENU).not.toContain(LIBRARY_TAB)
+    expect(DASHBOARD_FEATURES).toHaveLength(MENU.length - 1)
+    expect(DASHBOARD_FEATURES.map((f) => f.name)).toEqual(MENU.filter((m) => m.label !== '대시보드').map((m) => m.label))
+    expect([...PREVIEW_TABS]).toEqual(MENU.map((m) => m.label))
+    for (const names of [
+      MENU.map((m) => m.label as string),
+      DASHBOARD_FEATURES.map((f) => f.name as string),
+      NOT_READY_FEATURES.map((f) => f.name as string),
+      TAB_ACCESS_MENU.map((m) => m.label as string),
+      [...PREVIEW_TABS] as string[],
+    ]) {
+      expect(names).not.toContain('자료실')
+    }
+    for (const paths of [
+      MENU.map((m) => m.path as string),
+      DASHBOARD_FEATURES.map((f) => f.href as string),
+      NOT_READY_FEATURES.map((f) => f.path as string),
+      TAB_ACCESS_MENU.map((m) => m.path as string),
+    ]) {
+      expect(paths).not.toContain('/library')
+    }
+    expect(MORE_MENU.filter((m) => !m.ready)).toHaveLength(NOT_READY_FEATURES.length)
+  })
+
+  it('AC-8108.2: /library에서 원장·관리자 앱 틀 모두 [더보기] 단추가 "더보기 · 자료실"이고, 다른 탭(/dashboard)에서는 "더보기"다(자료실 글은 판을 열어야 보인다)', () => {
+    const shellAs = (isAdmin: boolean) =>
+      plain(
+        renderToStaticMarkup(
+          <AppShell hospitalName="가나 정형외과의원" email="manager@example.com" isAdmin={isAdmin}>
+            <p>본문</p>
+          </AppShell>,
+        ),
+      )
+    pathname.mockReturnValue('/library')
+    for (const isAdmin of [false, true]) expect(shellAs(isAdmin), String(isAdmin)).toContain('더보기 · 자료실')
+    pathname.mockReturnValue('/dashboard')
+    for (const isAdmin of [false, true]) {
+      expect(shellAs(isAdmin), String(isAdmin)).toContain('더보기')
+      expect(shellAs(isAdmin), String(isAdmin)).not.toContain('자료실')
+    }
+  })
+
+  it('AC-8108.3: /library와 그 아래는 관리자 경로가 아니다 — 승인된 원장·관리자·데스크 모두 연다(문지기 그대로), 대기 /pending, 로그인 안 함 /login', () => {
+    for (const path of ['/library', '/library/x']) {
+      expect(decideRoute({ path, signedIn: true, hospital: 'approved', isAdmin: true }), path).toBeNull()
+      expect(decideRoute({ path, signedIn: true, hospital: 'approved', isAdmin: false }), path).toBeNull()
+      expect(decideRoute({ path, signedIn: true, hospital: 'desk', isAdmin: false }), path).toBeNull()
+      expect(decideRoute({ path, signedIn: true, hospital: 'pending', isAdmin: false }), path).toBe('/pending')
       expect(decideRoute({ path, signedIn: false, hospital: 'unknown', isAdmin: false }), path).toBe('/login')
     }
   })
