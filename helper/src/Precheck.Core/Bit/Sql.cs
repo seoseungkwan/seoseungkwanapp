@@ -197,6 +197,16 @@ FROM dbo.OcmInf c
 WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to
 GROUP BY RTRIM(c.OcmChtNum),LEFT(c.OcmAcpDtm,8)";
 
+    /// <summary>
+    /// bit.register(새 SELECT, 원본에 없음, AC-005.18): DB 안 병원 범위가 여럿이고 로그인 계정으로 못 정할 때, 기간의 외래·접수 취소 아님 내원을
+    /// 진료과 날짜 사이 조건으로 범위마다 센다(진료 상태 조건은 넣지 않음). 범위와 숫자만 읽는다(차트번호·이름·메모 없음).
+    /// </summary>
+    public const string ActiveScopesSql = @"SELECT RTRIM(d.DepHspNum) Scope,COUNT_BIG(*) Visits
+FROM dbo.OcmInf c
+JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte
+WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O' AND c.OcmRsuYon<>'O'
+GROUP BY RTRIM(d.DepHspNum)";
+
     private static readonly SqlParam[] FocusRange =
     {
         new SqlParam("@from", SqlParamKind.Char, 12), new SqlParam("@focus", SqlParamKind.Char, 12),
@@ -237,6 +247,7 @@ GROUP BY RTRIM(c.OcmChtNum),LEFT(c.OcmAcpDtm,8)";
         [LaCatalogSql] = new[] { new SqlParam("@today", SqlParamKind.Char, 8), new SqlParam("@prefix", SqlParamKind.VarChar, 8) },
         [ClaimDatesSql] = Range,
         [InputVisitCountSql] = PeriodOnly,
+        [ActiveScopesSql] = PeriodOnly,
     };
 
     /// <summary>허용 목록(이 클래스의 SQL 상수 전부).</summary>

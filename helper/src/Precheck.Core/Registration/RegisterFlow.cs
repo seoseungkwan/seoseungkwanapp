@@ -28,12 +28,15 @@ public static class RegisterFlow
         using (var session = services.Connector.Open(root))
         {
             // 비트 로그인은 그대로 한다(비트를 쓰는 사람만 등록한다). 취소면 등록 없음
-            if (services.Login.Login(root) == null) return false;
+            var user = services.Login.Login(root);
+            if (user == null) return false;
 
             var scopes = HospitalCheck.ReadScopes(session);
             if (scopes.Count == 0) throw new BitException(BitErrors.RegisterNone);
-            if (scopes.Count > 1) throw new BitException(BitErrors.RegisterMany);
-            var scope = scopes[0];
+            // 범위가 여럿이면 로그인 계정의 범위 → 최근 30일 내원이 있는 범위 하나로 고른다. 못 정하면 E-BIT-REG-MANY(AC-005.18)
+            var scope = scopes.Count == 1
+                ? scopes[0]
+                : HospitalCheck.ChooseScope(session, scopes, user, services.Today().Date) ?? throw new BitException(BitErrors.RegisterMany);
             var codes = HospitalCheck.ReadCodes(session, scope, services.Today().Date);
             var code = codes.Count == 1 ? codes[0] : ""; // 못 찾으면 빈 기관기호로 등록한다(AC-005.13, 사람이 확인 창에서 본다)
 

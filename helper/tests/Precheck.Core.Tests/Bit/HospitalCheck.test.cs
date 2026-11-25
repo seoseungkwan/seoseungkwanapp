@@ -173,7 +173,7 @@ public class HospitalCheckTests
     public void VerifyCurrentDataMismatch()
     {
         var foreignScope = FakeDb.Hospital(new FakeSession());
-        foreignScope.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        foreignScope.Answer(Sql.ScopesSql, "FOREIGN", "OTHER"); // 등록 범위가 DB 안에 없다(AC-005.18부터 다른 범위가 함께 있는 것만으로는 막지 않음)
         Assert.Equal(Mismatch, Assert.Throws<BitException>(() => HospitalCheck.VerifyCurrent(foreignScope, Synthetic.Registration(), Synthetic.Today)).Code);
 
         var otherNumber = FakeDb.Hospital(new FakeSession(), institution: Synthetic.OtherInstitution);
@@ -195,8 +195,45 @@ public class HospitalCheckTests
         Assert.Equal(new[] { Sql.ScopesSql }, session.Sqls);
 
         var foreign = FakeDb.Hospital(new FakeSession());
-        foreign.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        foreign.Answer(Sql.ScopesSql, "FOREIGN");
         Assert.Equal(Mismatch, Assert.Throws<BitException>(() => HospitalCheck.VerifyCurrent(foreign, registration, Synthetic.Today)).Code);
+    }
+
+    [Fact(DisplayName = "AC-005.18 매번 확인: DB 안 범위가 여럿이어도 등록 범위가 들어 있으면 통과하고, 기관기호·설치 위치 확인은 그대로다")]
+    public void VerifyCurrentAllowsOtherScopes()
+    {
+        var session = FakeDb.Hospital(new FakeSession());
+        session.Answer(Sql.ScopesSql, "FOREIGN", Synthetic.Scope + " ", "", null);
+        HospitalCheck.VerifyCurrent(session, Synthetic.Registration(), Synthetic.Today);
+        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql }, session.Sqls);
+
+        var otherNumber = FakeDb.Hospital(new FakeSession(), institution: Synthetic.OtherInstitution);
+        otherNumber.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        Assert.Equal(Mismatch, Assert.Throws<BitException>(() => HospitalCheck.VerifyCurrent(otherNumber, Synthetic.Registration(), Synthetic.Today)).Code);
+
+        var withoutNumber = FakeDb.Hospital(new FakeSession(), institution: Synthetic.OtherInstitution);
+        withoutNumber.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        HospitalCheck.VerifyCurrent(withoutNumber, Synthetic.Registration(institution: ""), Synthetic.Today);
+
+        var elsewhere = FakeDb.Hospital(new FakeSession(Synthetic.Target(install: @"D:\Elsewhere")));
+        elsewhere.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        Assert.Equal(Mismatch, Assert.Throws<BitException>(() => HospitalCheck.VerifyCurrent(elsewhere, Synthetic.Registration(), Synthetic.Today)).Code);
+        Assert.Empty(elsewhere.Sqls);
+    }
+
+    [Fact(DisplayName = "AC-005.18 최근 내원 범위 읽기는 새 SELECT 하나를 @from·@to(Char 12)로 돌리고, 내원 1건 이상·빈 값 뺀 범위만 뒤 공백을 지워 준다")]
+    public void ReadActiveScopes()
+    {
+        Assert.Contains(Sql.ActiveScopesSql, ReadOnlyGuardTests.Derived);
+        Assert.Equal(new[] { "@from:Char:12", "@to:Char:12" }, Sql.ParametersOf(Sql.ActiveScopesSql).Select(p => p.Name + ":" + p.Kind + ":" + p.Size));
+        var db = new FakeSession();
+        db.Answer(Sql.ActiveScopesSql, _ => new[]
+        {
+            new object?[] { "A ", 2L }, new object?[] { "B", 0L }, new object?[] { "", 5L }, new object?[] { null, 1L }, new object?[] { "C", 1 }, new object?[] { "A", 7L },
+        });
+        Assert.Equal(new[] { "A", "C" }, HospitalCheck.ReadActiveScopes(db, Synthetic.Today));
+        Assert.Equal("202609300000", db.Calls.Single().Args["@from"]);
+        Assert.Equal("202610310000", db.Calls.Single().Args["@to"]);
     }
 
     [Fact(DisplayName = "AC-005.13 매번 확인도 처음 등록과 같은 기준: 빈 범위 줄·8자리 아닌 기관기호 줄은 빼고 본다")]
