@@ -144,6 +144,13 @@ const ALL_CODES = [
   'E-AUTO-MONTHS',
   'E-AUTO-UPLOAD',
   'E-AUTO-OTHER-BIT',
+  'E-LIBRARY-READ-FAILED',
+  'E-LIBRARY-FILE-SIZE',
+  'E-LIBRARY-FILE-NAME',
+  'E-LIBRARY-FILE-EXISTS',
+  'E-LIBRARY-UPLOAD-FAILED',
+  'E-LIBRARY-DOWNLOAD-FAILED',
+  'E-LIBRARY-DELETE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1599,5 +1606,61 @@ describe('AC-8020.4 저절로 올리기 오류 번호 셋', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(AUTO_UPLOAD)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 자료실(specs/library requirements.md '시안에 없어 이 명세가 정한 글' 표, TASK-2). 글은 그 표 글자 그대로다(끝 마침표 있음)
+const LIBRARY = {
+  'E-LIBRARY-READ-FAILED': {
+    what: '자료실 목록을 읽지 못했어요.',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 보세요. 계속되면 오류 번호와 함께 알려 주세요.',
+  },
+  'E-LIBRARY-FILE-SIZE': {
+    what: '파일이 너무 커요.',
+    fix: '한 파일에 50MB까지 올릴 수 있어요. 나눠서 압축하거나 더 작은 파일을 고르세요.',
+  },
+  'E-LIBRARY-FILE-NAME': {
+    what: '파일 이름이 너무 길어요.',
+    fix: '컴퓨터에서 파일 이름을 200자 안으로 줄인 뒤 다시 골라 주세요.',
+  },
+  'E-LIBRARY-FILE-EXISTS': {
+    what: '같은 이름의 파일이 이미 있어요.',
+    fix: '컴퓨터에서 파일 이름을 바꾸거나, 자료실의 같은 이름 파일을 지운 뒤 올려 주세요.',
+  },
+  'E-LIBRARY-UPLOAD-FAILED': {
+    what: '파일을 올리지 못했어요.',
+    fix: '인터넷 연결을 확인하고 [올리기]를 다시 눌러 보세요. 계속되면 오류 번호와 함께 알려 주세요.',
+  },
+  'E-LIBRARY-DOWNLOAD-FAILED': {
+    what: '파일을 받지 못했어요.',
+    fix: '인터넷 연결을 확인하고 [받기]를 다시 눌러 보세요. 계속되면 오류 번호와 함께 알려 주세요.',
+  },
+  'E-LIBRARY-DELETE-FAILED': {
+    what: '파일을 지우지 못했어요.',
+    fix: '인터넷 연결을 확인하고 [지우기]를 다시 눌러 보세요. 계속되면 오류 번호와 함께 알려 주세요.',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-8104.1 자료실 오류 번호 일곱', () => {
+  it.each(Object.keys(LIBRARY) as Array<keyof typeof LIBRARY>)(
+    "AC-8104.1: %s는 번호가 있고 무엇이·어떻게 고치나가 requirements.md '시안에 없어 이 명세가 정한 글' 표 글자 그대로다",
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(LIBRARY[code])
+    },
+  )
+
+  it('AC-8104.1: 이 명세가 더하는 E-LIBRARY- 번호는 표의 일곱뿐이고, 그 밖 번호 수는 그대로다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-LIBRARY-')).sort()).toEqual(Object.keys(LIBRARY).sort())
+    expect(Object.keys(LIBRARY)).toHaveLength(7)
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-8104.1: 일곱 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(LIBRARY)) expect(union).toContain(`'${code}'`)
   })
 })
