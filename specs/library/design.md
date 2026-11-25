@@ -5,7 +5,7 @@
 
 ## 흐름
 - 목록: 화면 → `listLibraryFiles()` → 표 `library_files`(RLS: 승인된 의원의 원장·데스크·관리자) → `libraryRows`(순수)로 줄을 만들어 그린다
-- 받기: [받기] → `downloadLibraryFile` → `storage.from('library').createSignedUrl(storagePath, 60, { download: fileName })` → 숨은 `<a href>` 한 번 누름 → 브라우저가 Supabase 주소에서 바로 받는다(응답 머리 `Content-Disposition: attachment`라 화면은 그대로, 새 탭 없음). 50MB도 메모리에 다 담지 않는다
+- 받기: [받기] → `downloadLibraryFile` → `storage.from('library').createSignedUrl(storagePath, 60)` → 주소에 `download=파일 이름` 한 번 붙임(TASK-6) → 숨은 `<a href>` 한 번 누름 → 브라우저가 Supabase 주소에서 바로 받는다(응답 머리 `Content-Disposition: attachment`라 화면은 그대로, 새 탭 없음). 50MB도 메모리에 다 담지 않는다
 - 올리기(관리자): 파일 고르기 → `pickProblem`(크기·이름 길이·같은 이름, 네트워크 없음) → [올리기] → `uploadLibraryFile`: uuid 만들기 → `createSignedUploadUrl(uuid)`(바구니 넣기 규칙 = 관리자) → XMLHttpRequest PUT(진행률·멈춤) → `library_files` 줄 넣기(표 넣기 규칙 = 관리자) → 목록 다시 읽기
 - 지우기(관리자): 확인 창 → `deleteLibraryFile`: 바구니 파일 지우기 → 표 줄 지우기 → 목록 다시 읽기
 - 비트 PC 연결 화면 받기 단추: `useInstallFiles` → `latestInstallFiles()`(자료실 목록 한 번) → 종류마다 최신 판 → `downloadInstallFile` = 자료실 받기
@@ -90,7 +90,9 @@ export async function uploadLibraryFile(input: LibraryUpload, options?: { onProg
 export async function deleteLibraryFile(file: Pick<LibraryFile, 'id' | 'storagePath'>): Promise<void>
 ```
 - 읽기: `from('library_files').select('id, file_name, name, category, description, storage_path, size, created_at').order('created_at', { ascending: false }).limit(1000)`. 칸 모양 검사(글자·분류 셋·크기 정수·시각)에 틀린 줄은 버린다
-- 받기: `createSignedUrl(storagePath, 60, { download: fileName })` → `document.createElement('a')`(href = 서명 주소, `rel="noopener"`, 숨김) → `click()` → `remove()`. `target` 없음
+- 받기: `createSignedUrl(storagePath, 60)`(download 옵션을 넘기지 않는다) → 서명 주소가 http(s)가 아니면 DOWNLOAD-FAILED → `const u = new URL(signedUrl); u.searchParams.set('download', fileName)` → `document.createElement('a')`(href = `u.toString()`, `rel="noopener"`, 숨김) → `click()` → `remove()`. `target` 없음
+  - 까닭(TASK-6, 독립 검토에서 찾음): 설치된 `@supabase/storage-js` 2.117.3은 `download` 값을 URLSearchParams로 바꿔 적은 뒤 주소 전체에 `encodeURI`를 한 번 더 걸어(`dist/index.mjs` 약 1048~1051줄) 두 번 바뀐다. Storage 서버는 받은 값을 `encodeURIComponent` 한 번만 하므로 `청구 도우미 설명서.pdf`가 `%EC%B2%AD….pdf`로 저장되고 `+ # & %`가 든 이름도 깨진다. `searchParams.set`은 한 번만 바꿔 적는다
+  - 시험: 가짜 supabase client가 아니라 진짜 `StorageClient`(`@supabase/storage-js`)에 가짜 fetch를 넣어 서명 주소를 받고, `new URL(href).searchParams.get('download')`가 `청구 도우미 설명서.pdf`·`+ # & %`가 든 이름과 같음을 본다
 - 올리기: `crypto.randomUUID()` → `createSignedUploadUrl(uuid)` → `new XMLHttpRequest()` `open('PUT', signedUrl)` · `setRequestHeader('content-type', file.type || 'application/octet-stream')` · `upload.onprogress` → `onProgress(loaded, total)` · `send(file)`. 2xx만 성공. 너무 큼 = HTTP 413, 또는 HTTP 400이고 답 몸통 JSON의 `statusCode`가 `'413'`(Storage는 둘 중 하나로 답한다 — 옛 `installFiles.ts`의 `isDuplicate`가 `'409'`를 보던 것과 같은 모양) → FILE-SIZE, 그 밖 실패 → UPLOAD-FAILED. 이름 200자 넘음·크기 넘음은 네트워크 전에 `pickProblem`과 같은 검사로 던진다. `signal`이 오면 `xhr.abort()` → `LibraryStopped`. PUT이 끝난 뒤 멈춤이 왔으면 바구니 파일을 지우고 `LibraryStopped`. 그다음 `from('library_files').insert({ file_name: file.name, name: name.trim(), category, description: description.trim(), storage_path: uuid, size: file.size }).select(<읽기 칸>).single()`. 넣기 실패면 `remove([uuid])`(그 실패는 삼킨다) 뒤 23505 → FILE-EXISTS, 그 밖 → UPLOAD-FAILED
 - 지우기: `storage.from('library').remove([storagePath])` 오류 → DELETE-FAILED(표 그대로). 그다음 `from('library_files').delete().eq('id', id).select('id')` 오류·0줄 → DELETE-FAILED. 없는 바구니 파일 지우기는 Supabase가 오류 없이 답하므로, 표 지우기만 실패한 경우 [지우기]를 다시 누르면 끝까지 지워진다
 - 본보기: `src/lib/storage/installFiles.ts`(Storage·오류 바꾸기)·`src/lib/storage/inventory.ts`(사진 올리기 + 표 줄). 시험은 가짜 supabase client와 `vi.stubGlobal('XMLHttpRequest', …)`
@@ -126,7 +128,7 @@ export async function deleteLibraryFile(file: Pick<LibraryFile, 'id' | 'storageP
 
 ## 결정과 트레이드오프
 - **tab_access 줄을 넣지 않는다(맡긴 기술 선택에서 바꿈)**: `tab_access`는 `TAB_ACCESS_MENU`(MENU − 대시보드·설정)만 다룬다. 자료실을 MENU 밖 `LIBRARY_TAB`으로 두면 숨김 판정에 들지 않아 줄 없이도 늘 모두에게 보이고(시안 notes '대시보드·설정처럼 늘 보이는 탭'), 줄은 쓰이지 않는 값이 된다. MENU에 넣으면 대시보드 기능 목차와 주 관리자의 '관리자만 보는 탭' 칸에도 자료실이 생겨 시안에 없는 화면이 바뀐다. 그래서 SQL은 `tab_access`를 건드리지 않는다
-- 바구니 이름은 uuid: Storage 이름에 한글을 못 쓴다. 원래 이름은 표에 두고 받을 때 `download` 옵션으로 붙인다
+- 바구니 이름은 uuid: Storage 이름에 한글을 못 쓴다. 원래 이름은 표에 두고 받을 때 서명 주소에 `download` 값으로 붙인다(storage-js의 `download` 옵션은 쓰지 않음 — '저장 함수' 받기 까닭)
 - 바구니 먼저 → 표 나중(올리기·지우기 모두): 표가 목록의 기준이라, 남는 것이 생겨도 '목록에 없는 바구니 파일'(안 보임) 쪽이 되게 한다. 올리기 중 표 넣기 실패는 바로 바구니 파일을 지운다
 - 받기는 서명 주소(1분): 50MB를 메모리에 담지 않고 브라우저 받기 막대가 보인다. 옛 설치 파일은 Blob으로 받았다
 - 같은 파일 이름 막기: 판 묶기가 파일 이름으로 보므로 같은 이름 둘을 두지 않는다(DB unique + 고를 때 화면 검사)
@@ -141,7 +143,7 @@ export async function deleteLibraryFile(file: Pick<LibraryFile, 'id' | 'storageP
 - `docs/ARCHITECTURE.md`: DB 표에 `library_files` 한 줄, 공용 표 예외 줄에 자료실, Storage 줄에 `library`(그리고 `install-files`는 앱이 더 읽지 않음)
 
 ## 위험
-- 한글 파일 이름 받기: 저장 이름은 Supabase가 `download` 값으로 붙이는 `Content-Disposition`에 달렸다 → 배포 뒤 한글 이름 파일 하나를 받아 이름을 본다(배포 순서 ⑤). 깨지면 Blob 받기(옛 방식)로 바꾸는 것을 명세 고침으로 한다
+- 한글 파일 이름 받기: 저장 이름은 Supabase가 `download` 값으로 붙이는 `Content-Disposition`에 달렸다 → 배포 뒤 한글 이름 파일 하나를 받아 이름을 본다(배포 순서 ⑤). 깨지면 Blob 받기(옛 방식)로 바꾸는 것을 명세 고침으로 한다. (독립 검토에서 storage-js `download` 옵션이 두 번 바꿔 적는 것을 찾아 TASK-6에서 주소에 직접 붙이도록 고침 — 배포 순서 ⑤ 확인은 그대로)
 - 배포 뒤 관리자가 도우미·확장 zip을 자료실에 다시 올리기 전까지 비트 PC 연결 [도우미 내려받기]·[확장 내려받기]가 '아직 받을 파일이 없어요'다 → 배포 바로 뒤 올린다(배포 순서 ④)
 - 프로젝트 전체 올리기 한도가 50MB보다 작으면 큰 파일이 E-LIBRARY-FILE-SIZE(413)로 막힌다 → 배포 순서 ②에서 본다
 - 올리는 동안 다른 탭으로 가면 창이 닫혀 올리기가 멈춘다(XHR 끊김 → 아무것도 남지 않음). 창 안 글 `다 올라갈 때까지 이 창을 열어 두세요.`가 알린다
