@@ -120,7 +120,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 
 ## DB 표 (§5)
 모든 표에 `hospital_id`를 둔다(§0). 모든 표에 RLS.
-예외: 고시·공지 공용 표(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)와 `notice_collectors`·`notice_runs`는 병원과 상관없어 `hospital_id` 없이 한 벌이다 (ADR-037) · 관리자만 보는 탭 `tab_access`도 병원과 상관없는 한 벌이다 (ADR-042)
+예외: 고시·공지 공용 표(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)와 `notice_collectors`·`notice_runs`는 병원과 상관없어 `hospital_id` 없이 한 벌이다 (ADR-037) · 관리자만 보는 탭 `tab_access`도 병원과 상관없는 한 벌이다 (ADR-042) · 자료실 `library_files`도 모든 의원이 같이 보는 한 벌이다 (ADR-051)
 병원별 표에는 보기 정책 둘(ADR-046): permissive `관리자 보는 의원 읽기`(보는 의원 줄 select) + restrictive `보는 중에는 그 의원만 · 쓰기 없음`(보는 중이면 그 의원 줄만·쓰기 모두 실패). 예약 줄(`calendar_appts`)·환자·청구 표는 restrictive만(보는 중 아무 줄도 안 보임). 보는 중이 아니면 둘 다 아무것도 바꾸지 않는다. 새 병원별 표 migration도 둘을 더한다(`supabase/adminView.rls.test.ts` AC-8002.8이 잡는다). 목록·까닭은 `specs/admin-view/design.md` '병원별 표'
 
 | 표 | 내용 |
@@ -128,6 +128,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 관리자 줄(`user_id`·`is_owner` 주 관리자 표시, 참인 줄은 하나). 처음 한 줄(운영자)은 SQL 편집기로(`first-admin.sql`) 넣고 `20261122000000_multi_admin.sql`이 주 관리자로 표시한다. 그 뒤는 관리자가 가입 승인 화면 '승인' 탭에서 승인된 원장 계정을 정하고 뺀다 — 정의자 함수 `set_admin`·`admin_hospitals`(관리자만, 자기 자신·주 관리자는 못 바꿈). 사용자 표 권한은 내 줄 읽기뿐 (ADR-041·ADR-042, specs/multi-admin) |
 | `tab_access` | 관리자만 보는 탭(공용 표, `hospital_id` 없음): `path`(탭 주소, `/dashboard`·`/settings`·`/admin` 빼고)·`admin_only`. 줄 없는 탭 = 관리자만. 읽기는 로그인한 사람 모두, 쓰기는 정의자 함수 `set_tab_access`(주 관리자만). 관리자가 아닌 계정의 메뉴·주소만 막고 RLS는 그대로 (ADR-042, specs/multi-admin) |
+| `library_files` | 자료실 파일 한 줄(공용 표, `hospital_id` 없음 — 모든 의원이 같은 한 벌): 올릴 때의 파일 이름 `file_name`(1~200자, 하나만 — 판 묶기·받을 때 저장 이름)·보이는 이름 `name`·분류 `category`(`install`·`guide`·`other`)·설명 `description`(60자까지)·바구니 이름 `storage_path`(uuid, 하나만)·크기 `size`(0~52,428,800바이트)·올린 관리자 `uploaded_by`·`created_at`. 읽기는 승인된 의원의 원장·데스크·관리자, 넣기(`uploaded_by` = 자기 id)·지우기는 관리자만, 고치기 권한 없음. 파일은 Storage `library`. migration `20261125000000_library.sql` (ADR-051, specs/library) |
 | `admin_views` | 관리자가 다른 의원을 본 기록 = 보기 줄: `id`(이 브라우저의 보기 열쇠)·`user_id`·`hospital_id`·`started_at`·`ended_at`. 열쇠는 끝나지 않은 12시간 안 줄일 때만 통한다. 표 권한·정책이 없고 정의자 함수 `start_admin_view`·`stop_admin_view`·`my_admin_view`·`admin_view_log`(최근 30일, 관리자만)로만 다룬다. 지우지 않는다, 보인 의원에는 알리지 않는다 (ADR-046, specs/admin-view) |
 | `hospital_regions` | 관리자가 정한 의원 지역 한 줄: `hospital_id`·`sido`(17개 시·도 이름, null = '지역 모름'으로 정함)·`updated_at`. 줄이 없으면 앱이 병원 정보 주소에서 읽는다. 표 권한·정책이 없고 `set_hospital_region`·`admin_view_hospitals`(관리자만)로만. 의원 비교 숫자는 정의자 함수 `admin_rows`(관리자만, 승인된 병원, 이름·연락처·차트번호 없는 칸)로 읽는다 (ADR-047, specs/admin-view) |
 | `auto_upload_plans` | 저절로 올리기 채울 기간 한 줄: `hospital_id`·`months`(1·2·3·6·12·24·36·60·120달, 줄이 없으면 2달)·`updated_at`. 표 권한·정책이 없고(함수로만) 관리자만 정의자 함수 `set_auto_upload_months`로 바꾼다(줄여도 매출·통계 줄은 지우지 않음). 의원 쪽은 `my_auto_upload_plan`으로 자기 병원 채울 기간·다 올라온 날 두 칸만 읽는다 (ADR-048, specs/admin-view) |
@@ -183,6 +184,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - Storage 버킷 `inventory-photos`(재고 거래명세서 사진, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만, 이름 `<병원 id>/<uuid>.jpg`): 첫 폴더가 내 병원 id인 것만 원장이 읽기·올리기·지우기(고치기 없음, 데스크·다른 병원 못 함). [저장]한 입고만 올리고 입고를 지우면 사진도 지운다. migration `20261121100000_inventory.sql` (ADR-034)
 - Storage 버킷 `staff-files`(직원 서류·세무사 파일, 공개 아님, 한 파일 10,000,000바이트·PDF·JPEG·PNG·ZIP·XLSX·XLS만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 같은 이름의 내 `staff_files` 줄이 먼저 있을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261121000000_staff.sql` (ADR-039)
 - Storage 버킷 `location-photos`(입지 분석 현장 사진, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만, 이름 `<병원 id>/<후보 id>/<uuid>.jpg`): 첫 폴더가 내 병원 id이고 관리자(`admins` 줄)인 것만 읽기·올리기·지우기(고치기 없음, 관리자 아닌 원장·데스크·다른 병원 못 함). 후보를 지우면 앱이 파일도 지운다. migration `20261122000000_location.sql` (ADR-045)
+- Storage 버킷 `library`(자료실 파일, 공개 아님, 한 파일 52,428,800바이트(50MB)·형식 제한 없음, 이름 `<uuid>` 하나(폴더 없음 — 원래 파일 이름은 `library_files.file_name`)): 승인된 의원의 원장·데스크·관리자가 읽기(받기), 관리자만 올리기(uuid 모양 이름만)·지우기(고치기 없음). 모든 의원이 같은 한 벌. 옛 버킷 `install-files`(설치 파일 보관함, `20261117000000_install_files.sql`·`20261119200000_desk_install_files.sql`)는 지우지 않고 남지만 앱은 더 읽지 않는다. migration `20261125000000_library.sql` (ADR-051)
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 숨기고, 퇴사 3년 뒤에만 지울 수 있다(임금대장 3년 보존, §6-3, 지워도 달별 급여 줄은 이름 없이 남음). 주민번호는 저장하지 않고 계좌는 저장한다(원장만, ADR-039)
 - 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료). `stats_rx_picks`: `lib/backup/tables.ts`가 생기면 이 표도 넣는다. `stats_rx_groups`(손으로 만든 자료, 통계 처방별 추세 묶음, specs/treatment-trend)도 넣는다
