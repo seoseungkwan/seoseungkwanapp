@@ -176,6 +176,27 @@ describe('AC-8006.3 AppShell viewing — 탭 띠·[더보기]에서 예약·환�
   })
 })
 
+// 자료실(library AC-8108.4)은 보는 중에도 [더보기]에 있고 /library는 막히지 않는다(ViewGate가 막는 주소는 예약·환자·청구뿐)
+describe('AC-8108.4 AppShell viewing — 자료실은 그대로', () => {
+  it('AC-8108.4: 보는 중 [더보기] 판에 자료실(/library)이 입지 분석 다음·설정 앞에 있다', async () => {
+    const user = userEvent.setup()
+    render(shell({ viewing: VIEWING }))
+    await user.click(within(nav()).getByRole('button', { name: /더보기/ }))
+    const panelLinks = Array.from(nav().querySelectorAll('ul a'))
+    expect(panelLinks.map((a) => a.firstElementChild?.textContent)).toEqual(['AI 리포트', '서식', '직원', '재고', '주소록', '입지 분석', '자료실', '설정'])
+    expect(nav().querySelector('a[href="/library"]')?.textContent).toBe('자료실')
+  })
+
+  it.each(['/library', '/library/x'])('AC-8108.4: 보는 중 %s은 돌려보내지 않고 본문(읽기만)을 그린다. [더보기] 단추는 "더보기 · 자료실"이다', (path) => {
+    pathname.mockReturnValue(path)
+    render(shell({ viewing: VIEWING }))
+    expect(within(screen.getByRole('main')).getByTestId('probe').textContent).toBe('다라 정형외과의원|읽기만')
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(band()).toBeTruthy()
+    expect(within(nav()).getByRole('button', { name: /더보기/ }).textContent).toBe('더보기 · 자료실')
+  })
+})
+
 describe('AC-8006.4 AppShell — 머리의 "보는 의원" 단추', () => {
   it('AC-8006.4: 관리자(데스크 아님)면 머리 오른쪽에 보는 의원 단추 → 시계 → 계정 단추 차례다', () => {
     render(shell({ viewing: null }))

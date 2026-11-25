@@ -16,7 +16,7 @@ import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
 import * as menuModule from './menu'
-import { ADMIN_LINK, DESK_HOME, DESK_MENU, LOCATION_TAB, MENU, MORE_MENU, PRIMARY_MENU, currentMenuLabel, isDeskPath } from './menu'
+import { ADMIN_LINK, DESK_HOME, DESK_MENU, DESK_TABS, LIBRARY_TAB, LOCATION_TAB, MENU, MORE_MENU, PRIMARY_MENU, currentMenuLabel, isDeskPath } from './menu'
 import { useDesk } from './role'
 import { TabBar } from './TabBar'
 
@@ -96,6 +96,9 @@ afterEach(() => {
 const PRIMARY = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약']
 const PRIMARY_PATHS = PATHS.filter(([label]) => PRIMARY.includes(label))
 const MORE_PATHS = PATHS.filter(([label]) => !PRIMARY.includes(label))
+// [더보기] 판(원장): MORE_MENU 차례에서 설정 바로 앞에 자료실(MENU 밖 LIBRARY_TAB, library AC-8108.2, 시안 ?s=menu) — 일곱
+const LIBRARY_PATH = ['자료실', '/library'] as const
+const PANEL_PATHS: readonly (readonly [string, string])[] = MORE_PATHS.flatMap((p) => (p[0] === '설정' ? [LIBRARY_PATH, p] : [p]))
 
 const nav = () => screen.getByRole('navigation', { name: '메뉴' })
 // 탭 줄 감싸개: nav의 첫 자식. 탭 띠와 [더보기] 감싸개를 담고 1024px 이상은 본문과 같은 1280 폭 가운데다(dashboard-ux AC-2702.4)
@@ -546,17 +549,18 @@ describe('TabBar', () => {
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
-  // desk-feedback AC-6306.2: 데스크는 세 탭만, [더보기] 없음
+  // desk-feedback AC-6306.2: 데스크는 [더보기] 없음. 탭 띠 끝(예약 다음)에 자료실(library AC-8108.3) — 넷
   const DESK_PATHS = [
     ['업무일지', '/worklog'],
     ['수납일지', '/sunap'],
     ['예약', '/calendar'],
+    ['자료실', '/library'],
   ]
 
-  it('AC-6306.2: desk면 탭 띠에 업무일지·수납일지·예약 세 링크(MENU.path)만 이 차례로 있고 [더보기] 단추·판이 없다. 지금 주소(/sunap)의 탭이 지금 탭이다', () => {
+  it('AC-6306.2·AC-8108.3: desk면 탭 띠에 업무일지·수납일지·예약·자료실 네 링크만 이 차례로 있고 [더보기] 단추·판이 없다. 지금 주소(/sunap)의 탭이 지금 탭이다', () => {
     pathname.mockReturnValue('/sunap')
     render(<TabBar desk />)
-    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약', '자료실'])
     const links = within(strip()).getAllByRole('link')
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual(DESK_PATHS)
     expect(within(nav()).getAllByRole('link')).toEqual(links)
@@ -570,10 +574,10 @@ describe('TabBar', () => {
     hasAll(within(strip()).getByRole('link', { name: '업무일지' }), IDLE_LOOK)
   })
 
-  it('AC-6306.2: desk가 막힌 주소(/stats)에 있으면 탭 띠에 지금 탭이 없다(통계 탭이 없다)', () => {
+  it('AC-6306.2·AC-8108.3: desk가 막힌 주소(/stats)에 있으면 탭 띠에 지금 탭이 없다(통계 탭이 없다)', () => {
     pathname.mockReturnValue('/stats')
     render(<TabBar desk />)
-    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약', '자료실'])
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(0)
     expect(within(nav()).queryByRole('link', { name: '통계' })).toBeNull()
   })
@@ -620,7 +624,7 @@ describe('TabBar', () => {
     }
   })
 
-  it('AC-7423.3: 데스크 탭 띠(desk)는 안 읽은 수를 읽지도 그리지도 않는다 — 고시·공지 탭도 없다', async () => {
+  it('AC-7423.3·AC-8108.3: 데스크 탭 띠(desk)는 안 읽은 수를 읽지도 그리지도 않는다 — 고시·공지 탭도 없다', async () => {
     unreadCount.mockResolvedValue(3)
     pathname.mockReturnValue('/sunap')
     render(<TabBar desk />)
@@ -628,7 +632,7 @@ describe('TabBar', () => {
     expect(unreadCount).not.toHaveBeenCalled()
     expect(within(nav()).queryByText('고시·공지')).toBeNull()
     expect(within(nav()).queryByText(/안 읽은 관련 글/)).toBeNull()
-    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약', '자료실'])
   })
 
   it('AC-7423.3: TabBar 소스는 NoticeBadge를 desk가 아닐 때 /notices 탭에만 붙인다', () => {
@@ -666,7 +670,7 @@ describe('MoreMenu', () => {
     expect(svg.innerHTML).toBe(iconInner('chev'))
   })
 
-  it('AC-2702.2·AC-5801.2·AC-7423.1·AC-7611.5: 열면 판 머리 "다른 메뉴 6개"·"준비 중 N개"(N = 판 안 ready=false 수, 0이면 "준비 중" 칸 없음), 목록(ul) 링크가 MORE_MENU 차례·MENU.path·44px이고 준비 중 항목만 링크 글자 안에 "준비 중" 칩이 있다(화면 읽기가 이름과 함께 읽는다)', async () => {
+  it('AC-2702.2·AC-5801.2·AC-7423.1·AC-7611.5·AC-8108.2: 열면 판 머리 "다른 메뉴 7개"·"준비 중 N개"(N = 판 안 ready=false 수, 0이면 "준비 중" 칸 없음), 목록(ul) 링크가 MORE_MENU 차례(설정 바로 앞에 자료실)·path·44px이고 준비 중 항목만 링크 글자 안에 "준비 중" 칩이 있다(화면 읽기가 이름과 함께 읽는다)', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(moreButton())
@@ -678,10 +682,10 @@ describe('MoreMenu', () => {
     const head = p.firstElementChild as HTMLElement
     expect(Array.from(head.children).map((s) => s.textContent)).toEqual(
       NOT_READY_FEATURES.length === 0
-        ? [`다른 메뉴 ${MORE_PATHS.length}개`]
-        : [`다른 메뉴 ${MORE_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`],
+        ? [`다른 메뉴 ${PANEL_PATHS.length}개`]
+        : [`다른 메뉴 ${PANEL_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`],
     )
-    expect(head.textContent).toContain('다른 메뉴 6개')
+    expect(head.textContent).toContain('다른 메뉴 7개')
     if (NOT_READY_FEATURES.length === 0) {
       expect(p.textContent).not.toContain('준비 중 0개')
       expect(head.textContent).not.toContain('준비 중')
@@ -690,9 +694,9 @@ describe('MoreMenu', () => {
     expect(list.tagName).toBe('UL')
     expect(head.nextElementSibling).toBe(list)
     const items = within(list).getAllByRole('listitem')
-    expect(items).toHaveLength(MORE_PATHS.length)
+    expect(items).toHaveLength(PANEL_PATHS.length)
     const links = within(list).getAllByRole('link')
-    expect(links.map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(MORE_PATHS)
+    expect(links.map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(PANEL_PATHS)
     for (const [i, a] of links.entries()) {
       const label = a.firstElementChild?.textContent ?? ''
       expect(a.parentElement, `${label} li`).toBe(items[i])
@@ -706,7 +710,7 @@ describe('MoreMenu', () => {
         // 칩은 링크 글자 안이다 → 링크 이름이 "{이름} 준비 중"
         expect(within(list).getByRole('link', { name: `${label} 준비 중` }), label).toBe(a)
       } else {
-        expect(READY_TABS, label).toContain(label)
+        expect([...READY_TABS, LIBRARY_TAB.label], label).toContain(label)
         expect(a.children, label).toHaveLength(1)
         expect(a.textContent, label).toBe(label)
       }
@@ -916,7 +920,7 @@ describe('MoreMenu', () => {
       </div>,
     )
     await user.click(moreButton())
-    await user.click(within(panel() as HTMLElement).getByText(`다른 메뉴 ${MORE_PATHS.length}개`))
+    await user.click(within(panel() as HTMLElement).getByText(`다른 메뉴 ${PANEL_PATHS.length}개`))
     expect(panel()).not.toBeNull()
     await user.click(screen.getByText('바깥'))
     expect(panel()).toBeNull()
@@ -1869,10 +1873,10 @@ describe('AppShell', () => {
   )
   const BLOCKED = '데스크 계정은 볼 수 없는 화면이에요'
 
-  it('AC-6306.2·AC-6306.3: desk면 탭은 업무일지·수납일지·예약 셋([더보기] 없음)이고 계정 단추에 칩 "데스크"가 있다. 세 탭 주소(/sunap)에서는 본문을 그대로 그리고 본문 안 useDesk()가 참이다', () => {
+  it('AC-6306.2·AC-6306.3·AC-8108.3: desk면 탭은 업무일지·수납일지·예약·자료실 넷([더보기] 없음)이고 계정 단추에 칩 "데스크"가 있다. 세 탭 주소(/sunap)에서는 본문을 그대로 그리고 본문 안 useDesk()가 참이다', () => {
     pathname.mockReturnValue('/sunap')
     render(deskShell(true))
-    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['업무일지', '수납일지', '예약', '자료실'])
     expect(within(nav()).queryAllByRole('button')).toEqual([])
     const account = within(screen.getByRole('banner')).getByRole('button', { name: new RegExp(EMAIL) })
     hasAll(within(account).getByText('데스크'), ds.chip.warning)
@@ -1959,9 +1963,9 @@ describe('AppShell 인쇄', () => {
 // (다른 탭에서 넘어가면 지도가 막히고, /location에서 떠나면 넓은 CSP가 남는다) → 입지 분석으로 가는 링크와 /location 화면 안의 셸 링크는
 // 평범한 <a>다(브라우저가 새 문서를 받아 그 주소의 머리를 쓴다)
 describe('입지 분석 탭 (location REQ-7901)', () => {
-  // 관리자 [더보기] 판 차례: MORE_MENU의 주소록 다음에 입지 분석
-  const AT = MORE_PATHS.findIndex(([label]) => label === '주소록') + 1
-  const ADMIN_MORE_PATHS = [...MORE_PATHS.slice(0, AT), ['입지 분석', '/location'] as const, ...MORE_PATHS.slice(AT)]
+  // 관리자 [더보기] 판 차례: 원장 판(MORE_MENU + 설정 앞 자료실, library AC-8108.2)의 주소록 다음에 입지 분석
+  const AT = PANEL_PATHS.findIndex(([label]) => label === '주소록') + 1
+  const ADMIN_MORE_PATHS = [...PANEL_PATHS.slice(0, AT), ['입지 분석', '/location'] as const, ...PANEL_PATHS.slice(AT)]
   const panelLinks = () => within(within(panel() as HTMLElement).getByRole('list')).getAllByRole('link')
   const panelHead = () => (panel() as HTMLElement).firstElementChild as HTMLElement
   const locationLink = () => (panel() as HTMLElement).querySelector<HTMLAnchorElement>('a[href="/location"]')
@@ -2023,7 +2027,7 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
     for (const path of ['/locations', '/location-x', '/locationx']) expect(currentMenuLabel(path), path).toBeNull()
   })
 
-  it('AC-7901.1: 관리자면 [더보기] 판이 일곱 — 주소록 다음·설정 앞에 입지 분석(/location), 머리 "다른 메뉴 7개"·준비 중 수 그대로. 입지 분석 칸만 이름 뒤 중립 칩 "관리자만"(시안)이고 링크 모양은 다른 칸과 같다. 탭 띠는 그대로다', async () => {
+  it('AC-7901.1·AC-8108.2: 관리자면 [더보기] 판이 여덟 — 주소록 다음·자료실 앞에 입지 분석(/location), 머리 "다른 메뉴 8개"·준비 중 수 그대로. 입지 분석 칸만 이름 뒤 중립 칩 "관리자만"(시안)이고 링크 모양은 다른 칸과 같다. 탭 띠는 그대로다', async () => {
     const user = userEvent.setup()
     render(<TabBar isAdmin />)
     expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
@@ -2034,7 +2038,7 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
         ? [`다른 메뉴 ${ADMIN_MORE_PATHS.length}개`]
         : [`다른 메뉴 ${ADMIN_MORE_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`],
     )
-    expect(panelHead().textContent).toContain('다른 메뉴 7개')
+    expect(panelHead().textContent).toContain('다른 메뉴 8개')
     expect(within(panel() as HTMLElement).queryAllByText('준비 중')).toHaveLength(NOT_READY_FEATURES.length)
     const links = panelLinks()
     expect(links.map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(ADMIN_MORE_PATHS)
@@ -2054,15 +2058,15 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
     for (const a of links.filter((x) => x !== location)) expect(a.textContent, a.getAttribute('href') ?? '').not.toContain('관리자만')
   })
 
-  it('AC-7901.1: 관리자가 아닌 원장(isAdmin 없음·거짓)의 [더보기] 판에는 입지 분석이 없고 지금과 같다("다른 메뉴 6개"). 데스크는 관리자 값이 참이어도 [더보기]·입지 분석이 없다', async () => {
+  it('AC-7901.1·AC-8108.2: 관리자가 아닌 원장(isAdmin 없음·거짓)의 [더보기] 판에는 입지 분석이 없다("다른 메뉴 7개" — 자료실은 있다). 데스크는 관리자 값이 참이어도 [더보기]·입지 분석이 없다', async () => {
     const user = userEvent.setup()
     for (const ui of [<TabBar key="none" />, <TabBar key="false" isAdmin={false} />]) {
       render(ui)
       await user.click(moreButton())
       expect(panel()?.textContent).not.toContain('입지 분석')
       expect(locationLink()).toBeNull()
-      expect(panelLinks().map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(MORE_PATHS)
-      expect(panelHead().firstElementChild?.textContent).toBe(`다른 메뉴 ${MORE_PATHS.length}개`)
+      expect(panelLinks().map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(PANEL_PATHS)
+      expect(panelHead().firstElementChild?.textContent).toBe(`다른 메뉴 ${PANEL_PATHS.length}개`)
       cleanup()
     }
     for (const path of ['/sunap', '/location']) {
@@ -2109,7 +2113,7 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
     }
   })
 
-  it.each(['/location', '/location/x'])('AC-7901.1: %s에서는 셸의 탭 링크가 모두 평범한 <a> — 탭 띠 여덟·[더보기] 판 일곱 어느 것을 눌러도 Next가 옮기지 않고 브라우저가 새 문서를 받는다(넓은 CSP가 다른 탭에 남지 않는다)', async (path) => {
+  it.each(['/location', '/location/x'])('AC-7901.1: %s에서는 셸의 탭 링크가 모두 평범한 <a> — 탭 띠 여덟·[더보기] 판 여덟(자료실 포함, AC-8108.2) 어느 것을 눌러도 Next가 옮기지 않고 브라우저가 새 문서를 받는다(넓은 CSP가 다른 탭에 남지 않는다)', async (path) => {
     pathname.mockReturnValue(path)
     const user = userEvent.setup()
     render(withRouter(<TabBar isAdmin />))
@@ -2180,7 +2184,7 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
       )
       await user.click(moreButton())
       expect(locationLink() !== null, `관리자 ${isAdmin}`).toBe(isAdmin)
-      expect(panelLinks().map((a) => a.getAttribute('href'))).toEqual((isAdmin ? ADMIN_MORE_PATHS : MORE_PATHS).map(([, href]) => href))
+      expect(panelLinks().map((a) => a.getAttribute('href'))).toEqual((isAdmin ? ADMIN_MORE_PATHS : PANEL_PATHS).map(([, href]) => href))
       cleanup()
     }
     pathname.mockReturnValue('/sunap')
@@ -2230,5 +2234,134 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
       expect(screen.queryByRole('menu'), name).toBeNull()
       cleanup()
     }
+  })
+})
+
+// ── library REQ-8108: 자료실 탭(승인된 사람 모두에게 늘 보이는 탭). MENU 밖 상수 LIBRARY_TAB 하나를 [더보기] 판의 설정 바로 앞에 끼우고
+// (관리자는 입지 분석 다음), 데스크는 [더보기]가 없어 탭 띠 끝(예약 다음)에 둔다(DESK_TABS). 시안 docs/mockups/library ?s=menu·?s=desk
+describe('자료실 탭 (library REQ-8108)', () => {
+  // 시안 OWNER_MORE·ADMIN_MORE 그대로
+  const OWNER_MORE = ['AI 리포트', '서식', '직원', '재고', '주소록', '자료실', '설정']
+  const ADMIN_MORE = ['AI 리포트', '서식', '직원', '재고', '주소록', '입지 분석', '자료실', '설정']
+  const DESK_STRIP = ['업무일지', '수납일지', '예약', '자료실']
+  const panelList = () => within(panel() as HTMLElement).getByRole('list')
+  const panelLabels = () => within(panelList()).getAllByRole('link').map((a) => a.firstElementChild?.textContent)
+  const panelHead = () => (panel() as HTMLElement).firstElementChild as HTMLElement
+  const libraryLink = () => (panel() as HTMLElement).querySelector<HTMLAnchorElement>('a[href="/library"]')
+
+  it("AC-8108.1: LIBRARY_TAB = { label: '자료실', path: '/library', href: '/library', ready: true, primary: false } 하나이고 MENU·PRIMARY_MENU·MORE_MENU·DESK_MENU 밖이다(MENU 14개·MORE_MENU 여섯·DESK_MENU 셋 그대로)", () => {
+    expect(LIBRARY_TAB).toEqual({ label: '자료실', path: '/library', href: '/library', ready: true, primary: false })
+    for (const list of [MENU, PRIMARY_MENU, MORE_MENU, DESK_MENU]) {
+      expect(list.map((m) => m.label as string)).not.toContain('자료실')
+      expect(list.map((m) => m.path as string)).not.toContain('/library')
+      expect(list).not.toContain(LIBRARY_TAB)
+    }
+    expect(MENU.map((m) => [m.label, m.path])).toEqual(PATHS)
+    expect(MORE_MENU.map((m) => [m.label, m.path])).toEqual(MORE_PATHS)
+    expect(DESK_MENU.map((m) => m.path)).toEqual(['/worklog', '/sunap', '/calendar'])
+  })
+
+  it("AC-8108.1: 지금 탭 — /library와 그 아래는 '자료실'이고 /librarys·/library-x·/libraryx는 아니다", () => {
+    expect(currentMenuLabel('/library')).toBe('자료실')
+    expect(currentMenuLabel('/library/x')).toBe('자료실')
+    for (const path of ['/librarys', '/library-x', '/libraryx']) expect(currentMenuLabel(path), path).toBeNull()
+  })
+
+  it('AC-8108.2: 원장 [더보기] 판은 일곱 — 주소록 다음·설정 앞에 자료실(/library), 머리 "다른 메뉴 7개". 자료실 칸에는 칩이 없고 링크 모양은 다른 칸과 같다. 탭 띠는 그대로다', async () => {
+    const user = userEvent.setup()
+    render(<TabBar />)
+    expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
+    await user.click(moreButton())
+    expect(panelLabels()).toEqual(OWNER_MORE)
+    expect(panelHead().firstElementChild?.textContent).toBe('다른 메뉴 7개')
+    const link = libraryLink() as HTMLAnchorElement
+    expect(link.children).toHaveLength(1)
+    expect(link.textContent).toBe('자료실')
+    expect(within(panelList()).getByRole('link', { name: '자료실' })).toBe(link)
+    hasAll(link, 'flex h-11 items-center no-underline text-ink font-medium')
+    expect(link.hasAttribute('aria-current')).toBe(false)
+  })
+
+  it('AC-8108.2: 관리자 [더보기] 판은 여덟 — 입지 분석 다음·설정 앞에 자료실, 머리 "다른 메뉴 8개". 자료실 칸에는 "관리자만" 칩이 없다', async () => {
+    const user = userEvent.setup()
+    render(<TabBar isAdmin />)
+    await user.click(moreButton())
+    expect(panelLabels()).toEqual(ADMIN_MORE)
+    expect(panelHead().firstElementChild?.textContent).toBe('다른 메뉴 8개')
+    const link = libraryLink() as HTMLAnchorElement
+    expect(link.children).toHaveLength(1)
+    expect(link.textContent).toBe('자료실')
+  })
+
+  it.each([false, true])('AC-8108.2: /library·/library/x(관리자 %s)에서는 [더보기] 단추가 "더보기 · 자료실"·지금 탭 모양이고 판 안 자료실에만 aria-current="page"다(탭 띠에는 지금 탭 없음)', async (isAdmin) => {
+    for (const path of ['/library', '/library/x']) {
+      pathname.mockReturnValue(path)
+      const user = userEvent.setup()
+      render(<TabBar isAdmin={isAdmin} />)
+      expect(moreButton().textContent, path).toBe('더보기 · 자료실')
+      hasAll(moreButton(), CURRENT_LOOK)
+      expect(strip().querySelectorAll('[aria-current]')).toHaveLength(0)
+      await user.click(moreButton())
+      const current = within(panelList())
+        .getAllByRole('link')
+        .filter((a) => a.getAttribute('aria-current') === 'page')
+      expect(current).toEqual([libraryLink()])
+      hasAll(current[0] as HTMLElement, 'text-accent-strong font-semibold before:bg-accent')
+      expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
+      cleanup()
+    }
+  })
+
+  it('AC-8108.2: [더보기] 판의 자료실을 누르면 판이 닫히고 [더보기]가 누른 탭("더보기 · 자료실"·data-pending·지금 탭 모양)이 되며 불러오기 줄이 찬다', async () => {
+    const stop = (e: MouseEvent) => e.preventDefault()
+    document.addEventListener('click', stop)
+    try {
+      const user = userEvent.setup()
+      render(<TabBar />)
+      await user.click(moreButton())
+      await user.click(libraryLink() as HTMLAnchorElement)
+      expect(panel()).toBeNull()
+      expect(moreButton().textContent).toBe('더보기 · 자료실')
+      expect(moreButton().getAttribute('data-pending')).toBe('true')
+      hasAll(moreButton(), CURRENT_LOOK)
+      hasAll(loadBar(), 'scale-x-80 duration-700 ease-out')
+    } finally {
+      document.removeEventListener('click', stop)
+    }
+  })
+
+  it('AC-8108.3: DESK_TABS는 DESK_MENU 셋 다음 LIBRARY_TAB(데스크 탭 띠 넷)이고 isDeskPath는 /library와 그 아래를 연다(/libraryx·/librarys·/library-x는 아님). DESK_MENU·DESK_HOME은 그대로', () => {
+    expect(DESK_TABS).toEqual([...DESK_MENU, LIBRARY_TAB])
+    expect(DESK_TABS.map((m) => m.label)).toEqual(DESK_STRIP)
+    for (const path of ['/library', '/library/x', '/library/x/y']) expect(isDeskPath(path), path).toBe(true)
+    for (const path of ['/libraryx', '/librarys', '/library-x']) expect(isDeskPath(path), path).toBe(false)
+    expect(DESK_MENU.map((m) => m.path)).toEqual(['/worklog', '/sunap', '/calendar'])
+    expect(DESK_HOME).toBe('/sunap')
+  })
+
+  it.each(['/library', '/library/x'])('AC-8108.3: 데스크가 %s에 있으면 탭 띠(업무일지·수납일지·예약·자료실, [더보기] 없음)의 자료실이 지금 탭이다', (path) => {
+    pathname.mockReturnValue(path)
+    render(<TabBar desk />)
+    expect(tabItems().map((el) => el.textContent)).toEqual(DESK_STRIP)
+    expect(within(nav()).queryAllByRole('button')).toEqual([])
+    const link = within(strip()).getByRole('link', { name: '자료실' })
+    expect(link.getAttribute('href')).toBe('/library')
+    expect(link.getAttribute('aria-current')).toBe('page')
+    hasAll(link, CURRENT_LOOK)
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
+  })
+
+  it('AC-8108.3: 데스크 앱 틀은 /library에서 본문을 그대로 그린다(DeskGate가 막지 않고 수납일지로 바꾸지 않는다). 탭 띠의 자료실이 지금 탭이다', () => {
+    pathname.mockReturnValue('/library')
+    render(
+      <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false} desk>
+        <h1>자료실 본문</h1>
+      </AppShell>,
+    )
+    expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('자료실 본문')
+    expect(screen.queryByText('데스크 계정은 볼 수 없는 화면이에요')).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(DESK_STRIP)
+    expect(within(strip()).getByRole('link', { name: '자료실' }).getAttribute('aria-current')).toBe('page')
   })
 })

@@ -238,7 +238,7 @@ describe('(app) 레이아웃 — 데스크 (desk-feedback AC-6305.3)', () => {
     expect(shellProps()).toMatchObject({ isAdmin: false, desk: true })
   })
 
-  it('AC-6305.3: 데스크 앱 틀 — 띠에 그 병원 이름·데스크 칩, 탭은 업무일지·수납일지·예약 셋, 세 탭 주소(/sunap)에서는 본문에 페이지를 그린다', async () => {
+  it('AC-6305.3·AC-8108.3: 데스크 앱 틀 — 띠에 그 병원 이름·데스크 칩, 탭은 업무일지·수납일지·예약·자료실 넷, 세 탭 주소(/sunap)에서는 본문에 페이지를 그린다', async () => {
     read.mockResolvedValue(deskMe())
     pathname.mockReturnValue('/sunap')
     render(await AppLayout({ children: page }))
@@ -247,7 +247,7 @@ describe('(app) 레이아웃 — 데스크 (desk-feedback AC-6305.3)', () => {
     const account = within(banner).getByRole('button', { name: /desk@example\.com/ })
     expect(within(account).getByText('데스크')).toBeTruthy()
     const nav = screen.getByRole('navigation', { name: '메뉴' })
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['업무일지', '수납일지', '예약', '자료실'])
     expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('페이지')
     expect(screen.getAllByTestId('idle-logout')).toHaveLength(1)
   })
@@ -360,7 +360,7 @@ describe('(app) 레이아웃 — 관리자만 보는 탭 (multi-admin AC-7706.2)
     expect(readTabs).toHaveBeenCalledTimes(2)
   })
 
-  it('AC-7706.2: 데스크면(admins에 있는 데스크도 관리자 거짓) 목록을 한 번 읽어 hiddenTabs로 넘긴다 — 수납일지를 숨기면 탭 띠에서 빠지고 /dashboard는 업무일지로 간다', async () => {
+  it('AC-7706.2·AC-8108.3: 데스크면(admins에 있는 데스크도 관리자 거짓) 목록을 한 번 읽어 hiddenTabs로 넘긴다 — 수납일지를 숨기면 탭 띠에서 빠지고(자료실은 남음) /dashboard는 업무일지로 간다', async () => {
     for (const isAdmin of [false, true]) {
       read.mockResolvedValue(deskMe(isAdmin))
       readTabs.mockReset()
@@ -370,7 +370,7 @@ describe('(app) 레이아웃 — 관리자만 보는 탭 (multi-admin AC-7706.2)
       render(await AppLayout({ children: page }))
       expect(readTabs, String(isAdmin)).toHaveBeenCalledTimes(1)
       expect(shellProps(), String(isAdmin)).toMatchObject({ desk: true, isAdmin: false, hiddenTabs: ['/sunap'] })
-      expect(tabsOf(), String(isAdmin)).toEqual(['업무일지', '예약'])
+      expect(tabsOf(), String(isAdmin)).toEqual(['업무일지', '예약', '자료실'])
       expect(router.replace, String(isAdmin)).toHaveBeenCalledExactlyOnceWith('/worklog')
       cleanup()
     }

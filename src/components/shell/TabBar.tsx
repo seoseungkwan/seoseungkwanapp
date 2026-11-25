@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { LoadBar } from './LoadBar'
-import { DESK_MENU, LOCATION_TAB, MENU, PRIMARY_MENU, currentMenuLabel, type MenuPath } from './menu'
+import { DESK_TABS, LIBRARY_TAB, LOCATION_TAB, MENU, PRIMARY_MENU, currentMenuLabel, type MenuPath } from './menu'
 import { MoreMenu, ShellLink } from './MoreMenu'
 import { NoticeBadge } from './NoticeBadge'
 
@@ -14,9 +14,9 @@ import { NoticeBadge } from './NoticeBadge'
 // 감싸개는 자리 기준(position)이 아니어서 768px 미만 판은 그대로 nav 기준 전체 폭이다.
 // 모두 자기 주소로 가는 링크다. 화면이 아직 없는 기능은 [더보기] 판에 있고, 준비 중임은 판의 칩과 그 주소의 준비 중 화면이 알린다.
 // 1024px 미만은 탭 띠만 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음, [더보기] 글자가 길어 넘칠 때). 띠 끝 흐림은 넣지 않는다(UI_GUIDE '탭 줄', 시안의 끝 흐림과 다르다)
-// 데스크 계정(desk 참, desk-feedback AC-6306.2): 탭 띠 = 업무일지·수납일지·예약(DESK_MENU)뿐이고 [더보기]가 없다.
+// 데스크 계정(desk 참, desk-feedback AC-6306.2): 탭 띠 = 업무일지·수납일지·예약과 끝의 자료실(DESK_TABS, specs/library AC-8108.3)뿐이고 [더보기]가 없다.
 // 관리자 값(isAdmin)은 [더보기] 판의 입지 분석에만 쓴다(specs/location AC-7901.1). 탭 띠에는 관리자 탭이 없다(데스크는 [더보기]가 없어 늘 없음).
-// 관리자만 보는 탭(hidden, multi-admin AC-7706.3): 숨긴 탭은 탭 띠와 [더보기] 판에서 뺀다. 없거나 비면 지금 그대로다
+// 관리자만 보는 탭(hidden, multi-admin AC-7706.3): 숨긴 탭은 탭 띠와 [더보기] 판에서 뺀다. 없거나 비면 지금 그대로다. 자료실은 늘 보이는 탭이라 빼지 않는다
 // 입지 분석(/location)을 오가는 링크는 평범한 <a>라 브라우저가 새 문서를 받는다(ShellLink). 누른 탭·불러오기 줄은 그동안 보인다
 
 // 탭 공통: 모든 폭 44px·좌우 12px·body, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리). 올림 글자색은 짧게 바뀐다(transition 150ms, UI_GUIDE '짧은 반응 허용').
@@ -95,8 +95,8 @@ function revealInStrip(strip: HTMLElement | null, item: Element | null | undefin
 // 새 탭·새 창으로 여는 누름(보조키·왼쪽 아닌 단추)은 이 창의 경로를 바꾸지 않는다 → 누른 탭으로 정하지 않는다
 const opensElsewhere = (e: MouseEvent) => e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
 
-// 누른 주소의 탭을 찾는 곳: MENU와 관리자의 입지 분석
-const TABS = [...MENU, LOCATION_TAB]
+// 누른 주소의 탭을 찾는 곳: MENU와 관리자의 입지 분석, 모두의 자료실
+const TABS = [...MENU, LOCATION_TAB, LIBRARY_TAB]
 
 export function TabBar({
   desk = false,
@@ -109,7 +109,7 @@ export function TabBar({
   hidden?: readonly MenuPath[]
 } = {}) {
   const pathname = usePathname()
-  const tabs = (desk ? DESK_MENU : PRIMARY_MENU).filter((item) => !hidden.includes(item.path))
+  const tabs = (desk ? DESK_TABS : PRIMARY_MENU).filter((item) => item === LIBRARY_TAB || !hidden.includes(item.path))
   const stripRef = useRef<HTMLDivElement>(null)
   // 지금 탭: 탭의 path·owns 중 가장 길게 맞는 자리(menu.ts, /claim/setup은 청구가 아니라 설정 자리). /admin에는 지금 탭이 없다
   const current = currentMenuLabel(pathname)

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppShell } from './AppShell'
-import { MORE_MENU, PRIMARY_MENU, type MenuPath } from './menu'
+import { LIBRARY_TAB, MORE_MENU, PRIMARY_MENU, type MenuPath } from './menu'
 import { TabBar } from './TabBar'
 import { TabGate } from './TabGate'
 
@@ -58,7 +58,8 @@ const openMore = async () => {
 const panelHead = () => (panel() as HTMLElement).querySelector('p') as HTMLElement
 
 const PRIMARY = PRIMARY_MENU.map((m) => m.label)
-const MORE = MORE_MENU.map((m) => m.label)
+// [더보기] 판(숨김 없음): MORE_MENU 차례에서 설정 바로 앞에 자료실(MENU 밖 LIBRARY_TAB — 숨기지 않는 탭, library AC-8108.2)
+const MORE = MORE_MENU.flatMap((m) => (m.path === '/settings' ? [LIBRARY_TAB.label, m.label] : [m.label]))
 const ALL_TAB_ACCESS: MenuPath[] = ['/stats', '/claim', '/notices', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/staff', '/inventory', '/contacts']
 
 describe('AC-7706.3 TabBar hidden — 원장 탭 띠', () => {
@@ -78,27 +79,27 @@ describe('AC-7706.3 TabBar hidden — 원장 탭 띠', () => {
     expect(within(nav()).queryByText(/안 읽은 관련 글/)).toBeNull()
   })
 
-  it('AC-7706.3: 12개 탭을 모두 숨겨도 대시보드는 탭 띠에, 설정은 [더보기] 판에 있다(판 머리 "다른 메뉴 1개")', async () => {
+  it('AC-7706.3·AC-8108.2: 12개 탭을 모두 숨겨도 대시보드는 탭 띠에, 자료실·설정은 [더보기] 판에 있다(판 머리 "다른 메뉴 2개")', async () => {
     render(<TabBar hidden={ALL_TAB_ACCESS} />)
     expect(stripLabels()).toEqual(['대시보드'])
     await openMore()
-    expect(panelLabels()).toEqual(['설정'])
-    expect(within(panelHead()).getByText('다른 메뉴 1개')).toBeTruthy()
+    expect(panelLabels()).toEqual(['자료실', '설정'])
+    expect(within(panelHead()).getByText('다른 메뉴 2개')).toBeTruthy()
   })
 })
 
 describe('AC-7706.3 MoreMenu hidden — [더보기] 판', () => {
-  it('AC-7706.3: 숨긴 탭(직원·주소록)은 판 목록에 없고 판 머리 수는 보이는 항목 수(4)다. 나머지는 MORE_MENU 차례·href 그대로', async () => {
+  it('AC-7706.3·AC-8108.2: 숨긴 탭(직원·주소록)은 판 목록에 없고 판 머리 수는 보이는 항목 수(5)다. 나머지는 MORE_MENU 차례·href 그대로이고 자료실은 설정 앞에 남는다', async () => {
     render(<TabBar hidden={['/staff', '/contacts']} />)
     await openMore()
-    expect(panelLabels()).toEqual(['AI 리포트', '서식', '재고', '설정'])
-    expect(within(panel() as HTMLElement).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/ai-report', '/forms', '/inventory', '/settings'])
-    expect(panelHead().textContent).toBe('다른 메뉴 4개')
+    expect(panelLabels()).toEqual(['AI 리포트', '서식', '재고', '자료실', '설정'])
+    expect(within(panel() as HTMLElement).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/ai-report', '/forms', '/inventory', '/library', '/settings'])
+    expect(panelHead().textContent).toBe('다른 메뉴 5개')
     // 판 안 링크 모양은 숨김이 없을 때와 같다
     for (const a of within(panel() as HTMLElement).getAllByRole('link')) expect(a.getAttribute('class')).toContain('h-11')
   })
 
-  it('AC-7706.3: 주요 메뉴만 숨기면 판 목록·머리 수는 지금 그대로(다른 메뉴 6개)', async () => {
+  it('AC-7706.3·AC-8108.2: 주요 메뉴만 숨기면 판 목록·머리 수는 지금 그대로(다른 메뉴 7개)', async () => {
     render(<TabBar hidden={['/stats']} />)
     await openMore()
     expect(panelLabels()).toEqual(MORE)
@@ -127,17 +128,25 @@ describe('AC-7706.3 MoreMenu hidden — [더보기] 판', () => {
 })
 
 describe('AC-7706.3 데스크 탭 띠 hidden', () => {
-  it('AC-7706.3: 데스크 — 숨긴 데스크 탭(업무일지)은 탭 띠에 없고 나머지(수납일지·예약)는 차례 그대로, [더보기]는 없다', () => {
+  it('AC-7706.3·AC-8108.3: 데스크 — 숨긴 데스크 탭(업무일지)은 탭 띠에 없고 나머지(수납일지·예약·자료실)는 차례 그대로, [더보기]는 없다', () => {
     pathname.mockReturnValue('/sunap')
     render(<TabBar desk hidden={['/worklog']} />)
-    expect(stripLabels()).toEqual(['수납일지', '예약'])
+    expect(stripLabels()).toEqual(['수납일지', '예약', '자료실'])
     expect(within(nav()).queryByRole('button', { name: /^더보기/ })).toBeNull()
   })
 
-  it('AC-7706.3: 데스크 — 데스크 밖 탭만 숨기면 세 탭 그대로', () => {
+  it('AC-7706.3·AC-8108.3: 데스크 — 데스크 밖 탭만 숨기면 네 탭 그대로', () => {
     pathname.mockReturnValue('/sunap')
     render(<TabBar desk hidden={['/stats', '/staff']} />)
-    expect(stripLabels()).toEqual(['업무일지', '수납일지', '예약'])
+    expect(stripLabels()).toEqual(['업무일지', '수납일지', '예약', '자료실'])
+  })
+
+  it('AC-8108.3: 데스크 — 세 데스크 탭을 모두 숨겨도 자료실 탭은 남는다(href /library)', () => {
+    pathname.mockReturnValue('/library')
+    render(<TabBar desk hidden={ALL_TAB_ACCESS} />)
+    expect(stripLabels()).toEqual(['자료실'])
+    expect(stripLinks().map((a) => a.getAttribute('href'))).toEqual(['/library'])
+    expect(stripLinks()[0]!.getAttribute('aria-current')).toBe('page')
   })
 })
 
@@ -197,10 +206,20 @@ describe('AC-7706.3 AppShell hiddenTabs', () => {
     expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('페이지')
   })
 
-  it('AC-7706.3: 데스크 — 숨긴 탭이 데스크 탭 띠에서 빠진다', () => {
+  it('AC-7706.3·AC-8108.3: 데스크 — 숨긴 탭이 데스크 탭 띠에서 빠진다(자료실은 남는다)', () => {
     pathname.mockReturnValue('/worklog')
     render(shell({ desk: true, hiddenTabs: ['/sunap'] }))
-    expect(stripLabels()).toEqual(['업무일지', '예약'])
+    expect(stripLabels()).toEqual(['업무일지', '예약', '자료실'])
+  })
+
+  it('AC-8108.2: 숨긴 탭이 있는 원장 앱 틀도 [더보기] 판에 자료실이 있고 /library 본문을 그린다(TabGate가 돌려보내지 않는다)', async () => {
+    pathname.mockReturnValue('/library')
+    render(shell({ hiddenTabs: ALL_TAB_ACCESS }))
+    expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('페이지')
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(moreButton().textContent).toBe('더보기 · 자료실')
+    await openMore()
+    expect(panelLabels()).toEqual(['자료실', '설정'])
   })
 
   it('AC-7706.3: 숨긴 탭이 있어도 계정 메뉴의 [가입 승인](관리자)은 그대로다', async () => {

@@ -146,6 +146,46 @@ describe('AC-7001.1·AC-7001.2 데스크의 비트 PC 연결 화면(/claim/setup
   })
 })
 
+// 데스크도 자료실을 연다 (library AC-8108.3 — 승인된 의원의 데스크도 받기만 한다). 탭 띠는 TabBar의 DESK_TABS, 문지기는 isDeskPath
+describe('AC-8108.3 데스크의 자료실(/library)', () => {
+  it.each(['/library', '/library/x'])('AC-8108.3: %s는 isDeskPath가 참이고 DeskGate는 본문을 그대로 그린다(막힌 화면·수납일지로 바꾸기 없음)', (path) => {
+    expect(isDeskPath(path)).toBe(true)
+    pathname.mockReturnValue(path)
+    const { container } = render(gate())
+    expect(container.innerHTML).toBe('<p>본문</p>')
+    expect(screen.queryByText(TITLE)).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it.each(['/libraryx', '/librarys', '/library-x'])('AC-8108.3: 이름만 비슷한 %s는 지금처럼 막힌 화면이다(막힌 화면 글 그대로)', (path) => {
+    expect(isDeskPath(path)).toBe(false)
+    pathname.mockReturnValue(path)
+    render(gate())
+    expect(screen.queryByText('본문')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(TITLE)
+    expect(screen.getByText(LEAD).tagName).toBe('P')
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-8108.3: 데스크 탭을 숨겨도 /library는 본문을 그리고, /dashboard의 첫 화면은 지금처럼 숨기지 않은 첫 데스크 탭이다(자료실로 가지 않는다)', () => {
+    pathname.mockReturnValue('/library')
+    const { container, rerender } = render(
+      <DeskGate hidden={['/worklog', '/sunap', '/calendar']}>
+        <p>본문</p>
+      </DeskGate>,
+    )
+    expect(container.innerHTML).toBe('<p>본문</p>')
+    pathname.mockReturnValue('/dashboard')
+    rerender(
+      <DeskGate hidden={['/sunap']}>
+        <p>본문</p>
+      </DeskGate>,
+    )
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/worklog')
+    expect(DESK_HOME).toBe('/sunap')
+  })
+})
+
 describe('AC-6306.2 RoleProvider·useDesk', () => {
   function Probe() {
     return <p>{useDesk() ? '데스크' : '원장'}</p>
