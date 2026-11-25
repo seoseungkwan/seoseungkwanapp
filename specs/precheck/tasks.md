@@ -467,3 +467,13 @@
 - TDD: required
 - `BitInstallRules.MatchesEnvironment`의 마지막 조건(`C:\DrBIT50`)을 빼고 환경 파일 자리 하나를 더한다. `FindRoot`·필요한 파일 셋·후보 모으기(`InstallationLocator`)는 그대로다(ERP 시험이 `FindRoot` 몸통을 글자로 견준다). 옛 시험 'C:\DrBIT50이 아니면 거절'은 새 뜻(고름)으로 고친다(지우지 않음). 판 0.13.2 태그·릴리스는 ssk-clinic-pc-files 나).
 - 알아 둘 것: 아직 운영에 안 합친 갈래 feat-erp-bit-anywhere의 ERP 시험(AC-3801.1·AC-3801.4)은 '청구 도우미 규칙은 C:\DrBIT50만'을 본다. 그 갈래가 이 판 위로 합쳐지면 그 두 시험을 새 뜻으로 고쳐야 한다(ERP 코드는 그대로 돌아간다).
+
+## TASK-46: 비트에 병원 범위가 여럿이어도 처음 등록되게 + 도우미 0.13.3 (도우미)
+- Step: 어느 Phase에도 속하지 않는 고침 (2026-11-25 사용자 '우리웹앱도 저거때매 연결안된거 같은데' → 답(로그인한 사람의 병원 번호로 등록) → 'ㅇㅇ')
+- AC: AC-005.18, AC-005.16
+- REQ: REQ-005
+- Files: helper/src/Precheck.Core/Bit/Sql.cs, helper/src/Precheck.Core/Bit/HospitalCheck.cs, helper/src/Precheck.Core/Bit/StatsMenu.cs, helper/src/Precheck.Core/Registration/RegisterFlow.cs, helper/tests/Precheck.Core.Tests/Bit/StatsScreens.test.cs, helper/tests/Precheck.Core.Tests/Registration/RegisterFlow.test.cs, helper/tests/Precheck.Core.Tests/Bit/HospitalCheck.test.cs, helper/tests/Precheck.Core.Tests/Bit/ReadOnlyGuard.test.cs, helper/tests/Precheck.Core.Tests/Bit/Fakes.test.cs, helper/tests/bit-connect.dotnet.test.ts, helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
+- Tests: helper/tests/bit-connect.dotnet.test.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- `RegisterFlow`는 범위가 둘 이상일 때만 `HospitalCheck`의 새 고르기(계정 범위 → 최근 30일 내원 범위)를 부르고, 못 정하면 지금처럼 `E-BIT-REG-MANY`다. `VerifyCurrent`는 '등록 범위 하나뿐'을 '등록 범위가 들어 있음'으로 바꾼다. `StatsAccess.Check`는 계정 범위를 하나로 못 읽으면 DB 안 범위를 읽어 둘 이상이면 막는다. 새 SELECT `Sql.ActiveScopesSql`은 허용 목록·`ReadOnlyGuardTests.Derived`에 더한다(원본 사본 없음). 옛 시험 '범위 둘이면 REG-MANY'·'다른 범위가 함께 있으면 MISMATCH'는 새 뜻으로 고친다(지우지 않음). 원본 검사 함수(`ValidateScope`·`VerifyOnlyScope` 등, AC-005.4)는 그대로다.
+- 판 번호가 박힌 시험(0.13.2)을 0.13.3으로 고친다. `MIN_HELPER`와 기능별 최소 판은 그대로다. 태그 `helper-v0.13.3`·릴리스는 ssk-clinic-pc-files 나), 웹 배포(새 도우미 알림)는 사용자가 말할 때만.
