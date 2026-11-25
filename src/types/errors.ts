@@ -78,5 +78,8 @@ export type ErrorCode =
   | 'E-VIEW-START' | 'E-VIEW-LOG' | 'E-REGION-SAVE' | 'E-COMPARE-READ' | 'E-VIEW-READONLY'
   // 저절로 올리기(specs/admin-view design.md '화면 글자' 2차 오류 셋): 채울 기간 바꾸기 · 올리기 실패(번호 없는 오류) · 다른 의원 비트 PC
   | 'E-AUTO-MONTHS' | 'E-AUTO-UPLOAD' | 'E-AUTO-OTHER-BIT'
+  // 자료실(specs/library requirements.md '시안에 없어 이 명세가 정한 글'): 목록 읽기 · 크기 · 파일 이름 길이 · 같은 이름 · 올리기 · 받기 · 지우기 실패
+  | 'E-LIBRARY-READ-FAILED' | 'E-LIBRARY-FILE-SIZE' | 'E-LIBRARY-FILE-NAME' | 'E-LIBRARY-FILE-EXISTS'
+  | 'E-LIBRARY-UPLOAD-FAILED' | 'E-LIBRARY-DOWNLOAD-FAILED' | 'E-LIBRARY-DELETE-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }
