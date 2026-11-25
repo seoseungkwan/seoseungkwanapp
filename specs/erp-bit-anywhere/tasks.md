@@ -76,3 +76,12 @@
   - AC-3806.4: (윈도우만) PowerShell 5.1로 `install.ps1` `Parser.ParseFile` 오류 0
 - 차례: Phase 3 Step 2 (TASK-3 뒤, 리드) → 리드 마지막 검사(ERP 도우미·확장 시험 전체, Release net48 빌드, `git diff 6754571c -- helper src extension` 비어 있음) → 설치 파일 다시(`…20261123b`) → 마지막 검토 한 번
 
+## TASK-5: 비트에 병원 범위가 여럿이어도 등록·확인 (Erp.Core·Erp.Helper)
+- REQ: REQ-3807
+- AC: AC-3807.1, AC-3807.2, AC-3807.3
+- Files: helper-erp/src/Erp.Core/ErpHospital.cs, helper-erp/src/Erp.Core/Closing/ClosingCommands.cs, helper-erp/src/Erp.Helper/Program.cs, helper-erp/tests/Erp.Core.Tests/ErpHospital.test.cs, helper-erp/tests/erp-core.dotnet.test.ts, helper-erp/tests/erp-helper.test.ts, helper-erp/tests/erp-closing.dotnet.test.ts
+- Tests: helper-erp/tests/erp-core.dotnet.test.ts, helper-erp/tests/erp-helper.test.ts, helper-erp/tests/erp-closing.dotnet.test.ts
+- TDD: required
+  - AC-3807.1·3807.2: C# 시험(`ErpHospital.test.cs`, 기존 도우미 시험의 가짜 `Rig`·`FakeSession`·`Synthetic`을 씀) — 범위 하나·여럿(등록 범위 포함, 빈 값·NULL 줄 무시)이면 등록·통과, DB 안에 등록 범위가 없으면 막힘, 로그인 계정의 범위가 없거나 둘이면 막힘, 로그인 취소·[취소]·전 등록 프로필 ID·기관기호 확인·설치 위치 다름·등록 없음은 기존과 같음, 막히면 세션 닫힘
+  - AC-3807.3: `erp-helper.test.ts`·`erp-core.dotnet.test.ts` 글자 시험 — 부르는 곳, `helper-erp/src`에 옛 부름 없음, `git diff a278577f -- helper src extension` 비어 있음. 옛 자리를 박아 둔 시험(`erp-helper.test.ts` AC-3611.3 `RegisterFlow.Run(`, `erp-core.dotnet.test.ts` AC-3708.1·`erp-closing.dotnet.test.ts` AC-3616.2 `HospitalGate.Open(`)은 기대 글자만 `ErpHospital.Register(`·`ErpHospital.Open(`으로 바꾼다(까닭: AC-3807.3)
+- 차례: Phase 4 (리드 혼자, 2026-11-25) → 마지막 검사(ERP 도우미 시험 전체·확장 시험·`helper-erp` Release net48 빌드·`git diff a278577f -- helper src extension` 비어 있음) → 도우미 설치 파일 다시(`…20261125`) → 마지막 검토 한 번

@@ -136,6 +136,13 @@
   - 저장(0) 글은 그대로다. 취소(1)는 지금 글 다음에 한 줄 '직접 취소하지 않았는데 이 글이 나왔다면 이 창을 사진으로 찍어 보내 주세요.'를 더한다(비트 로그인이 거절해도 취소로 끝난다 — 아래 위험).
 - AC-3806.4: (윈도우) `install.ps1`은 PowerShell 5.1 글 검사(`Parser.ParseFile`)에서 오류가 없다. 실제 설치는 시험에서 돌리지 않는다.
 
+### REQ-3807: 비트에 병원 범위가 여럿이어도 로그인한 사람의 병원 범위로 등록하고 쓴다
+2026-11-25 다른 의원 PC 비트에 병원 범위(`DepMst.DepHspNum`)가 둘 이상이라 비트시트·웹앱 도우미가 멈춤 → 사용자 '우리웹앱도 저거때매 연결안된거 같은데' → 'ㅇㅇ' → 'Erp도우미도 같은이유면 그것도 수정해 · 의사랑꺼말고 비트거'. ERP 도우미는 기존 등록 흐름(`RegisterFlow.Run`)·등록 확인 관문(`HospitalGate.Open`)을 참조로 쓰는데, 둘 다 'DB 안 범위가 등록 범위 하나뿐'(`HospitalCheck.VerifyOnlyScope`)을 봐서 이런 비트에서는 `E-BIT-HOSPITAL-MISMATCH`로 멈춘다. 청구 도우미 쪽(`helper/`)은 고치지 않으므로(AC-3801.4) ERP 부품이 같은 차례를 따로 갖는다. 환자·진료 표를 읽는 ERP 문장(`ClosingSql`)은 모두 등록 범위(`@hospital`)로 거른다(거르지 않는 `MemoKindsSql`·`FindCodesSql`·`CodeListSql` 이름 부분은 공용 코드표라 환자 자료가 아니다).
+
+- AC-3807.1: Given 가짜 비트(범위·기관기호 답을 정해 둔 세션)와 가짜 로그인·확인 창·등록 저장소, When `ErpHospital.Register(services)`(`Erp.Core`), Then 기존 `RegisterFlow.Run`과 같은 차례·같은 결과다: 비트 찾기 → DB 열기 → 비트 로그인(취소면 false, 저장 없음) → 로그인 계정의 범위 하나(`HospitalCheck.ReadUserScope`) → 작업일 기관기호(`HospitalCheck.ReadInstitutionCode`) → 작업일이 오늘이 아니면 오늘 기관기호도 같은지(`HospitalCheck.VerifyInstitutionNumber`) → **범위 확인** → 전 등록(깨졌으면 없는 것으로) → DB를 닫고 확인 창(`RegisterPrompt.Build`, `RegisterFlow.ConfirmTimeout`) → [확인]일 때만 저장, 기관기호가 같으면 전 프로필 ID 유지, 저장 값 모양이 틀리면 `E-BIT-HOSPITAL-MISMATCH`. 다른 것은 **범위 확인** 하나다: 'DB 안 범위가 그것 하나뿐' 대신 '빈 값·NULL을 빼고 뒤 공백을 지운 DB 안 범위(`Sql.ScopesSql`)에 그 범위가 들어 있음'(대소문자까지 같은 글자, ordinal)을 보고, 없으면 `E-BIT-HOSPITAL-MISMATCH`다(다른 범위가 함께 있어도 막지 않음). 로그인 계정의 범위가 없거나 둘 이상이면 지금처럼 `E-BIT-HOSPITAL-MISMATCH`다(`ReadUserScope` 그대로).
+- AC-3807.2: Given 같은 가짜들, When `ErpHospital.Open(services)`, Then 기존 `HospitalGate.Open`과 같다(등록 없으면 비트를 열지 않고 `E-BIT-NOT-REGISTERED`, 설치 위치·서버·DB 이름이 등록과 다르면 읽기 전에 `E-BIT-HOSPITAL-MISMATCH`, 오늘 기관기호가 등록과 같아야 함(`HospitalCheck.VerifyInstitutionNumber`), 막히면 연 세션을 닫음, 통과하면 `VerifiedHospital`). 범위 확인만 AC-3807.1과 같다(등록 범위가 DB 안 범위에 들어 있으면 통과).
+- AC-3807.3: Given `helper-erp/src`, Then 등록 모드(`Program.Register`)는 `ErpHospital.Register`를, `ClosingCommands`의 세 명령은 `ErpHospital.Open`을 부르고, `helper-erp/src` 안에 `RegisterFlow.Run(`·`HospitalGate.Open(`·`VerifyOnlyScope(`·`HospitalCheck.VerifyCurrent(`·`ValidateScope(` 부름이 없다. 다른 명세의 AC-3606.3(`HospitalGate` 그대로)·AC-3611.3(기존 `RegisterFlow`)·AC-3708.1·AC-3616.2(`HospitalGate.Open` 자리)는 이 AC로 그 자리가 `ErpHospital.Open`·`ErpHospital.Register`로 바뀌고, 그 시험은 기대하는 글자만 바꾼다(검사 차례·횟수는 그대로, 검사를 빼지 않음). 청구 도우미 쪽은 한 글자도 바뀌지 않는다(AC-3801.4). ERP 도우미 판은 0.3.0 그대로다(새 명령·새 칸 없음, 설치 파일은 날짜로 가른다).
+
 ## 범위 밖
 - 청구 도우미(`helper/`)와 웹앱(`src/`)의 비트 찾기. 이쪽은 `C:\DrBIT50`만 그대로다.
 - 네트워크 드라이브·다른 컴퓨터에 깔린 비트. 다른 컴퓨터의 프로그램 파일을 불러 실행하는 일이라 계속 막는다.

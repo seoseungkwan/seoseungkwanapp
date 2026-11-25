@@ -1,13 +1,15 @@
 {
   "status": "approved",
   "feature": "erp-bit-anywhere",
-  "approved_at": "2026-11-23T08:41:43Z",
+  "approved_at": "2026-11-25T06:27:40Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "ace52dc569764e875f7b897530fe6854073a9e60f82177bd28338743e68b1bce",
+  "spec_sha256": "31ad030da9d463587cfb672bb87d7489f307c4679f45aef7fd908444f42a56fa",
   "scope": [
     "helper-erp/install/install.cmd",
     "helper-erp/install/install.ps1",
+    "helper-erp/src/Erp.Core/Closing/ClosingCommands.cs",
+    "helper-erp/src/Erp.Core/ErpHospital.cs",
     "helper-erp/src/Erp.Core/ErpInstallRules.cs",
     "helper-erp/src/Erp.Core/ErpServerRules.cs",
     "helper-erp/src/Erp.Helper/ErpBitDb.cs",
@@ -17,8 +19,10 @@
     "helper-erp/src/Erp.Helper/ErpStage.cs",
     "helper-erp/src/Erp.Helper/ErpVendorPreload.cs",
     "helper-erp/src/Erp.Helper/Program.cs",
+    "helper-erp/tests/Erp.Core.Tests/ErpHospital.test.cs",
     "helper-erp/tests/Erp.Core.Tests/ErpInstallRules.test.cs",
     "helper-erp/tests/Erp.Core.Tests/ErpServerRules.test.cs",
+    "helper-erp/tests/erp-closing.dotnet.test.ts",
     "helper-erp/tests/erp-core.dotnet.test.ts",
     "helper-erp/tests/erp-helper.test.ts"
   ]
