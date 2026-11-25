@@ -22,7 +22,7 @@ vi.mock('@/lib/bridge/versions', async (importOriginal) => {
 })
 const { router } = vi.hoisted(() => ({ router: { replace: vi.fn(), push: vi.fn() } }))
 vi.mock('next/navigation', () => ({ useRouter: () => router }))
-// 설치 파일 보관함(helper-download REQ-5103)은 가짜다: 목록·받기만 바꾸고 옆 글(installMeta)은 진짜 함수를 쓴다
+// 설치 파일 목록(helper-download REQ-5103 → library AC-8109.4: 자료실의 그 종류 최신 판)은 가짜다: 목록·받기만 바꾸고 옆 글(installMeta)은 진짜 함수를 쓴다
 const installStore = vi.hoisted(() => ({ latest: vi.fn(), download: vi.fn() }))
 vi.mock('@/lib/storage/installFiles', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/installFiles')>()
@@ -237,11 +237,11 @@ function expectTurn(li: HTMLElement, label = '') {
 }
 const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 
-// 보관함의 가장 높은 판(지어낸 값). 옆 글은 installMeta 그대로 '판 · 크기 · M월 D일 올림'
+// 자료실의 가장 높은 판(지어낸 값). 옆 글은 installMeta 그대로 '판 · 크기 · M월 D일 올림'(크기는 자료실 sizeText, 1KB = 1,024바이트)
 const UPLOADED = '2026-11-17T01:00:00.000Z' // 한국 11월 17일 10시
 const HELPER_FILE = { kind: 'helper', version: [0, 9, 0], name: 'precheck-helper-0.9.0.zip', path: 'helper/precheck-helper-0.9.0.zip', size: 889_612, uploadedAt: UPLOADED } as const
 const EXTENSION_FILE = { kind: 'extension', version: [0, 3, 0], name: 'precheck-extension-0.3.0.zip', path: 'extension/precheck-extension-0.3.0.zip', size: 6_480, uploadedAt: UPLOADED } as const
-const HELPER_META = '0.9.0 · 889KB · 11월 17일 올림'
+const HELPER_META = '0.9.0 · 869KB · 11월 17일 올림' // 889,612바이트
 const EXTENSION_META = '0.3.0 · 6KB · 11월 17일 올림'
 const NO_FILE = '아직 받을 파일이 없어요. 관리자에게 알려 주세요.'
 /** 받기 단추(링크가 아닌 button, 주소 없음)와 바로 옆 글 */
@@ -1248,7 +1248,7 @@ describe('AC-5103.1·AC-5103.3 비트 PC 연결의 웹앱 받기 단추', () => 
     ['도우미 없음 — 2단계 [도우미 내려받기]', () => void fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } }), '도우미 내려받기', HELPER_META, HELPER_FILE],
     ['도우미 버전 안 맞음 — 위 상자 [새 도우미 내려받기]', () => void fakeExtension({ hello: helloWith({ helperVersion: '0.0.9' }) }), '새 도우미 내려받기', HELPER_META, HELPER_FILE],
     ['확장 버전 안 맞음 — 위 상자 [확장 내려받기]', () => void fakeExtension({ hello: helloWith({ extensionVersion: '0.0.9' }) }), '확장 내려받기', EXTENSION_META, EXTENSION_FILE],
-  ])('AC-5103.1: %s를 누르면 그 종류 파일로 downloadInstallFile을 한 번 부르고, 옆 글 뒤에 [다시 확인]이 온다', async (_name, arrange, name, meta, file) => {
+  ])('AC-5103.1·AC-8109.4: %s를 누르면 그 종류 파일로 downloadInstallFile을 한 번 부르고, 옆 글 뒤에 [다시 확인]이 온다', async (_name, arrange, name, meta, file) => {
     arrange()
     renderSetup()
     await screen.findByText(meta)
@@ -1261,7 +1261,7 @@ describe('AC-5103.1·AC-5103.3 비트 PC 연결의 웹앱 받기 단추', () => 
     expect(installStore.latest).toHaveBeenCalledTimes(1)
   })
 
-  it("AC-5103.1: 올린 파일이 없으면 [도우미 내려받기]는 눌리지 않고 옆에 '아직 받을 파일이 없어요. 관리자에게 알려 주세요.' — 순서 글은 그대로", async () => {
+  it("AC-5103.1·AC-8109.4: 올린 파일이 없으면 [도우미 내려받기]는 눌리지 않고 옆에 '아직 받을 파일이 없어요. 관리자에게 알려 주세요.' — 순서 글은 그대로", async () => {
     installStore.latest.mockResolvedValue({ helper: null, extension: EXTENSION_FILE })
     fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
     renderSetup()

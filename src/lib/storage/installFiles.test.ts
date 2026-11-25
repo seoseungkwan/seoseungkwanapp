@@ -1,488 +1,234 @@
-// @vitest-environment jsdom
-// 도우미·크롬 확장 설치 파일 목록·받기·올리기 (specs/helper-download TASK-1, REQ-5102 · AC-5102.1~5102.4, design.md '함수').
-// 실제 Supabase에 붙지 않는다. 가짜 클라이언트가 보관함(install-files)에 무엇이 어떤 차례로 나갔는지 적어 둔다.
-// 버킷 권한·RLS는 supabase/installFiles.rls.test.ts가 증명한다. 파일 이름·크기·바이트는 모두 지어낸 값이다
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  InstallFilesError,
-  downloadInstallFile,
-  installMeta,
-  latestInstallFiles,
-  parseInstallName,
-  uploadInstallFile,
-  type InstallFile,
-} from './installFiles'
+// 비트 PC 연결 받기 단추가 쓰는 설치 파일 함수 = 자료실 위의 얇은 잇기 (specs/library TASK-5, REQ-8109 · AC-8109.3·AC-8109.4, design.md '설정·관리자 칸과 받기 단추').
+// 자료실 목록·받기(lib/storage/library)는 흉내다: 무엇을 몇 번 어떤 값으로 불렀는지만 본다. 판·크기·날짜 글자는 진짜 lib/library/files를 쓴다.
+// 실제 Supabase에 붙지 않는다. 파일 이름·크기·날짜·uuid는 모두 지어낸 값이다
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { dayText, sizeText, versionOf, type LibraryFile } from '@/lib/library/files'
+import { LibraryError } from '@/lib/storage/library'
+import * as installFiles from './installFiles'
+import { InstallFilesError, downloadInstallFile, installMeta, latestInstallFiles, parseInstallName, type InstallFile } from './installFiles'
 
+const lib = vi.hoisted(() => ({ list: vi.fn(), download: vi.fn() }))
+vi.mock('@/lib/storage/library', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/library')>()),
+  listLibraryFiles: lib.list,
+  downloadLibraryFile: lib.download,
+}))
+// 이 파일이 Supabase를 직접 부르지 않는지 본다(자료실 함수만 부른다)
 const { supabaseBrowser } = vi.hoisted(() => ({ supabaseBrowser: vi.fn() }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 
-const BUCKET = 'install-files'
-const ZIP = 'application/zip'
-const MAX = 5_000_000
-const SECRET = 'secret detail' // 서버 답에 섞여 온 글자. 밖으로 나가면 안 된다
-const RAW_ERROR = { name: 'StorageApiError', message: `new row violates row-level security policy (${SECRET})`, status: 403, statusCode: '403' }
-const CREATED = '2026-11-17T01:00:00.000Z' // 한국 11월 17일 10시
+const SECRET = 'secret detail' // 원래 오류에 섞여 온 글자. 밖으로 나가면 안 된다
+const UPLOADED = '2026-11-24T15:30:00.000Z' // 한국 11월 25일 0시 30분
 const FILE_KEYS = ['kind', 'name', 'path', 'size', 'uploadedAt', 'version']
-// zip 머리(PK\x03\x04)로 시작하는 가짜 바이트
-const BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00])
+const SRC = join(process.cwd(), 'src')
 
-type StorageCall = { bucket: string; op: 'list' | 'download' | 'upload' | 'update' | 'remove'; path?: unknown; body?: unknown; options?: unknown }
-type Reply = { data?: unknown; error?: unknown }
-
-/** Supabase list가 돌려주는 한 줄(파일). 폴더 줄은 id·metadata가 null이다 */
-const entry = (name: string, size = 900_000, created = CREATED, over: Record<string, unknown> = {}) => ({
-  name,
-  id: `id-${name}`,
-  updated_at: created,
-  created_at: created,
-  last_accessed_at: created,
-  metadata: { size, mimetype: ZIP, eTag: '"fake"', cacheControl: 'max-age=3600', lastModified: created, contentLength: size, httpStatusCode: 200 },
-  ...over,
-})
-const folder = (name: string) => ({ name, id: null, updated_at: null, created_at: null, last_accessed_at: null, metadata: null })
-
-const helperFile = (over: Partial<InstallFile> = {}): InstallFile => ({
-  kind: 'helper',
-  version: [0, 9, 0],
-  name: 'precheck-helper-0.9.0.zip',
-  path: 'helper/precheck-helper-0.9.0.zip',
-  size: 900_000,
-  uploadedAt: CREATED,
-  ...over,
-})
-
-/** 폴더마다 목록을 주는 답. 다른 부름은 오류 없음 */
-const listing =
-  (folders: Record<string, unknown[]>) =>
-  (call: StorageCall): Reply => {
-    if (call.op === 'list') return { data: folders[call.path as string] ?? [] }
-    if (call.op === 'download') return { data: new Blob([BYTES.slice()], { type: ZIP }) }
-    if (call.op === 'upload') return { data: { id: 'fake-object', path: call.path, fullPath: `${BUCKET}/${call.path}` } }
-    return { data: [] }
+let serial = 0
+/** 자료실 표 한 줄(지어낸 값). 바구니 이름은 uuid 모양 */
+const row = (fileName: string, over: Partial<LibraryFile> = {}): LibraryFile => {
+  serial += 1
+  const n = String(serial).padStart(12, '0')
+  return {
+    id: `11111111-1111-4111-8111-${n}`,
+    fileName,
+    name: fileName,
+    category: 'install',
+    description: '',
+    storagePath: `22222222-2222-4222-8222-${n}`,
+    size: 1_258_291,
+    createdAt: UPLOADED,
+    ...over,
   }
-const okReply = listing({})
-
-/** 보관함 부름을 한 줄로 적는 가짜 클라이언트를 브라우저 클라이언트 자리에 둔다. reply가 던지면 네트워크 예외와 같다 */
-function fakeClient(reply: (call: StorageCall) => Reply = okReply) {
-  const calls: StorageCall[] = []
-  const tables: string[] = []
-  const send = (call: StorageCall) => {
-    calls.push(call)
-    return Promise.resolve()
-      .then(() => reply(call))
-      .then((r) => ({ data: r.data === undefined ? null : r.data, error: r.error ?? null }))
-  }
-  supabaseBrowser.mockReturnValue({
-    from(table: string) {
-      tables.push(table)
-      throw new Error('표는 부르지 않는다')
-    },
-    storage: {
-      from(bucket: string) {
-        return {
-          list: (path: unknown, options?: unknown) => send({ bucket, op: 'list', path, options }),
-          download: (path: unknown) => send({ bucket, op: 'download', path }),
-          upload: (path: unknown, body: unknown, options?: unknown) => send({ bucket, op: 'upload', path, body, options }),
-          update: (path: unknown, body: unknown, options?: unknown) => send({ bucket, op: 'update', path, body, options }),
-          remove: (path: unknown) => send({ bucket, op: 'remove', path }),
-        }
-      },
-    },
-  })
-  return Object.assign(calls, { tables })
+}
+/** 그 줄이 받기 단추 쪽 모양으로 바뀐 것 */
+const asInstall = (file: LibraryFile): InstallFile => {
+  const parsed = versionOf(file.fileName)
+  if (parsed === null) throw new Error('판 번호 없는 파일')
+  return { kind: parsed.kind, version: parsed.version, name: file.fileName, path: file.storagePath, size: file.size, uploadedAt: file.createdAt }
 }
 
-const throwing = (): Reply => {
-  throw new Error(SECRET)
-}
-
-// 오류 답·예외·클라이언트 만들기 실패(모든 부름이 같다)
-const FAILURES: [string, () => void][] = [
-  ['오류 답', () => fakeClient(() => ({ error: RAW_ERROR }))],
-  ['오류가 값과 함께 옴', () => fakeClient((call) => ({ ...listing({ helper: [entry('precheck-helper-0.9.0.zip')] })(call), error: RAW_ERROR }))],
-  ['보내다 예외(네트워크)', () => fakeClient(throwing)],
-  [
-    '클라이언트 만들기 실패',
-    () =>
-      supabaseBrowser.mockImplementation(() => {
-        throw new Error(SECRET)
-      }),
-  ],
-  [
-    '보관함 만들기 실패(storage.from이 곧바로 던짐)',
-    () =>
-      supabaseBrowser.mockReturnValue({
-        storage: {
-          from: () => {
-            throw new Error(SECRET)
-          },
-        },
-      }),
-  ],
-]
-
-/** 던진 것이 InstallFilesError이고 번호가 code인지, 서버 글자가 섞이지 않았는지 본다 */
+/** 던진 것이 InstallFilesError이고 번호가 code인지, 원래 글자가 섞이지 않았는지 본다 */
 async function expectCode(run: () => Promise<unknown>, code: string) {
   const error = await run().then(
     () => null,
     (e: unknown) => e,
   )
   expect(error).toBeInstanceOf(InstallFilesError)
-  expect(error).toBeInstanceOf(Error)
   expect((error as InstallFilesError).code).toBe(code)
   expect((error as InstallFilesError).name).toBe('InstallFilesError')
   expect(String((error as Error).message)).not.toContain(SECRET)
   expect(JSON.stringify(error)).not.toContain(SECRET)
 }
 
-const zipFile = (name: string, size = BYTES.length, type = ZIP) => {
-  const file = new File([BYTES.slice()], name, { type })
-  if (size !== BYTES.length) Object.defineProperty(file, 'size', { value: size })
-  return file
+/** src 아래 시험이 아닌 .ts·.tsx 파일 */
+function sourceFiles(dir: string = SRC): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) return sourceFiles(path)
+    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : []
+  })
 }
+/** 주석을 뺀 코드 글자 */
+const codeOf = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
 beforeEach(() => {
+  lib.list.mockReset().mockResolvedValue([])
+  lib.download.mockReset().mockResolvedValue(undefined)
   supabaseBrowser.mockReset()
 })
 
-afterEach(() => {
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-  document.body.replaceChildren()
-})
-
-describe('AC-5102.1 parseInstallName', () => {
-  it.each([
-    ['precheck-helper-0.9.0.zip', { kind: 'helper', version: [0, 9, 0] }],
-    ['precheck-extension-0.3.0.zip', { kind: 'extension', version: [0, 3, 0] }],
-    ['precheck-helper-10.20.300.zip', { kind: 'helper', version: [10, 20, 300] }],
-    ['precheck-extension-1.0.0.zip', { kind: 'extension', version: [1, 0, 0] }],
-  ])('AC-5102.1: %s → 종류와 숫자 판', (name, parsed) => {
-    expect(parseInstallName(name)).toEqual(parsed)
-  })
-
-  it.each([
-    ['', '빈 글자'],
-    ['helper/precheck-helper-0.9.0.zip', '폴더가 붙은 이름'],
-    ['precheck-helper-0.9.zip', '판 번호 둘'],
-    ['precheck-helper-0.9.0.1.zip', '판 번호 넷'],
-    ['precheck-helper-1000.0.0.zip', '판 번호 네 자리(보관함 규칙과 같다)'],
-    ['precheck-helper-a.b.c.zip', '판 번호가 글자'],
-    ['precheck-helper-0x9x0.zip', '점 대신 다른 글자'],
-    ['precheck-helper-0.9.0xzip', '.zip 앞 점 대신 다른 글자'],
-    ['precheck-helper-0.9.0 (1).zip', '같은 파일을 두 번 받아 붙은 (1)'],
-    ['precheck-helper-0.9.0.ZIP', '대문자 ZIP'],
-    ['Precheck-helper-0.9.0.zip', '대문자로 시작'],
-    ['precheck-helper-0.9.0.exe', 'exe'],
-    ['precheck-helper-0.9.0.zip.exe', 'zip 뒤에 더'],
-    ['precheck-helper-0.9.0.zip\n', '끝에 줄바꿈'],
-    [' precheck-helper-0.9.0.zip', '앞에 빈칸'],
-    ['precheck-tool-0.9.0.zip', '다른 종류'],
-    ['precheck-helper-.9.0.zip', '빈 판 번호'],
-    ['precheck-helper-０.9.0.zip', '전각 숫자'],
-  ])('AC-5102.1: %j(%s)은 null이다', (name) => {
-    expect(parseInstallName(name)).toBeNull()
-  })
-
-  it('AC-5102.1: 판 견주기는 숫자로 한다 — 0.10.0 > 0.9.0, 0.9.10 > 0.9.9, 1.0.0 > 0.99.99', async () => {
-    fakeClient(
-      listing({
-        helper: [entry('precheck-helper-0.9.0.zip'), entry('precheck-helper-0.10.0.zip'), entry('precheck-helper-0.2.0.zip')],
-        extension: [entry('precheck-extension-0.9.9.zip'), entry('precheck-extension-0.9.10.zip'), entry('precheck-extension-0.99.99.zip'), entry('precheck-extension-1.0.0.zip')],
-      }),
-    )
-    const latest = await latestInstallFiles()
-    expect(latest.helper?.version).toEqual([0, 10, 0])
-    expect(latest.extension?.version).toEqual([1, 0, 0])
-
-    fakeClient(listing({ extension: [entry('precheck-extension-0.9.10.zip'), entry('precheck-extension-0.9.9.zip')] }))
-    expect((await latestInstallFiles()).extension?.name).toBe('precheck-extension-0.9.10.zip')
-  })
-})
-
-describe('AC-5102.2 latestInstallFiles', () => {
-  it('AC-5102.2: install-files 보관함의 helper·extension 두 폴더를 한 번씩 100개까지 읽는다(새로 올린 차례로, 표는 부르지 않는다)', async () => {
-    const calls = fakeClient()
+describe('AC-8109.3 latestInstallFiles — 자료실 목록에서 종류마다 가장 높은 판', () => {
+  it('AC-8109.3: 자료실 목록(listLibraryFiles)을 한 번만 읽고 Supabase를 직접 부르지 않는다', async () => {
     await latestInstallFiles()
-    expect(supabaseBrowser).toHaveBeenCalledTimes(1)
-    expect(calls.map((call) => [call.bucket, call.op, call.path]).sort()).toEqual([
-      [BUCKET, 'list', 'extension'],
-      [BUCKET, 'list', 'helper'],
-    ])
-    for (const call of calls) {
-      expect(call.options).toEqual({ limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
-    }
-    expect(calls.tables).toEqual([])
+    expect(lib.list).toHaveBeenCalledTimes(1)
+    expect(lib.list).toHaveBeenCalledWith()
+    expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 
-  it('AC-5102.2: 종류마다 가장 높은 판을 { kind, version, name, path, size, uploadedAt }로 준다', async () => {
-    fakeClient(
-      listing({
-        helper: [entry('precheck-helper-0.8.0.zip', 880_000, '2026-11-10T00:00:00.000Z'), entry('precheck-helper-0.9.0.zip', 900_000, CREATED)],
-        extension: [entry('precheck-extension-0.3.0.zip', 6_143, '2026-11-16T23:30:00.000Z')],
-      }),
-    )
+  it('AC-8109.3: 종류마다 파일 이름의 판이 가장 높은 파일을 { kind, version, name: 파일 이름, path: 바구니 이름, size, uploadedAt: 올린 시각 }로 준다', async () => {
+    const helper = row('precheck-helper-0.14.0.zip', { size: 1_258_291, createdAt: '2026-11-24T15:30:00.000Z' })
+    const extension = row('precheck-extension-0.4.0.zip', { size: 6_480, createdAt: '2026-11-20T01:00:00.000Z' })
+    lib.list.mockResolvedValue([helper, row('precheck-helper-0.13.3.zip'), extension, row('설명서.pdf', { category: 'guide' })])
     const latest = await latestInstallFiles()
     expect(Object.keys(latest)).toEqual(['helper', 'extension'])
     expect(latest).toEqual({
-      helper: helperFile(),
-      extension: {
-        kind: 'extension',
-        version: [0, 3, 0],
-        name: 'precheck-extension-0.3.0.zip',
-        path: 'extension/precheck-extension-0.3.0.zip',
-        size: 6_143,
-        uploadedAt: '2026-11-16T23:30:00.000Z',
-      },
+      helper: { kind: 'helper', version: [0, 14, 0], name: 'precheck-helper-0.14.0.zip', path: helper.storagePath, size: 1_258_291, uploadedAt: '2026-11-24T15:30:00.000Z' },
+      extension: { kind: 'extension', version: [0, 4, 0], name: 'precheck-extension-0.4.0.zip', path: extension.storagePath, size: 6_480, uploadedAt: '2026-11-20T01:00:00.000Z' },
     })
     expect(Object.keys(latest.helper as InstallFile).sort()).toEqual(FILE_KEYS)
   })
 
-  it('AC-5102.2: 파일이 없는 종류는 null이고, 둘 다 없으면 둘 다 null이다(실패가 아니다)', async () => {
-    fakeClient(listing({ helper: [entry('precheck-helper-0.9.0.zip')] }))
-    expect(await latestInstallFiles()).toEqual({ helper: helperFile(), extension: null })
-    fakeClient()
+  it('AC-8109.3: 판은 숫자로 견준다(0.10.0 > 0.9.0, 1.0.0 > 0.99.99) — 올린 차례와 상관없다', async () => {
+    const top = row('precheck-helper-0.10.0.zip', { createdAt: '2026-11-01T00:00:00.000Z' })
+    const ext = row('precheck-extension-1.0.0.zip', { createdAt: '2026-11-01T00:00:00.000Z' })
+    lib.list.mockResolvedValue([
+      row('precheck-helper-0.9.0.zip', { createdAt: '2026-11-24T00:00:00.000Z' }),
+      top,
+      row('precheck-helper-0.2.0.zip'),
+      row('precheck-extension-0.99.99.zip', { createdAt: '2026-11-24T00:00:00.000Z' }),
+      ext,
+    ])
+    expect(await latestInstallFiles()).toEqual({ helper: asInstall(top), extension: asInstall(ext) })
+  })
+
+  it("AC-8109.3: 분류와 상관없고(설명서·그 밖으로 올려도 판 번호 파일이면 든다), 보이는 이름이 아니라 올릴 때의 파일 이름으로 본다", async () => {
+    const helper = row('precheck-helper-0.15.0.zip', { category: 'other', name: '새 도우미' })
+    lib.list.mockResolvedValue([
+      row('precheck-helper-0.14.0.zip', { category: 'install' }),
+      helper,
+      // 보이는 이름만 판 번호 모양인 파일은 판 번호 파일이 아니다
+      row('도우미.zip', { name: 'precheck-helper-9.9.9.zip' }),
+      row('precheck-extension-0.5.0.zip', { category: 'guide', name: '확장' }),
+    ])
+    const latest = await latestInstallFiles()
+    expect(latest.helper).toEqual(asInstall(helper))
+    expect(latest.helper?.name).toBe('precheck-helper-0.15.0.zip')
+    expect(latest.extension?.version).toEqual([0, 5, 0])
+  })
+
+  it('AC-8109.3: 그 종류 판 번호 파일이 없으면 null이다(판 번호 없는 파일만 있어도, 목록이 비어도 실패가 아니다)', async () => {
+    lib.list.mockResolvedValue([row('precheck-helper-0.9.0.zip')])
+    expect((await latestInstallFiles()).extension).toBeNull()
+    lib.list.mockResolvedValue([row('설명서.pdf'), row('precheck-helper-0.9.0.ZIP'), row('precheck-helper-0.9.0 (1).zip'), row('setup.exe')])
+    expect(await latestInstallFiles()).toEqual({ helper: null, extension: null })
+    lib.list.mockResolvedValue([])
     expect(await latestInstallFiles()).toEqual({ helper: null, extension: null })
   })
 
-  it('AC-5102.2: 이름 모양이 틀린 파일·폴더 줄·다른 종류 이름·크기나 날짜가 이상한 줄은 무시한다', async () => {
-    fakeClient(
-      listing({
-        helper: [
-          entry('.emptyFolderPlaceholder', 0),
-          entry('precheck-helper-9.9.9 (1).zip'),
-          entry('precheck-helper-9.9.9.exe'),
-          entry('precheck-extension-9.9.9.zip'), // 도우미 폴더 안의 확장 이름
-          folder('precheck-helper-9.9.9.zip'),
-          entry('precheck-helper-8.8.8.zip', 900_000, CREATED, { metadata: null }),
-          entry('precheck-helper-7.7.7.zip', 900_000, CREATED, { metadata: { size: '900000' } }),
-          entry('precheck-helper-6.6.6.zip', -1),
-          entry('precheck-helper-5.5.5.zip', 900_000, CREATED, { created_at: null }),
-          entry('precheck-helper-4.4.4.zip', 900_000, 'not a date'),
-          null,
-          'precheck-helper-3.3.3.zip',
-          entry('precheck-helper-0.9.0.zip'),
-        ],
-        extension: [entry('precheck-helper-9.9.9.zip'), entry('readme.txt')],
-      }),
-    )
-    expect(await latestInstallFiles()).toEqual({ helper: helperFile(), extension: null })
-  })
-
-  it.each(FAILURES)('AC-5102.2: 읽기 실패(%s)는 InstallFilesError(E-INSTALL-READ-FAILED)다', async (_label, arrange) => {
-    arrange()
-    await expectCode(() => latestInstallFiles(), 'E-INSTALL-READ-FAILED')
-  })
-
-  it('AC-5102.2: 한 폴더만 실패해도 빈 목록으로 보이지 않고 E-INSTALL-READ-FAILED다', async () => {
-    fakeClient((call) => (call.path === 'extension' ? { error: RAW_ERROR } : listing({ helper: [entry('precheck-helper-0.9.0.zip')] })(call)))
-    await expectCode(() => latestInstallFiles(), 'E-INSTALL-READ-FAILED')
-  })
-
-  it('AC-5102.2: 목록 답이 배열이 아니면 E-INSTALL-READ-FAILED다', async () => {
-    fakeClient((call) => (call.path === 'helper' ? { data: { name: 'precheck-helper-0.9.0.zip' } } : okReply(call)))
+  it.each([
+    ['자료실 오류(E-LIBRARY-READ-FAILED)', () => new LibraryError('E-LIBRARY-READ-FAILED')],
+    ['뜻밖의 예외', () => new Error(SECRET)],
+  ])('AC-8109.3: 목록 읽기 실패(%s)는 InstallFilesError(E-INSTALL-READ-FAILED)이고 원래 글이 섞이지 않는다', async (_label, make) => {
+    lib.list.mockRejectedValue(make())
     await expectCode(() => latestInstallFiles(), 'E-INSTALL-READ-FAILED')
   })
 })
 
-describe('AC-5102.2 installMeta', () => {
-  it("AC-5102.2: '판 · 크기 · M월 D일 올림' 모양이다", () => {
-    expect(installMeta(helperFile({ version: [0, 9, 0], size: 1_234_567, uploadedAt: CREATED }))).toBe('0.9.0 · 1.2MB · 11월 17일 올림')
-    expect(installMeta(helperFile({ version: [0, 3, 0], size: 6_143, uploadedAt: CREATED }))).toBe('0.3.0 · 6KB · 11월 17일 올림')
+describe('AC-8109.3 downloadInstallFile — 자료실 받기', () => {
+  it('AC-8109.3: 그 파일의 바구니 이름·파일 이름으로 자료실 받기(downloadLibraryFile)를 한 번 부른다 — 파일 이름으로 저장', async () => {
+    const file = asInstall(row('precheck-helper-0.14.0.zip'))
+    await downloadInstallFile(file)
+    expect(lib.download).toHaveBeenCalledExactlyOnceWith({ storagePath: file.path, fileName: 'precheck-helper-0.14.0.zip' })
+    expect(lib.list).not.toHaveBeenCalled()
+    expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 
   it.each([
-    [1_000_000, '1.0MB'],
-    [1_099_999, '1.0MB'],
-    [1_299_999, '1.2MB'],
-    [4_999_999, '4.9MB'],
-    [5_000_000, '5.0MB'],
-    [12_345_678, '12.3MB'],
-    [999_999, '999KB'],
-    [889_612, '889KB'],
-    [6_143, '6KB'],
-    [1_999, '1KB'],
-    [999, '0KB'],
-  ])('AC-5102.2: %d바이트 → %s (1MB=1,000,000바이트 이상은 소수 한 자리 MB, 아래는 KB, 둘 다 버림)', (size, text) => {
-    expect(installMeta(helperFile({ size }))).toBe(`0.9.0 · ${text} · 11월 17일 올림`)
+    ['자료실 오류(E-LIBRARY-DOWNLOAD-FAILED)', () => new LibraryError('E-LIBRARY-DOWNLOAD-FAILED')],
+    ['뜻밖의 예외', () => new Error(SECRET)],
+  ])('AC-8109.3: 받기 실패(%s)는 InstallFilesError(E-INSTALL-DOWNLOAD-FAILED)다', async (_label, make) => {
+    lib.download.mockRejectedValue(make())
+    await expectCode(() => downloadInstallFile(asInstall(row('precheck-extension-0.4.0.zip'))), 'E-INSTALL-DOWNLOAD-FAILED')
+  })
+})
+
+describe('AC-8109.3 installMeta — 받기 단추 옆 글', () => {
+  it("AC-8109.3: '판 · 크기 · M월 D일 올림'이고 크기는 자료실과 같은 sizeText다 — '0.14.0 · 1.2MB · 11월 25일 올림'", () => {
+    expect(installMeta(asInstall(row('precheck-helper-0.14.0.zip', { size: 1_258_291, createdAt: UPLOADED })))).toBe('0.14.0 · 1.2MB · 11월 25일 올림')
   })
 
   it.each([
-    ['2026-11-16T15:00:00.000Z', '11월 17일'], // 한국 11월 17일 0시
+    [889_612, '869KB'],
+    [6_480, '6KB'],
+    [8_192, '8KB'],
+    [655_360, '640KB'],
+    [943_718, '0.9MB'],
+    [66_479_718, '63.4MB'],
+    [0, '1KB'],
+  ])('AC-8109.3: %d바이트 → %s (1KB = 1,024바이트, 900KB 이상은 MB 소수 한 자리)', (size, text) => {
+    const file = asInstall(row('precheck-helper-0.9.0.zip', { size }))
+    expect(installMeta(file)).toBe(`0.9.0 · ${text} · 11월 25일 올림`)
+    expect(text).toBe(sizeText(size))
+  })
+
+  it.each([
+    ['2026-11-16T15:00:00.000Z', '11월 17일'],
     ['2026-11-16T14:59:59.999Z', '11월 16일'],
-    ['2026-11-17T14:59:59.000Z', '11월 17일'],
     ['2027-01-04T16:00:00.000Z', '1월 5일'],
-    ['2026-11-17T10:00:00.123456+00:00', '11월 17일'], // Supabase가 주는 모양
-  ])('AC-5102.2: 올린 시각 %s → 한국 날짜 %s', (uploadedAt, day) => {
-    expect(installMeta(helperFile({ uploadedAt }))).toBe(`0.9.0 · 900KB · ${day} 올림`)
-  })
-
-  it('AC-5102.2: 판은 세 숫자를 점으로 잇는다', () => {
-    expect(installMeta(helperFile({ version: [10, 20, 300] }))).toBe('10.20.300 · 900KB · 11월 17일 올림')
+    ['2026-11-17T10:00:00.123456+00:00', '11월 17일'],
+  ])('AC-8109.3: 올린 시각 %s → 한국 날짜 %s(dayText)', (createdAt, day) => {
+    expect(installMeta(asInstall(row('precheck-helper-10.20.300.zip', { size: 6_480, createdAt })))).toBe(`10.20.300 · 6KB · ${day} 올림`)
+    expect(day).toBe(dayText(createdAt))
   })
 })
 
-describe('AC-5102.3 downloadInstallFile', () => {
-  function stubUrl() {
-    const createObjectURL = vi.fn((blob: Blob) => (blob ? 'blob:fake-url' : ''))
-    const revokeObjectURL = vi.fn()
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }))
-    return { createObjectURL, revokeObjectURL }
-  }
-
-  it('AC-5102.3: 보관함에서 그 path를 받아 원래 이름으로 저장시키고, 임시 주소는 누른 뒤 바로 거두며 링크도 남기지 않는다', async () => {
-    const calls = fakeClient()
-    const { createObjectURL, revokeObjectURL } = stubUrl()
-    const seen: { download: string; href: string; inPage: boolean; revokedBefore: number }[] = []
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      seen.push({ download: this.download, href: this.href, inPage: document.body.contains(this), revokedBefore: revokeObjectURL.mock.calls.length })
-    })
-
-    await downloadInstallFile(helperFile())
-
-    expect(calls.map((call) => [call.bucket, call.op, call.path])).toEqual([[BUCKET, 'download', 'helper/precheck-helper-0.9.0.zip']])
-    expect(createObjectURL).toHaveBeenCalledTimes(1)
-    const blob = createObjectURL.mock.calls[0][0]
-    expect(blob).toBeInstanceOf(Blob)
-    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(BYTES)
-    expect(seen).toEqual([{ download: 'precheck-helper-0.9.0.zip', href: 'blob:fake-url', inPage: true, revokedBefore: 0 }])
-    expect(revokeObjectURL).toHaveBeenCalledTimes(1)
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake-url')
-    expect(document.querySelectorAll('a')).toHaveLength(0)
-  })
-
-  it('AC-5102.3: 확장 파일은 extension 폴더 path로 받고 그 이름으로 저장시킨다', async () => {
-    const calls = fakeClient()
-    stubUrl()
-    const names: string[] = []
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      names.push(this.download)
-    })
-    await downloadInstallFile(
-      helperFile({ kind: 'extension', version: [0, 3, 0], name: 'precheck-extension-0.3.0.zip', path: 'extension/precheck-extension-0.3.0.zip' }),
-    )
-    expect(calls.map((call) => call.path)).toEqual(['extension/precheck-extension-0.3.0.zip'])
-    expect(names).toEqual(['precheck-extension-0.3.0.zip'])
-  })
-
-  it.each(FAILURES)('AC-5102.3: 받기 실패(%s)는 E-INSTALL-DOWNLOAD-FAILED이고 저장시키지 않는다', async (_label, arrange) => {
-    arrange()
-    const { createObjectURL } = stubUrl()
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    await expectCode(() => downloadInstallFile(helperFile()), 'E-INSTALL-DOWNLOAD-FAILED')
-    expect(createObjectURL).not.toHaveBeenCalled()
-    expect(click).not.toHaveBeenCalled()
-  })
-
-  it('AC-5102.3: 받은 것이 파일(Blob)이 아니면 E-INSTALL-DOWNLOAD-FAILED다', async () => {
-    fakeClient((call) => (call.op === 'download' ? { data: 'not a blob' } : okReply(call)))
-    const { createObjectURL } = stubUrl()
-    await expectCode(() => downloadInstallFile(helperFile()), 'E-INSTALL-DOWNLOAD-FAILED')
-    expect(createObjectURL).not.toHaveBeenCalled()
-  })
-
-  it('AC-5102.3: 임시 주소 만들기나 누르기가 실패해도 E-INSTALL-DOWNLOAD-FAILED이고, 만든 주소는 거두고 링크를 남기지 않는다', async () => {
-    fakeClient()
-    const { createObjectURL, revokeObjectURL } = stubUrl()
-    createObjectURL.mockImplementationOnce(() => {
-      throw new Error(SECRET)
-    })
-    await expectCode(() => downloadInstallFile(helperFile()), 'E-INSTALL-DOWNLOAD-FAILED')
-
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
-      throw new Error(SECRET)
-    })
-    await expectCode(() => downloadInstallFile(helperFile()), 'E-INSTALL-DOWNLOAD-FAILED')
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake-url')
-    expect(document.querySelectorAll('a')).toHaveLength(0)
-  })
-})
-
-describe('AC-5102.4 uploadInstallFile', () => {
+describe('AC-8109.3·AC-8109.4 내보내는 것 · 옛 보관함 코드 없음', () => {
   it.each([
-    ['precheck-helper-0.9.0.zip', 'helper/precheck-helper-0.9.0.zip', 'helper', [0, 9, 0]],
-    ['precheck-extension-0.3.0.zip', 'extension/precheck-extension-0.3.0.zip', 'extension', [0, 3, 0]],
-  ])('AC-5102.4: %s는 %s로 한 번 올리고(contentType application/zip, upsert false) 올린 파일을 돌려준다', async (name, path, kind, version) => {
-    const calls = fakeClient()
-    const before = Date.now()
-    const uploaded = await uploadInstallFile(zipFile(name))
-    const after = Date.now()
-    expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ bucket: BUCKET, op: 'upload', path })
-    expect(calls[0].options).toEqual({ contentType: ZIP, upsert: false })
-    expect(uploaded).toMatchObject({ kind, version, name, path, size: BYTES.length })
-    expect(Object.keys(uploaded).sort()).toEqual(FILE_KEYS)
-    const at = Date.parse(uploaded.uploadedAt)
-    expect(at).toBeGreaterThanOrEqual(before)
-    expect(at).toBeLessThanOrEqual(after)
-    expect(calls.tables).toEqual([])
+    ['precheck-helper-0.14.0.zip', { kind: 'helper', version: [0, 14, 0] }],
+    ['precheck-extension-0.4.0.zip', { kind: 'extension', version: [0, 4, 0] }],
+    ['precheck-helper-0.9.0.ZIP', null],
+    ['precheck-helper-0.9.0.1.zip', null],
+    ['helper/precheck-helper-0.9.0.zip', null],
+  ])('AC-8109.3: parseInstallName은 자료실 versionOf와 같다 — %s', (name, parsed) => {
+    expect(parseInstallName(name)).toEqual(parsed)
+    expect(parseInstallName(name)).toEqual(versionOf(name))
   })
 
-  it('AC-5102.4: 윈도우 크롬이 준 형식(application/x-zip-compressed)이어도 보내는 파일 형식은 application/zip이고 바이트는 그대로다', async () => {
-    const calls = fakeClient()
-    await uploadInstallFile(zipFile('precheck-helper-0.9.0.zip', BYTES.length, 'application/x-zip-compressed'))
-    const body = calls[0].body as Blob
-    expect(body).toBeInstanceOf(Blob)
-    expect(body.type).toBe(ZIP)
-    expect(new Uint8Array(await body.arrayBuffer())).toEqual(BYTES)
+  it('AC-8109.4: 내보내는 값은 받기 쪽 넷과 오류 하나뿐이다 — 관리자 올리기 함수 uploadInstallFile은 없다', () => {
+    expect(Object.keys(installFiles).sort()).toEqual(['InstallFilesError', 'downloadInstallFile', 'installMeta', 'latestInstallFiles', 'parseInstallName'])
   })
 
-  it.each([
-    'precheck-helper-0.9.zip',
-    'precheck-helper-0.9.0 (1).zip',
-    'precheck-helper-0.9.0.ZIP',
-    'helper-0.9.0.zip',
-    'precheck-helper-0.9.0.exe',
-    'setup.zip',
-  ])('AC-5102.4: 이름 모양이 틀리면(%s) 네트워크 없이 E-INSTALL-FILE-NAME이다', async (name) => {
-    fakeClient()
-    await expectCode(() => uploadInstallFile(zipFile(name)), 'E-INSTALL-FILE-NAME')
-    expect(supabaseBrowser).not.toHaveBeenCalled()
+  it('AC-8109.3·AC-8109.4: src/의 코드(시험 밖)에 바구니 install-files를 읽거나 올리는 글자·uploadInstallFile·옛 올리기 번호 넷이 없다', () => {
+    const files = sourceFiles()
+    expect(files.length).toBeGreaterThan(100)
+    for (const path of files) {
+      const code = codeOf(readFileSync(path, 'utf8'))
+      const name = relative(SRC, path)
+      expect(code, name).not.toMatch(/(['"`])install-files\1/)
+      expect(code, name).not.toContain('uploadInstallFile')
+      expect(code, name).not.toMatch(/E-INSTALL-(FILE-NAME|FILE-SIZE|FILE-EXISTS|UPLOAD-FAILED)/)
+    }
   })
 
-  it('AC-5102.4: 5,000,000바이트를 넘으면 네트워크 없이 E-INSTALL-FILE-SIZE이고, 딱 5,000,000바이트는 올린다', async () => {
-    const calls = fakeClient()
-    await expectCode(() => uploadInstallFile(zipFile('precheck-helper-0.9.0.zip', MAX + 1)), 'E-INSTALL-FILE-SIZE')
-    expect(supabaseBrowser).not.toHaveBeenCalled()
-    await expect(uploadInstallFile(zipFile('precheck-helper-0.9.0.zip', MAX))).resolves.toMatchObject({ size: MAX })
-    expect(calls).toHaveLength(1)
+  it('AC-8109.3: installFiles.ts는 자료실 함수 위의 얇은 잇기다 — Supabase·Storage를 직접 부르지 않는다', () => {
+    const code = codeOf(readFileSync(join(SRC, 'lib/storage/installFiles.ts'), 'utf8'))
+    expect(code).toMatch(/from '@\/lib\/storage\/library'/)
+    expect(code).toMatch(/from '@\/lib\/library\/files'/)
+    expect(code).not.toMatch(/supabase|storage\.from|createSignedUrl|\.download\(/)
   })
 
-  it('AC-5102.4: 이름도 틀리고 크기도 넘으면 이름 오류(E-INSTALL-FILE-NAME)가 먼저다', async () => {
-    fakeClient()
-    await expectCode(() => uploadInstallFile(zipFile('setup.zip', MAX + 1)), 'E-INSTALL-FILE-NAME')
-    expect(supabaseBrowser).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    ['옛 모양(HTTP 400 · statusCode 409 Duplicate)', { name: 'StorageApiError', message: `The resource already exists ${SECRET}`, status: 400, statusCode: '409' }],
-    ['새 모양(HTTP 409)', { name: 'StorageApiError', message: `The resource already exists ${SECRET}`, status: 409, statusCode: '409' }],
-  ])('AC-5102.4: 같은 이름이 이미 있으면 E-INSTALL-FILE-EXISTS다 — %s', async (_label, error) => {
-    fakeClient(() => ({ error }))
-    await expectCode(() => uploadInstallFile(zipFile('precheck-helper-0.9.0.zip')), 'E-INSTALL-FILE-EXISTS')
-  })
-
-  it.each([
-    ['권한 없음(관리자 아님)', RAW_ERROR],
-    ['형식 거절', { name: 'StorageApiError', message: `mime type not supported ${SECRET}`, status: 415, statusCode: '415' }],
-    ['너무 큼(서버)', { name: 'StorageApiError', message: `Payload too large ${SECRET}`, status: 413, statusCode: '413' }],
-    ['모르는 오류', { message: SECRET }],
-  ])('AC-5102.4: 그 밖 실패(%s)는 E-INSTALL-UPLOAD-FAILED다', async (_label, error) => {
-    fakeClient(() => ({ error }))
-    await expectCode(() => uploadInstallFile(zipFile('precheck-helper-0.9.0.zip')), 'E-INSTALL-UPLOAD-FAILED')
-  })
-
-  it.each(FAILURES.filter(([label]) => label !== '오류 답' && label !== '오류가 값과 함께 옴'))(
-    'AC-5102.4: 그 밖 실패(%s)는 E-INSTALL-UPLOAD-FAILED다',
-    async (_label, arrange) => {
-      arrange()
-      await expectCode(() => uploadInstallFile(zipFile('precheck-helper-0.9.0.zip')), 'E-INSTALL-UPLOAD-FAILED')
-    },
-  )
-})
-
-describe('InstallFilesError', () => {
-  it('AC-5102.2: 번호(code)를 갖는 Error이고 글도 번호뿐이다', () => {
+  it('AC-8109.3: InstallFilesError는 번호(code)를 갖는 Error이고 글도 번호뿐이다', () => {
     const error = new InstallFilesError('E-INSTALL-READ-FAILED')
     expect(error).toBeInstanceOf(Error)
     expect(error.code).toBe('E-INSTALL-READ-FAILED')

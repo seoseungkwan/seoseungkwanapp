@@ -7,7 +7,7 @@ import { neutralPhrases } from '@/lib/precheck/memo'
 import { defaultProfile, loadClinicProfile, loadSignup, removeLogo, saveClinicProfile, uploadLogo } from '@/lib/storage/clinicProfile'
 import { readHospitalSettings, readRuleRows, startHospitalSettings, writeHospitalSettings, writeRuleSettings } from '@/lib/storage/claimSettings'
 import { addDeskMember, listDeskMembers, removeDeskMember } from '@/lib/storage/desk'
-import { latestInstallFiles, type InstallFile } from '@/lib/storage/installFiles'
+import { latestInstallFiles } from '@/lib/storage/installFiles'
 import { readRuleBadges } from '@/lib/storage/ruleChanges'
 import { readTabAccess, readTabOwner, saveTabAccess } from '@/lib/storage/tabAccess'
 import { loadCashFloatSetting, saveCashFloatSetting } from '@/lib/storage/worklogSettings'
@@ -17,8 +17,9 @@ import { SettingsPage } from './SettingsPage'
 
 // 보는 중 설정 (admin-view REQ-8011 AC-8011.3, design.md '탭마다 읽기만' 설정 줄).
 // 관리자가 다른 의원을 보는 중이면 모든 칸의 쓰기 단추([저장]·[다시 저장]·[기본값으로]·[되돌리기]·로고·사람·휴진일·줄 더하기·빼기·데스크 [더하기]·[빼기]·
-// [처음 질문 하기]·[기본 문구로 바로 시작])가 없고 입력 칸은 막혀(disabled·readOnly) 값만 보인다. [비트 PC 연결]로 가는 길(안쪽 메뉴·설치 파일 칸 아래 링크)과
-// '관리자만 보는 탭' 칸은 그리지 않는다. 데스크 계정 칸은 보는 의원의 데스크 메일 목록을 보이고, 설치 파일 [받기]는 그대로다.
+// [처음 질문 하기]·[기본 문구로 바로 시작])가 없고 입력 칸은 막혀(disabled·readOnly) 값만 보인다. [비트 PC 연결]로 가는 길(안쪽 메뉴)과
+// '관리자만 보는 탭' 칸은 그리지 않는다. 데스크 계정 칸은 보는 의원의 데스크 메일 목록을 보이고, 설치 파일 작은 칸의 [자료실 열기](library AC-8109.1)는 그대로다.
+// 설치 파일 칸은 목록을 읽지 않는다(옛 받기 표·[비트 PC 연결 확인하러 가기 →]는 없다).
 // 찾기·거르기(규칙 찾기·묶음·등급, 처방코드 찾기·[전체 보기])와 병원 문구 묶음 단추·'메모 시험'은 읽기라 그대로다. viewing={null}이면 지금과 같다.
 // 저장 함수·Worker·supabaseBrowser는 흉내다(실제 Supabase에 붙지 않는다). 이름·메일·번호는 모두 지어낸 것이다
 
@@ -99,14 +100,10 @@ const PROFILE: ClinicProfile = {
   logoPath: null,
 }
 const CREATED = '2026-11-17T01:00:00.000Z'
-const FILES: Record<'helper' | 'extension', InstallFile> = {
-  helper: { kind: 'helper', version: [0, 13, 2], name: 'precheck-helper-0.13.2.zip', path: 'helper/precheck-helper-0.13.2.zip', size: 889_612, uploadedAt: CREATED },
-  extension: { kind: 'extension', version: [0, 3, 0], name: 'precheck-extension-0.3.0.zip', path: 'extension/precheck-extension-0.3.0.zip', size: 6_480, uploadedAt: CREATED },
-}
 const DESK_EMAIL = 'desk1@fake.test'
 const WRITES = [saveClinicProfile, uploadLogo, removeLogo, writeRuleSettings, writeHospitalSettings, startHospitalSettings, saveCashFloatSetting, addDeskMember, removeDeskMember, saveTabAccess]
-/** 보는 중에도 눌리는 단추(읽기, 첫 화면): 설치 파일 받기. 병원 문구 묶음 단추는 탭(role=tab)이다 */
-const READ_BUTTONS = ['확장 내려받기', '도우미 내려받기']
+/** 보는 중에도 눌리는 단추(읽기, 첫 화면): 없다 — 설치 파일 칸은 [자료실 열기] 링크 하나다(library AC-8109.1). 병원 문구 묶음 단추는 탭(role=tab)이다 */
+const READ_BUTTONS: string[] = []
 const PHRASE_TABS = ['기본', '시술별 문구와 약', '처방코드', '표기 규칙', '사유 문장', '차트 줄임말', '메모 시험']
 /** 보는 중에도 열린 칸(읽기): 점검 규칙 찾기·거르기 */
 const READ_FIELDS = ['규칙 찾기', '묶음', '등급']
@@ -115,7 +112,6 @@ beforeEach(() => {
   vi.stubGlobal('Worker', FakeWorker)
   vi.mocked(loadClinicProfile).mockResolvedValue(PROFILE)
   vi.mocked(loadSignup).mockResolvedValue({ name: '가짜다른의원 가입', phone: '0311234567' })
-  vi.mocked(latestInstallFiles).mockResolvedValue(FILES)
   vi.mocked(readRuleRows).mockResolvedValue([{ rule_id: 'PT-02', enabled: false, grade: null, updated_at: '2026-10-30T02:00:00Z' }])
   vi.mocked(readRuleBadges).mockResolvedValue(new Map())
   vi.mocked(readHospitalSettings).mockResolvedValue({ phrases: neutralPhrases(), dxLinks: [['MM001', 'M5456', '가짜 상병', 0, 's']] })
@@ -148,20 +144,21 @@ async function open(viewing: Viewing | null) {
   await screen.findByDisplayValue('M5456') // 상병 연결표
   await screen.findByDisplayValue('300,000') // 현금 시재
   await screen.findByText(DESK_EMAIL) // 데스크 계정
-  await screen.findByRole('button', { name: '도우미 내려받기' }) // 설치 파일
+  await screen.findByRole('link', { name: '자료실 열기' }) // 설치 파일
 }
 
 describe('AC-8011.3: 보는 중 설정', () => {
-  it('AC-8011.3: [비트 PC 연결]로 가는 길(안쪽 메뉴·설치 파일 칸 아래 링크)과 [처음 질문 다시 하기]가 없고, 안쪽 메뉴 [설정]·설치 파일 [받기]는 그대로다', async () => {
+  it('AC-8011.3·AC-8109.1: [비트 PC 연결]로 가는 길(안쪽 메뉴)과 [처음 질문 다시 하기]가 없고, 안쪽 메뉴 [설정]·설치 파일 칸 [자료실 열기]는 그대로다', async () => {
     await open(VIEWING)
     const nav = screen.getByRole('navigation', { name: '설정 안 메뉴' })
     expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정'])
     expect(screen.queryByRole('link', { name: /비트 PC 연결/ })).toBeNull()
     expect(document.querySelector('a[href="/claim/setup"]')).toBeNull()
     expect(document.querySelector('a[href="/settings/first-run"]')).toBeNull()
-    const install = screen.getByRole('region', { name: '비트 PC 연결 · 설치 파일' })
-    expect((within(install).getByRole('button', { name: '확장 내려받기' }) as HTMLButtonElement).disabled).toBe(false)
-    expect((within(install).getByRole('button', { name: '도우미 내려받기' }) as HTMLButtonElement).disabled).toBe(false)
+    const install = screen.getByRole('region', { name: '설치 파일' })
+    expect(within(install).getByRole('link', { name: '자료실 열기' }).getAttribute('href')).toBe('/library')
+    expect(within(install).queryAllByRole('button')).toEqual([])
+    expect(latestInstallFiles).not.toHaveBeenCalled()
   })
 
   it("AC-8011.3: '관리자만 보는 탭' 칸을 그리지 않고 주 관리자 확인도 부르지 않는다", async () => {
@@ -172,7 +169,7 @@ describe('AC-8011.3: 보는 중 설정', () => {
     expect(readTabAccess).not.toHaveBeenCalled()
   })
 
-  it('AC-8011.3: 쓰기 단추가 하나도 없다 — 눌리는 단추는 설치 파일 받기와 병원 문구 묶음 탭뿐이다', async () => {
+  it('AC-8011.3·AC-8109.1: 쓰기 단추가 하나도 없다 — 눌리는 것은 병원 문구 묶음 탭뿐이다(설치 파일 칸은 [자료실 열기] 링크)', async () => {
     await open(VIEWING)
     expect(enabledButtons().sort()).toEqual([...READ_BUTTONS].sort())
     const tabs = within(screen.getByRole('tablist', { name: '병원 문구 묶음' })).getAllByRole('tab')
@@ -250,11 +247,14 @@ describe('AC-8011.3: 보는 중 설정', () => {
 })
 
 describe('AC-8011.3: viewing={null}이면 지금과 같다', () => {
-  it('AC-8011.3: [비트 PC 연결] 길·쓰기 단추·열린 칸·관리자만 보는 탭 칸이 그대로 있다', async () => {
+  it('AC-8011.3·AC-8109.1: [비트 PC 연결] 길(안쪽 메뉴)·설치 파일 칸 [자료실 열기]·쓰기 단추·열린 칸·관리자만 보는 탭 칸이 그대로 있다', async () => {
     await open(null)
     const nav = screen.getByRole('navigation', { name: '설정 안 메뉴' })
     expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결'])
-    expect(screen.getByRole('link', { name: '비트 PC 연결 확인하러 가기 →' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '자료실 열기' }).getAttribute('href')).toBe('/library')
+    // 옛 설치 파일 칸 아래 링크는 없어졌다(설정 안 메뉴에 [비트 PC 연결]이 있음)
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 확인하러 가기 →' })).toBeNull()
+    expect(document.querySelectorAll('a[href="/claim/setup"]')).toHaveLength(1)
     expect(screen.getByRole('link', { name: '처음 질문 다시 하기' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: '저장' }).length).toBeGreaterThanOrEqual(4)
     expect(screen.getByRole('button', { name: '사람 더하기' })).toBeTruthy()

@@ -519,10 +519,11 @@ describe('AC-7007.1 결정 기록 ADR-031', () => {
     expect(body).not.toContain('데스크 PC의 확장·도우미 설치와 비트 PC 연결은 원장 계정으로 한다')
   })
 
-  it('AC-7007.1: installFiles.ts·DownloadButton.tsx 머리 주석도 데스크가 받는다고 말한다', () => {
-    const lib = commentsOf(readRepo('src/lib/storage/installFiles.ts'))
+  // library AC-8109.4: 데스크가 받는 길이 자료실로 바뀌었다 → 저장 함수 머리 주석의 기대 자리를 lib/storage/library.ts와 자료실 SQL로 옮긴다
+  it('AC-7007.1·AC-8109.4: library.ts(자료실 저장 함수)·DownloadButton.tsx 머리 주석도 데스크가 받는다고 말한다', () => {
+    const lib = commentsOf(readRepo('src/lib/storage/library.ts'))
     expect(lib).toContain('데스크')
-    expect(lib).toContain('20261119200000_desk_install_files.sql')
+    expect(lib).toContain('20261125000000_library.sql')
     expect(commentsOf(readRepo('src/components/install/DownloadButton.tsx'))).toContain('데스크')
   })
 })

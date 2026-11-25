@@ -155,6 +155,21 @@ describe('/admin 페이지 그리기', () => {
     expect(install).toBeGreaterThan(applications)
     expect(supabaseBrowser).not.toHaveBeenCalled()
   })
+
+  // library AC-8109.2: 옛 올리기 표 자리(제목 묶음 아래·신청 탭 위)는 자료실로 가는 작은 칸 하나다
+  it('AC-8109.2: 서버 그리기 — 설치 파일 칸은 h2 `설치 파일`·관리자 글·[자료실 열기](/library)뿐이고 올리기 표·파일 고르기·단추가 없으며 아무것도 읽지 않는다', async () => {
+    const html = renderToStaticMarkup((await AdminPage()) as ReactElement)
+    const start = html.search(/<section\b[^>]*aria-label="설치 파일"/)
+    expect(start).toBeGreaterThan(html.search(/<nav\b[^>]*aria-label="관리자 안 메뉴"/))
+    const card = html.slice(start, html.indexOf('</section>', start) + '</section>'.length)
+    expect(card).toMatch(/<h2\b[^>]*>설치 파일<\/h2>/)
+    expect(card).toContain('설치 파일은 이제 자료실에서 올리고 지워요. 자료실에는 설명서 같은 다른 파일도 올릴 수 있어요.')
+    expect(card).toMatch(/<a\b[^>]*href="\/library"[^>]*>자료실 열기<svg\b/)
+    expect(card).not.toMatch(/<table\b|<input\b|<button\b|<code\b/)
+    // 칸은 본 기록 칸보다 앞이다(신청 탭·목록은 브라우저가 읽은 뒤에 그린다)
+    expect(start + card.length).toBeLessThan(html.search(/<h2\b[^>]*>본 기록<\/h2>/))
+    expect(supabaseBrowser).not.toHaveBeenCalled()
+  })
 })
 
 describe('/admin 페이지 이름 (ui-90 REQ-417)', () => {

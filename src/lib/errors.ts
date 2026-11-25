@@ -361,7 +361,8 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
     what: '내 배경을 저장하거나 읽지 못했어요',
     fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 만든 배경은 그대로 남아 있어요',
   },
-  // 도우미·확장 설치 파일 보관함(specs/helper-download design.md '오류' 표 글자 그대로, 끝 마침표 있음)
+  // 도우미·확장 설치 파일 받기(specs/helper-download design.md '오류' 표 글자 그대로, 끝 마침표 있음). 받기 단추는 자료실의 최신 판을 준다(specs/library AC-8109.4) —
+  // 관리자 올리기만 쓰던 번호 넷(FILE-NAME·FILE-SIZE·FILE-EXISTS·UPLOAD-FAILED)은 자료실 번호(E-LIBRARY-)가 대신해 지웠다
   'E-INSTALL-READ-FAILED': {
     what: '설치 파일 목록을 읽지 못했어요.',
     fix: '인터넷 연결을 확인하고 새로 고침 하세요.',
@@ -369,22 +370,6 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
   'E-INSTALL-DOWNLOAD-FAILED': {
     what: '파일을 받지 못했어요.',
     fix: '인터넷 연결을 확인하고 다시 눌러 보세요.',
-  },
-  'E-INSTALL-FILE-NAME': {
-    what: '파일 이름이 맞지 않아요.',
-    fix: "precheck-helper-0.9.0.zip처럼 '종류-판 번호.zip' 모양이어야 해요. 바탕화면 도우미-설치파일 폴더의 이름 그대로 올리세요.",
-  },
-  'E-INSTALL-FILE-SIZE': {
-    what: '파일이 너무 커요.',
-    fix: '5MB까지 올릴 수 있어요. 맞는 파일인지 확인하세요.',
-  },
-  'E-INSTALL-FILE-EXISTS': {
-    what: '같은 판이 이미 올라가 있어요.',
-    fix: '판 번호가 더 높은 새 파일을 올리세요.',
-  },
-  'E-INSTALL-UPLOAD-FAILED': {
-    what: '파일을 올리지 못했어요.',
-    fix: '관리자로 로그인했는지 확인하고 다시 해 보세요.',
   },
   // 설정 '데스크 계정' 칸(specs/desk-feedback design.md '③ 설정 데스크 계정 칸' 표 글자 그대로).
   // 메일 번호 둘(TAKEN·USED)은 '병원 계정'·'다른 병원'을 말해야 뜻이 살아 '병원' 낱말 규칙(AC-409.1)의 예외다(AC-6304.3)

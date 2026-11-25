@@ -4,8 +4,8 @@ import { useSyncExternalStore } from 'react'
 import { InstallFilesError, latestInstallFiles, type InstallFile, type InstallKind } from '@/lib/storage/installFiles'
 import type { ErrorCode } from '@/types/errors'
 
-// 설치 파일 목록(종류마다 가장 높은 판)을 화면 하나에서 한 번만 읽는다 (helper-download design.md '화면', REQ-5103).
-// 한 화면의 받기 단추들(설정 칸의 두 단추·표, 비트 PC 연결의 단계·위 상자 단추)이 같은 읽기 결과를 나눠 쓴다.
+// 설치 파일 목록(자료실의 종류마다 가장 높은 판, specs/library AC-8109.3)을 화면 하나에서 한 번만 읽는다 (helper-download design.md '화면', REQ-5103).
+// 한 화면의 받기 단추들(비트 PC 연결의 단계·위 상자 단추)이 같은 읽기 결과를 나눠 쓴다.
 // 보는 곳이 하나도 없어지면(화면을 떠나면) 결과를 버린다 → 다음에 여는 화면은 새로 읽어 관리자가 막 올린 판을 본다.
 // 결과는 화면 메모리에만 둔다(브라우저 저장소 없음). 실패는 번호만 갖고 원래 오류 글은 버린다
 

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // 설치 파일 받기 단추 (specs/helper-download TASK-2, REQ-5103 · AC-5103.1·AC-5103.3, design.md '화면', 시안 docs/mockups/helper-download ?s=setup·none).
-// 보관함은 가짜다: latestInstallFiles·downloadInstallFile만 바꾸고 옆 글(installMeta)은 진짜 함수를 쓴다. 파일 이름·크기·날짜는 지어낸 값이다
+// library TASK-5(AC-8109.4): 단추는 자료실의 그 종류 최신 판을 준다 — 코드는 그대로이고 옆 글 크기만 자료실과 같은 sizeText(1KB = 1,024바이트)다.
+// 목록은 가짜다: latestInstallFiles·downloadInstallFile만 바꾸고 옆 글(installMeta)은 진짜 함수를 쓴다. 파일 이름·크기·날짜는 지어낸 값이다
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,7 +22,7 @@ const CREATED = '2026-11-17T01:00:00.000Z' // 한국 11월 17일 10시
 const HELPER: InstallFile = { kind: 'helper', version: [0, 9, 0], name: 'precheck-helper-0.9.0.zip', path: 'helper/precheck-helper-0.9.0.zip', size: 889_612, uploadedAt: CREATED }
 const EXTENSION: InstallFile = { kind: 'extension', version: [0, 3, 0], name: 'precheck-extension-0.3.0.zip', path: 'extension/precheck-extension-0.3.0.zip', size: 6_480, uploadedAt: CREATED }
 const BOTH: Record<InstallKind, InstallFile | null> = { helper: HELPER, extension: EXTENSION }
-const HELPER_META = '0.9.0 · 889KB · 11월 17일 올림'
+const HELPER_META = '0.9.0 · 869KB · 11월 17일 올림' // 889,612바이트 = 868.8KB → 869KB
 const EXTENSION_META = '0.3.0 · 6KB · 11월 17일 올림'
 const NONE = '아직 받을 파일이 없어요. 관리자에게 알려 주세요.'
 const SECRET = 'StorageApiError secret detail'
@@ -68,7 +69,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('AC-5103.1 받기 단추와 옆 글', () => {
-  it('AC-5103.1: 파일이 있으면 [도우미 내려받기](주 단추, 링크 아님)가 눌리고 바로 옆에 installMeta 글 "판 · 크기 · M월 D일 올림"이 보인다', async () => {
+  it('AC-5103.1·AC-8109.4: 파일이 있으면 [도우미 내려받기](주 단추, 링크 아님)가 눌리고 바로 옆에 installMeta 글 "판 · 크기 · M월 D일 올림"(크기는 자료실 sizeText)이 보인다', async () => {
     const row = renderRow({ kind: 'helper', label: '도우미 내려받기', variant: 'primary' })
     const meta = await within(row).findByText(HELPER_META)
     const get = button('도우미 내려받기')
@@ -94,7 +95,7 @@ describe('AC-5103.1 받기 단추와 옆 글', () => {
     expect(row.textContent).not.toContain(HELPER_META)
   })
 
-  it('AC-5103.1: 그 종류 파일이 없으면 단추는 눌리지 않고 옆에 "아직 받을 파일이 없어요. 관리자에게 알려 주세요."가 보인다', async () => {
+  it('AC-5103.1·AC-8109.4: 그 종류 파일이 없으면 단추는 눌리지 않고 옆에 "아직 받을 파일이 없어요. 관리자에게 알려 주세요."가 보인다', async () => {
     store.latest.mockResolvedValue({ helper: null, extension: EXTENSION })
     const row = renderRow({ kind: 'helper', label: '도우미 내려받기', variant: 'primary' })
     const none = await within(row).findByText(NONE)
