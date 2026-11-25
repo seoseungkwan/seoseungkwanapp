@@ -2,9 +2,11 @@
 // 자료실 목록·받기·올리기·지우기 (specs/library TASK-2, REQ-8103 · AC-8103.1~8103.6, design.md '저장 함수').
 // 실제 Supabase에 붙지 않는다. 가짜 클라이언트가 표 library_files·바구니 library에 무엇이 어떤 차례로 나갔는지 적어 두고,
 // 올리기 PUT은 가짜 XMLHttpRequest가 진행률·답을 흉내 낸다. 표·바구니 권한은 supabase/library.rls.test.ts가 증명한다.
+// 받기 이름(TASK-6)은 진짜 StorageClient(@supabase/storage-js, supabase-js 2.117.3이 쓰는 판)에 가짜 fetch를 넣어서도 본다.
 // 파일 이름·크기·바이트·주소는 모두 지어낸 값이다
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { StorageClient } from '@supabase/storage-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIBRARY_MAX_BYTES, type LibraryFile } from '@/lib/library/files'
 import { LibraryError, LibraryStopped, deleteLibraryFile, downloadLibraryFile, listLibraryFiles, uploadLibraryFile } from './library'
@@ -376,23 +378,55 @@ describe('AC-8103.2 downloadLibraryFile', () => {
     return { seen, click }
   }
 
-  it('AC-8103.2: 바구니 library에 createSignedUrl(storagePath, 60, { download: fileName })을 한 번 부른다(표는 부르지 않는다)', async () => {
+  /** 진짜 StorageClient에 가짜 fetch를 넣어 브라우저 클라이언트 자리에 둔다. 서버는 서명 답(signedURL)만 흉내 낸다 */
+  function realStorage() {
+    const requests: { url: string; method: string; body: unknown }[] = []
+    const fakeFetch: typeof fetch = (input, init) => {
+      requests.push({ url: String(input), method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body })
+      const reply = { signedURL: `/object/sign/${BUCKET}/${PATH}?token=fake-download-token` }
+      return Promise.resolve(new Response(JSON.stringify(reply), { status: 200, headers: { 'content-type': 'application/json' } }))
+    }
+    supabaseBrowser.mockReturnValue({ storage: new StorageClient('https://example.supabase.co/storage/v1', { apikey: 'fake-anon-key' }, fakeFetch) })
+    return requests
+  }
+
+  it('AC-8103.2: 바구니 library에 createSignedUrl(storagePath, 60)을 download 옵션 없이 한 번 부른다(표는 부르지 않는다)', async () => {
     const calls = fakeClient()
     watchClicks()
     await downloadLibraryFile({ storagePath: PATH, fileName: '비트시트 설치 설명서.pdf' })
-    expect(calls).toEqual([{ kind: 'storage', bucket: BUCKET, op: 'createSignedUrl', args: [PATH, 60, { download: '비트시트 설치 설명서.pdf' }] }])
+    expect(calls).toEqual([{ kind: 'storage', bucket: BUCKET, op: 'createSignedUrl', args: [PATH, 60] }])
   })
 
-  it('AC-8103.2: 서명 주소로 가는 숨은 링크를 한 번 누르고(새 탭 없음) 링크를 지운다', async () => {
+  it('AC-8103.2: 서명 주소의 download를 파일 이름으로 덮어쓴 숨은 링크를 한 번 누르고(새 탭 없음) 링크를 지운다', async () => {
     fakeClient()
     const { seen } = watchClicks()
     const open = vi.fn()
     vi.stubGlobal('open', open)
     await expect(downloadLibraryFile(libFile())).resolves.toBeUndefined()
-    expect(seen).toEqual([{ href: SIGNED_URL, rel: 'noopener', target: '', download: '(없음)', hidden: true, inPage: true }])
+    // 가짜 서명 주소 끝의 download=x가 파일 이름 하나로 바뀐다(둘이 되지 않는다)
+    const named = `https://example.supabase.co/storage/v1/object/sign/library/${PATH}?token=fake-download-token&download=precheck-helper-0.14.0.zip`
+    expect(seen).toEqual([{ href: named, rel: 'noopener', target: '', download: '(없음)', hidden: true, inPage: true }])
+    expect(new URL(seen[0].href).searchParams.getAll('download')).toEqual(['precheck-helper-0.14.0.zip'])
     expect(open).not.toHaveBeenCalled()
     expect(document.querySelectorAll('a')).toHaveLength(0)
   })
+
+  it.each(['청구 도우미 설명서.pdf', '50% 할인 + 안내 #2 & 설명.pdf'])(
+    'AC-8103.2: 진짜 StorageClient로 받아도 링크의 download가 원래 파일 이름 그대로다(%s)',
+    async (fileName) => {
+      const requests = realStorage()
+      const { seen } = watchClicks()
+      await downloadLibraryFile({ storagePath: PATH, fileName })
+      expect(requests).toEqual([{ url: `https://example.supabase.co/storage/v1/object/sign/${BUCKET}/${PATH}`, method: 'POST', body: { expiresIn: 60 } }])
+      expect(seen).toHaveLength(1)
+      const href = new URL(seen[0].href)
+      expect(href.searchParams.get('download')).toBe(fileName)
+      expect(href.searchParams.getAll('download')).toEqual([fileName])
+      expect(href.searchParams.get('token')).toBe('fake-download-token')
+      expect(`${href.origin}${href.pathname}`).toBe(`https://example.supabase.co/storage/v1/object/sign/${BUCKET}/${PATH}`)
+      expect(document.querySelectorAll('a')).toHaveLength(0)
+    },
+  )
 
   it.each<[string, (call: Call) => Reply]>([
     ['오류 답', () => ({ error: RAW_ERROR })],

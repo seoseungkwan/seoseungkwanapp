@@ -75,12 +75,15 @@ export async function downloadLibraryFile(file: Pick<LibraryFile, 'storagePath' 
   try {
     const { data, error }: Reply = await supabaseBrowser()
       .storage.from(BUCKET)
-      .createSignedUrl(file.storagePath, SIGNED_SECONDS, { download: file.fileName })
+      .createSignedUrl(file.storagePath, SIGNED_SECONDS)
     const url = typeof data === 'object' && data !== null ? (data as { signedUrl?: unknown }).signedUrl : undefined
     if (error || !isText(url) || !/^https?:\/\//.test(url)) throw new LibraryError('E-LIBRARY-DOWNLOAD-FAILED')
+    // storage-js의 download 옵션은 이름을 두 번 바꿔 적어(URLSearchParams 뒤 encodeURI) 한글·+ # & % 이름이 깨진다 → 주소에 한 번만 붙인다(TASK-6)
+    const named = new URL(url)
+    named.searchParams.set('download', file.fileName)
     const link = document.createElement('a')
     try {
-      link.href = url
+      link.href = named.toString()
       link.rel = 'noopener'
       link.hidden = true
       document.body.append(link)
