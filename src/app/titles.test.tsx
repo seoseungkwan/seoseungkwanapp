@@ -64,8 +64,8 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
   })
 })
 
-// 앱 페이지 18개 (탭 14개 + /claim/setup + /admin + 관리자만 보는 /location·/admin/compare). 매출 탭은 없다(/revenue는 next.config가 /stats로 넘긴다, stats-revenue AC-4110.2)
-// /location은 MENU 밖이라 글자로 더한다(같은 Phase의 LOCATION_TAB을 부르지 않음, location TASK-44)
+// 앱 페이지 19개 (탭 14개 + /claim/setup + /admin + 관리자만 보는 /location·/admin/compare + 모두 보는 /library). 매출 탭은 없다(/revenue는 next.config가 /stats로 넘긴다, stats-revenue AC-4110.2)
+// /location·/library는 MENU 밖이라 글자로 더한다(같은 Phase의 LOCATION_TAB·LIBRARY_TAB을 부르지 않음, location TASK-44 · library TASK-3)
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
   { path: '/stats', title: '통계', load: () => import('./(app)/stats/page') },
@@ -86,6 +86,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },
   { path: '/admin/compare', title: '의원 비교', load: () => import('./(app)/admin/compare/page') }, // 관리자만(admin-view AC-8017.1)
   { path: '/location', title: '입지 분석', load: () => import('./(app)/location/page') }, // 관리자만(location AC-7901.2)
+  { path: '/library', title: '자료실', load: () => import('./(app)/library/page') }, // 승인된 사람 모두(library AC-8105.1)
 ]
 
 describe('AC-402.4: 앱 페이지의 탭 이름', () => {
@@ -93,13 +94,19 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(await staticTitle(load)).toBe(title)
   })
 
-  it('AC-402.4·AC-4110.1·AC-4907.2·AC-5905.10·AC-7901.2·AC-8017.1: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin·/location·/admin/compare가 빠짐없이 있고, 18개의 탭 이름은 모두 다르다(매출 없음)', async () => {
-    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/claim/setup', '/admin', '/location', '/admin/compare'].sort())
+  it('AC-402.4·AC-4110.1·AC-4907.2·AC-5905.10·AC-7901.2·AC-8017.1·AC-8105.1: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin·/location·/admin/compare·/library가 빠짐없이 있고, 19개의 탭 이름은 모두 다르다(매출 없음)', async () => {
+    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/claim/setup', '/admin', '/location', '/admin/compare', '/library'].sort())
     const titles = await Promise.all(APP_PAGES.map(({ load }) => staticTitle(load)))
-    expect(titles).toHaveLength(18)
+    expect(titles).toHaveLength(19)
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(18)
+    expect(new Set(titles).size).toBe(19)
     expect(titles).not.toContain('매출')
+  })
+
+  it('AC-8105.1: /library 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "자료실"이다', async () => {
+    const { metadata } = await import('./(app)/library/page')
+    expect(metadata.title).toBe('자료실')
+    expect(notReadyFeature('/library' as NotReadyPath)).toBeUndefined()
   })
 
   it('AC-7423.2: /notices 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "고시·공지"다(글 화면 ?id=도 같은 쪽이라 같은 이름)', async () => {

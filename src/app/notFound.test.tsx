@@ -158,6 +158,7 @@ describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 
     ['/settings', 'src/app/(app)/settings/page.tsx'],
     ['/admin', 'src/app/(app)/admin/page.tsx'],
     ['/admin/compare', 'src/app/(app)/admin/compare/page.tsx'], // 의원 비교(admin-view AC-8017.1)
+    ['/library', 'src/app/(app)/library/page.tsx'], // 자료실(library AC-8105.1)
   ]
 
   it.each(ROUTES)('AC-410.5: %s는 자기 라우트 파일(%s)이 있다', (_path, file) => {
