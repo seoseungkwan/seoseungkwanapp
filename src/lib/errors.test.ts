@@ -90,10 +90,6 @@ const ALL_CODES = [
   'E-FORMS-BG-STORE-FAILED',
   'E-INSTALL-READ-FAILED',
   'E-INSTALL-DOWNLOAD-FAILED',
-  'E-INSTALL-FILE-NAME',
-  'E-INSTALL-FILE-SIZE',
-  'E-INSTALL-FILE-EXISTS',
-  'E-INSTALL-UPLOAD-FAILED',
   'E-DESK-READ-FAILED',
   'E-DESK-SAVE-FAILED',
   'E-DESK-EMAIL-BAD',
@@ -1067,7 +1063,8 @@ describe('AC-4613.4 휴진 안내 AI 배경 오류 번호', () => {
   })
 })
 
-// 도우미·확장 설치 파일 보관함(specs/helper-download design.md '오류' 표). 문구는 표의 글자 그대로(끝 마침표 있음)
+// 도우미·확장 설치 파일 받기(specs/helper-download design.md '오류' 표). 문구는 표의 글자 그대로(끝 마침표 있음).
+// 받기 단추가 자료실을 쓰게 되며(specs/library AC-8109.4) 관리자 올리기만 쓰던 번호 넷(FILE-NAME·FILE-SIZE·FILE-EXISTS·UPLOAD-FAILED)은 없어졌다
 const INSTALL = {
   'E-INSTALL-READ-FAILED': {
     what: '설치 파일 목록을 읽지 못했어요.',
@@ -1077,40 +1074,30 @@ const INSTALL = {
     what: '파일을 받지 못했어요.',
     fix: '인터넷 연결을 확인하고 다시 눌러 보세요.',
   },
-  'E-INSTALL-FILE-NAME': {
-    what: '파일 이름이 맞지 않아요.',
-    fix: "precheck-helper-0.9.0.zip처럼 '종류-판 번호.zip' 모양이어야 해요. 바탕화면 도우미-설치파일 폴더의 이름 그대로 올리세요.",
-  },
-  'E-INSTALL-FILE-SIZE': {
-    what: '파일이 너무 커요.',
-    fix: '5MB까지 올릴 수 있어요. 맞는 파일인지 확인하세요.',
-  },
-  'E-INSTALL-FILE-EXISTS': {
-    what: '같은 판이 이미 올라가 있어요.',
-    fix: '판 번호가 더 높은 새 파일을 올리세요.',
-  },
-  'E-INSTALL-UPLOAD-FAILED': {
-    what: '파일을 올리지 못했어요.',
-    fix: '관리자로 로그인했는지 확인하고 다시 해 보세요.',
-  },
 } as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+const INSTALL_GONE = ['E-INSTALL-FILE-NAME', 'E-INSTALL-FILE-SIZE', 'E-INSTALL-FILE-EXISTS', 'E-INSTALL-UPLOAD-FAILED']
 
-describe('AC-5102.2·AC-5102.3·AC-5102.4 설치 파일 오류 번호', () => {
-  it.each(Object.keys(INSTALL) as Array<keyof typeof INSTALL>)('AC-5102.2·AC-5102.3·AC-5102.4: %s는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다', (code) => {
+describe('AC-5102.2·AC-5102.3·AC-8109.4 설치 파일 오류 번호', () => {
+  it.each(Object.keys(INSTALL) as Array<keyof typeof INSTALL>)('AC-5102.2·AC-5102.3·AC-8109.4: %s는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다(글 그대로 남는다)', (code) => {
     expect(isErrorCode(code), code).toBe(true)
     expect(ALL_CODES, code).toContain(code)
     expect(errorInfo(code)).toEqual(INSTALL[code])
   })
 
-  it('AC-5102.4: 이 명세가 더하는 E-INSTALL- 번호는 표의 여섯뿐이다', () => {
+  it('AC-8109.4: E-INSTALL- 번호는 받기 쪽 둘(READ-FAILED·DOWNLOAD-FAILED)뿐이고, 옛 올리기 번호 넷은 없다', () => {
     expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-INSTALL-')).sort()).toEqual(Object.keys(INSTALL).sort())
+    for (const code of INSTALL_GONE) {
+      expect(isErrorCode(code), code).toBe(false)
+      expect(Object.keys(ERRORS), code).not.toContain(code)
+    }
   })
 
   // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
-  it('AC-5102.4: 여섯 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+  it('AC-8109.4: 남은 두 번호는 번호 타입 ErrorCode(src/types/errors.ts)에 있고, 옛 올리기 번호 넷은 타입 파일에 없다', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(INSTALL)) expect(union).toContain(`'${code}'`)
+    for (const code of INSTALL_GONE) expect(types, code).not.toContain(code)
   })
 })
 

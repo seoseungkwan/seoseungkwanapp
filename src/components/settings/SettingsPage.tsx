@@ -10,8 +10,8 @@ import { RuleSettings } from './RuleSettings'
 import { TabAccessSettings } from './TabAccessSettings'
 
 // 설정 화면 (precheck REQ-012 AC-012.6, 목업 화면 10). 제목 '설정' → 안쪽 메뉴 [설정 | 비트 PC 연결](옛 [청구], clinic-profile AC-6602.1) →
-// 맨 위 '병원 정보' 칸(clinic-profile AC-6602.1, 원장만 — 데스크에게는 칸이 스스로 그리지 않는다) → '비트 PC 연결 · 설치 파일' 칸
-// (helper-download AC-5103.2) → '청구'의 패널들(이름은 settings-tab-name AC-5201.1) → '데스크 계정'(desk-feedback AC-6304.2, 원장만)
+// 맨 위 '병원 정보' 칸(clinic-profile AC-6602.1, 원장만 — 데스크에게는 칸이 스스로 그리지 않는다) → '설치 파일' 작은 칸
+// (library AC-8109.1 — [자료실 열기], 옛 helper-download AC-5103.2 자리) → '청구'의 패널들(이름은 settings-tab-name AC-5201.1) → '데스크 계정'(desk-feedback AC-6304.2, 원장만)
 // → 맨 아래 '관리자만 보는 탭'(multi-admin AC-7707.2, 주 관리자만 — 다른 계정에게는 칸이 스스로 그리지 않는다).
 // 안쪽 메뉴의 모양은 비트 PC 연결 화면(SetupScreen의 SettingsSubnav, AC-034.2)과 같다. 페이지 이동 링크라 tablist가 아니고 aria-current를 쓴다.
 // 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 [비트 PC 연결]로 가는 길을 그리지 않는다(WriteOnly — 비트 PC는 그 의원 PC다).
