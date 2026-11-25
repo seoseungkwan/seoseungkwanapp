@@ -125,7 +125,8 @@ public static class HospitalCheck
 
     /// <summary>
     /// 원본 VerifyCurrentInstitution(AC-005.6): 등록이 없으면 E-BIT-NOT-REGISTERED. 설치 위치·서버·DB 이름이 등록과 다르면
-    /// 읽기 전에 E-BIT-HOSPITAL-MISMATCH. 그다음 DB 안 범위가 등록 범위 하나뿐인지, 오늘 날짜의 기관기호가 등록과 같은지 다시 읽는다.
+    /// 읽기 전에 E-BIT-HOSPITAL-MISMATCH. 그다음 DB 안 범위에 등록 범위가 들어 있는지(TASK-46부터, 다른 범위가 함께 있어도 됨 — AC-005.18),
+/// 오늘 날짜의 기관기호가 등록과 같은지 다시 읽는다.
     /// 처음 등록과 같은 기준이다(AC-005.13): 빈 범위 줄과 8자리 아닌 기관기호 줄은 빼고 본다.
     /// </summary>
     public static void VerifyCurrent(IBitSession session, HospitalRegistration? registration, DateTime today)

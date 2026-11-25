@@ -236,6 +236,21 @@ public class HospitalCheckTests
         Assert.Equal("202610310000", db.Calls.Single().Args["@to"]);
     }
 
+    [Fact(DisplayName = "AC-005.18 ActiveScopesSql 글자: 외래·접수 취소 아님·진료과 날짜 사이 조건으로 범위마다 세고, 범위·숫자만 읽으며 진료 상태 조건은 없다")]
+    public void ActiveScopesSqlText()
+    {
+        var sql = ReadOnlyGuardTests.Squash(Sql.ActiveScopesSql);
+        Assert.True(Sql.IsAllowed(Sql.ActiveScopesSql));
+        Assert.Equal(
+            "SELECT RTRIM(d.DepHspNum) Scope,COUNT_BIG(*) Visits FROM dbo.OcmInf c " +
+            "JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte " +
+            "WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O' AND c.OcmRsuYon<>'O' " +
+            "GROUP BY RTRIM(d.DepHspNum)",
+            sql);
+        Assert.DoesNotContain("OcmComStt", sql, StringComparison.Ordinal);
+        Assert.Equal("SELECT RTRIM(d.DepHspNum) Scope,COUNT_BIG(*) Visits", sql.Substring(0, sql.IndexOf(" FROM ", StringComparison.Ordinal)));
+    }
+
     [Fact(DisplayName = "AC-005.13 매번 확인도 처음 등록과 같은 기준: 빈 범위 줄·8자리 아닌 기관기호 줄은 빼고 본다")]
     public void VerifyCurrentIgnoresNoise()
     {
