@@ -396,6 +396,21 @@ create table public.contact_counts (
 - 원본 `latest_sam_files` 그대로: `C:\HIRA\DDMD\sam\in\backup\<청구월>\<전송폴더>\<청구번호>.GHP|.CAR`, 머리 80바이트 `(\d{10})([HC]\d{3})(\d{8})`. 종류마다 수정 시각이 가장 늦은 파일, 32MB 이하
 - 원본과 다른 점: 기관기호가 없으면 거르지 않던 것을 **늘 등록 기관기호로 거른다**. 다른 기관 파일은 읽지 않는다
 
+### 9-6. 매출·통계 읽기에서 찾는 칸을 감싸지 않기 (TASK-47, REQ-039, 도우미 0.13.4)
+- **찾은 일 (2026-11-25)**: 큰 의원(원장 4명, 비트에 병원 범위 여럿)의 웹앱 저절로 올림이 매출에서 `E-BIT-READ-FAILED`를 냈다. 이 PC 실제 비트에서 잰 값:
+  - `RevenueSql.CodeAmounts`의 이름 하위 질의 `RTRIM(s.SeeOdrCod) = c.Code`는 처방 코드마다 `SeeMst`(약 183만 줄)를 훑는다. 이 PC 4.3~5초, 이 PC에 따로 더한 찾아보기 목록 없이 14.9초. 더 큰 의원은 매출 시간 제한 90초(`RevenueDays.QueryTimeout`)를 넘겨 31일 조각마다 `E-BIT-READ-FAILED`로 보인다. `s.SeeOdrCod = c.Code`로 바꾸면 0.2초, 같은 233줄
+  - `StatsSql.PeopleSql`의 `NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId` → `b.PbsChtNum=p.PatientId`: 7.7초 → 66ms, 같은 2112줄
+- **왜 결과가 같은가**: SQL Server의 문자 `=`는 뒤 공백을 무시한다(ANSI 채움 규칙, `ANSI_PADDING`과 상관없음). 그래서 `RTRIM(x) = y`와 `x = y`는 `y`가 빈 글자가 아니면 같다. `NULLIF(RTRIM(x),'') = y`는 `x`가 빈·공백뿐이면 NULL이라 어디에도 같지 않은데, `y`(= `p.PatientId`)는 `Visits` 글의 `NULLIF(RTRIM(c.OcmChtNum),'')`·`WHERE PatientId IS NOT NULL`로 빈 글자도 NULL도 아니므로 `x = y`도 그때 같지 않다. `c.Code`도 `RTRIM(o.OdrCod) <> ''`로 빈 코드를 뺐다. 같은 문장의 `FirstVisits`(`c.OcmChtNum=p.PatientId`)와 연락 대상(`b.PbsChtNum=l.PatientId`)이 이미 이 모양이다
+- **같은 값이 여럿일 때**: `TOP 1 … ORDER BY s.SeeAdpDte DESC`는 같은 코드·같은 적용일 줄이 둘 이상이면 어느 줄 이름인지 정해지지 않는다(지금도 그렇다). 읽는 길이 바뀌면 다른 줄 이름이 나올 수 있으므로, 의원 PC 확인에서 233줄의 코드·줄 수·금액·이름을 모두 견준다. 차례 칸을 더하지 않는다 **(Claude 판단: 글을 한 곳만 바꾼다)**
+- **고칠 곳 둘뿐**: 위 두 조건만 바꾼다. `helper/src`에서 찾은 다른 `RTRIM` 조건과 그대로 두는 까닭:
+  - `StatsSql.TreatmentsSql`의 `RTRIM(o.OdrCod)=N'도수'`·`UPPER(RTRIM(o.OdrCod)) IN ('CARM1','SONO1','CRYO')`·`CHARINDEX('ESWT',UPPER(RTRIM(…)))`, `StatsSql.LaCodesSql`의 `UPPER(RTRIM(o.OdrCod)) LIKE 'LA%'`: 상수와 견주고 `UPPER`가 남아 색인을 못 쓰는 것은 그대로이며, 날짜 범위로 줄인 뒤 거르는 조건이다. 원본 사본과 견주는 글이라 그대로
+  - `RevenueSql.CodeAmounts`·`CodeAmountsByDay`의 `RTRIM(o.OdrCod) <> ''`: 같지 않음 조건이라 색인과 상관없고 날짜 범위 뒤에 거른다. 그대로
+  - `StatsSql.DoctorNamesSql`의 `RTRIM(u.UidCod) IN (@d0,…)`: 계정 표 `UidMst`는 작다. 그대로
+  - 매출·통계 밖: `Sql.InstitutionSql`·`PeriodIdentitySql`의 `RTRIM(HspCod)=@scope`·`RTRIM(h.HspInsNum)=@institution`(작은 `HspMst`, 등록·확인), `CalendarSql.FindChartSql`의 `RTRIM(b.PbsChtNum)=@q`(예약 탭 차트번호 찾기, 한 사람만, 매개변수와 견줌), `RTRIM(ISNULL(…,''))<>''`(청구·연락·예약). 이번에는 그대로 둔다(저절로 올림이 부르지 않음)
+- **시험**: 글자 시험만 바꾼다(이 서버에는 SQL Server가 없다). `RevenueSqlTests`의 AC-003.5 이름 하위 질의 기대 글과 `StatsSqlTests`의 `PeopleSelect` 기대 글을 새 글로 고치고(지우지 않음), AC-039.1·AC-039.2·AC-039.3 이름의 새 시험을 더한다. AC-039.3은 목록 넷의 모든 글에서 '칸=감싼 칸'·'감싼 칸=칸' 모양을 정규식으로 찾는다. 감싸개 `helper/tests/bit-sql-index.dotnet.test.ts`가 `runDotnet('SqlTests')`로 돌리고 AC마다 돌았는지·실패가 없는지 본다(bit-read-speed 감싸개와 같은 모양)
+- **의원 PC 확인 (ssk-bit-db-probe)**: 이 PC 실제 비트에서 바뀐 두 문장을 옛 글과 나란히 돌려 줄 수·모든 칸이 같은지, 시간이 줄었는지 본다. 큰 의원에서 저절로 올림의 매출이 `E-BIT-READ-FAILED` 없이 끝나는지는 0.13.4를 그 PC에 깐 뒤 본다
+- 새 명령·새 칸·화면 글이 없다. 판은 0.13.4(AC-005.16). `MIN_HELPER`·기능별 최소 판은 그대로다(옛 도우미도 돌아가고 새 도우미 알림만 뜬다)
+
 ## 10. 골든 테스트
 
 - **뜻**: 같은 가짜 자료를 넣으면 원본과 우리 코드의 결과가 같다

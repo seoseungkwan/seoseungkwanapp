@@ -477,3 +477,14 @@
 - TDD: required
 - `RegisterFlow`는 범위가 둘 이상일 때만 `HospitalCheck`의 새 고르기(계정 범위 → 최근 30일 내원 범위)를 부르고, 못 정하면 지금처럼 `E-BIT-REG-MANY`다. `VerifyCurrent`는 '등록 범위 하나뿐'을 '등록 범위가 들어 있음'으로 바꾼다. `StatsAccess.Check`는 계정 범위를 하나로 못 읽으면 DB 안 범위를 읽어 둘 이상이면 막는다. 새 SELECT `Sql.ActiveScopesSql`은 허용 목록·`ReadOnlyGuardTests.Derived`에 더한다(원본 사본 없음). 옛 시험 '범위 둘이면 REG-MANY'·'다른 범위가 함께 있으면 MISMATCH'는 새 뜻으로 고친다(지우지 않음). 원본 검사 함수(`ValidateScope`·`VerifyOnlyScope` 등, AC-005.4)는 그대로다.
 - 판 번호가 박힌 시험(0.13.2)을 0.13.3으로 고친다. `MIN_HELPER`와 기능별 최소 판은 그대로다. 태그 `helper-v0.13.3`·릴리스는 ssk-clinic-pc-files 나), 웹 배포(새 도우미 알림)는 사용자가 말할 때만.
+
+## TASK-47: 매출·통계 읽기에서 찾는 칸을 RTRIM으로 감싸지 않기 + 도우미 0.13.4 (도우미)
+- Step: 어느 Phase에도 속하지 않는 고침 (2026-11-25 큰 의원 웹앱 저절로 올림의 매출이 `E-BIT-READ-FAILED` → 이 PC 실제 비트에서 잰 값, design.md 9-6)
+- AC: AC-039.1, AC-039.2, AC-039.3, AC-005.16
+- REQ: REQ-039, REQ-005
+- Files: helper/src/Precheck.Core/Revenue/RevenueSql.cs, helper/src/Precheck.Core/Stats/StatsSql.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueSql.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsSql.test.cs, helper/tests/bit-sql-index.dotnet.test.ts, helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
+- Tests: helper/tests/bit-sql-index.dotnet.test.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- 바꾸는 글은 둘뿐이다: `RevenueSql.CodeAmounts`의 `RTRIM(s.SeeOdrCod) = c.Code` → `s.SeeOdrCod = c.Code`, `StatsSql.PeopleSql`의 `NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId` → `b.PbsChtNum=p.PatientId`. 요약 주석(`/// <summary>`)은 까닭 한 줄만 더한다. 그 밖의 `RTRIM`(design.md 9-6 '그대로 두는 까닭')·`Visits` 글·`CodeAmountsByDay`·매개변수 표·허용 목록은 그대로다
+- 시험: 먼저 AC-039.1·AC-039.2·AC-039.3 이름의 C# 시험(`RevenueSqlTests`·`StatsSqlTests` 안)과 감싸개 `bit-sql-index.dotnet.test.ts`(`runDotnet('SqlTests')`)를 써서 RED를 본다. 옛 기대 글(AC-003.5 이름 하위 질의, AC-2701.3 `PeopleSelect`)은 새 글로 고친다(지우지 않음). 판 번호가 박힌 시험(0.13.3)을 0.13.4로 고친다
+- 끝난 뒤 이 PC 실제 비트에서 옛 글과 새 글을 나란히 돌려 줄·칸이 모두 같은지와 시간을 본다(ssk-bit-db-probe, design.md 9-6). 태그 `helper-v0.13.4`·릴리스는 ssk-clinic-pc-files 나), 웹 배포(새 도우미 알림)는 사용자가 말할 때만
