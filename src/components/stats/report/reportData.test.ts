@@ -6,7 +6,8 @@ import type { CalCountRow, CalSettings, CalSlotRow } from '@/types/calendar'
 import type { DayPayload } from '@/types/payload'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix } from '@/types/stats'
-import { firstReportMonth, monthlyReport, REPORT_TITLES, reportMonths, SAME_AS_BEFORE, type ReportBlock, type ReportInput } from './reportData'
+import type { UisAgePayload, UisPeriodRow, UisRxPayload } from '@/types/uisarang'
+import { firstReportMonth, monthlyReport, REPORT_TITLES, reportMonths, SAME_AS_BEFORE, type ReportBlock, type ReportInput, type UisReportData } from './reportData'
 
 // 월간 보고서 자료 (stats-insights REQ-6108 AC-6108.1~AC-6108.3). 숫자·이름·차트번호는 모두 시험 안에서 지은 가짜다.
 // 매출 글 세 곳(한 달 요약·목표·달라진 것)은 원 단위(bit-total REQ-6902, formatWon), 신환 1명당 칸 금액은 만 원 글 그대로(AC-6902.4).
@@ -433,5 +434,159 @@ describe('AC-6108.3: 자료가 없는 칸은 제목까지 뺀다', () => {
     const text = JSON.stringify(monthlyReport(input()))
     expect(text).not.toContain(CHART)
     expect(text).not.toContain('chart')
+  })
+})
+
+// ── 의사랑 의원 월간 보고서 (uisarang-upload REQ-8817, design.md §10-6, 시안 ?s=monthly) ─────────────
+// 날 숫자는 위 DAYS(10월 5일 700명 · 6일 800명 — 진료한 날 둘), 매출·목표·예약은 위 값 그대로. 처방·나이대 줄과 덮은 기간은 이 아래에서 지어낸 가짜다.
+// 묶음 차례 = sortOrder(도수 · 충격파 · 주사), 처방 없는 '빈 묶음'은 빠진다
+describe('AC-8817: 의사랑 의원 월간 보고서', () => {
+  const span = (from: string, to: string) => ({ from, to })
+  const rxRow = (from: string, to: string, rows: UisRxPayload['rows']): UisPeriodRow<UisRxPayload> => ({
+    kind: 'rx',
+    from,
+    to,
+    payload: { v: 1, rows, total: null },
+    updatedAt: '2026-11-01T00:00:00Z',
+  })
+  const ageRow = (ymd: string, bands: number[]): UisPeriodRow<UisAgePayload> => ({
+    kind: 'age',
+    from: ymd,
+    to: ymd,
+    payload: { v: 1, patients: bands.reduce((a, b) => a + b, 0), newPatients: 0, bands, newBands: bands.map(() => 0) },
+    updatedAt: '2026-11-01T00:00:00Z',
+  })
+  // 10월 한 달 처방 줄: 도수(MM01) 186 · 충격파(mm02 — 빈칸·소문자) 233.5 · 묶음 밖 ZZ99. 9월 줄은 10월 셈에 들지 않는다
+  const OCT_RX = rxRow('2026-10-01', '2026-10-31', [
+    { code: 'MM01', name: '도수치료', qty: 186, amount: 13_020_000 },
+    { code: ' mm02 ', name: '충격파', qty: 233.5, amount: 5_640_000 },
+    { code: 'ZZ99', name: '가짜 처방', qty: 3, amount: 100_000 },
+  ])
+  const SEP_RX = rxRow('2026-09-01', '2026-09-30', [{ code: 'MM01', name: '도수치료', qty: 9999, amount: 99_999_999 }])
+  // 10월 5일 아래쪽 표만 있다(6일은 진료했는데 없음 → 빠진 날 1일). 10세 미만·생년월일 없음은 0건. 9월 줄은 들지 않는다
+  const OCT_AGE = ageRow('2026-10-05', [0, 10, 20, 30, 40, 1250, 30, 10, 10, 0])
+  const SEP_AGE = ageRow('2026-09-07', [500, 500, 500, 500, 500, 500, 500, 500, 500, 500])
+  const UIS: UisReportData = { rx: [SEP_RX, OCT_RX], age: [SEP_AGE, OCT_AGE], covered: [span('2025-11-13', '2026-11-12')] }
+  const uisReport = (over: Partial<ReportInput> = {}) => monthlyReport(input({ bit: null, uis: UIS, ...over }))
+
+  it('AC-8817.1·AC-8817.4: 칸 차례 = 한 달 요약 · 목표 · 달라진 것 · 내원 흐름 · 묶음별 처방량 · 나이대 (내원) · 예약 · 시행자별 · 예약 빈자리 · 셀 수 없어요(맨 끝)', () => {
+    const { blocks } = uisReport()
+    expect(blocks.map((block) => block.key)).toEqual(['summary', 'goal', 'changes', 'trend', 'uisRx', 'ages', 'calendar', 'staff', 'occupancy', 'uisCannot'])
+    expect(blocks.map((block) => block.title)).toEqual([
+      '한 달 요약',
+      '목표',
+      '달라진 것',
+      '내원 흐름 (최근 12달)',
+      '묶음별 처방량',
+      '나이대 (내원)',
+      '예약',
+      '시행자별',
+      '예약 빈자리 (최근 8주)',
+      '의사랑 엑셀로는 셀 수 없어요',
+    ])
+    expect(blocks.map((block) => block.title)).toEqual(blocks.map((block) => REPORT_TITLES[block.key]))
+  })
+
+  it('AC-8817.1: 한 달 요약·목표·내원 흐름·예약·시행자별·빈자리는 비트 의원 보고서와 같은 셈이다(날 숫자·매출로)', () => {
+    const bit = monthlyReport(input({ bit: null })).blocks
+    const uis = uisReport().blocks
+    for (const key of ['summary', 'goal', 'trend', 'calendar', 'staff', 'occupancy'] as const) expect(blockOf(uis, key)).toEqual(blockOf(bit, key))
+  })
+
+  it('AC-8817.1: 달라진 것은 내원·신환·매출만 견준다(묶음 건수 줄이 없다 — 날 줄에 묶음 숫자가 있어도)', () => {
+    expect(blockOf(uisReport().blocks, 'changes')?.changes).toEqual([
+      { dir: 'up', text: '내원 · 9월보다 20% 많아요 (1,250명 → 1,500명)' },
+      { dir: 'up', text: '매출 · 9월보다 18% 많아요 (100,000,000원 → 118,200,000원)' },
+    ])
+  })
+
+  it("AC-8817.2: 그 달이 처방 줄로 다 덮이면 '묶음별 처방량' = 묶음 차례로 넣는 처방이 있는 묶음마다 `{묶음} 처방량 {처방량} · 총액 {금액}`", () => {
+    expect(blockOf(uisReport().blocks, 'uisRx')?.items).toEqual(['도수 처방량 186 · 총액 13,020,000원', '충격파 처방량 233.5 · 총액 5,640,000원', '주사 처방량 0 · 총액 0원'])
+  })
+
+  it('AC-8817.2: 한 달 줄이 없어도 하루 줄로 겹치지 않게 다 덮이면 더해서 쓴다(휴진 날은 덮지 않아도 된다)', () => {
+    const rx = [
+      rxRow('2026-10-05', '2026-10-05', [{ code: 'MM01', name: '도수치료', qty: 10.25, amount: 700_000 }]),
+      rxRow('2026-10-06', '2026-10-06', [{ code: 'MM01', name: '도수치료', qty: 1302, amount: 91_140_000 }]),
+    ]
+    const items = blockOf(uisReport({ uis: { ...UIS, rx } }).blocks, 'uisRx')?.items
+    expect(items).toEqual(['도수 처방량 1,312.25 · 총액 91,840,000원', '충격파 처방량 0 · 총액 0원', '주사 처방량 0 · 총액 0원'])
+  })
+
+  it('AC-8817.2: 다 덮이지 않으면 그 칸은 `처방 엑셀이 모자라요 · {n}일 치가 없어요: {날 목록}` 한 줄이다', () => {
+    const rx = [rxRow('2026-10-05', '2026-10-05', [{ code: 'MM01', name: '도수치료', qty: 10, amount: 700_000 }])]
+    expect(blockOf(uisReport({ uis: { ...UIS, rx } }).blocks, 'uisRx')?.items).toEqual(['처방 엑셀이 모자라요 · 1일 치가 없어요: 10월 6일'])
+    // 덮은 기간을 모르면(휴진을 모름) 처방 줄이 없는 날이 모두 모자란 날이다 — 이어진 날은 한 덩어리
+    expect(blockOf(uisReport({ uis: { ...UIS, rx, covered: [] } }).blocks, 'uisRx')?.items).toEqual(['처방 엑셀이 모자라요 · 30일 치가 없어요: 10월 1일~4일, 10월 6일~31일'])
+    expect(blockOf(uisReport({ uis: { ...UIS, rx: [] } }).blocks, 'uisRx')?.items).toEqual(['처방 엑셀이 모자라요 · 2일 치가 없어요: 10월 5일~6일'])
+  })
+
+  it("AC-8817.3: '나이대 (내원)' = 0건 줄을 뺀 나이대마다 `{나이대} {n}건 · {p}%`(통계 탭 환자 구성 표와 같은 비율) + 빠진 날 끝 줄", () => {
+    expect(blockOf(uisReport().blocks, 'ages')?.items).toEqual([
+      '10대 10건 · 0.7%',
+      '20대 20건 · 1.4%',
+      '30대 30건 · 2.1%',
+      '40대 40건 · 2.9%',
+      '50대 1,250건 · 89.3%',
+      '60대 30건 · 2.1%',
+      '70대 10건 · 0.7%',
+      '80세 이상 10건 · 0.7%',
+      '아래쪽 표가 없는 진료한 날 1일은 빼고 셌어요.',
+    ])
+    // 진료한 날마다 아래쪽 표가 있으면 끝 줄이 없다
+    const age = [OCT_AGE, ageRow('2026-10-06', [0, 0, 0, 0, 0, 0, 0, 0, 0, 2])]
+    expect(blockOf(uisReport({ uis: { ...UIS, age } }).blocks, 'ages')?.items.at(-1)).toBe('생년월일 없음 2건 · 0.1%')
+  })
+
+  it("AC-8817.3: 그 달 나이대 줄이 하나도 없으면 '나이대 (내원)' 칸이 없다", () => {
+    expect(uisReport({ uis: { ...UIS, age: [SEP_AGE] } }).blocks.map((block) => block.key)).not.toContain('ages')
+  })
+
+  it("AC-8817.4: 맨 끝 '의사랑 엑셀로는 셀 수 없어요' 두 줄이고, 비트 칸 답이 있어도 몇 번까지 받나·신환 1명당 매출·치료별 칸이 없다", () => {
+    const { blocks } = uisReport({ bit: BIT })
+    expect(blocks.at(-1)).toEqual({
+      key: 'uisCannot',
+      title: '의사랑 엑셀로는 셀 수 없어요',
+      items: ['몇 번까지 받나 · 환자마다 다시 온 날을 알 수 없어요.', '신환 1명당 매출 · 환자마다 낸 돈을 알 수 없어요.'],
+    })
+    const keys = blocks.map((block) => block.key)
+    for (const key of ['dropoff', 'value', 'treatments'] as const) expect(keys).not.toContain(key)
+  })
+
+  it('AC-8817.2·AC-8817.3: 이번 달 보고서는 1일~어제만 센다 — 오늘(11월 13일)·오늘을 넘는 처방 줄과 오늘 나이대 줄은 들지 않는다', () => {
+    const rx = [
+      rxRow('2026-11-02', '2026-11-02', [{ code: 'MM01', name: '도수치료', qty: 7, amount: 490_000 }]),
+      rxRow(TODAY, TODAY, [{ code: 'MM01', name: '도수치료', qty: 500, amount: 35_000_000 }]),
+      rxRow('2026-11-09', '2026-11-15', [{ code: 'MM01', name: '도수치료', qty: 900, amount: 63_000_000 }]),
+    ]
+    const age = [ageRow('2026-11-02', [0, 0, 0, 0, 5, 0, 0, 0, 0, 0]), ageRow(TODAY, [0, 0, 0, 0, 0, 0, 0, 0, 99, 0])]
+    const blocks = uisReport({ month: '2026-11', uis: { rx, age, covered: [span('2026-11-01', '2026-11-12')] } }).blocks
+    expect(blockOf(blocks, 'uisRx')?.items).toEqual(['도수 처방량 7 · 총액 490,000원', '충격파 처방량 0 · 총액 0원', '주사 처방량 0 · 총액 0원'])
+    expect(blockOf(blocks, 'ages')?.items).toEqual(['40대 5건 · 100.0%'])
+  })
+
+  it("AC-8817.4: 처방·나이대 줄을 아직 모르면('unknown' — 읽는 중·실패) 그 두 칸만 없고 셀 수 없어요 칸은 그대로 맨 끝이다", () => {
+    expect(monthlyReport(input({ bit: BIT, uis: 'unknown' })).blocks.map((block) => block.key)).toEqual([
+      'summary',
+      'goal',
+      'changes',
+      'trend',
+      'calendar',
+      'staff',
+      'occupancy',
+      'uisCannot',
+    ])
+  })
+
+  it('AC-8817.6: uis가 없거나 null이면(비트 의원) 칸·글이 지금과 같다', () => {
+    expect(monthlyReport(input({ uis: null }))).toEqual(monthlyReport(input()))
+    expect(keysOf({ uis: null })).toEqual(['summary', 'goal', 'changes', 'trend', 'treatments', 'calendar', 'staff', 'dropoff', 'value', 'occupancy'])
+  })
+
+  it('AC-8817.2·AC-8817.3: 의사랑 보고서에도 처방명칭·차트번호 글자가 없다(묶음 이름·나이대·숫자만)', () => {
+    const text = JSON.stringify(uisReport())
+    expect(text).not.toContain('가짜 처방')
+    expect(text).not.toContain('도수치료')
+    expect(text).not.toContain(CHART)
   })
 })

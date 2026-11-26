@@ -1,8 +1,12 @@
 import { formatCount } from '@/components/charts/format'
 import { formatManWon, formatWon } from '@/components/revenue/money'
-import { groupKey, keyedIn } from '@/components/stats/treatmentView'
+import { groupCond, groupKey, groupOut, keyedIn } from '@/components/stats/treatmentView'
+import { UIS_GAP_TITLE, UIS_NA, UIS_WHY, uisMixMissing } from '@/components/stats/uisarang/texts'
+import { ageShareText } from '@/components/stats/uisarang/UisAgeSection'
 import { addDays, addMonths, compareYmd, monthOf, monthRange, sameDayLastMonth } from '@/lib/analytics/dates'
 import type { DayValue } from '@/lib/analytics/goalPace'
+import { AGE_BANDS, NO_BIRTH } from '@/lib/analytics/patientMix'
+import { dayListText, formatQty, sumAges, sumRxCodes, sumRxGroups, tileRx } from '@/lib/analytics/uisarang'
 import { ratePct, rateSummary } from '@/lib/calendar/counts'
 import { occupancy, occupancyLists } from '@/lib/calendar/occupancy'
 import type { CalAllDay, CalCountRow, CalSettings, CalSlotRow } from '@/types/calendar'
@@ -11,6 +15,7 @@ import { GOAL_KEYS, type Goal, type GoalKey } from '@/types/goals'
 import type { DayPayload } from '@/types/payload'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import type { BitSectionsView } from '@/types/stats'
+import type { UisAgePayload, UisPeriodRow, UisRxPayload } from '@/types/uisarang'
 
 // 월간 보고서 자료 (stats-insights REQ-6108 AC-6108.1~AC-6108.4, design.md '월간 보고서'). 순수 함수: 여러 자료 → 보고서 칸 목록.
 // 내원·신환·묶음 건수는 넓은 하루 읽기(오늘 앞 12달 stats_days, 달 칸은 일 숫자의 합 — 통계 화면 규칙)에서, 매출은 고른 달·앞 달 하루 매출,
@@ -21,6 +26,10 @@ import type { BitSectionsView } from '@/types/stats'
 // 매출 글 세 곳(한 달 요약·목표·달라진 것)은 원 단위(formatWon, bit-total REQ-6902)다. 신환 1명당 칸 금액은 평균이라 만 원 글(formatManWon) 그대로다(AC-6902.4).
 // 이번 달 보고서(AC-6108.4)는 한 달 숫자가 1일~어제의 합(오늘은 진료 중이라 세지 않는다)이고, '달라진 것'은 지난달 1일~같은 날짜(없으면 지난달 말일)와 견준다.
 // 다 지난 달은 두 달 전체를 견준다
+// 의사랑 의원(uisarang-upload REQ-8817, design.md §10-6, 시안 ?s=monthly): 한 달 요약·목표·내원 흐름·예약·시행자별·빈자리는 같은 셈(날 숫자·매출)이고
+// '달라진 것'은 내원·신환·매출만 견준다(처방량 증감 비교는 범위 밖). '치료별' 자리에 '묶음별 처방량'(고른 달을 처방 줄로 다 덮을 때만, 아니면 모자람 한 줄),
+// 그다음 '나이대 (내원)', 맨 끝 '의사랑 엑셀로는 셀 수 없어요' 두 줄이고 '몇 번까지 받나'·'신환 1명당 매출'은 없다.
+// 처방·나이대 셈은 lib/analytics/uisarang(tileRx·sumRxCodes·sumRxGroups·sumAges·formatQty·dayListText), 비율은 통계 탭 환자 구성 표와 같은 ageShareText다
 
 export const REPORT_MONTHS = 12
 export const SAME_AS_BEFORE = '지난달과 비슷해요'
@@ -31,12 +40,18 @@ export const REPORT_TITLES = {
   changes: '달라진 것',
   trend: '내원 흐름 (최근 12달)',
   treatments: '치료별',
+  uisRx: '묶음별 처방량',
+  ages: '나이대 (내원)',
   calendar: '예약',
   staff: '시행자별',
   dropoff: '몇 번까지 받나',
   value: '신환 1명당 매출',
   occupancy: '예약 빈자리 (최근 8주)',
+  uisCannot: UIS_NA,
 } as const
+
+// 의사랑 엑셀로는 셀 수 없는 칸 두 줄(맨 끝 칸)
+const UIS_CANNOT = [`${REPORT_TITLES.dropoff} · ${UIS_WHY.revisit}`, `${REPORT_TITLES.value} · 환자마다 낸 돈을 알 수 없어요.`]
 
 export type ReportCell = { name: string; value: string }
 export type ReportChange = { dir: 'up' | 'down'; text: string }
@@ -44,7 +59,7 @@ export type ReportChange = { dir: 'up' | 'down'; text: string }
 export type ReportBar = { month: string; label: string; value: number | null; picked: boolean }
 export type ReportBlock =
   | { key: 'summary' | 'value'; title: string; cells: ReportCell[] }
-  | { key: 'goal' | 'treatments' | 'calendar' | 'staff' | 'dropoff' | 'occupancy'; title: string; items: string[] }
+  | { key: 'goal' | 'treatments' | 'uisRx' | 'ages' | 'calendar' | 'staff' | 'dropoff' | 'occupancy' | 'uisCannot'; title: string; items: string[] }
   | { key: 'changes'; title: string; changes: ReportChange[] }
   | { key: 'trend'; title: string; bars: ReportBar[] }
 export type MonthlyReportData = { title: string; sub: string; blocks: ReportBlock[] }
@@ -55,6 +70,9 @@ export type ReportCalendar = {
   settings?: CalSettings
   slots: { rows: readonly CalSlotRow[]; offs: readonly CalAllDay[] } | null
 }
+
+/** 의사랑 의원이 고른 달 범위에서 읽은 것(useReportReads): 처방 줄 · 나이대 줄 · 덮은 기간(stats_coverage, 휴진을 가린다) */
+export type UisReportData = { rx: readonly UisPeriodRow<UisRxPayload>[]; age: readonly UisPeriodRow<UisAgePayload>[]; covered: readonly DateRange[] }
 
 export type ReportInput = {
   month: string // 고른 달 'YYYY-MM'
@@ -67,6 +85,9 @@ export type ReportInput = {
   goal: Goal | null // 고른 달 목표. null = 모름
   calendar: ReportCalendar | null // null = 예약 줄을 모름
   bit: BitSectionsView | null // null = 이 기기에서 불러오지 않음(또는 답을 기다림)
+  // 의사랑 의원(REQ-8817). 없음·null = 의사랑 아님(지금 그대로). 'unknown' = 의사랑 의원인데 처방·나이대 줄을 모름(읽는 중·실패) —
+  // 묶음별 처방량·나이대 칸만 없고 나머지 의사랑 모양(치료별·몇 번까지 받나·1명당 매출 없음, 셀 수 없어요 칸)은 그대로다
+  uis?: UisReportData | 'unknown' | null
 }
 
 const PEOPLE = '명'
@@ -152,8 +173,33 @@ function changesOf(metrics: readonly Metric[], before: string): ReportChange[] {
 
 const GOAL_NAMES: Record<GoalKey, string> = { visits: '내원', newPatients: '신환', revenue: '매출' }
 
+// 묶음별 처방량 칸 줄: 세는 기간을 처방 줄로 다 덮으면 묶음 차례(sortOrder)로 넣는 처방이 있는 묶음마다 한 줄(통계 탭 묶음별 처방량과 같은 셈),
+// 아니면 모자람 한 줄. 덮을 줄이 하나도 없으면(세는 날이 없음) 빈 목록 — 칸이 없다
+function uisRxItems(uis: UisReportData, range: DateRange, groups: readonly StatsRxGroup[], worked: ReadonlySet<string>, today: string): string[] {
+  const tile = tileRx(range, uis.rx, { covered: uis.covered, worked }, today)
+  if (!tile.ok) return [`${UIS_GAP_TITLE} · ${formatCount(tile.gap.length)}일 치가 없어요: ${dayListText(tile.gap, today)}`]
+  if (tile.used.length === 0) return []
+  const named = [...groups].sort((a, b) => a.sortOrder - b.sortOrder).filter((group) => group.codes.length > 0)
+  const defs = named.map((group, i) => ({ id: group.id ?? `new-${i}`, codes: group.codes, out: groupOut(group), cond: groupCond(group) }))
+  const sums = sumRxGroups(sumRxCodes(tile.used), defs)
+  return named.map((group, i) => `${group.name} 처방량 ${formatQty(sums.groups[i]?.qty ?? 0)} · 총액 ${formatWon(sums.groups[i]?.amount ?? 0)}`)
+}
+
+// 나이대 (내원) 칸 줄: 0건 줄을 뺀 나이대마다 건수·비율, 진료한 날인데 아래쪽 표가 없는 날이 있으면 끝 줄. 나이대 줄이 하나도 없으면 빈 목록 — 칸이 없다
+function ageItems(uis: UisReportData, range: DateRange, worked: ReadonlySet<string>): string[] {
+  const sums = sumAges(uis.age, range, worked)
+  if (sums.days === 0) return []
+  const total = sumOf(sums.bands, (n) => n)
+  const lines = [...AGE_BANDS, NO_BIRTH].flatMap((band, i) => {
+    const n = sums.bands[i] ?? 0
+    return n === 0 ? [] : [`${band} ${cases(n)} · ${ageShareText(n, total)}`]
+  })
+  return sums.missingDays > 0 ? [...lines, uisMixMissing(formatCount(sums.missingDays))] : lines
+}
+
 export function monthlyReport(input: ReportInput): MonthlyReportData {
   const { month, today, days, groups, calendar, bit } = input
+  const uis = input.uis ?? null
   const thisMonth = monthOf(today)
   const prev = addMonths(month, -1)
   const spans = spansOf(month, today)
@@ -167,7 +213,8 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
   const keys = namedKeys(groups)
   const calRows = calendar === null ? [] : calendar.rows.filter((row) => monthOf(row.day) === month)
   const booked = rateSummary(calRows)
-  const ready = bit !== null && bit.kind === 'ready' ? bit : null
+  // 의사랑 의원은 비트 칸 답(몇 번까지 받나·1명당 매출)을 쓰지 않는다(AC-8817.4)
+  const ready = uis === null && bit !== null && bit.kind === 'ready' ? bit : null
 
   const blocks: ReportBlock[] = []
 
@@ -209,7 +256,8 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
         ]
       : []),
     ...(revenue !== null && prevRevenue !== null ? [{ name: '매출', now: revenue, before: prevRevenue, text: formatWon }] : []),
-    ...(prevRead
+    // 묶음 건수는 비트 의원만(의사랑은 내원·신환·매출만 견준다, AC-8817.1)
+    ...(prevRead && uis === null
       ? keys.flatMap(({ key, name }) => {
           const now = groupCount(days, rows, spans.now, key)
           const before = groupCount(days, prevRows, spans.before, key)
@@ -229,12 +277,21 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
     }),
   })
 
-  // 치료별(묶음 건수, 묶음 차례)
-  const treatments = keys.flatMap(({ key, name }) => {
-    const count = groupCount(days, rows, spans.now, key)
-    return count === null ? [] : [`${name} ${cases(count)}`]
-  })
-  if (treatments.length > 0) blocks.push({ key: 'treatments', title: REPORT_TITLES.treatments, items: treatments })
+  if (uis === null) {
+    // 치료별(묶음 건수, 묶음 차례)
+    const treatments = keys.flatMap(({ key, name }) => {
+      const count = groupCount(days, rows, spans.now, key)
+      return count === null ? [] : [`${name} ${cases(count)}`]
+    })
+    if (treatments.length > 0) blocks.push({ key: 'treatments', title: REPORT_TITLES.treatments, items: treatments })
+  } else if (uis !== 'unknown') {
+    // 의사랑: 치료별 자리에 묶음별 처방량, 그다음 나이대(내원). 진료한 날 = 세는 기간 날 줄의 환자 1명 이상
+    const worked = new Set(rows.filter((row) => row.totals.patients > 0).map((row) => row.day))
+    const rxItems = uisRxItems(uis, spans.now, groups, worked, today)
+    if (rxItems.length > 0) blocks.push({ key: 'uisRx', title: REPORT_TITLES.uisRx, items: rxItems })
+    const ages = ageItems(uis, spans.now, worked)
+    if (ages.length > 0) blocks.push({ key: 'ages', title: REPORT_TITLES.ages, items: ages })
+  }
 
   // 예약 · 시행자별(예약 칸과 같은 셈·비율 글)
   if (booked.total > 0) {
@@ -290,6 +347,9 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
     const items = [lists.empty === null ? null : `늘 비는 시간: ${lists.empty}`, lists.full === null ? null : `꽉 차는 시간: ${lists.full}`].filter((item) => item !== null)
     if (items.length > 0) blocks.push({ key: 'occupancy', title: REPORT_TITLES.occupancy, items })
   }
+
+  // 의사랑 엑셀로는 셀 수 없는 것(맨 끝, 처방·나이대 줄을 몰라도 있다)
+  if (uis !== null) blocks.push({ key: 'uisCannot', title: REPORT_TITLES.uisCannot, items: [...UIS_CANNOT] })
 
   return {
     title: `${Number(month.slice(0, 4))}년 ${monthLabel(month)} 통계 보고`,
