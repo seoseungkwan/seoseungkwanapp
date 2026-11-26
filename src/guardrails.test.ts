@@ -1364,3 +1364,157 @@ describe('AC-6614.2 components/settings/firstRun/paste/**(처음 질문 붙여 �
     expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
   })
 })
+
+describe('AC-8524.3 src/lib/gcal/**(예약 맞춤 엔진): client.ts 밖 네트워크 금지, console·브라우저 저장소 금지', SLOW, () => {
+  const GCAL = 'src/lib/gcal/probe.ts'
+  const CLIENT = 'src/lib/gcal/client.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ["globalThis.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+  ])('AC-8524.3: lib/gcal(client.ts 밖) %s → %s', async (code, rule) => {
+    expect(await errorRules(code, GCAL)).toContain(rule)
+  })
+
+  it.each([
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.error(1)', 'no-console'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["window.sessionStorage.getItem('k')", 'no-restricted-properties'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+  ])('AC-8524.3: client.ts도 %s → %s', async (code, rule) => {
+    expect(await errorRules(code, CLIENT)).toContain(rule)
+  })
+
+  it('AC-8524.3: client.ts만 fetch를 쓸 수 있고, 하위 폴더·시험 파일은 같은 울타리 아래 있다', async () => {
+    expect(await lint("export const go = () => fetch('https://script.google.com/macros/s/x/exec', { method: 'POST', credentials: 'omit' })", CLIENT)).toEqual([])
+    expect(await errorRules("fetch('x')", 'src/lib/gcal/push.ts')).toContain('no-restricted-globals')
+    expect(await errorRules("fetch('x')", 'src/lib/gcal/sub/probe.ts')).toContain('no-restricted-globals')
+    expect(await errorRules("fetch('x')", 'src/lib/gcal/client.test.ts')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/lib/gcal/probe.test.ts')).toContain('no-console')
+    expect(await errorRules("localStorage.getItem('k')", 'src/lib/gcal/probe.test.ts')).toContain('no-restricted-globals')
+  })
+
+  it('AC-8524.3: 저장 함수(lib/storage)·예약 판단(lib/calendar)·supabase 타입·잠금(navigator.locks) import·쓰기는 되고, 안내는 lib/gcal을 말한다', async () => {
+    const code = [
+      "import type { SupabaseClient } from '@supabase/supabase-js'",
+      "import { listWaitingAppts } from '@/lib/storage/calendar'",
+      "import { loadGcalState } from '@/lib/storage/gcal'",
+      "import { decideEvent } from '@/lib/calendar/gsync'",
+      "import { gcalCall } from './client'",
+      'export const parts = [listWaitingAppts, loadGcalState, decideEvent, gcalCall] as const',
+      'export type Db = SupabaseClient',
+      "export const lead = () => navigator.locks.request('ssk-gcal', { ifAvailable: true }, async () => undefined)",
+    ].join('\n')
+    expect(await lint(code, GCAL)).toEqual([])
+    const messages = (await lint("fetch('x')", GCAL)).map((m) => m.message).join('\n')
+    expect(messages).toContain('lib/gcal')
+    const client = (await lint('new XMLHttpRequest()', CLIENT)).map((m) => m.message).join('\n')
+    expect(client).toContain('lib/gcal/client.ts')
+  })
+
+  it('AC-8524.3: 실제 맞춤 엔진 소스(lib/gcal)는 울타리에 걸리는 것이 없다', async () => {
+    const files = [
+      'src/lib/gcal/calendarCode.ts',
+      'src/lib/gcal/client.ts',
+      'src/lib/gcal/deps.ts',
+      'src/lib/gcal/importRead.ts',
+      'src/lib/gcal/loop.ts',
+      'src/lib/gcal/pull.ts',
+      'src/lib/gcal/push.ts',
+      'src/lib/gcal/status.ts',
+    ]
+    const results = await eslint.lintFiles(files)
+    expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
+    expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
+  })
+})
+
+describe('AC-8524.3 components/gcalSettings/**/rows/**(구글 캘린더 설정 줄 화면: 가져오기 미리 보기 줄 등)는 components/calendar/rows와 같은 울타리다', SLOW, () => {
+  const ROWS = 'src/components/gcalSettings/import/rows/Probe.tsx'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { listAppts } from '@/lib/storage/calendar'", 'no-restricted-imports'],
+    ["import x from '../../../../lib/storage/gcal'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { connectScreenBridge } from '@/lib/bridge/workerSink'", 'no-restricted-imports'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+    ["import x from '@/workers/calendar/handler'", 'no-restricted-imports'],
+    ["import * as Sentry from '@sentry/nextjs'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@/lib/storage/gcal')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/supabase/browser')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-8524.3: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, ROWS)).toContain(rule)
+  })
+
+  it('AC-8524.3: JSX·react·예약 판단(lib/calendar)·타입·같은 폴더 부품 import는 된다(줄은 props로 받는다)', async () => {
+    const code = [
+      "import { useState } from 'react'",
+      "import { fixReasonText } from '@/lib/calendar/gtitle'",
+      "import type { GParsedFix } from '@/lib/calendar/gshapes'",
+      "import { hm } from './parts'",
+      'export function Rows({ fixes }: { fixes: GParsedFix[] }) {',
+      '  const [open] = useState(false)',
+      '  return <div>{open ? fixes.map((f) => <p key={f.day} title={hm(f.start)}>{fixReasonText(f)}</p>) : null}</div>',
+      '}',
+    ].join('\n')
+    expect(await lint(code, ROWS)).toEqual([])
+  })
+
+  it('AC-8524.3: rows 바로 아래·하위 폴더·시험 파일도 같은 울타리, 안내는 components/gcalSettings를 말하고 예약표 그리기 부품 안내는 그대로다', async () => {
+    expect(await errorRules("fetch('x')", 'src/components/gcalSettings/rows/Probe.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules("fetch('x')", 'src/components/gcalSettings/import/rows/sub/Probe.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/components/gcalSettings/import/rows/Probe.test.tsx')).toContain('no-console')
+    expect(await errorRules("import x from '@/lib/storage/gcal'", 'src/components/gcalSettings/colors/rows/Probe.tsx')).toContain('no-restricted-imports')
+    const messages = (await lint("fetch('x')", ROWS)).map((m) => m.message).join('\n')
+    expect(messages).toContain('components/gcalSettings')
+    const calendar = (await lint("fetch('x')", 'src/components/calendar/rows/Probe.tsx')).map((m) => m.message).join('\n')
+    expect(calendar).toContain('components/calendar/rows')
+    expect(calendar).not.toContain('components/gcalSettings')
+  })
+
+  it('AC-8524.3: rows 밖 구글 캘린더 설정 화면은 맞춤 엔진·저장을 import할 수 있고, client.ts는 그대로 막힌다', async () => {
+    const code = [
+      "import { readImport, applyImport } from '@/lib/gcal/importRead'",
+      "import { saveGcalLook } from '@/lib/storage/gcal'",
+      "import { supabaseBrowser } from '@/lib/supabase/browser'",
+      'export const parts = [readImport, applyImport, saveGcalLook, supabaseBrowser] as const',
+    ].join('\n')
+    expect(await lint(code, 'src/components/gcalSettings/import/Probe.tsx')).toEqual([])
+    expect(await errorRules("import { connectBridge } from '@/lib/bridge/client'", 'src/components/gcalSettings/import/Probe.tsx')).toContain(
+      'no-restricted-imports',
+    )
+  })
+})

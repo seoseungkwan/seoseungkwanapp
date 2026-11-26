@@ -319,6 +319,39 @@ function fencedRowsRules(where) {
 const sunapRowsRules = () => fencedRowsRules(SUNAP_ROWS_WHERE)
 const calendarRowsRules = () => fencedRowsRules(CALENDAR_ROWS_WHERE)
 const firstRunPasteRules = () => fencedRowsRules(FIRST_RUN_PASTE_WHERE)
+// 구글 캘린더 설정 줄 화면(components/gcalSettings/**/rows, spec google-link AC-8524.3): 가져오기 미리 보기 줄(구글 제목 원문 = 환자 이름) 등.
+// 예약표 그리기 부품과 같은 울타리 — 줄은 props로만 받고 고른 값은 콜백으로만 넘긴다
+const GCAL_SETTINGS_ROWS_WHERE = '구글 캘린더 설정 줄 화면(components/gcalSettings/**/rows)'
+const gcalSettingsRowsRules = () => fencedRowsRules(GCAL_SETTINGS_ROWS_WHERE)
+
+// 예약 맞춤 엔진(src/lib/gcal, spec google-link AC-8524.3·ADR-053): 구글 부르기(fetch)는 client.ts 한 곳뿐이고, 어디서든 console·브라우저 저장소를 쓸 수 없다
+// (예약 줄의 환자 이름·비밀 글자가 로그·저장소에 남는다). 저장 함수(lib/storage)·예약 판단(lib/calendar)은 부른다.
+// 같은 규칙 이름은 맨 위 블록을 덮으므로 client.ts import 금지(CLIENT_IMPORT)를 다시 넣는다
+const GCAL_NETWORK_MESSAGE = '예약 맞춤(lib/gcal)은 client.ts 밖에서 네트워크를 쓸 수 없다(구글 부르기는 lib/gcal/client.ts의 gcalCall 하나)'
+const GCAL_CLIENT_NETWORK_MESSAGE = 'lib/gcal/client.ts는 fetch만 쓴다(XMLHttpRequest·WebSocket·EventSource·sendBeacon은 쓸 수 없다)'
+const GCAL_CONSOLE_MESSAGE = '예약 맞춤(lib/gcal)은 console을 쓸 수 없다(환자 이름·비밀 글자가 로그에 남는다)'
+const GCAL_STORAGE_MESSAGE = '예약 맞춤(lib/gcal)은 브라우저 저장소를 쓸 수 없다(환자 이름·비밀 글자가 남는다)'
+function gcalRules({ client = false } = {}) {
+  const network = client ? NETWORK.filter((name) => name !== 'fetch') : NETWORK
+  const message = client ? GCAL_CLIENT_NETWORK_MESSAGE : GCAL_NETWORK_MESSAGE
+  return {
+    'no-restricted-imports': ['error', { patterns: [CLIENT_IMPORT] }],
+    'no-restricted-syntax': ['error', CLIENT_IMPORT_SYNTAX],
+    'no-restricted-globals': [
+      'error',
+      ...network.map((name) => ({ name, message })),
+      ...STORAGE.map((name) => ({ name, message: GCAL_STORAGE_MESSAGE })),
+      { name: 'console', message: GCAL_CONSOLE_MESSAGE },
+    ],
+    'no-restricted-properties': [
+      'error',
+      ...[...network, 'sendBeacon'].map((property) => ({ property, message })),
+      ...STORAGE.map((property) => ({ property, message: GCAL_STORAGE_MESSAGE })),
+      { property: 'console', message: GCAL_CONSOLE_MESSAGE },
+    ],
+    'no-console': 'error',
+  }
+}
 
 
 // 통로 코드만: 확장에 말을 거는 곳(connect·sendMessage)은 첫 인자가 EXTENSION_ID일 때만. 주입받은 runtime도 같다
@@ -502,6 +535,22 @@ const eslintConfig = [
     // 처음 질문 붙여 넣기 칸(spec clinic-profile AC-6614.2): 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로·workers 금지. JSX는 된다
     files: ['src/components/settings/firstRun/paste/**'],
     rules: firstRunPasteRules(),
+  },
+  {
+    // 예약 맞춤 엔진(spec google-link AC-8524.3): client.ts 밖 네트워크 금지, console·브라우저 저장소 금지. 시험 파일도 같다
+    files: ['src/lib/gcal/**'],
+    ignores: ['src/lib/gcal/client.ts'],
+    rules: gcalRules(),
+  },
+  {
+    // 구글 부르기 한 곳: fetch만 되고 나머지 네트워크·console·브라우저 저장소는 막힌다
+    files: ['src/lib/gcal/client.ts'],
+    rules: gcalRules({ client: true }),
+  },
+  {
+    // 구글 캘린더 설정 줄 화면(spec google-link AC-8524.3): components/calendar/rows와 같은 울타리
+    files: ['src/components/gcalSettings/**/rows/**'],
+    rules: gcalSettingsRowsRules(),
   },
 ]
 
