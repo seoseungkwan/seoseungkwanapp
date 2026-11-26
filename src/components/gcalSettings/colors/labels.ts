@@ -1,8 +1,10 @@
 import { josa } from '@/lib/calendar/josa'
+import { countText } from '../frame/time'
 
 // 설정 › 구글 캘린더 › 시행자·종류 화면 글 (spec google-link design.md 4절: notes-calendar `colors` '화면 글' 그대로, 바뀌는 낱말 뒤 조사는 josa — 2절 표 7).
 // 색 이름(라벤더 … 토마토·캘린더 기본 색·시행자 색 따름)은 components/calendar/colors.ts, 같은 색 경고 다섯 글은 lib/calendar/gpaint colorWarnings가 만든다.
-// 맨 아래 SAVE_TEXT 넷은 notes에 없는 글이라 옛 예약 설정 서랍(clinic-calendar CalendarScreen·CalendarSettings)의 글을 그대로 빌린다
+// 맨 아래 SAVE_TEXT 넷은 notes에 없는 글이라 옛 예약 설정 서랍(clinic-calendar CalendarScreen·CalendarSettings)의 글을 그대로 빌린다.
+// 2차 고침(REQ-8552, design.md 21-9): KIND.lead2 · KIND_EX · REREAD는 notes-calendar '화면 글 › 2차 고침 › colors-reread' 그대로. 다시 알아보기 실패 글은 notes에 없어 SAVE_TEXT.failed·offline을 빌린다(같은 까닭)
 
 export const BAND = {
   /** `{캘린더}{을/를} 골랐어요 · 아직 가져오지 않았어요` 의 낱말 뒤 글 */
@@ -23,11 +25,20 @@ export const KIND = {
   hint: '위에 있을수록 예약 더하기에서 앞에 보여요',
   // '4000타'만 굵게 — 앞뒤 두 조각
   lead: ["구글 제목에서 이 글을 찾으면 그 종류로 봐요. 쉼표로 나눠 여러 개 적어요. 긴 글부터 맞춰 봐요(자보도수 → 도수). '타'는 ", '4000타', "처럼 숫자 뒤에 붙은 글만 봐요. 색이 '시행자 색 따름'이면 그 시행자 색으로 칠해요."] as const,
+  /** 설명 둘째 줄(2차 고침, 처음 잇기·이은 뒤 모두) */
+  lead2: '종류 이름에 길이(30분)·시행자 표시((원))·타수(3000)가 들어 있으면 제목과 가장 많이 맞는 종류를 골라요. 3천은 3000타로 봐요.',
   head: ['차례', '이름', '제목에서 알아볼 글', '기본 길이', '구글 색'] as const,
   remove: '지우기',
   add: '종류 더하기',
   gone: '지운 종류의 지난 예약은 그 이름 그대로 남아요',
   wordsHint: '예: 도수',
+}
+
+/** 종류 칸 보기 상자(2차 고침). 보기 줄 = `{제목}[ · 구글 일정 {n}분] → {종류}[ {noLen}]` */
+export const KIND_EX = {
+  label: '알아보기 보기',
+  eventLen: (n: number) => `구글 일정 ${n}분`,
+  noLen: '제목에 길이가 없으면 구글 일정 길이로 봐요',
 }
 
 export const MARKS = {
@@ -109,6 +120,21 @@ export const ARIA = {
   kindLen: '기본 길이',
   up: (n: number) => `${n}번째 종류 위로`,
   down: (n: number) => `${n}번째 종류 아래로`,
+}
+
+/** 맨 아래 '이미 들어온 예약' 칸(2차 고침, 이은 뒤 원장만) */
+export const REREAD = {
+  title: '이미 들어온 예약',
+  owner: '원장 계정만 할 수 있어요',
+  lead: '구글 제목을 지금 설정으로 다시 읽어 종류·시행자를 맞춰요. 구글 일정은 바꾸지 않아요.',
+  hint: '저장한 설정으로 읽어요. 가져올 때 고르거나 [고치기]로 바꾼 종류·시행자는 그대로 둬요.',
+  button: '이미 들어온 예약 다시 알아보기',
+  busy: '다시 알아보는 중…',
+  /** 수는 세 자리마다 쉼표 */
+  done: (read: number, kinds: number, unread: number) =>
+    `예약 ${countText(read)}개를 다시 알아봤어요 · 종류가 바뀐 것 ${countText(kinds)}개 · 못 알아본 것 ${countText(unread)}개`,
+  at: (hm: string) => `(${hm})`,
+  kept: '못 알아본 예약은 전 종류·시행자 그대로 두었어요.',
 }
 
 // notes에 없는 글 — 옛 예약 설정 서랍·예약 화면 글 그대로(명세에 적을 것)

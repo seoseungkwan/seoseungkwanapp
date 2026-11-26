@@ -8,6 +8,7 @@ import { makeGcalDeps } from '@/lib/gcal/deps'
 import { activeGcalDeps, syncNow } from '@/lib/gcal/loop'
 import { pullOnce } from '@/lib/gcal/pull'
 import { pushWaiting } from '@/lib/gcal/push'
+import { runReread } from '@/lib/gcal/reread'
 import { loadCalendarSettings } from '@/lib/storage/calendar'
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import { loadGcalLink, loadGcalState, loadGcalView, saveGcalCalendar, saveGcalConnection, saveGcalRules, unlinkGcal } from '@/lib/storage/gcal'
@@ -35,7 +36,8 @@ import { GcalRulesForm, type GcalSyncReply } from './rules/Rules'
 //   [시행자·종류]는 캘린더를 고르기 전에도 열리고(차례 띠 없이, 표 9), ③은 캘린더를 고르고 ②를 지난 뒤에만 연다.
 //   이은 병원은 처음 칸이 맞춤 방법이고 셋이 다 열리며 차례 띠가 없다. ③ 가져오기가 끝나면 다시 읽어 맞춤 방법으로 가고 그 알림을 띄운다.
 // - 칸마다: 잇기 [연결 시험] = 구글 코드 ping(비밀 글자 칸이 비면 저장해 둔 것), 저장 = lib/storage/gcal. 맞춤 방법 [지금 맞추기] = 도는 맞춤(syncNow),
-//   이 탭에서 맞춤이 돌지 않으면 한 번 받아 오기(pullOnce). 시행자·종류 저장 묶음 = colorsDeps(바뀐 색 보내기 = pushWaiting).
+//   이 탭에서 맞춤이 돌지 않으면 한 번 받아 오기(pullOnce). 시행자·종류 저장 묶음 = colorsDeps(바뀐 색 보내기 = pushWaiting,
+//   [이미 들어온 예약 다시 알아보기] = 이 화면 맞춤 deps로 runReread — REQ-8552 AC-8552.4, 구글은 부르지 않음).
 //   이은 뒤 시행자·종류 위 띠는 맞춤 방법 띠의 글(캘린더 이름·이은 날·마지막 맞춤)이다.
 // - 데스크도 같은 화면(보기만 — 칸·단추 잠금은 각 칸이 useDesk로 한다). 화면 뿌리가 그 병원 캘린더 기본 색으로 --cal-default를 덮는다. PC 화면만
 
@@ -130,7 +132,7 @@ function Ready({
 }) {
   const { view, state, profile, settings, hospitalId } = data
   const gcalDeps = useMemo(() => makeGcalDeps({ client, hospitalId, call: gcalCall }), [client, hospitalId])
-  const kindsDeps = useMemo(() => colorsDeps(client, () => pushWaiting(activeGcalDeps() ?? gcalDeps)), [client, gcalDeps])
+  const kindsDeps = useMemo(() => colorsDeps(client, () => pushWaiting(activeGcalDeps() ?? gcalDeps), () => runReread(gcalDeps)), [client, gcalDeps])
 
   /** 비밀 글자 칸이 비면(null) 저장해 둔 것. 저장한 것도 없으면 null */
   const secretOf = useCallback(async (secret: string | null) => (secret !== null ? secret : ((await loadGcalLink(client))?.secret ?? null)), [client])
