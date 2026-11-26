@@ -12,12 +12,16 @@ import {
   listAppts,
   listCalendarCounts,
   loadCalendarRev,
+  insertGoogleAppts,
   loadCalendarSettings,
-  saveCalendarSettings,
   setApptAuto,
   updateAppt,
 } from '@/lib/storage/calendar'
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
+import { requestPull, sendAppt, syncNow } from '@/lib/gcal/loop'
+import { resetGcalStatus, setGcalStatus } from '@/lib/gcal/status'
+import { deleteGcalFix, listGcalFixes, loadGcalState, loadGcalView, loadOffNames, setArrivalProgress, setFixState } from '@/lib/storage/gcal'
+import { DEFAULT_GCAL_LOOK, DEFAULT_GCAL_RULES, type GcalFix, type GcalView } from '@/types/gcal'
 import type { BridgeState } from '@/types/bridge'
 import type { CalAllDay } from '@/lib/calendar/shapes'
 import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAppt, type CalSettings } from '@/types/calendar'
@@ -47,6 +51,25 @@ vi.mock('@/lib/storage/calendar', async (importOriginal) => ({
   deleteAppt: vi.fn(),
   addAllDay: vi.fn(),
   deleteAllDay: vi.fn(),
+  insertGoogleAppts: vi.fn(),
+}))
+// 구글 캘린더(spec google-link). 기본은 잇지 않은 병원(loadGcalView null) → 지금 화면 그대로. 맞춤 엔진(loop)은 흉내 낸다
+vi.mock('@/lib/storage/gcal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/gcal')>()),
+  loadGcalView: vi.fn(),
+  loadGcalState: vi.fn(),
+  listGcalFixes: vi.fn(),
+  loadOffNames: vi.fn(),
+  setFixState: vi.fn(),
+  deleteGcalFix: vi.fn(),
+  saveOffDay: vi.fn(),
+  setArrivalProgress: vi.fn(),
+}))
+vi.mock('@/lib/gcal/loop', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/gcal/loop')>()),
+  requestPull: vi.fn(),
+  syncNow: vi.fn(),
+  sendAppt: vi.fn(),
 }))
 // 병원 정보(spec clinic-profile REQ-6603). 기본은 줄 없음(null) → 지금처럼 예약 설정 시행자·시간
 vi.mock('@/lib/storage/clinicProfile', async (importOriginal) => ({
@@ -208,8 +231,21 @@ beforeEach(() => {
   vi.mocked(setApptAuto).mockReset().mockResolvedValue(undefined)
   vi.mocked(addAllDay).mockReset().mockImplementation(async (_c, item) => ({ ...item, id: 'd-new' }))
   vi.mocked(deleteAllDay).mockReset().mockResolvedValue(undefined)
-  vi.mocked(saveCalendarSettings).mockReset().mockResolvedValue(undefined)
   vi.mocked(loadClinicProfile).mockReset().mockResolvedValue(null)
+  vi.mocked(insertGoogleAppts).mockReset().mockResolvedValue({ sent: 1, blocked: 0 })
+  vi.mocked(loadGcalView).mockReset().mockResolvedValue(null)
+  vi.mocked(loadGcalState)
+    .mockReset()
+    .mockResolvedValue({ pulledUntil: null, lastOkAt: null, failSince: null, failCode: null, arrivalUntil: null, arrivalDone: false })
+  vi.mocked(listGcalFixes).mockReset().mockResolvedValue([])
+  vi.mocked(loadOffNames).mockReset().mockResolvedValue([])
+  vi.mocked(setFixState).mockReset().mockResolvedValue(undefined)
+  vi.mocked(deleteGcalFix).mockReset().mockResolvedValue(undefined)
+  vi.mocked(setArrivalProgress).mockReset().mockResolvedValue(undefined)
+  vi.mocked(requestPull).mockReset()
+  vi.mocked(syncNow).mockReset().mockResolvedValue({ ok: true, changed: 0, sent: 0, at: '2026-11-17T05:37:00.000Z' })
+  vi.mocked(sendAppt).mockReset().mockResolvedValue({ ok: true, did: 'sent' })
+  resetGcalStatus()
 })
 
 afterEach(() => {
@@ -246,7 +282,8 @@ describe('AC-5905.1 예약표 보기', () => {
     expect(title()).toBe('2026년 11월 16일 – 21일')
     expect(columns()).toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21'])
     expect(listAppts).toHaveBeenCalledWith(CLIENT, '2026-11-16', '2026-11-22')
-    for (const name of ['오늘', '이전 주', '다음 주', '예약 설정', '예약 더하기']) expect(screen.getByRole('button', { name })).toBeTruthy()
+    for (const name of ['오늘', '이전 주', '다음 주', '예약 더하기']) expect(screen.getByRole('button', { name })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '예약 설정' })).toBeTruthy() // 톱니는 구글 캘린더 설정으로 가는 링크(google-link AC-8529.3)
     const views = within(screen.getByRole('group', { name: '보기' })).getAllByRole('button')
     expect(views.map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([
       ['일', 'false'],
@@ -563,29 +600,13 @@ describe('AC-5905.4 종일 줄', () => {
 })
 
 describe('AC-5905.5 설정', () => {
-  it('AC-5905.5·AC-6603.4: [설정]에서 종류를 고쳐 [저장]하면 saveCalendarSettings로 저장되고 바로 반영된다(더하기 판 종류)', async () => {
+  // google-link AC-8529.3: 옛 예약 설정 서랍(CalendarSettings)은 지웠다 — 톱니는 설정 › 구글 캘린더 › 시행자·종류로 간다(잇지 않은 병원도)
+  it('AC-8529.3: 톱니(예약 설정)는 /settings/google-calendar?tab=colors 링크이고 옛 설정 서랍은 열리지 않는다', async () => {
     await open()
-    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
-    const panel = dialog('예약 설정')
-    fireEvent.change(within(panel).getAllByRole('textbox', { name: '종류 이름' })[0]!, { target: { value: '도수치료' } })
-    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
-    await waitFor(() => expect(saveCalendarSettings).toHaveBeenCalledTimes(1))
-    const [client, sent] = vi.mocked(saveCalendarSettings).mock.calls[0]!
-    expect(client).toBe(CLIENT)
-    expect(sent.kinds.map((k) => k.name)).toEqual(['도수치료', '자보도수', '충격파', '주사', '진료'])
+    const gear = screen.getByRole('link', { name: '예약 설정' })
+    expect(gear.getAttribute('href')).toBe('/settings/google-calendar?tab=colors')
+    fireEvent.click(gear)
     expect(screen.queryByRole('dialog', { name: '예약 설정' })).toBeNull()
-    expect(await screen.findByText('설정을 저장했어요. 다른 PC에도 몇 초 안에 보여요.')).toBeTruthy()
-    const add = openAdd()
-    expect(within(within(add).getByRole('group', { name: '종류' })).getByRole('button', { name: /^도수치료/ })).toBeTruthy()
-  })
-
-  it("AC-6603.4: 설정 서랍에는 시행자·보이는 시간 칸 대신 '설정 → 병원 정보' 안내와 [병원 정보로 가기](원장)가 있다", async () => {
-    await open()
-    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
-    const panel = dialog('예약 설정')
-    expect(within(panel).getByText('시행자와 진료시간은 설정 → 병원 정보에서 고쳐요.')).toBeTruthy()
-    expect(within(panel).getByRole('link', { name: '병원 정보로 가기' }).getAttribute('href')).toBe('/settings')
-    expect(within(panel).queryByRole('group', { name: '주 보기 요일' })).toBeNull()
   })
 
   it('AC-5905.5·AC-8503.5: 목록에서 지운 시행자의 예약은 저장된 이름 그대로 캘린더 기본 색으로 보인다', async () => {
@@ -811,18 +832,7 @@ describe('AC-6603 예약이 병원 정보를 쓴다 (spec clinic-profile)', () =
     expect(within(cell).getByText('휴진')).toBeTruthy()
   })
 
-  it('AC-6603.4: 종류를 저장해도 담당·진료시간은 병원 정보 그대로다', async () => {
-    await open()
-    await waitFor(() => expect(columns()).not.toContain('2026-11-18'))
-    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
-    const panel = dialog('예약 설정')
-    fireEvent.change(within(panel).getAllByRole('textbox', { name: '종류 이름' })[0]!, { target: { value: '도수치료' } })
-    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
-    await waitFor(() => expect(saveCalendarSettings).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 설정' })).toBeNull())
-    expect(columns()).toEqual(['2026-11-16', '2026-11-17', '2026-11-19', '2026-11-20', '2026-11-21'])
-    expect(staffButtons(openAdd())).toEqual(['(원) 원장님', '(가) 한○○'])
-  })
+  // AC-6603.4(종류를 저장해도 병원 정보 그대로)는 옛 예약 설정 서랍과 함께 빠졌다(google-link AC-8529.3 — 종류는 설정 › 구글 캘린더에서 저장)
 })
 
 describe('AC-7616.2 반차 휴무 경고의 경계 = 그 요일 병원 정보 점심 시작 (spec staff)', () => {
@@ -876,5 +886,226 @@ describe('AC-7616.2 반차 휴무 경고의 경계 = 그 요일 병원 정보 �
     fireEvent.click(await screen.findByRole('button', { name: /^10457 박○○ 도수 \(가\)/ }))
     fireEvent.click(within(dialog('예약')).getByRole('button', { name: '다음 주에도' }))
     expect(await screen.findByText('11월 24일 (화) 12:30에 똑같이 넣었어요.')).toBeTruthy()
+  })
+})
+
+// ── 구글 캘린더와 이은 병원 (spec google-link REQ-8532·8526·8534·8535·8536, 시안 docs/mockups/google-link/calendar.html ?s=week·fix·err) ──
+// 화면이 연결(loadGcalView)·맞춤 상태(loadGcalState + lib/gcal/status)·고쳐야 할 것(listGcalFixes)을 스스로 읽는다. 맞춤 엔진(loop)은 흉내 낸다.
+// 글은 notes-calendar 글자를 여기 따로 적어 견준다. 환자 이름은 지어낸 가짜다
+
+describe('google-link 예약 탭', () => {
+  const SSK = /^ssk[0-9a-f]{32}$/
+  const VIEW: GcalView = {
+    scriptUrl: 'https://script.google.com/macros/s/AKfy-test/exec',
+    calendarId: 'abc123@group.calendar.google.com',
+    calendarName: '2026 양지바른정형외과',
+    defaultHex: '#039BE5',
+    linkedOn: '2026-11-16',
+    rules: { ...DEFAULT_GCAL_RULES },
+    look: { ...DEFAULT_GCAL_LOOK },
+    hasSecret: true,
+  }
+  const STATE = { pulledUntil: null, lastOkAt: '2026-11-17 05:35:10.123+00', failSince: null, failCode: null, arrivalUntil: null, arrivalDone: false }
+  const FIX: GcalFix = {
+    id: 'f1',
+    gEventId: 'gev6402a',
+    day: '2026-11-19',
+    start: 960,
+    len: 15,
+    allDay: false,
+    gColor: 'sage',
+    gTitle: '6402 윤모의 (4000타)',
+    reason: 'no-staff',
+    guess: { chart: '6402', name: '윤모의', kindId: 'shock', kindHow: 'title', staffId: null, staffHow: null, memo: '4000타', word: null },
+    state: 'open',
+    gUpdated: '2026-11-17T01:31:00.000Z',
+  }
+  const PAIRED = 'ssk0123456789abcdef0123456789abcdef'
+  const bandText = () => text(document.querySelector('[data-gcal-band] [data-band-text]')!)
+
+  function linkGoogle(over: Partial<GcalView> = {}) {
+    vi.mocked(loadGcalView).mockResolvedValue({ ...VIEW, ...over })
+    vi.mocked(loadGcalState).mockResolvedValue(STATE)
+  }
+
+  it('AC-8532.1: 잇지 않은 병원은 띠가 없고 안내 줄은 지금 그대로다', async () => {
+    await open()
+    await waitFor(() => expect(loadGcalView).toHaveBeenCalledWith(CLIENT))
+    expect(document.querySelector('[data-gcal-band]')).toBeNull()
+    expect(screen.getAllByText('도수·자보도수·주사·진료는 담당 색').length).toBeGreaterThan(0)
+    expect(document.body.textContent).not.toContain('색 (구글과 같음)')
+  })
+
+  it('AC-8532.1: 이은 병원은 초록 띠·안내 줄(색 (구글과 같음)·휴무 (off)·반차 (웹앱에만)·취소·변경·캘린더 기본 색)이고, 탭에 들어오면 requestPull 한 번', async () => {
+    linkGoogle()
+    await open()
+    await waitFor(() => expect(bandText()).toBe('구글 캘린더 2026 양지바른정형외과와 이어짐 · 마지막 맞춤 14:35 · 2분마다 맞춰요'))
+    expect(requestPull).toHaveBeenCalledTimes(1)
+    for (const words of ['색 (구글과 같음)', '휴무 (off)', '반차 (웹앱에만)', '캘린더 기본 색', '도수·자보도수·주사·진료는 시행자 색 · 구글에서 온 예약은 그 일정 색 그대로']) {
+      expect(screen.getAllByText(words).length, words).toBeGreaterThan(0)
+    }
+    expect(document.body.textContent).not.toContain('담당 색')
+    expect((document.querySelector('[data-wide-page]') as HTMLElement).style.getPropertyValue('--cal-default')).toBe('#039BE5')
+  })
+
+  it('AC-8532.1: [지금 맞추기]는 syncNow를 부르고 알림이 "구글과 맞췄어요 · 바뀐 것 없음 (14:37)"이다', async () => {
+    linkGoogle()
+    await open()
+    fireEvent.click(await screen.findByRole('button', { name: '지금 맞추기' }))
+    await waitFor(() => expect(syncNow).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('구글과 맞췄어요 · 바뀐 것 없음 (14:37)')).toBeTruthy()
+  })
+
+  it('AC-8526.1: 이은 날 이후 새 예약은 같은 쓰기에 ssk id·web·new를 싣고 저장 뒤 바로 보낸다(알림은 지금 글)', async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    const panel = openAdd()
+    fillBasics(panel)
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(addAppt).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(addAppt).mock.calls[0]![1]).toEqual(expect.objectContaining({ gEventId: expect.stringMatching(SSK), gFrom: 'web', gWait: 'new', status: 'auto' }))
+    await waitFor(() => expect(sendAppt).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(sendAppt).mock.calls[0]![0]).toEqual(expect.objectContaining({ gWait: 'new', name: '이○○' }))
+    expect(await screen.findByText(/예약을 넣었어요\. 다른 PC에도 몇 초 안에 보여요\.$/)).toBeTruthy()
+  })
+
+  it("AC-8526.1: 구글에 못 보내면 알림이 '웹앱에 저장했어요. 구글에는 다시 닿으면 보내요.'다", async () => {
+    linkGoogle()
+    vi.mocked(sendAppt).mockResolvedValue({ ok: false, code: 'E-GCAL-REACH' })
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    const panel = openAdd()
+    fillBasics(panel)
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    expect(await screen.findByText('웹앱에 저장했어요. 구글에는 다시 닿으면 보내요.')).toBeTruthy()
+  })
+
+  it('AC-8526.1·AC-8526.5: 취소는 g_wait cancel을 실어 보내고, 도착 바꿈은 (맞춤 방법 기본이면) 싣지도 보내지도 않는다', async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, gEventId: PAIRED, gFrom: 'web' } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(within(dialog('예약')).getByRole('group', { name: '도착 바꾸기' })).getByRole('button', { name: '왔음' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledWith(CLIENT, 'a1', { status: 'came' }))
+    expect(sendAppt).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '예약 취소' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledWith(CLIENT, 'a1', { status: 'cancel', gWait: 'cancel' }))
+    await waitFor(() => expect(sendAppt).toHaveBeenCalledTimes(1))
+  })
+
+  it('AC-8526.1: 이은 병원의 웹앱 종일 메모는 넣는 쓰기에 ssk 일정 id와 보낼 것(g_wait)을 싣는다', async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(document.querySelector('[data-allday-day="2026-11-19"]')!)
+    const pop = dialog('11월 19일 (목) · 종일')
+    fireEvent.change(within(pop).getByLabelText('종일 메모'), { target: { value: '학회' } })
+    fireEvent.click(within(pop).getByRole('button', { name: '더하기' }))
+    await waitFor(() => expect(addAllDay).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(addAllDay).mock.calls[0]![1]).toEqual({
+      day: '2026-11-19',
+      type: 'memo',
+      memo: '학회',
+      staffId: null,
+      staffName: null,
+      gEventId: expect.stringMatching(SSK),
+      gWait: true,
+    })
+  })
+
+  it('AC-8533.1: 짝 있는 예약의 자세히에 구글 캘린더 구역과 도착 끝 글이 있다', async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, gEventId: PAIRED, gFrom: 'web' } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    const panel = dialog('예약')
+    expect(panel.querySelector('[data-gcal-detail]')).not.toBeNull()
+    expect(within(panel).getByText('도착은 구글에 보내지 않아요(설정 › 맞춤 방법).')).toBeTruthy()
+  })
+
+  it('AC-8535.1·AC-8535.2: 닿지 못하면 주황 띠·못 보낸 목록·오류 상자, [다시 시도]가 안 되면 알림 글, 안내 줄에 구글 아직 못 보냄', async () => {
+    linkGoogle()
+    const waiting = { ...db.appts[0]!, gEventId: PAIRED, gWait: 'new' as const, gWaitAt: '2026-11-17 01:33:00+00' }
+    setGcalStatus({
+      linked: true,
+      calendarName: VIEW.calendarName,
+      lastOkAt: '2026-11-17 05:20:00+00',
+      failSince: '2026-11-17 05:29:00+00',
+      failCode: 'E-GCAL-REACH',
+      waiting: 1,
+      waitingAppts: [waiting],
+      nextTryAt: '2026-11-17T05:38:00.000Z',
+    })
+    vi.mocked(syncNow).mockResolvedValue({ ok: false, code: 'E-GCAL-REACH' })
+    await open()
+    await waitFor(() => expect(document.querySelector('[data-gcal-band]')?.getAttribute('data-gcal-band')).toBe('err'))
+    expect(bandText()).toBe('구글 캘린더에 닿지 못했어요 · 14:29부터 · 웹앱에는 저장돼요 · 구글로 보낼 것 1개 · 1분 뒤(14:38) 다시 해 볼게요')
+    expect(text(document.querySelector('[data-gcal-pending] li')!)).toBe('11/17 (화) 09:30 새로 넣음 10231 김○○ 도수 30분 (가) 기다림')
+    expect(screen.getAllByText('아직 못 보냄').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(await screen.findByText('다시 해 봤지만 아직 닿지 않아요. 1분 뒤 다시 해 볼게요.')).toBeTruthy()
+  })
+
+  it('AC-8534.1·AC-8534.3: 띠의 [고쳐야 할 구글 예약 1개]로 판을 열고 시행자를 골라 넣으면 구글 제목 그대로 예약을 넣고 그 줄을 지운다', async () => {
+    linkGoogle()
+    vi.mocked(listGcalFixes).mockResolvedValue([FIX])
+    await open()
+    fireEvent.click(await screen.findByRole('button', { name: '고쳐야 할 구글 예약 1개' }))
+    const panel = dialog('고쳐야 할 구글 예약 1개')
+    fireEvent.click(within(within(panel).getByRole('group', { name: '시행자' })).getByRole('button', { name: '(나) 윤○○' }))
+    vi.mocked(listGcalFixes).mockResolvedValue([])
+    fireEvent.click(within(panel).getByRole('button', { name: '예약표에 넣기' }))
+    await waitFor(() => expect(insertGoogleAppts).toHaveBeenCalledTimes(1))
+    const [client, rows] = vi.mocked(insertGoogleAppts).mock.calls[0]!
+    expect(client).toBe(CLIENT)
+    expect(rows).toEqual([
+      expect.objectContaining({
+        day: '2026-11-19',
+        start: 960,
+        len: 15,
+        chart: '6402',
+        name: '윤모의',
+        kindId: 'shock',
+        staffId: 'na',
+        memo: '4000타',
+        gEventId: 'gev6402a',
+        gTitle: '6402 윤모의 (4000타)',
+        gUpdated: '2026-11-17T01:31:00.000Z',
+        colorFrom: 'google',
+        gKeepTitle: true,
+        gFrom: 'pull',
+      }),
+    ])
+    await waitFor(() => expect(deleteGcalFix).toHaveBeenCalledWith(CLIENT, 'f1'))
+    expect(await screen.findByText('예약표에 넣었어요. 구글 제목은 그대로 둬요.')).toBeTruthy()
+    expect(within(dialog('고쳐야 할 구글 예약 0개')).getByText('✓ 넣었어요')).toBeTruthy()
+  })
+
+  it("AC-8534.3: [가져오지 않기]는 그 줄을 '가져오지 않음'(skip)으로 두고 알림 '가져오지 않아요. 구글에만 남아요.'", async () => {
+    linkGoogle()
+    vi.mocked(listGcalFixes).mockResolvedValue([FIX])
+    await open()
+    fireEvent.click(await screen.findByRole('button', { name: '고쳐야 할 구글 예약 1개' }))
+    fireEvent.click(within(dialog('고쳐야 할 구글 예약 1개')).getByRole('button', { name: '가져오지 않기' }))
+    await waitFor(() => expect(setFixState).toHaveBeenCalledWith(CLIENT, 'f1', 'skip'))
+    expect(insertGoogleAppts).not.toHaveBeenCalled()
+    expect(await screen.findByText('가져오지 않아요. 구글에만 남아요.')).toBeTruthy()
+  })
+
+  it('AC-8536.1·AC-8536.2: 비트 PC(도우미 0.14.0)가 이은 병원 예약 탭을 열면 지난 한 주 도착을 채우고, 마지막 주를 끝내면 알림 한 번', async () => {
+    link('ready', '0.14.0')
+    linkGoogle()
+    vi.mocked(loadGcalState).mockResolvedValue({ ...STATE, arrivalUntil: '2025-11-19', arrivalDone: false })
+    await open()
+    await waitFor(() => expect(postsOf('past')).toHaveLength(1))
+    const calday = stream.mock.calls.filter(([, args]) => (args as { kind: string }).kind === 'calday').map(([, args]) => args)
+    expect(calday).toContainEqual({ kind: 'calday', from: '2025-11-17', to: '2025-11-19' })
+    expect(listAppts).toHaveBeenCalledWith(CLIENT, '2025-11-17', '2025-11-19')
+    await reply({ type: 'past', from: '2025-11-17', to: '2025-11-19', auto: [] })
+    await waitFor(() => expect(setArrivalProgress).toHaveBeenCalledWith(CLIENT, '2025-11-16', true))
+    expect(await screen.findByText('지난 예약 도착을 다 채웠어요.')).toBeTruthy()
   })
 })

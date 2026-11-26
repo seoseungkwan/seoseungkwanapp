@@ -139,6 +139,39 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('AC-8536.1 past: 지난 예약 도착 채우기(calday 조각 + 지난 예약 → 도착 auto만)', () => {
+  it('AC-8536.1 past는 days와 같은 규칙의 도착 auto만 싣고 비트 예약 칸은 없다', async () => {
+    const h = harness()
+    const id = h.newId()
+    h.deliver(id, DAY)
+    const out = await h.ask({ type: 'past', targets: { id }, now: NOW, appts: APPTS })
+    expect(out).toEqual({
+      type: 'past',
+      from: '2026-11-16',
+      to: '2026-11-21',
+      auto: [
+        ['a1', 'came'],
+        ['a3', 'came'],
+        ['a4', 'noshow'],
+        ['a5', null],
+      ],
+    })
+  })
+
+  it('AC-8536.1 past와 days는 서로의 늦은 답을 버리지 않고, 도우미 오류는 op past 번호만', async () => {
+    const h = harness()
+    const pastId = h.newId()
+    const daysId = h.newId()
+    h.handler.onScreen({ type: 'past', targets: { id: pastId }, now: NOW, appts: APPTS })
+    h.handler.onScreen({ type: 'days', targets: { id: daysId }, now: NOW, appts: APPTS })
+    h.deliver(daysId, DAY)
+    h.deliver(pastId, DAY)
+    await until(() => h.all('past').length === 1 && h.all('days').length === 1, 'past·days 답')
+    const out = await h.ask({ type: 'past', targets: { code: 'E-BIT-IN-USE' }, now: NOW, appts: [] })
+    expect(out).toEqual({ type: 'error', op: 'past', code: 'E-BIT-IN-USE' })
+  })
+})
+
 // ── AC-5904.1 find ─────────────────────────────────────────────
 
 describe('AC-5904.1 find: calfind 조각 → found', () => {

@@ -382,6 +382,48 @@ describe('AC-5905.2·AC-5906.2: 고치기', () => {
   })
 })
 
+// 시행자 없는 예약(구글에서 시행자 없이 가져온 지난 예약, spec google-link AC-8532.5 뒤쪽 — TASK-21): 고치기 판의 담당 고르기에만 '없음'
+describe("AC-8532.5: 시행자 없는 예약의 고치기 판 '없음'", () => {
+  const NO_STAFF = appt({ id: 'a7', staffId: null, staffName: null, staffMark: null })
+
+  it("AC-8532.5: 시행자 없는 예약을 고치면 담당 맨 앞에 '없음'이 눌려 있고, 그대로 저장하면 시행자 세 칸이 비어(null) 간다", () => {
+    const { onSave } = draw({ mode: 'edit', editId: NO_STAFF.id, allowNoStaff: true, start: draftOf(NO_STAFF) })
+    const group = within(screen.getByRole('group', { name: '담당' }))
+    const buttons = group.getAllByRole('button')
+    expect(buttons[0]!.textContent).toBe('없음')
+    expect(buttons[0]!.getAttribute('aria-pressed')).toBe('true')
+    expect(need()).toBe('')
+    fireEvent.click(saveButton())
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ staffId: null, staffName: null, staffMark: null }))
+  })
+
+  it("AC-8532.5: '없음' 판에서 시행자를 고르면 그 시행자로, 다시 '없음'을 누르면 비운다", () => {
+    const { onSave } = draw({ mode: 'edit', editId: NO_STAFF.id, allowNoStaff: true, start: draftOf(NO_STAFF) })
+    const group = () => within(screen.getByRole('group', { name: '담당' }))
+    fireEvent.click(group().getByRole('button', { name: /^\(나\) 윤○○/ })) // 11/18 휴무 칩이 붙는다
+    expect(group().getByRole('button', { name: '없음' }).getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(saveButton())
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ staffId: 'na', staffName: '윤○○', staffMark: '나' }))
+    fireEvent.click(group().getByRole('button', { name: '없음' }))
+    fireEvent.click(saveButton())
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ staffId: null, staffName: null, staffMark: null }))
+  })
+
+  it("AC-8532.5: 시행자 있는 예약의 고치기·새 예약 판에는 '없음'이 없고 담당을 골라야 저장된다", () => {
+    draw({ mode: 'edit', editId: 'a1', start: draftOf(appt({})) })
+    expect(within(screen.getByRole('group', { name: '담당' })).queryByRole('button', { name: '없음' })).toBeNull()
+    cleanup()
+    draw()
+    expect(within(screen.getByRole('group', { name: '담당' })).queryByRole('button', { name: '없음' })).toBeNull()
+    expect(need()).toContain('담당')
+  })
+
+  it('AC-8529.3: 시행자가 없을 때 [설정]은 구글 캘린더 설정의 시행자·종류로 가는 링크다(settingsHref)', () => {
+    draw({ settings: { ...SETTINGS, staff: [] }, settingsHref: '/settings/google-calendar?tab=colors' })
+    expect(screen.getByRole('link', { name: '설정' }).getAttribute('href')).toBe('/settings/google-calendar?tab=colors')
+  })
+})
+
 describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④)', () => {
   it('AC-6002.2·AC-8503.6: 시작은 글 칸 — 이름표 시작, placeholder "예: 1430", 숫자 자판, 자동 채움 끔, 고르기 목록은 보이는 시간 안 5분 칸 HH:MM', () => {
     draw()

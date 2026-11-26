@@ -4,9 +4,13 @@ import { useId, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { nextWeek, shownStatus, slotLabel } from '@/lib/calendar/rules'
 import type { CalAppt, CalSettings } from '@/types/calendar'
+import type { GcalLook } from '@/types/gcal'
 import { apptColor } from './colors'
 import { Drawer } from './AddPanel'
 import { CalIcon, CameMark, CancelTag, NoshowMark, calVar, dayLabel, hm } from './CalendarToolbar'
+import { apptGooglePaint } from './gcal/apptGoogle'
+import { GoogleSection } from './gcal/DetailGoogle'
+import { ARRIVAL_NOT_SENT, MOVED_BY_GOOGLE, MOVED_UNKNOWN } from './gcal/labels'
 
 // 예약 자세히 판 (spec clinic-calendar AC-5905.3·AC-5906.2, 시안 ?s=detail).
 // 도착은 손으로 고른 상태가 먼저, auto면 비트 PC가 적은 표시(lib/calendar shownStatus). [다음 주에도]는 같은 담당·종류·길이로 7일 뒤(lib nextWeek).
@@ -62,9 +66,20 @@ function arrivalText(appt: CalAppt): { now: ReactNode; why: string } {
   return { now: <span>아직</span>, why: appt.chart ? '비트 접수가 생기면 저절로 왔음이 돼요' : '차트번호가 없어 저절로 바뀌지 않아요 · 손으로 골라요' }
 }
 
+/** 이은 병원의 구글 쪽(spec google-link AC-8533.1): 짝 있는 예약(g_event_id)이면 '구글 캘린더' 구역을 그린다 */
+export type DetailGoogle = {
+  look: GcalLook
+  arrival: 'off' | 'title'
+  calendarId: string
+  lastOkAt: string | null
+  /** 이 예약이 아직 구글로 못 보낸 것 */
+  waiting: boolean
+}
+
 type DetailPanelProps = {
   appt: CalAppt
   settings: CalSettings
+  google?: DetailGoogle | null
   copied?: boolean // [다음 주에도]로 이미 넣었다(단추 막음 + "넣었어요 ✓")
   busy?: boolean
   error?: ReactNode
@@ -77,8 +92,23 @@ type DetailPanelProps = {
 }
 
 /** 예약 자세히 판 */
-export function DetailPanel({ appt, settings, copied = false, busy = false, error, onClose, onArrival, onNextWeek, onEdit, onToggleCancel, onDelete }: DetailPanelProps) {
+export function DetailPanel({
+  appt,
+  settings,
+  google = null,
+  copied = false,
+  busy = false,
+  error,
+  onClose,
+  onArrival,
+  onNextWeek,
+  onEdit,
+  onToggleCancel,
+  onDelete,
+}: DetailPanelProps) {
   const ids = useId()
+  const paired = google !== null && appt.gEventId !== null
+  const bar = google ? apptGooglePaint(appt, settings, google.look).key : apptColor(appt, settings)
   const [confirming, setConfirming] = useState(false)
   const cancelled = appt.status === 'cancel'
   const arrival = arrivalText(appt)
@@ -113,7 +143,7 @@ export function DetailPanel({ appt, settings, copied = false, busy = false, erro
   return (
     <Drawer title="예약" onClose={onClose} foot={foot}>
       <div className="grid grid-cols-[6px_minmax(0,1fr)] gap-3">
-        <span aria-hidden="true" className="rounded-control" style={{ backgroundColor: calVar(apptColor(appt, settings)) }} />
+        <span aria-hidden="true" className="rounded-control" style={{ backgroundColor: calVar(bar) }} />
         <div className="min-w-0">
           <p className="text-heading-m font-semibold text-ink">
             <span className="mr-2 text-ink-2 tabular-nums">{appt.chart ?? '차트번호 없음'}</span>
@@ -133,6 +163,14 @@ export function DetailPanel({ appt, settings, copied = false, busy = false, erro
           <>
             <dt className="text-muted">변경</dt>
             <dd className="text-ink tabular-nums">{`원래 ${slotLabel(appt.origDay, appt.origStart)}`}</dd>
+          </>
+        )}
+        {google !== null && appt.gMoved && appt.origDay === null && (
+          <>
+            <dt className="text-muted">변경</dt>
+            <dd className="text-ink">
+              {MOVED_BY_GOOGLE} <span className="text-caption text-muted">{MOVED_UNKNOWN}</span>
+            </dd>
           </>
         )}
       </dl>
@@ -167,9 +205,12 @@ export function DetailPanel({ appt, settings, copied = false, busy = false, erro
               </div>
             </div>
             <p className="text-caption text-muted">{AUTO_HELP}</p>
+            {paired && google && google.arrival === 'off' && <p className="text-caption text-muted">{ARRIVAL_NOT_SENT}</p>}
           </>
         )}
       </section>
+
+      {paired && google && <GoogleSection appt={appt} settings={settings} google={google} />}
 
       <section aria-labelledby={`${ids}-repeat`} className="grid gap-2">
         <h3 id={`${ids}-repeat`} className="text-body font-semibold text-ink">

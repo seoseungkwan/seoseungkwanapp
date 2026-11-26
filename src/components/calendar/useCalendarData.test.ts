@@ -5,7 +5,7 @@ import { listAllDay, listAppts, listCalendarCounts, loadCalendarRev, loadCalenda
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalAppt, type CalCountRow, type CalSettings } from '@/types/calendar'
 import type { ClinicProfile, DayHours } from '@/types/clinicProfile'
-import { REV_POLL_MS, useCalendarData, type CalendarPeriod } from './useCalendarData'
+import { googleMemo, googleNew, googlePatch, REV_POLL_MS, useCalendarData, type CalendarPeriod } from './useCalendarData'
 
 // 예약 탭 자료 읽기(spec clinic-calendar AC-5905.9, design.md '다시 읽기'). 저장 함수·시계는 흉내 낸다(실제 Supabase에 붙지 않는다).
 // 보이는 동안 5초마다 calendar_rev 숫자 하나만 읽고, 바뀌었을 때만 보이는 기간(일·주: 예약 + 종일, 월: 수 세기 줄 + 종일)과 설정을 다시 읽는다.
@@ -310,5 +310,86 @@ describe('AC-6603.1·AC-6603.2 병원 정보와 합치기', () => {
     await settle(REV_POLL_MS)
     expect(loadClinicProfile).toHaveBeenCalledTimes(2)
     expect(result.current.settings).toEqual(MERGED_PROFILE)
+  })
+})
+
+// ── 저장 잇기 (spec google-link AC-8526.1·AC-8526.5, design.md 2절 표 4·5·6) ──
+// 이은 병원(캘린더 고름 + 이은 날)의 이은 날 이후 예약만 같은 쓰기에 g_wait를 싣는다. 보내기(pushAppt)는 화면이 저장 뒤 한다
+
+const LINK = { linkedOn: '2026-11-16', arrival: 'off' as const }
+const SSK = /^ssk[0-9a-f]{32}$/
+const linked = (over: Partial<CalAppt> = {}): CalAppt => ({ ...appt('g1', '2026-11-18'), gEventId: 'ssk0123456789abcdef0123456789abcdef', gFrom: 'web', ...over })
+
+describe('AC-8526.1 넣기 — 새 예약·종일 메모의 구글 칸', () => {
+  it('AC-8526.1: 이은 날 이후 새 예약은 g_event_id = ssk + 32자, g_from = web, g_wait = new', () => {
+    const g = googleNew(LINK, '2026-11-16')
+    expect(g).toEqual({ gEventId: expect.stringMatching(SSK), gFrom: 'web', gWait: 'new' })
+    expect(googleNew(LINK, '2026-11-16').gEventId).not.toBe(g.gEventId)
+  })
+
+  it('AC-8526.1: 이은 날 앞 예약·이은 병원이 아니면 구글 칸을 싣지 않는다', () => {
+    expect(googleNew(LINK, '2026-11-15')).toEqual({})
+    expect(googleNew(null, '2026-11-18')).toEqual({})
+  })
+
+  it('AC-8526.1: 웹앱 종일 메모도 넣는 쓰기에 g_event_id = ssk + 32자와 g_wait', () => {
+    expect(googleMemo(LINK, '2026-11-20')).toEqual({ gEventId: expect.stringMatching(SSK), gWait: true })
+    expect(googleMemo(LINK, '2026-11-10')).toEqual({})
+    expect(googleMemo(null, '2026-11-20')).toEqual({})
+  })
+})
+
+describe('AC-8526.1·AC-8526.5 고치기·옮기기·취소·되돌리기 — g_wait', () => {
+  it('AC-8526.1: 날짜·시작을 옮기면 move', () => {
+    expect(googlePatch(LINK, linked(), { day: '2026-11-19', start: 570 })).toEqual({ gWait: 'move' })
+    expect(googlePatch(LINK, linked(), { start: 600 })).toEqual({ gWait: 'move' })
+  })
+
+  it('AC-8526.1: 칸(이름·차트번호·길이·메모·시행자·종류)을 고치면 edit, 구글 제목을 그대로 두던 예약은 g_keep_title = false', () => {
+    expect(googlePatch(LINK, linked(), { memo: '허리' })).toEqual({ gWait: 'edit' })
+    expect(googlePatch(LINK, linked({ gKeepTitle: true }), { len: 50 })).toEqual({ gWait: 'edit', gKeepTitle: false })
+  })
+
+  it('AC-8526.1: 구글 색 그대로이던 예약의 시행자·종류를 바꾸면 색도 설정 색(color_from app)으로', () => {
+    const fromGoogle = linked({ gFrom: 'import', colorFrom: 'google', gKeepTitle: true })
+    expect(googlePatch(LINK, fromGoogle, { staffId: 'na', staffName: '윤○○', staffMark: '나' })).toEqual({ gWait: 'edit', gKeepTitle: false, colorFrom: 'app' })
+    expect(googlePatch(LINK, fromGoogle, { memo: '어깨' })).toEqual({ gWait: 'edit', gKeepTitle: false })
+  })
+
+  it('AC-8526.1: 바뀐 칸이 없으면(같은 값 저장) 구글 칸을 싣지 않는다', () => {
+    const before = linked()
+    const { id: _id, ...same } = before
+    void _id
+    expect(googlePatch(LINK, before, { day: same.day, start: same.start, len: same.len, name: same.name, memo: same.memo, staffId: same.staffId })).toEqual({})
+  })
+
+  it('AC-8526.1: 취소는 cancel, 취소 되돌리기는 uncancel', () => {
+    expect(googlePatch(LINK, linked(), { status: 'cancel' })).toEqual({ gWait: 'cancel' })
+    expect(googlePatch(LINK, linked({ status: 'cancel' }), { status: 'auto' })).toEqual({ gWait: 'uncancel' })
+  })
+
+  it("AC-8526.5: 도착(왔음·안 옴·자동)이 바뀌면 맞춤 방법 기본('off')은 아무것도 싣지 않고, 'title'이면 edit", () => {
+    expect(googlePatch(LINK, linked(), { status: 'came' })).toEqual({})
+    expect(googlePatch(LINK, linked({ status: 'came' }), { status: 'auto' })).toEqual({})
+    expect(googlePatch({ ...LINK, arrival: 'title' }, linked(), { status: 'noshow' })).toEqual({ gWait: 'edit' })
+  })
+
+  it('AC-8526.1: 아직 못 보낸 일이 있으면 더 큰 일을 남긴다(new > move > edit > cancel·uncancel·color)', () => {
+    expect(googlePatch(LINK, linked({ gWait: 'new' }), { memo: '허리' })).toEqual({ gWait: 'new' })
+    expect(googlePatch(LINK, linked({ gWait: 'move' }), { memo: '허리' })).toEqual({ gWait: 'move' })
+    expect(googlePatch(LINK, linked({ gWait: 'edit' }), { status: 'cancel' })).toEqual({ gWait: 'edit' })
+    expect(googlePatch(LINK, linked({ gWait: 'cancel' }), { start: 600 })).toEqual({ gWait: 'move' })
+    expect(googlePatch(LINK, linked({ gWait: 'color' }), { status: 'cancel' })).toEqual({ gWait: 'cancel' })
+  })
+
+  it('AC-8526.1: 짝 없는(이은 날 앞에 넣은) 예약을 이은 날 이후로 고치면 새 예약처럼 ssk id·web·new', () => {
+    const old = { ...appt('o1', '2026-11-12') }
+    expect(googlePatch(LINK, old, { day: '2026-11-20' })).toEqual({ gEventId: expect.stringMatching(SSK), gFrom: 'web', gWait: 'new' })
+    expect(googlePatch(LINK, old, { memo: '허리' })).toEqual({})
+  })
+
+  it('AC-8526.1: 이은 병원이 아니면 아무것도 싣지 않는다', () => {
+    expect(googlePatch(null, linked(), { start: 600 })).toEqual({})
+    expect(googlePatch(null, linked(), { status: 'cancel' })).toEqual({})
   })
 })
