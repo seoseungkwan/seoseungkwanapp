@@ -128,10 +128,10 @@ describe('AC-8512.2: done-warn — 넣었지만 확인 필요', () => {
 })
 
 describe('AC-8512.2: 덮어쓰기 · 있는 것만 · 그 밖에 붙는 글', () => {
-  it("AC-8512.2: 덮어쓰기면 '덮어쓰기'·'바뀐 줄'", () => {
+  it("AC-8512.2: 덮어쓰기면 '덮어쓰기'·'바꾼 줄'", () => {
     const lines = resultLines(reply({ patients: 4, added: 0, filled: 9, overwritten: 3 }), { ...HAND, mode: 'overwrite' })
     expect(lines.head.where).toBe('— 11월 26일 시트 · 덮어쓰기 · 14:41')
-    expect(lines.head.countsText).toBe('오늘 환자 4명 · 새로 넣은 줄 0 · 바뀐 줄 3 · 건너뛴 줄 0')
+    expect(lines.head.countsText).toBe('오늘 환자 4명 · 새로 넣은 줄 0 · 바꾼 줄 3 · 건너뛴 줄 0')
   })
 
   it('AC-8512.2: 0인 것은 붙이지 않고 새 달 파일 글만 남는다', () => {

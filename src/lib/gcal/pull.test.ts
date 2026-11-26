@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { offEventId } from '@/lib/calendar/goff'
 import { DEFAULT_CAL_SETTINGS } from '@/types/calendar'
 import { DEFAULT_GCAL_LOOK, DEFAULT_GCAL_RULES, type GcalLink } from '@/types/gcal'
 import { CAL_ID, CAL_NAME, gError, HOSPITAL, load, NOW, TEST_KEY } from '../../../google-code/test/fakeCalendar'
@@ -306,6 +307,74 @@ describe('AC-8525.3 하루 종일 off 줄·종일 메모', () => {
     expect(mem.db.offDays).toEqual([expect.objectContaining({ day: '2026-11-28', gEventId: 'evoff0001', gTitle: '정호연, 김예시 off', wait: false })])
     await pushWaiting(deps)
     expect(app.store.writes()).toEqual([]) // 구글과 같으니 보내지 않는다
+  })
+
+  // 아직 구글로 못 보낸 직원 휴가 off 줄 — '나중 고친 쪽'(예약의 g_wait_at > updated와 같음): 그날 짝 wait_at(DB 글자 그대로)과 구글 updated
+  const OFF_DAY = '2026-11-28'
+  const WEB_AT = '2026-11-26T01:05:00.000417+00:00' // 한국 10:05 — 박지원 휴가를 넣은 때(트리거가 적은 wait_at)
+  function seedOffWait(app: ReturnType<typeof load>, mem: ReturnType<typeof createMemoryStore>) {
+    app.store.clockMs = kst('2026-11-26T09:00:00')
+    const ev = app.store.allDay('evoff0001', OFF_DAY, '2026-11-29', { summary: '정호연 off', colorId: '3' })
+    mem.seedAllDay({ day: OFF_DAY, type: 'off', memo: null, staffId: 's-ho', staffName: '정호연' })
+    Object.assign(mem.db.offDays[0], { gEventId: 'evoff0001', gTitle: ev.summary, gUpdated: ev.updated, wait: false, waitAt: null }) // 9시에 맞춤
+    mem.seedAllDay({ day: OFF_DAY, type: 'off', memo: null, staffId: 's-won', staffName: '박지원' }) // 휴가에서 온 줄, 아직 못 보냄
+    mem.db.offDays[0].waitAt = WEB_AT
+    expect(mem.db.offDays[0]).toMatchObject({ wait: true, waitAt: WEB_AT })
+  }
+  const offPeople = (mem: ReturnType<typeof createMemoryStore>) =>
+    mem.db.allday
+      .filter((r) => r.type === 'off' && r.day === OFF_DAY && !r.part)
+      .map((r) => r.staffId)
+      .sort()
+
+  it('AC-8525.3: 못 보낸 휴가 off 줄 + 그보다 이른 구글 고침(10:03 < 10:05) → 웹 줄·wait 그대로, 짝 구글 칸만 조건 쓰기, 다음 보내기가 웹 줄로 맞춘다', async () => {
+    const { app, mem, deps } = rig()
+    seedOffWait(app, mem)
+    app.store.clockMs = kst('2026-11-26T10:03:00')
+    app.post({ key: TEST_KEY, action: 'put', calendarId: CAL_ID, id: 'evoff0001', fields: { summary: '정호연, 이수현 off' } })
+    const gUpdated = app.store.event('evoff0001')?.updated
+
+    await pullOnce(deps)
+    expect(offPeople(mem)).toEqual(['s-ho', 's-won']) // 지우지도(박지원) 더하지도(이수현) 않는다
+    expect(mem.calls.map((c) => c.fn)).not.toContain('deleteAllDay')
+    expect(mem.calls.map((c) => c.fn)).not.toContain('addAllDay')
+    expect(mem.db.offDays).toEqual([{ day: OFF_DAY, gEventId: 'evoff0001', gTitle: '정호연, 이수현 off', gUpdated, wait: true, waitAt: WEB_AT }])
+    const save = mem.calls.filter((c) => c.fn === 'saveOffDay')
+    expect(save).toHaveLength(1)
+    expect(save[0].args[1]).toBe(WEB_AT) // 저장소가 준 마이크로초 글자 그대로
+
+    await pushWaiting(deps)
+    expect(app.store.event('evoff0001')?.summary).toBe('박지원, 정호연 off')
+    expect(mem.db.offDays[0]).toMatchObject({ gEventId: 'evoff0001', wait: false })
+  })
+
+  it('AC-8525.3: 못 보낸 휴가 off 줄 + 그보다 나중 구글 고침(10:07 > 10:05) → 구글 따름(사람 줄 같게, wait 풂)', async () => {
+    const { app, mem, deps } = rig()
+    seedOffWait(app, mem)
+    app.store.clockMs = kst('2026-11-26T10:07:00')
+    app.post({ key: TEST_KEY, action: 'put', calendarId: CAL_ID, id: 'evoff0001', fields: { summary: '정호연, 이수현 off' } })
+
+    await pullOnce(deps)
+    expect(offPeople(mem)).toEqual(['s-ho', 's-hyun'])
+    expect(mem.db.offDays).toEqual([expect.objectContaining({ day: OFF_DAY, gEventId: 'evoff0001', gTitle: '정호연, 이수현 off', wait: false })])
+  })
+
+  it('AC-8525.3: 못 보낸 휴가 off 줄 + 그보다 이른 시각에 구글이 그 off 일정을 지움 → 웹 줄·wait 그대로, 다음 보내기가 그날 off 일정을 다시 만든다', async () => {
+    const { app, mem, deps } = rig()
+    seedOffWait(app, mem)
+    app.store.clockMs = kst('2026-11-26T10:03:00')
+    app.post({ key: TEST_KEY, action: 'remove', calendarId: CAL_ID, id: 'evoff0001' })
+
+    await pullOnce(deps)
+    expect(offPeople(mem)).toEqual(['s-ho', 's-won'])
+    expect(mem.calls.map((c) => c.fn)).not.toContain('deleteAllDay')
+    expect(mem.db.offDays).toEqual([expect.objectContaining({ day: OFF_DAY, gEventId: null, gTitle: null, wait: true, waitAt: WEB_AT })])
+    expect(mem.calls.find((c) => c.fn === 'saveOffDay')?.args[1]).toBe(WEB_AT)
+
+    await pushWaiting(deps)
+    const made = app.store.event(offEventId(HOSPITAL, OFF_DAY))
+    expect(made).toMatchObject({ status: 'confirmed', summary: '정호연, 박지원 off', start: { date: OFF_DAY } })
+    expect(mem.db.offDays[0]).toMatchObject({ gEventId: offEventId(HOSPITAL, OFF_DAY), wait: false })
   })
 
   it('AC-8525.3: 이름을 못 찾은 off 줄은 고쳐야 할 것(off-name), 끝 글이 off가 아니면 종일 메모(20자)', async () => {

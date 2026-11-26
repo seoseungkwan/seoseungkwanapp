@@ -302,9 +302,9 @@ describe('AC-8515.4: 결과 줄', () => {
     expect([...line.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['10', '2', '1', '0'])
   })
 
-  it('AC-8515.4: 덮어쓰기면 "덮어쓰기"·"바뀐 줄"', () => {
+  it('AC-8515.4: 덮어쓰기면 "덮어쓰기"·"바꾼 줄"', () => {
     render(<ResultLine done={done({ at: '2026-11-26T05:41:00Z', via: 'hand', mode: 'overwrite', reply: reply({ overwritten: 3 }) })} onClose={vi.fn()} />)
-    expect(norm(screen.getByRole('status').children[0])).toBe('✔ 넣었어요 — 11월 26일 시트 · 덮어쓰기 · 14:41 오늘 환자 10명 · 새로 넣은 줄 0 · 바뀐 줄 3 · 건너뛴 줄 0')
+    expect(norm(screen.getByRole('status').children[0])).toBe('✔ 넣었어요 — 11월 26일 시트 · 덮어쓰기 · 14:41 오늘 환자 10명 · 새로 넣은 줄 0 · 바꾼 줄 3 · 건너뛴 줄 0')
   })
 
   it('AC-8515.4: [✕](결과 닫기)를 누르면 onClose', () => {

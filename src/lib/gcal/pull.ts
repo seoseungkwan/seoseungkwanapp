@@ -438,7 +438,8 @@ export class PullRun {
 
   /**
    * off 줄: 그날 웹앱이 맡는 사람(offScope)의 하루 종일 off 줄을 구글 사람과 같게(직원 탭 휴가 기록은 그대로), 짝(gcal_off_days)을 적는다(wait 거짓).
-   * 그날 다른 일정이 이미 짝이면 사람만 더한다. 범위에서 빠진 날은 그 사람 줄을 지운다
+   * 그날 다른 일정이 이미 짝이면 사람만 더한다. 범위에서 빠진 날은 그 사람 줄을 지운다.
+   * 그날 아직 못 보낸 웹앱 고침이 구글 고침보다 나중이면(webLater) 사람 줄은 그대로 두고 짝의 구글 칸만 적어 wait를 남긴다(다음 보내기가 맞춤)
    */
   private async syncOff(ev: GEvent, days: readonly string[], people: readonly OffPerson[]) {
     const { store } = this.deps
@@ -447,6 +448,10 @@ export class PullRun {
     for (const day of days) {
       const pair = (this.offDays ?? []).find((o) => o.day === day) ?? null
       const other = pair !== null && pair.gEventId !== null && pair.gEventId !== ev.id
+      if (pair && webLater(pair, ev)) {
+        if (!other) await this.keepWait(pair, { gEventId: ev.id, gTitle: title, gUpdated: ev.updated })
+        continue
+      }
       const lines = (this.allday ?? []).filter((r) => r.type === 'off' && r.day === day)
       for (const p of want) {
         if (lines.some((l) => l.staffId === p.id)) continue
@@ -468,10 +473,17 @@ export class PullRun {
     await this.clearOffPairs(ev, days)
   }
 
-  /** 이 일정이 짝인 off 날 가운데 keep 밖의 날: 맡는 사람 하루 종일 줄을 지우고 짝을 비운다 */
+  /**
+   * 이 일정이 짝인 off 날 가운데 keep 밖의 날(구글에서 지움·다른 날로 옮김·메모나 고쳐야 할 것으로 바뀜): 맡는 사람 하루 종일 줄을 지우고 짝을 비운다.
+   * 그날 아직 못 보낸 웹앱 고침이 그보다 나중이면 줄은 그대로 두고 짝만 비워 wait를 남긴다(다음 보내기가 off ③ newId로 다시 만든다)
+   */
   private async clearOffPairs(ev: GEvent, keep: readonly string[]) {
     const { store } = this.deps
     for (const pair of this.offPairs(ev.id).filter((o) => !keep.includes(o.day))) {
+      if (webLater(pair, ev)) {
+        await this.keepWait(pair, { gEventId: null, gTitle: null, gUpdated: ev.updated })
+        continue
+      }
       const lines = (this.allday ?? []).filter((r) => r.type === 'off' && r.day === pair.day && !r.part && this.scope.some((s) => s.id === r.staffId))
       for (const line of lines) {
         await store.deleteAllDay(line.id)
@@ -487,4 +499,25 @@ export class PullRun {
     const rest = (this.offDays ?? []).filter((o) => o.day !== day)
     this.offDays = [...rest, { day, gEventId: off.gEventId, gTitle: off.gTitle, gUpdated: off.gUpdated, wait: off.wait, waitAt: null }]
   }
+
+  /**
+   * 웹앱이 이긴 off 날: 짝의 구글 칸만 적고 wait·wait_at은 그대로. wait_at이 읽은 글자 그대로일 때만(DB가 준 글자를 그대로 넘긴다) —
+   * 그 사이 휴가가 또 바뀌었으면 0줄이고, 그 줄은 더 나중 웹앱 고침이라 다음 보내기가 맞춘다
+   */
+  private async keepWait(pair: GcalOffDay, google: Pick<GcalOffDay, 'gEventId' | 'gTitle' | 'gUpdated'>) {
+    const next: GcalOffDay = { ...pair, ...google }
+    const saved = await this.deps.store.saveOffDay({ day: pair.day, gEventId: next.gEventId, gTitle: next.gTitle, gUpdated: next.gUpdated, wait: true }, pair.waitAt)
+    if (saved) this.offDays = [...(this.offDays ?? []).filter((o) => o.day !== pair.day), next]
+  }
+}
+
+/**
+ * 그날 off 짝에 아직 못 보낸 웹앱 고침(wait)이 있고 그 때(wait_at)가 구글 updated보다 나중인가 — 예약의 g_wait_at > updated와 같은 '나중 고친 쪽'.
+ * 견주기만 시각으로 읽고, 조건 쓰기에는 wait_at 글자를 그대로 쓴다
+ */
+function webLater(pair: GcalOffDay, ev: GEvent): boolean {
+  if (!pair.wait) return false
+  const web = toMs(pair.waitAt)
+  const google = toMs(ev.updated)
+  return web !== null && google !== null && web > google
 }

@@ -206,6 +206,19 @@ describe('AC-8527.2·AC-8527.3 [가져오기]', () => {
     expect(mem.db.allday.find((r) => r.day === '2026-12-07')).toMatchObject({ type: 'memo', memo: '최호 off', gEventId: 'evoff0003' })
   })
 
+  it('AC-8527.2·AC-8525.3: 구글 off 일정이 있는 날에 웹앱에만 있는 휴가 사람이 있으면 그날 짝을 wait true로 두어 그 이름이 구글 제목에 들어간다', async () => {
+    const { app, mem, deps } = rig()
+    mem.seedAllDay({ day: '2026-11-30', type: 'off', memo: null, staffId: 's-ho', staffName: '정호연' }) // 직원 탭 휴가에서 온 줄(구글에는 박지원만)
+    const p = await preview(deps)
+    const done = await applyImport(deps, p, { evfut0002: ['staff:s-won'] })
+    expect(done).toMatchObject({ ok: true, offs: 1 })
+
+    const pairs = mem.calls.filter((c) => c.fn === 'saveOffDay' && (c.args[0] as { day: string }).day === '2026-11-30')
+    expect(pairs[0].args[0]).toEqual({ day: '2026-11-30', gEventId: 'evoff0001', gTitle: '박지원 off', gUpdated: expect.any(String), wait: true })
+    expect(app.store.event('evoff0001')?.summary).toBe('정호연, 박지원 off')
+    expect(mem.db.offDays.find((o) => o.day === '2026-11-30')).toMatchObject({ gEventId: 'evoff0001', wait: false })
+  })
+
   it('AC-8527.2: 구글 목록 읽기가 실패하면 아무것도 적지 않고 번호를 준다', async () => {
     const { app, mem, deps } = rig()
     app.env.lockFree = true

@@ -73,7 +73,7 @@ export function resultLines(reply: FillReply, ctx: ResultCtx): ResultLines {
   const counts: ResultCount[] = [
     { label: '오늘 환자', n: reply.patients, unit: '명' },
     { label: '새로 넣은 줄', n: reply.added, unit: '' },
-    { label: overwrite ? '바뀐 줄' : '채운 줄', n: overwrite ? reply.overwritten : reply.filled, unit: '' },
+    { label: overwrite ? '바꾼 줄' : '채운 줄', n: overwrite ? reply.overwritten : reply.filled, unit: '' },
     { label: '건너뛴 줄', n: reply.skipped, unit: '' },
   ]
   const extra = [

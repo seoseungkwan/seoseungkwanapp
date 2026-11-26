@@ -314,7 +314,11 @@ export async function applyImport(deps: GcalDeps, preview: ImportPreview, picks:
             offRows++
           }
         }
-        await store.saveOffDay({ day, gEventId: o.ev.id, gTitle: maskText(o.ev.summary, TITLE_MAX), gUpdated: o.ev.updated, wait: false })
+        // 웹앱에만 있는 휴가 사람(맡는 사람의 하루 종일 off 줄)이 있으면 그날 짝을 wait로 두어 아래 보내기가 그 이름을 구글 제목에 넣는다
+        const webOnly = existing.some(
+          (r) => r.type === 'off' && r.day === day && !r.part && scope.some((s) => s.id === r.staffId) && !o.people.some((p) => p.id === r.staffId),
+        )
+        await store.saveOffDay({ day, gEventId: o.ev.id, gTitle: maskText(o.ev.summary, TITLE_MAX), gUpdated: o.ev.updated, wait: webOnly })
       }
     }
 
