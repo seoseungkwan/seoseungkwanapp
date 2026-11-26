@@ -1,42 +1,45 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, compareYmd, monthOf, todayInKorea, weekdayOf, weekStartOf } from '@/lib/analytics/dates'
 import { hoursOn, opensOn } from '@/lib/calendar/clinic'
+import type { FixCell, ParseCtx, RowsGoogle } from '@/lib/calendar/gshapes'
 import { HALF_DAY_NOON, nextWeek, slotLabel, visibleGhosts, warnings } from '@/lib/calendar/rules'
 import type { CalAllDay } from '@/lib/calendar/shapes'
-import {
-  addAllDay,
-  addAppt,
-  CalendarStorageError,
-  deleteAllDay,
-  deleteAppt,
-  listAllDay,
-  listAppts,
-  saveCalendarSettings,
-  updateAppt,
-} from '@/lib/storage/calendar'
+import { sendAppt, syncNow } from '@/lib/gcal/loop'
+import { syncNowText } from '@/lib/gcal/status'
+import { addAllDay, addAppt, CalendarStorageError, deleteAllDay, deleteAppt, listAllDay, listAppts, updateAppt } from '@/lib/storage/calendar'
+import { setFixState } from '@/lib/storage/gcal'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalCountRow, type CalSettings } from '@/types/calendar'
+import type { GcalFix } from '@/types/gcal'
 import { AddPanel, draftOf, newDraft, type AddDraft, type AddFields } from './AddPanel'
 import { AllDayPanel } from './AllDayPanel'
-import { CalendarSettings } from './CalendarSettings'
 import { CalendarLegend, CalendarToolbar, dayLabel, hm, type CalView } from './CalendarToolbar'
-import { DetailPanel, type ArrivalPick } from './DetailPanel'
+import { DetailPanel, type ArrivalPick, type DetailGoogle } from './DetailPanel'
+import { paintCtx } from './gcal/apptGoogle'
+import { fixStore, putFix } from './gcal/fixApply'
+import { FixPanel } from './gcal/FixPanel'
+import { GcalBand } from './gcal/GcalBand'
+import { FIX_CANT, GCAL_COLORS_HREF, PAST_DONE_TOAST, PUT_DONE_TOAST, PUT_FAILED, SAVED_OFFLINE, SKIP_DONE_TOAST } from './gcal/labels'
+import { useGcal, type GcalScreen } from './gcal/useGcal'
 import { MonthGrid } from './MonthGrid'
 import { BitPicks } from './rows/BitPicks'
 import { GHOST_NOTE } from './rows/GhostBlock'
 import { PhoneWeekList } from './rows/PhoneWeekList'
 import { TimeGrid } from './rows/TimeGrid'
 import { SummaryLine } from './SummaryLine'
-import { useCalendarData, type CalendarPeriod, type CalendarSnapshot } from './useCalendarData'
+import { googleMemo, googleNew, googlePatch, useCalendarData, type CalendarPeriod, type CalendarSnapshot, type GoogleSaveLink } from './useCalendarData'
 import { findQuery, useCalendarWorker, useCalendarWorkerObject, type CalendarWorkerHandle } from './useCalendarWorker'
 
 // 예약 화면 /calendar (spec clinic-calendar REQ-5905·REQ-5906·REQ-5907, design.md '화면', 시안 docs/mockups/clinic-calendar).
 // 도구 줄 → 합계 줄 → 안내 줄 → 일·주(시간 표, 768px 미만 주 보기는 날짜별 목록) 또는 월(수만). 1024px 이상은 앱 폭 제한을 푼다(data-wide-page).
 // 읽기·다시 읽기는 useCalendarData(rev 5초), 비트 찾기·도착 auto·비트 예약 칸은 useCalendarWorker(비트 PC만).
-// 저장은 이 화면이 lib/storage/calendar로 바로 하고, 된 값을 지금 기간 자료에 바로 넣은 뒤 rev를 다시 읽는다(다른 PC는 몇 초 안에)
+// 저장은 이 화면이 lib/storage/calendar로 바로 하고, 된 값을 지금 기간 자료에 바로 넣은 뒤 rev를 다시 읽는다(다른 PC는 몇 초 안에).
+// 구글 캘린더와 이은 병원(spec google-link REQ-8532~8536, gcal/useGcal): 도구 줄 위 띠(GcalBand)·안내 줄 구글 묶음·예약표 RowsGoogle·
+// 자세히 구글 구역·고쳐야 할 판(FixPanel). 저장은 같은 쓰기에 g_wait(+ 새 예약 일정 id)를 싣고(useCalendarData googleNew·googlePatch·googleMemo)
+// 저장 뒤 그 예약을 바로 보낸다(lib/gcal/loop sendAppt — 맞춤 엔진은 TASK-23이 앱 틀에서 돌린다). 톱니·[설정]은 설정 › 구글 캘린더 › 시행자·종류 링크
 
 const FIND_WAIT_MS = 400 // 이름·차트번호를 적고 멈춘 뒤 비트에서 찾기까지
 const TOAST_MS = 6_000
@@ -51,7 +54,6 @@ const OFFLINE = '인터넷 연결이 끊겨 저장하지 못했어요. 연결을
 const FAILED = '저장하지 못했어요. 잠시 뒤 다시 눌러 주세요.'
 const BLOCKED_APPT = '이름이나 메모에 전화번호·주민번호·메일 같은 글자가 있어 저장하지 않았어요.'
 const BLOCKED_ALLDAY = '메모에 전화번호·주민번호·메일 같은 글자가 있어 저장하지 않았어요.'
-const INVALID_SETTINGS = '설정을 저장하지 못했어요. 칸을 다시 확인해 주세요.'
 const FIND_FAILED = '비트에서 찾지 못했어요. 이름과 차트번호를 손으로 적어 주세요.'
 const SHARED = '다른 PC에도 몇 초 안에 보여요.'
 
@@ -133,7 +135,7 @@ type Spot = { day: string; start: number }
 type Layer =
   | { kind: 'add'; editId: string | null; from: Spot | null; orig: Spot | null }
   | { kind: 'detail'; id: string }
-  | { kind: 'settings' }
+  | { kind: 'fix' }
   | { kind: 'allday'; day: string }
   | null
 
@@ -151,12 +153,18 @@ const countRow = ({ day, staffId, staffName, kindId, kindName, status, auto, ori
   gMoved,
 })
 
+const fixCell = ({ id, day, start, len, allDay, gTitle, gColor }: GcalFix): FixCell => ({ id, day, start, len, allDay, gTitle, gColor })
+
 export function CalendarScreen({ initialToday }: { initialToday: string }) {
   const worker = useCalendarWorkerObject()
+  const client = useMemo(() => supabaseBrowser(), [])
+  const gcal = useGcal(client)
+  // 캘린더 기본 색(구글이 정한 그 캘린더 색)을 예약표·안내 줄 토큰으로(storage가 #RRGGBB만 준다)
+  const style = gcal.view ? ({ '--cal-default': gcal.view.defaultHex } as CSSProperties) : undefined
   return (
-    <div data-wide-page="" className="grid gap-3 max-md:gap-2">
+    <div data-wide-page="" style={style} className="grid gap-3 max-md:gap-2">
       {worker ? (
-        <Board worker={worker} initialToday={initialToday} />
+        <Board worker={worker} gcal={gcal} initialToday={initialToday} />
       ) : (
         <p role="status" className="rounded-control border border-line bg-surface px-5 py-6 text-small text-muted">
           예약을 불러오는 중이에요
@@ -166,7 +174,7 @@ export function CalendarScreen({ initialToday }: { initialToday: string }) {
   )
 }
 
-function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initialToday: string }) {
+function Board({ worker, gcal, initialToday }: { worker: CalendarWorkerHandle; gcal: GcalScreen; initialToday: string }) {
   const client = useMemo(() => supabaseBrowser(), [])
   const { today, nowMin } = useClock(initialToday)
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow, wideOnServer)
@@ -192,6 +200,25 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
     return () => clearTimeout(timer)
   }, [toast])
 
+  // ── 구글 캘린더(이은 병원만, 아니면 g = null로 지금 화면 그대로) ──
+  const g = gcal.view
+  const gs = gcal.status
+  const live = gs.linked // 맞춤 엔진이 상태를 읽었다(아직이면 DB에서 읽은 맞춤 상태)
+  const saveLink: GoogleSaveLink = g ? { linkedOn: g.linkedOn, arrival: g.rules.arrival } : null
+  const lastOkAt = live ? gs.lastOkAt : (gcal.state?.lastOkAt ?? null)
+  const failSince = live ? gs.failSince : (gcal.state?.failSince ?? null)
+  const failCode = live ? gs.failCode : (gcal.state?.failCode ?? null)
+  const failing = g !== null && (failSince !== null || failCode !== null)
+  const rowsGoogle = useMemo<RowsGoogle | null>(
+    () => (g ? { ctx: paintCtx(settings, g.look), fixes: gcal.fixes.map(fixCell), waiting: gs.waitingIds } : null),
+    [g, settings, gcal.fixes, gs.waitingIds],
+  )
+  const parseCtx = useMemo<ParseCtx | null>(
+    () =>
+      g ? { staff: settings.staff, kinds: settings.kinds, look: g.look, people: gcal.offNames, arrival: g.rules.arrival, linkedOn: g.linkedOn } : null,
+    [g, settings, gcal.offNames],
+  )
+
   const api = useCalendarWorker(worker, {
     view,
     from: period.from,
@@ -201,6 +228,7 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
       const auto = new Map(pairs)
       data.update((s) => ({ ...s, appts: s.appts.map((a) => (auto.has(a.id) ? { ...a, auto: auto.get(a.id) ?? null } : a)) }))
     },
+    past: { on: g !== null, onDone: () => say(PAST_DONE_TOAST) },
   })
   const ghosts = api.bit ? visibleGhosts(api.ghosts, appts) : []
 
@@ -302,6 +330,58 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
     })
   }
 
+  // 저장한 예약을 바로 구글로(보낼 것이 실렸을 때만). 못 닿으면 알림을 바꾼다 — 웹앱 저장은 이미 끝났다
+  function pushSaved(saved: CalAppt) {
+    if (g === null || saved.gWait === null) return
+    void sendAppt(saved).then(
+      (out) => {
+        if (!out.ok && (out.code !== null || failing)) say(SAVED_OFFLINE)
+      },
+      () => say(SAVED_OFFLINE),
+    )
+  }
+
+  const [syncing, setSyncing] = useState(false)
+  function syncGoogle() {
+    if (syncing) return
+    setSyncing(true)
+    void syncNow()
+      .then(
+        (out) => say(syncNowText(out)),
+        () => say(syncNowText({ ok: false, code: null })),
+      )
+      .finally(() => setSyncing(false))
+  }
+
+  async function putFixRow(fix: GcalFix, keys: string[]): Promise<boolean> {
+    if (parseCtx === null) return false
+    try {
+      const done = await putFix(fixStore(client), fix, keys, parseCtx)
+      if (done === 'none') {
+        say(FIX_CANT)
+        return false
+      }
+      say(PUT_DONE_TOAST)
+      data.refresh()
+      void gcal.reloadFixes()
+      return true
+    } catch {
+      say(PUT_FAILED)
+      return false
+    }
+  }
+  async function skipFixRow(fix: GcalFix): Promise<boolean> {
+    try {
+      await setFixState(client, fix.id, 'skip')
+      say(SKIP_DONE_TOAST)
+      void gcal.reloadFixes()
+      return true
+    } catch {
+      say(PUT_FAILED)
+      return false
+    }
+  }
+
   async function run(work: () => Promise<boolean>) {
     if (busy) return
     setBusy(true)
@@ -319,14 +399,19 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
   function saveAdd(fields: AddFields) {
     if (layer?.kind !== 'add') return
     const { editId, from } = layer
+    const before = editId === null ? null : (appts.find((a) => a.id === editId) ?? null)
     void run(async () => {
-      const saved = editId === null ? await addAppt(client, { ...fields, status: 'auto' }) : await updateAppt(client, editId, fields)
+      const saved =
+        editId === null
+          ? await addAppt(client, { ...fields, status: 'auto', ...googleNew(saveLink, fields.day) })
+          : await updateAppt(client, editId, before ? { ...fields, ...googlePatch(saveLink, before, fields) } : fields)
       if (saved === 'blocked') {
         setError(BLOCKED_APPT)
         return false
       }
       putAppt(saved)
       close()
+      pushSaved(saved)
       if (editId === null) say(`${dayLabel(saved.day)} ${hm(saved.start)} 예약을 넣었어요. ${SHARED}`)
       else if (from !== null && (from.day !== fields.day || from.start !== fields.start))
         say(`예약을 옮겼어요. '변경'으로 표시하고 원래 시간(${slotLabel(saved.origDay ?? from.day, saved.origStart ?? from.start)})을 남겼어요.`)
@@ -337,13 +422,14 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
 
   function patchAppt(appt: CalAppt, patch: Partial<Pick<CalAppt, 'status'>>, done: string | null) {
     void run(async () => {
-      const saved = await updateAppt(client, appt.id, patch)
+      const saved = await updateAppt(client, appt.id, { ...patch, ...googlePatch(saveLink, appt, patch) })
       if (saved === 'blocked') {
         setError(BLOCKED_APPT)
         return false
       }
       putAppt(saved)
       if (done) say(done)
+      pushSaved(saved)
       return true
     })
   }
@@ -351,7 +437,7 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
   function copyNextWeek(appt: CalAppt) {
     void run(async () => {
       const next = nextWeek(appt)
-      const saved = await addAppt(client, next)
+      const saved = await addAppt(client, { ...next, ...googleNew(saveLink, next.day) })
       if (saved === 'blocked') {
         setError(BLOCKED_APPT)
         return false
@@ -372,6 +458,7 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
         // 확인을 못 해도 넣은 것은 그대로다
       }
       say(`${dayLabel(next.day)} ${hm(next.start)}에 똑같이 넣었어요.${caution}`)
+      pushSaved(saved)
       return true
     })
   }
@@ -386,22 +473,11 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
     })
   }
 
-  function saveSettings(next: CalSettings) {
-    void run(async () => {
-      if ((await saveCalendarSettings(client, next)) === 'invalid') {
-        setError(INVALID_SETTINGS)
-        return false
-      }
-      data.setSettings(next)
-      close()
-      say(`설정을 저장했어요. ${SHARED}`)
-      return true
-    })
-  }
+  // 지우기는 DB가 지운 줄을 남기고(gcal_deletes) 맞춤 엔진이 다음 차례에 구글에서도 지운다
 
   function saveAllDay(item: Omit<CalAllDay, 'id'>) {
     void run(async () => {
-      const saved = await addAllDay(client, item)
+      const saved = await addAllDay(client, item.type === 'memo' ? { ...item, ...googleMemo(saveLink, item.day) } : item)
       if (saved === 'blocked') {
         setError(BLOCKED_ALLDAY)
         return false
@@ -449,6 +525,10 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
   const summaryRows: readonly CalCountRow[] =
     view === 'month' ? (snap?.counts ?? []).filter((r) => inRange(r.day, shownFrom, shownTo)) : appts.filter((a) => days.includes(a.day))
   const detail = layer?.kind === 'detail' ? (appts.find((a) => a.id === layer.id) ?? null) : null
+  const detailGoogle: DetailGoogle | null =
+    g && detail ? { look: g.look, arrival: g.rules.arrival, calendarId: g.calendarId, lastOkAt, waiting: gs.waitingIds.has(detail.id) } : null
+  const editedAppt = editing?.editId ? (appts.find((a) => a.id === editing.editId) ?? null) : null
+  const openFix = () => openLayer({ kind: 'fix' })
 
   const lookup =
     api.bit && ask !== null && found !== null && found.q === ask.q ? (
@@ -489,7 +569,11 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
     body = (
       <>
         <SummaryLine key={`${view}|${shownFrom}`} view={view} from={shownFrom} to={shownTo} rows={summaryRows} settings={settings} />
-        <CalendarLegend settings={settings} bit={api.bit} />
+        <CalendarLegend
+          settings={settings}
+          bit={api.bit}
+          google={g ? { look: g.look, waiting: gs.waiting > 0 || failing, fixes: gcal.fixes.length > 0 } : null}
+        />
         {view === 'month' ? (
           <MonthGrid month={month} rows={snap.counts ?? []} allday={allday} settings={settings} today={today} onDay={showDay} />
         ) : narrow && view === 'week' ? (
@@ -501,6 +585,8 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
             ghosts={ghosts}
             allday={allday}
             today={today}
+            google={rowsGoogle}
+            offWord={g?.look.offWord}
             onAppt={(id) => openLayer({ kind: 'detail', id })}
             onGhost={() => say(GHOST_NOTE)}
             onAllDay={(day) => openLayer({ kind: 'allday', day })}
@@ -515,6 +601,9 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
             today={today}
             nowMin={nowMin}
             draft={gridDraft}
+            google={rowsGoogle}
+            offWord={g?.look.offWord}
+            onFix={openFix}
             onSlot={openAdd}
             onAppt={(id) => openLayer({ kind: 'detail', id })}
             onGhost={() => say(GHOST_NOTE)}
@@ -529,6 +618,24 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
 
   return (
     <>
+      {g && (
+        <GcalBand
+          calendarName={(live ? gs.calendarName : null) ?? g.calendarName ?? ''}
+          calendarId={g.calendarId}
+          pullMin={live ? gs.pullMin : g.rules.pullMin}
+          lastOkAt={lastOkAt}
+          fail={failing ? { since: failSince, code: failCode, nextTryAt: gs.nextTryAt } : null}
+          waiting={gs.waiting}
+          pending={gs.waitingAppts}
+          look={g.look}
+          settings={settings}
+          fixes={gcal.fixes.length}
+          busy={syncing || gs.running}
+          onSync={syncGoogle}
+          onRetry={syncGoogle}
+          onOpenFix={openFix}
+        />
+      )}
       <CalendarToolbar
         view={view}
         from={shownFrom}
@@ -537,9 +644,6 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
         onToday={() => setAnchor(today)}
         onPrev={() => step(-1)}
         onNext={() => step(1)}
-        onSettings={() => {
-          if (data.settings !== null) openLayer({ kind: 'settings' })
-        }}
         onAdd={openAddNow}
       />
       {body}
@@ -562,13 +666,15 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
           error={error}
           onSave={saveAdd}
           onClose={close}
-          onSettings={() => openLayer({ kind: 'settings' })}
+          settingsHref={GCAL_COLORS_HREF}
+          allowNoStaff={editedAppt !== null && editedAppt.staffId === null}
         />
       )}
       {detail && (
         <DetailPanel
           appt={detail}
           settings={settings}
+          google={detailGoogle}
           copied={copied.has(detail.id)}
           busy={busy}
           error={error}
@@ -592,8 +698,8 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
           onDelete={() => removeAppt(detail)}
         />
       )}
-      {layer?.kind === 'settings' && data.settings !== null && (
-        <CalendarSettings settings={data.settings} busy={busy} error={error} onSave={saveSettings} onClose={close} />
+      {layer?.kind === 'fix' && parseCtx && (
+        <FixPanel fixes={gcal.fixes} ctx={parseCtx} today={today} onPut={putFixRow} onSkip={skipFixRow} onClose={close} />
       )}
       {layer?.kind === 'allday' && (
         <AllDayPanel

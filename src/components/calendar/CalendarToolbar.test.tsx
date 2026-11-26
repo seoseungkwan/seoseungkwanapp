@@ -27,7 +27,7 @@ const SETTINGS: CalSettings = {
 afterEach(cleanup)
 
 function draw(view: CalView = 'week', from = '2026-11-16', to = '2026-11-21') {
-  const calls = { view: vi.fn(), today: vi.fn(), prev: vi.fn(), next: vi.fn(), settings: vi.fn(), add: vi.fn() }
+  const calls = { view: vi.fn(), today: vi.fn(), prev: vi.fn(), next: vi.fn(), add: vi.fn() }
   render(
     <CalendarToolbar
       view={view}
@@ -37,7 +37,6 @@ function draw(view: CalView = 'week', from = '2026-11-16', to = '2026-11-21') {
       onToday={calls.today}
       onPrev={calls.prev}
       onNext={calls.next}
-      onSettings={calls.settings}
       onAdd={calls.add}
     />,
   )
@@ -93,12 +92,12 @@ describe('AC-5905.1: 도구 줄 — [오늘]·◀▶·제목·[일·주·월]·[
     expect(calls.view.mock.calls).toEqual([['day'], ['month']])
   })
 
-  it('AC-5905.1: [예약 설정]·[예약 더하기]가 콜백을 부른다', () => {
+  it('AC-5905.1·AC-8529.3: [예약 더하기]는 콜백을 부르고, 톱니(예약 설정)는 설정 › 구글 캘린더 › 시행자·종류로 가는 링크다', () => {
     const calls = draw()
-    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
     fireEvent.click(screen.getByRole('button', { name: '예약 더하기' }))
-    expect(calls.settings).toHaveBeenCalledTimes(1)
     expect(calls.add).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('link', { name: '예약 설정' }).getAttribute('href')).toBe('/settings/google-calendar?tab=colors')
+    expect(screen.queryByRole('button', { name: '예약 설정' })).toBeNull()
   })
 })
 

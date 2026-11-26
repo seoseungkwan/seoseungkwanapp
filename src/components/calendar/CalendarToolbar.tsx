@@ -1,13 +1,18 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { weekdayOf } from '@/lib/analytics/dates'
 import type { CalSettings, KindColor } from '@/types/calendar'
+import type { GcalLook } from '@/types/gcal'
 import type { CalPaint } from './colors'
+import * as G from './gcal/labels'
+import { FIX_LOOK, WaitMark } from './rows/parts'
 
 // 예약 탭 도구 줄·안내 줄 (spec clinic-calendar AC-5905.1·AC-5905.8, 시안 docs/mockups/clinic-calendar ?s=week·phone-week).
 // props·콜백만 받는다: 기간 옮기기·보기 바꾸기·판 열기는 화면(CalendarScreen)이 한다. 글은 시안 그대로다.
-// 이 파일 아래쪽은 예약 판 부품(AddPanel·DetailPanel·AllDayPanel·CalendarSettings·RateTable·SummaryLine)이 같이 쓰는 작은 조각이다:
-// 시각·날짜 글, 색 표시(--cal-* 토큰 이름만 쓴다, 값은 globals.css :root), 도착·변경 표시, 아이콘. 다른 부품 파일을 import하지 않는다(순환 없음)
+// 이 파일 아래쪽은 예약 판 부품(AddPanel·DetailPanel·AllDayPanel·RateTable·SummaryLine·gcal/)이 같이 쓰는 작은 조각이다:
+// 시각·날짜 글, 색 표시(--cal-* 토큰 이름만 쓴다, 값은 globals.css :root), 도착·변경 표시, 아이콘. 다른 부품 파일은 글(gcal/labels)·표시(rows/parts)만 import한다(순환 없음).
+// 톱니(예약 설정)는 설정 › 구글 캘린더 › 시행자·종류로 가는 링크다(google-link AC-8529.3 — 옛 예약 설정 서랍은 지웠다)
 
 export type CalView = 'day' | 'week' | 'month'
 
@@ -160,12 +165,11 @@ type ToolbarProps = {
   onToday(): void
   onPrev(): void
   onNext(): void
-  onSettings(): void
   onAdd(): void
 }
 
 /** [오늘]·◀▶·기간 제목 | [일·주·월]·[설정]·[+ 예약 더하기]. 폰은 두 줄(제목의 해는 숨김, 단추 글은 '예약') */
-export function CalendarToolbar({ view, from, to, onView, onToday, onPrev, onNext, onSettings, onAdd }: ToolbarProps) {
+export function CalendarToolbar({ view, from, to, onView, onToday, onPrev, onNext, onAdd }: ToolbarProps) {
   const [head, rest] = periodParts(view, from, to)
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -198,9 +202,9 @@ export function CalendarToolbar({ view, from, to, onView, onToday, onPrev, onNex
             </button>
           ))}
         </div>
-        <button type="button" aria-label="예약 설정" title="예약 설정" className={iconButton(true)} onClick={onSettings}>
+        <Link href={G.GCAL_COLORS_HREF} aria-label="예약 설정" title="예약 설정 (설정 › 구글 캘린더 › 시행자·종류)" className={iconButton(true)}>
           <CalIcon name="gear" size={18} />
-        </button>
+        </Link>
         <button type="button" aria-label="예약 더하기" className={ds.button.primary} onClick={onAdd}>
           <CalIcon name="plus" />
           <span className="max-md:hidden">예약 더하기</span>
@@ -217,7 +221,11 @@ const GROUP = 'inline-flex flex-wrap items-center gap-x-3 gap-y-1'
 const GROUP_NAME = 'font-semibold text-ink-2'
 const ITEM = 'inline-flex items-center gap-1 whitespace-nowrap'
 
-function LegendBody({ settings, bit }: { settings: CalSettings; bit: boolean }) {
+/** 이은 병원의 안내 줄(google-link AC-8532.1, notes-calendar `week` 안내 줄): 색 묶음이 '색 (구글과 같음)'이고 휴무·반차·취소·변경·캘린더 기본 색을 더한다.
+ * waiting = 아직 못 보낸 것이 있음(구글 · 아직 못 보냄), fixes = 고쳐야 할 구글 예약이 있음 */
+export type LegendGoogle = { look: Pick<GcalLook, 'cancel' | 'change' | 'offColor' | 'offWord'>; waiting: boolean; fixes: boolean }
+
+function LegendBody({ settings, bit, google }: { settings: CalSettings; bit: boolean; google: LegendGoogle | null }) {
   const fixed = settings.kinds.filter((kind) => kind.color !== null)
   const follow = settings.kinds.filter((kind) => kind.color === null).map((kind) => kind.name)
   return (
@@ -235,7 +243,7 @@ function LegendBody({ settings, bit }: { settings: CalSettings; bit: boolean }) 
         </span>
       )}
       <span className={GROUP}>
-        <span className={GROUP_NAME}>색</span>
+        <span className={GROUP_NAME}>{google ? G.LEGEND_COLOR : '색'}</span>
         {settings.staff.map((person) => (
           <span key={person.id} className={ITEM}>
             <Swatch color={person.color} />({person.mark}) {person.name}
@@ -253,7 +261,31 @@ function LegendBody({ settings, bit }: { settings: CalSettings; bit: boolean }) 
             비트 예약
           </span>
         )}
-        {follow.length > 0 && <span>{follow.join('·')}는 담당 색</span>}
+        {google && (
+          <>
+            <span className={ITEM}>
+              <Swatch color={google.look.offColor} />
+              {G.legendOff(google.look.offWord)}
+            </span>
+            <span className={ITEM}>
+              <span aria-hidden="true" className="inline-block size-2.5 shrink-0 rounded-control border border-line-strong bg-surface" />
+              {G.LEGEND_HALF}
+            </span>
+            <span className={ITEM}>
+              <Swatch color={google.look.cancel} />
+              {G.LEGEND_CANCEL}
+            </span>
+            <span className={ITEM}>
+              <Swatch color={google.look.change} />
+              {G.LEGEND_CHANGE}
+            </span>
+            <span className={ITEM}>
+              <Swatch color="default" />
+              {G.LEGEND_DEFAULT}
+            </span>
+          </>
+        )}
+        {follow.length > 0 && <span>{google ? G.legendFollow(follow.join('·')) : `${follow.join('·')}는 담당 색`}</span>}
       </span>
       <span className={GROUP}>
         <span className={GROUP_NAME}>도착</span>
@@ -275,21 +307,38 @@ function LegendBody({ settings, bit }: { settings: CalSettings; bit: boolean }) 
           날짜나 시작 시간을 옮긴 예약
         </span>
       </span>
+      {google && (google.waiting || google.fixes) && (
+        <span className={GROUP}>
+          <span className={GROUP_NAME}>{G.LEGEND_GOOGLE}</span>
+          {google.waiting && (
+            <span className={ITEM}>
+              <WaitMark />
+              {G.LEGEND_WAIT}
+            </span>
+          )}
+          {google.fixes && (
+            <span className={ITEM}>
+              <span aria-hidden="true" className={`inline-block h-2.5 w-4.5 shrink-0 rounded-control ${FIX_LOOK}`} />
+              {G.LEGEND_FIX}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   )
 }
 
 /** 도구 줄 아래 안내 줄: 비트 연결 · 색 · 도착 · 변경. 폰은 [색·도착 표시 보기]로 접어 둔다(시안 기본값 23) */
-export function CalendarLegend({ settings, bit }: { settings: CalSettings; bit: boolean }): ReactNode {
+export function CalendarLegend({ settings, bit, google = null }: { settings: CalSettings; bit: boolean; google?: LegendGoogle | null }): ReactNode {
   return (
     <>
       <div className="max-md:hidden">
-        <LegendBody settings={settings} bit={bit} />
+        <LegendBody settings={settings} bit={bit} google={google} />
       </div>
       <details className="md:hidden">
         <summary className="cursor-pointer py-0.5 text-small text-ink-2">색·도착 표시 보기</summary>
         <div className="mt-2 rounded-control border border-line bg-surface px-3 py-2">
-          <LegendBody settings={settings} bit={bit} />
+          <LegendBody settings={settings} bit={bit} google={google} />
         </div>
       </details>
     </>

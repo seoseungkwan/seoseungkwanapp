@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { compareYmd } from '@/lib/analytics/dates'
 import { mergeClinic } from '@/lib/calendar/clinic'
-import { listAllDay, listAppts, listCalendarCounts, loadCalendarRev, loadCalendarSettings } from '@/lib/storage/calendar'
+import { listAllDay, listAppts, listCalendarCounts, loadCalendarRev, loadCalendarSettings, newGoogleEventId } from '@/lib/storage/calendar'
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import type { CalAllDay, CalAppt, CalCountRow, CalSettings } from '@/types/calendar'
+import type { ApptDraft, CalAllDay, CalAppt, CalCountRow, CalSettings, GWait } from '@/types/calendar'
 import type { ClinicProfile } from '@/types/clinicProfile'
 import type { CalView } from './CalendarToolbar'
 
@@ -142,4 +143,59 @@ export function useCalendarData(period: CalendarPeriod): CalendarData {
   const current = snapshot?.key === key ? snapshot : null
   const status = current ? 'ready' : failedKey === key ? 'failed' : 'loading'
   return { status, snapshot: current, settings, refresh, reload, update, setSettings }
+}
+
+// ── 저장 잇기 (spec google-link AC-8526.1·AC-8526.5, design.md 2절 표 4·5·6) ──
+// 이은 병원(캘린더를 고르고 이은 날이 있음)의 이은 날 이후 예약만 같은 쓰기에 g_wait를 싣는다. 화면이 저장 뒤 lib/gcal sendAppt로 바로 보낸다.
+// 지우기는 싣지 않는다(DB 트리거가 지움 줄 gcal_deletes를 적고 다음 맞춤이 보낸다)
+
+/** 저장 잇기가 보는 연결: 이은 날·맞춤 방법 도착. 잇지 않은 병원은 null */
+export type GoogleSaveLink = { linkedOn: string; arrival: 'off' | 'title' } | null
+
+type GoogleWrite = Partial<Pick<CalAppt, 'gEventId' | 'gFrom' | 'gWait' | 'gKeepTitle' | 'colorFrom'>>
+
+const onOrAfter = (day: string, from: string) => compareYmd(day, from) >= 0
+// 못 보낸 일이 겹치면 큰 일을 남긴다(통째 보내기가 작은 일을 덮는다). 같은 크기면 새 일
+const RANK: Record<GWait, number> = { new: 3, move: 2, edit: 1, cancel: 0, uncancel: 0, color: 0 }
+const merge = (before: GWait | null, next: GWait): GWait => (before !== null && RANK[before] > RANK[next] ? before : next)
+const TITLE_KEYS = ['name', 'chart', 'len', 'memo', 'staffId', 'kindId'] as const
+
+/** 새 예약: 이은 날 이후면 웹앱이 정한 일정 id('ssk' + 32자)·web·new */
+export function googleNew(link: GoogleSaveLink, day: string): GoogleWrite {
+  if (link === null || !onOrAfter(day, link.linkedOn)) return {}
+  return { gEventId: newGoogleEventId(), gFrom: 'web', gWait: 'new' }
+}
+
+/** 웹앱 종일 메모: 이은 날 이후면 넣는 쓰기에 일정 id와 보낼 것 */
+export function googleMemo(link: GoogleSaveLink, day: string): { gEventId?: string; gWait?: boolean } {
+  if (link === null || !onOrAfter(day, link.linkedOn)) return {}
+  return { gEventId: newGoogleEventId(), gWait: true }
+}
+
+/**
+ * 고치기·옮기기·취소·되돌리기·도착: 바뀐 칸으로 g_wait를 정한다. 날짜·시작 → move, 칸(이름·차트번호·길이·메모·시행자·종류) → edit(+ 구글 제목을 두던
+ * 예약은 g_keep_title false, 구글 색이던 예약의 시행자·종류를 바꾸면 color_from app), 취소 → cancel, 되돌리기 → uncancel,
+ * 도착(왔음·안 옴·자동) → 맞춤 방법이 'title'일 때만 edit. 짝 없는 예약이 이은 날 이후면 새 예약처럼 보낸다
+ */
+export function googlePatch(link: GoogleSaveLink, before: CalAppt, patch: Partial<ApptDraft>): GoogleWrite {
+  if (link === null) return {}
+  const changed = (k: keyof ApptDraft) => k in patch && patch[k] !== before[k as keyof CalAppt]
+  const moved = changed('day') || changed('start')
+  const fields = TITLE_KEYS.filter((k) => changed(k))
+  let wait: GWait | null = null
+  if (moved) wait = 'move'
+  else if (fields.length > 0) wait = 'edit'
+  if (changed('status')) {
+    const next = patch.status
+    if (next === 'cancel') wait = merge(wait, 'cancel')
+    else if (before.status === 'cancel') wait = merge(wait, 'uncancel')
+    else if (link.arrival === 'title') wait = merge(wait, 'edit') // 도착 바뀜(AC-8526.5)
+  }
+  if (wait === null) return {}
+  const day = patch.day ?? before.day
+  if (before.gEventId === null) return onOrAfter(day, link.linkedOn) ? { gEventId: newGoogleEventId(), gFrom: 'web', gWait: 'new' } : {}
+  const out: GoogleWrite = { gWait: merge(before.gWait, wait) }
+  if (fields.length > 0 && before.gKeepTitle) out.gKeepTitle = false
+  if ((fields.includes('staffId') || fields.includes('kindId')) && before.colorFrom === 'google') out.colorFrom = 'app'
+  return out
 }

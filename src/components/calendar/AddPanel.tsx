@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
@@ -56,7 +57,7 @@ export function draftOf(appt: CalAppt): AddDraft {
     name: appt.name,
     chart: appt.chart ?? '',
     staffId: appt.staffId,
-    staffName: appt.staffName ?? '', // 시행자 없는 예약(구글에서 옴)은 빈 글 — 고치기 판의 '없음'은 TASK-12
+    staffName: appt.staffName ?? '', // 시행자 없는 예약(구글에서 옴)은 빈 글 — 고치기 판은 '없음'을 보인다(allowNoStaff, google-link AC-8532.5)
     staffMark: appt.staffMark ?? '',
     kindId: appt.kindId,
     kindName: appt.kindName,
@@ -156,6 +157,10 @@ type AddPanelProps = {
   onSave(fields: AddFields): void
   onClose(): void
   onSettings?(): void
+  /** 시행자가 없을 때 [설정]이 가는 곳(있으면 링크, google-link AC-8529.3) */
+  settingsHref?: string
+  /** 시행자 없는 예약의 고치기 판: 담당 맨 앞 '없음'(그대로 저장하면 시행자 세 칸 null, google-link AC-8532.5) */
+  allowNoStaff?: boolean
 }
 
 /** 예약 더하기·고치기 판 */
@@ -177,6 +182,8 @@ export function AddPanel({
   onSave,
   onClose,
   onSettings,
+  settingsHref,
+  allowNoStaff = false,
 }: AddPanelProps) {
   const ids = useId()
   const set = (patch: Partial<AddDraft>) => onDraft({ ...draft, ...patch })
@@ -211,7 +218,7 @@ export function AddPanel({
   const missing = [
     typeof startRead === 'number' ? null : '시작',
     draft.name.trim() ? null : '이름',
-    draft.staffId ? null : '담당',
+    draft.staffId || allowNoStaff ? null : '담당',
     draft.kindId ? null : '종류',
   ].filter((m) => m !== null)
   const ready = missing.length === 0
@@ -226,16 +233,17 @@ export function AddPanel({
   const kindKnown = draft.kindId !== null && settings.kinds.some((k) => k.id === draft.kindId)
 
   function save() {
-    if (!ready || busy || draft.staffId === null || draft.kindId === null) return
+    if (!ready || busy || (draft.staffId === null && !allowNoStaff) || draft.kindId === null) return
+    const staff = draft.staffId
     onSave({
       day: draft.day,
       start: draft.start,
       len: draft.len,
       name: draft.name.trim(),
       chart: draft.chart === '' ? null : draft.chart,
-      staffId: draft.staffId,
-      staffName: draft.staffName,
-      staffMark: draft.staffMark,
+      staffId: staff,
+      staffName: staff === null ? null : draft.staffName,
+      staffMark: staff === null ? null : draft.staffMark,
       kindId: draft.kindId,
       kindName: draft.kindName,
       memo: draft.memo.trim(),
@@ -367,6 +375,16 @@ export function AddPanel({
           담당 <span className={HINT}>(시행자)</span>
         </span>
         <div role="group" aria-label="담당" className="flex flex-wrap gap-1.5">
+          {allowNoStaff && (
+            <button
+              type="button"
+              aria-pressed={draft.staffId === null}
+              className={optionButton(draft.staffId === null)}
+              onClick={() => set({ staffId: null, staffName: '', staffMark: '' })}
+            >
+              없음
+            </button>
+          )}
           {settings.staff.map((person) => (
             <button
               key={person.id}
@@ -390,10 +408,16 @@ export function AddPanel({
         {settings.staff.length === 0 && (
           <p className="flex flex-wrap items-center gap-2 text-caption text-muted">
             <span>설정에서 시행자를 먼저 더해 주세요</span>
-            {onSettings && (
-              <button type="button" className={ds.button.secondarySmall} onClick={onSettings}>
+            {settingsHref ? (
+              <Link href={settingsHref} className={ds.button.secondarySmall}>
                 설정
-              </button>
+              </Link>
+            ) : (
+              onSettings && (
+                <button type="button" className={ds.button.secondarySmall} onClick={onSettings}>
+                  설정
+                </button>
+              )
             )}
           </p>
         )}
