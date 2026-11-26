@@ -68,7 +68,20 @@ export function draftOf(appt: CalAppt): AddDraft {
 // ── 오른쪽 판 틀(예약 더하기·자세히·설정이 같이 쓴다, 시안 .drawer 460px) ──────────
 
 /** 오른쪽에서 나오는 판: 머리(제목·닫기) · 몸(스크롤) · 발(단추). Esc·바탕 누름은 닫기다. 폰은 전체 폭 */
-export function Drawer({ title, onClose, foot, children }: { title: string; onClose(): void; foot: ReactNode; children: ReactNode }) {
+export function Drawer({
+  title,
+  titleNote,
+  onClose,
+  foot,
+  children,
+}: {
+  title: string
+  /** 제목 옆 작은 글(고쳐야 할 판 `· 전체 {N}개`, google-link AC-8550.2). 판 이름에도 든다. 안 주면 제목만 */
+  titleNote?: ReactNode
+  onClose(): void
+  foot: ReactNode
+  children: ReactNode
+}) {
   const titleId = useId()
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -89,6 +102,12 @@ export function Drawer({ title, onClose, foot, children }: { title: string; onCl
         <div className="flex items-center justify-between gap-2 border-b border-line py-2 pr-3 pl-5 max-md:pl-4">
           <h2 id={titleId} className="text-lead font-semibold text-ink">
             {title}
+            {titleNote !== undefined && titleNote !== null && (
+              <>
+                {' '}
+                <small className="text-small font-medium text-muted">{titleNote}</small>
+              </>
+            )}
           </h2>
           <button type="button" aria-label="닫기" className={`${ds.button.ghostSmall} text-muted`} onClick={onClose}>
             <Icon name="x" />

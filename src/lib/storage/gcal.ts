@@ -65,6 +65,7 @@ const OFF_COLUMNS = 'day,g_event_id,g_title,g_updated,wait,wait_at'
 const ON_HOSPITAL = { onConflict: 'hospital_id' }
 const PAGE_ROWS = 1000
 const BATCH = 500
+const SKIP_BATCH = 100 // 한꺼번에 가져오지 않기: id 목록이 주소(in.(…))에 실려 짧게 나눈다
 const ASC = { ascending: true }
 
 // DB 제약과 같은 모양·한도(design.md 7-3. 글자 수는 DB char_length처럼 코드포인트로 센다)
@@ -496,6 +497,19 @@ export async function setFixState(client: GcalClient, id: string, state: GcalFix
   const target = requireId(id)
   if (!isOneOf(FIX_STATES, state)) throw failed()
   await send(() => client.from(FIXES).update({ state }).eq('id', target))
+}
+
+/**
+ * 고쳐야 할 것 여럿을 한꺼번에 '가져오지 않기'(spec google-link AC-8551.2·AC-8551.3, design.md 21-8 — 하나씩 뺀 것과 같은 state 'skip').
+ * id가 하나라도 틀리면 하나도 보내지 않고 failed, 빈 목록은 보내지 않는다. 100개씩 열린 줄만(state open) 고친다
+ */
+export async function skipGcalFixes(client: GcalClient, ids: readonly string[]): Promise<void> {
+  if (!Array.isArray(ids)) throw failed()
+  const targets = ids.map(requireId)
+  for (let at = 0; at < targets.length; at += SKIP_BATCH) {
+    const chunk = targets.slice(at, at + SKIP_BATCH)
+    await send(() => client.from(FIXES).update({ state: 'skip' }).in('id', chunk).eq('state', 'open'))
+  }
 }
 
 /** 고쳐야 할 것 하나 지우기(예약표에 넣은 뒤). id가 비면 보내지 않는다(조건 없는 지우기를 보내지 않으려고) */
