@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { salesRow, type SalesDay } from './sales'
+import { salesRow, type SalesDay, type VisitDay } from './sales'
 
 // 의원 비교 매출·환자 수 한 줄(spec admin-view REQ-8014 AC-8014.1, design.md '의원 비교 — 계산'). 숫자는 모두 지어낸 것이다
 
@@ -60,5 +60,35 @@ describe('AC-8014.1 salesRow: 한 의원 한 달 매출·환자 수', () => {
     const copy = structuredClone(days)
     salesRow(days)
     expect(days).toEqual(copy)
+  })
+})
+
+// 의사랑 의원 매출 날 줄: 일일수입통계는 신환·재진을 비운다(초진수 ≠ 신환, design.md 조정자 기술 결정 5)
+const uisSale = (total: number | null, visits: number | null = 40): SalesDay => ({ visits, newPatients: null, returnVisits: null, total, roughTotal: null })
+const visit = (patients: number, newPatients: number): VisitDay => ({ patients, newPatients, returning: patients - newPatients })
+
+describe('AC-8813.2 salesRow: 의사랑 의원 — 총진료비는 매출 날 줄, 내원·신환·재진·하루 평균은 날 숫자(stats_days)', () => {
+  it('AC-8813.2: 날 숫자를 넘기면 내원 = 환자 수 합 · 신환 = 신환 합 · 재진 = 재진 합 · 하루 평균 = 내원 ÷ 진료한 날(1명 이상), 총진료비만 매출 날 줄 합', () => {
+    const row = salesRow([uisSale(3_000_000, 999), uisSale(2_500_000, 999)], [visit(42, 5), visit(38, 3), visit(0, 0), visit(51, 7)])
+    // 131 ÷ 3 = 43.666… → 43.6(버림)
+    expect(row).toEqual({ total: 5_500_000, visits: 131, newPatients: 15, returnVisits: 116, dayAvg: 43.6, days: 3 })
+  })
+
+  it('AC-8813.2: 매출 날 줄이 없어도 날 숫자가 있으면 줄이 있고 총진료비만 null', () => {
+    expect(salesRow([], [visit(10, 1), visit(12, 2)])).toEqual({ total: null, visits: 22, newPatients: 3, returnVisits: 19, dayAvg: 11, days: 2 })
+  })
+
+  it('AC-8813.2: 날 숫자가 없으면(위쪽 표를 아직 안 올림) 내원·신환·재진·하루 평균은 null이고 총진료비는 그대로', () => {
+    expect(salesRow([uisSale(1_000_000), uisSale(null)], [])).toEqual({ total: 1_000_000, visits: null, newPatients: null, returnVisits: null, dayAvg: null, days: 0 })
+  })
+
+  it('AC-8813.2: 둘 다 없으면 줄 자체가 null', () => {
+    expect(salesRow([], [])).toBeNull()
+  })
+
+  it('AC-8813.2: 날 숫자를 넘기지 않으면(비트 의원) 지금 셈 그대로다', () => {
+    const days = [day({ visits: 130, newPatients: 9, returnVisits: 110, total: 4_100_000 }), day({ visits: 98, newPatients: 4, returnVisits: 90, total: 3_020_000 })]
+    expect(salesRow(days, undefined)).toEqual(salesRow(days))
+    expect(salesRow(days)).toEqual({ total: 7_120_000, visits: 228, newPatients: 13, returnVisits: 200, dayAvg: 114, days: 2 })
   })
 })

@@ -16,11 +16,16 @@ import type { RxCond } from '@/types/rxGroups'
 import type { CompareRaw } from './load'
 import type { PayByJob } from './pay'
 import { salesRow, type SalesRow } from './sales'
+import { isUisClinic, uisAgeMix, type UisAgeMix } from './uis'
+
+export { isUisClinic }
 
 // 의원 비교 대표 숫자(spec admin-view REQ-8014 AC-8014.4, design.md '대표 숫자 표'). 순수 함수.
 // raw = 한 의원의 admin_rows 종류별 jsonb 줄(load.ts). 줄마다 지금 줄 검사(validate.ts)로 고르고, 검사 함수를 내보내지 않은 종류
 // (sales_days·sunap_days·calendar_counts·stats_rx_groups·달 줄 dropoff)는 저장소 읽기와 같은 규칙의 가벼운 검사로 고른다.
-// 숫자는 통계 탭과 같은 순수 함수(sumPeriod·revisitRates·sumClosed·rateSummary·salesRow)로 만든다. 새 공식을 두지 않는다
+// 숫자는 통계 탭과 같은 순수 함수(sumPeriod·revisitRates·sumClosed·rateSummary·salesRow)로 만든다. 새 공식을 두지 않는다.
+// 의사랑 의원(clinic_emr uisarang, spec uisarang-upload REQ-8813 AC-8813.2·AC-8813.3): 내원·신환·재진·하루 평균은 날 숫자(stats_days),
+// 가장 많은 나이대는 그달 나이대 하루 줄 합(uis.ts), 신환 재방문율·Block 전환율·3번 이상은 셀 수 없어 –(순위 표 아래 줄이 설명한다)
 
 /** 순위 표 '통계 대표 숫자' 칸 여덟(시안 차례). 건당 진료비는 없다 */
 export const REPRESENTATIVE = [
@@ -39,7 +44,7 @@ export type RepKey = (typeof REPRESENTATIVE)[number]['key']
 export type RepValue = { value: number | null; text: string | null }
 export type Representative = Record<RepKey, RepValue>
 
-/** 비교 표 세 개가 받는 의원 한 줄. region = 화면 지역 글(시·도 또는 '지역 모름'). 읽지 못한 칸은 null */
+/** 비교 표 세 개가 받는 의원 한 줄. region = 화면 지역 글(시·도 또는 '지역 모름'). 읽지 못한 칸은 null. uis = 의사랑 의원(읽은 뒤에만 앎, 없으면 거짓) */
 export type CompareRow = {
   id: string
   name: string
@@ -48,6 +53,7 @@ export type CompareRow = {
   sales: SalesRow | null
   pay: PayByJob | null
   rep: Representative | null
+  uis?: boolean
 }
 
 const NONE: RepValue = { value: null, text: null }
@@ -108,14 +114,19 @@ export function monthSalesDays(raw: CompareRaw, month: string): RevenueDayRow[] 
   })
 }
 
-// stats_days 줄: 저장소 읽기(lib/storage/stats.ts)와 같은 검사 — 날 payload 검사 + 줄의 날·일부·출처가 맞아야 한다
+const SOURCES: readonly unknown[] = ['bit', 'file', 'uisarang']
+
+// stats_days 줄: 저장소 읽기(lib/storage/stats.ts)와 같은 검사 — 날 payload 검사 + 줄의 날·일부·출처(비트·파일·의사랑)가 맞아야 한다
 function statsDays(raw: CompareRaw): DayPayload[] {
   return raw.stats_days.flatMap((row) => {
     const payload = validateDayPayload(row.payload)
-    const fits = payload !== null && payload.day === row.day && payload.partial === row.partial && (row.source === 'bit' || row.source === 'file')
+    const fits = payload !== null && payload.day === row.day && payload.partial === row.partial && SOURCES.includes(row.source)
     return fits ? [payload] : []
   })
 }
+
+// 환자 1명 이상인 날(의사랑 나이대 셈의 진료한 날)
+const workedDays = (days: readonly DayPayload[]) => new Set(days.filter((day) => day.totals.patients >= 1).map((day) => day.day))
 
 // sunap_days 줄: 마감한 날(closed_at 있음)만, 네 칸은 0 이상 정수(lib/storage/sunap.ts 읽기와 같은 규칙)
 function closedDays(raw: CompareRaw, range: DateRange): SunapClosedDay[] {
@@ -234,15 +245,20 @@ function apptsOf(raw: CompareRaw, month: string): RepValue {
   return { value: total, text: `${formatCount(total)}건` }
 }
 
-// 생년월일 없음은 나이대가 아니다. 같으면 통계 탭 차례(앞)
+// 생년월일 없음은 나이대가 아니다. 같으면 통계 탭 차례(앞). 몫의 분모 = 열 줄 합(people)
+function topAgeOf(mix: UisAgeMix | null): RepValue {
+  if (mix === null || mix.people === 0) return NONE
+  let top: { name: string; people: number } | null = null
+  for (const band of mix.age) if (band.name !== NO_BIRTH && band.people > (top?.people ?? 0)) top = band
+  if (top === null) return NONE
+  const rate = rateOf(top.people, mix.people)
+  return { value: rate.value, text: `${top.name} · ${rate.text}` }
+}
+
+// 비트: 그달 달 줄 sections.mix
 function ageOf(row: Row | null, month: string): RepValue {
   const sections = row === null ? null : validateMonthSections(row.sections)
-  if (sections === null || sections.month !== month || sections.mix.people === 0) return NONE
-  let top: { name: string; people: number } | null = null
-  for (const band of sections.mix.age) if (band.name !== NO_BIRTH && band.people > (top?.people ?? 0)) top = band
-  if (top === null) return NONE
-  const rate = rateOf(top.people, sections.mix.people)
-  return { value: rate.value, text: `${top.name} · ${rate.text}` }
+  return topAgeOf(sections === null || sections.month !== month ? null : sections.mix)
 }
 
 // 그달 총진료비(salesRow) ÷ 그달 매출 목표. 오늘 기준 목표 속도 셈은 끝난 달에 맞지 않아 쓰지 않는다
@@ -268,17 +284,36 @@ function threeOf(raw: CompareRaw, row: Row | null, month: string): RepValue {
 export function representative(raw: CompareRaw, month: string): Representative {
   const sales = monthSalesDays(raw, month)
   const days = statsDays(raw)
+  const shared = { nonpay: nonpayOf(sales, month), rsvFirst: rsvFirstOf(raw, month), appts: apptsOf(raw, month), goal: goalOf(raw, sales, month) }
+  if (isUisClinic(raw)) {
+    // 의사랑 엑셀로는 신환 재방문율·Block 전환·몇 번까지 받나를 셀 수 없다(AC-8813.2·AC-8813.3)
+    return { ...shared, revisit30: NONE, block: NONE, three: NONE, age: topAgeOf(uisAgeMix(raw, month, workedDays(days))) }
+  }
   const row = monthRow(raw, month)
   return {
-    nonpay: nonpayOf(sales, month),
+    nonpay: shared.nonpay,
     revisit30: revisitOf(days, month),
-    rsvFirst: rsvFirstOf(raw, month),
+    rsvFirst: shared.rsvFirst,
     block: blockOf(days, month),
-    appts: apptsOf(raw, month),
+    appts: shared.appts,
     age: ageOf(row, month),
-    goal: goalOf(raw, sales, month),
+    goal: shared.goal,
     three: threeOf(raw, row, month),
   }
+}
+
+/**
+ * 매출·환자 수 한 줄(순위 표 앞 칸 · 매출·환자 수 표). 비트 의원 = 그달 sales_days(salesRow 그대로).
+ * 의사랑 의원 = 총진료비는 그달 sales_days, 내원·신환·재진·하루 평균은 그달 stats_days 날 숫자(AC-8813.2)
+ */
+export function compareSales(raw: CompareRaw, month: string): SalesRow | null {
+  const sales = monthSalesDays(raw, month)
+  if (!isUisClinic(raw)) return salesRow(sales)
+  const range = monthRange(month)
+  const visits = statsDays(raw)
+    .filter((day) => inRange(day.day, range))
+    .map((day) => ({ patients: day.totals.patients, newPatients: day.totals.newPatients, returning: day.totals.returning }))
+  return salesRow(sales, visits)
 }
 
 /** 그달 저장된 숫자가 있는 의원인지: 매출 줄이 있거나 대표 숫자가 하나라도 있다(급여만으로는 아님, AC-8015.6) */

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import type { PayByJob } from '@/lib/admin/compare/pay'
 import { REPRESENTATIVE, type CompareRow, type RepKey, type Representative } from '@/lib/admin/compare/rank'
 import { STAFF_JOBS } from '@/types/staff'
@@ -217,6 +218,57 @@ describe('AC-8015.2 순위 표 — 칸·차례·값 모양', () => {
   it('AC-8015.2: 아래 글', () => {
     render(<RankTable month="2026-10" region="전체" rows={ROWS} />)
     expect(screen.getByText(FOOT)).toBeTruthy()
+  })
+})
+
+// ── 의사랑 의원(spec uisarang-upload REQ-8813 AC-8813.1·AC-8813.5, 시안 docs/mockups/uisarang-upload ?s=admin) ──
+const UIS_FOOT = '의사랑 표시 의원은 의사랑 엑셀로 올린 숫자예요. 처방 칸은 환자 수가 아니라 처방량이고, 나이대는 내원한 날마다 센 수예요.'
+
+describe('AC-8813.1·AC-8813.5 순위 표 — 의사랑 칩 · 표 아래 의사랑 줄', () => {
+  it('AC-8813.1: 의사랑 의원 첫 칸 = 순위 · 이름 · (내 의원 칩) · 의사랑 칩(회색) · 지역 — 내 의원 칩 다음, 지역 앞', () => {
+    render(<RankTable month="2026-10" region="전체" rows={[{ ...GANA, uis: true }, { ...DARA, uis: true }, MABA]} />)
+    const [first, second, third] = bodyRows().map((row) => row.children[0] as HTMLElement)
+    expect(first!.textContent).toBe('1가나 정형외과의원내 의원의사랑서울')
+    expect(second!.textContent).toBe('2다라 정형외과의원의사랑서울')
+    expect(third!.textContent).toBe('3마바 정형외과의원지역 모름')
+    const mark = within(second!).getByText('의사랑')
+    expect(mark.className).toBe(ds.chip.neutral)
+    const parts = [...first!.querySelector('div')!.children].map((child) => child.textContent)
+    expect(parts).toEqual(['1', '가나 정형외과의원', '내 의원', '의사랑', '서울'])
+  })
+
+  it('AC-8813.1: 지역을 골라 지역 글이 없어도 의사랑 칩은 있다', () => {
+    render(<RankTable month="2026-10" region="서울" rows={[{ ...DARA, uis: true }]} />)
+    expect(bodyRows()[0]!.children[0]!.textContent).toBe('1다라 정형외과의원의사랑')
+  })
+
+  it('AC-8813.5: 목록에 의사랑 의원이 하나라도 있으면 지금 아래 줄 다음에 의사랑 줄이 하나 더 있다', () => {
+    const { container } = render(<RankTable month="2026-10" region="전체" rows={[GANA, { ...DARA, uis: true }, MABA]} />)
+    const foot = screen.getByText(FOOT)
+    const uis = screen.getByText(UIS_FOOT)
+    expect(foot.nextElementSibling).toBe(uis)
+    expect(uis.tagName).toBe('P')
+    expect(uis.className.split(' ')).toEqual(expect.arrayContaining(['text-small', 'text-muted']))
+    expect(container.textContent?.match(/의사랑 표시 의원은/g)).toHaveLength(1)
+  })
+
+  it('AC-8813.5: 의사랑 의원이 없으면(uis 거짓·없음) 의사랑 줄·칩이 없다', () => {
+    render(<RankTable month="2026-10" region="전체" rows={[{ ...GANA, uis: false }, DARA, MABA, SAA]} />)
+    expect(screen.getByText(FOOT)).toBeTruthy()
+    expect(screen.queryByText(UIS_FOOT)).toBeNull()
+    expect(screen.queryByText('의사랑')).toBeNull()
+  })
+
+  it('AC-8813.5: 표 대신 빈 자료 글이면 의사랑 줄도 없다', () => {
+    render(<RankTable month="2026-03" region="부산" rows={[{ ...SAA, uis: true }]} />)
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.queryByText(UIS_FOOT)).toBeNull()
+  })
+
+  it('AC-8813.5: 의사랑 의원의 매출·환자 수 칸 값 모양은 비트 의원과 같다(날 숫자로 센 SalesRow)', () => {
+    const uisSales = { total: 28_630_000, visits: 4105, newPatients: 287, returnVisits: 3818, dayAvg: 164.2, days: 25 }
+    render(<RankTable month="2026-10" region="전체" rows={[{ ...SAA, uis: true, sales: uisSales }]} />)
+    expect([...bodyRows()[0]!.children].slice(1, 6).map((cell) => cell.textContent)).toEqual(['2,863만 원', '4,105건', '287명', '3,818건', '164.2건'])
   })
 })
 

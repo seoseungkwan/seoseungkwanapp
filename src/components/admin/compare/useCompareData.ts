@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadHospital, type CompareRaw } from '@/lib/admin/compare/load'
 import { compareMonths, type CompareMonths } from '@/lib/admin/compare/months'
 import { payByJob, type PayByJob, type PayLineIn, type PayMember } from '@/lib/admin/compare/pay'
-import { monthSalesDays, representative, type CompareRow, type Representative } from '@/lib/admin/compare/rank'
-import { salesRow, type SalesRow } from '@/lib/admin/compare/sales'
+import { compareSales, isUisClinic, representative, type CompareRow, type Representative } from '@/lib/admin/compare/rank'
+import type { SalesRow } from '@/lib/admin/compare/sales'
 import { ownFirst } from '@/lib/admin/compare/sort'
 import { REGION_UNKNOWN, regionOf } from '@/lib/admin/region'
 import { addMonths, isMonth, isYmd, monthOf } from '@/lib/analytics/dates'
@@ -23,12 +23,22 @@ import { compareStatsInput, type CompareStatsCells } from './statsInput'
 // 내 의원 먼저 + 이름 차례로, 끝난 의원부터 칸을 채운다. 같은 (의원, 달)은 화면을 떠나기 전까지 다시 읽지 않고, 읽지 못한 의원만 failed
 // ([다시 불러오기]로만 다시 읽는다). 표 셋의 값(매출·월급·대표 숫자)은 읽자마자 만든다. 나란히 보기 값(compareStatsInput)은 지역을 골랐을 때만
 // 만들고, 만든 뒤에는 읽은 줄을 버린다(전체에서 읽은 의원은 나중에 지역을 고를 때 다시 읽지 않으려고 그때까지만 줄을 든다).
-// 읽기만 한다: 쓰기 요청·Web Worker·비트 연결이 없다. 줄 검사는 계산 함수(rank·statsInput)가 지금 줄 검사로 하고, 직원·급여 줄은 여기서 가볍게 고른다
+// 읽기만 한다: 쓰기 요청·Web Worker·비트 연결이 없다. 줄 검사는 계산 함수(rank·statsInput)가 지금 줄 검사로 하고, 직원·급여 줄은 여기서 가볍게 고른다.
+// 의사랑 의원(spec uisarang-upload REQ-8813): 같은 읽기에 admin_uis_rows 두 종류가 들고(함수가 아직 없으면 loadHospital이 빈 목록으로 받음 — AC-8813.7),
+// 읽은 뒤 clinic_emr이 uisarang이면 표 줄·나란히 보기 칸에 uis를 단다(이름 옆 '의사랑' 칩 · AC-8813.1). 매출·환자 수는 compareSales(AC-8813.2)
 
 const LIMIT = 3
 const ALL = '전체'
 
-type Done = { state: 'done'; sales: SalesRow | null; pay: PayByJob; rep: Representative; side: CompareStatsCells | null; raw: CompareRaw | null }
+type Done = {
+  state: 'done'
+  uis: boolean
+  sales: SalesRow | null
+  pay: PayByJob
+  rep: Representative
+  side: CompareStatsCells | null
+  raw: CompareRaw | null
+}
 type Entry = { state: 'reading' } | { state: 'failed' } | Done
 
 /** 고르기·표·나란히 보기가 함께 쓰는 값 */
@@ -134,7 +144,8 @@ function doneOf(raw: CompareRaw, month: string, withSide: boolean): Done {
   const side = withSide ? compareStatsInput(raw, month) : null
   return {
     state: 'done',
-    sales: salesRow(monthSalesDays(raw, month)),
+    uis: isUisClinic(raw),
+    sales: compareSales(raw, month),
     pay: payOf(raw, month),
     rep: representative(raw, month),
     side,
@@ -277,7 +288,16 @@ export function useCompareData(today: string): CompareData {
   const rows: CompareRow[] = shown.map((clinic) => {
     const entry = entryAt(clinic.id)
     const done = entry?.state === 'done' ? entry : null
-    return { id: clinic.id, name: clinic.name, own: clinic.own, region: clinic.region, sales: done?.sales ?? null, pay: done?.pay ?? null, rep: done?.rep ?? null }
+    return {
+      id: clinic.id,
+      name: clinic.name,
+      own: clinic.own,
+      region: clinic.region,
+      sales: done?.sales ?? null,
+      pay: done?.pay ?? null,
+      rep: done?.rep ?? null,
+      uis: done?.uis ?? false,
+    }
   })
   const side: SideClinic[] =
     pick.region === ALL
@@ -285,7 +305,7 @@ export function useCompareData(today: string): CompareData {
       : shown.map((clinic) => {
           const entry = entryAt(clinic.id)
           const cells = entry?.state === 'failed' ? 'failed' : entry?.state === 'done' && entry.side !== null ? entry.side : 'reading'
-          return { id: clinic.id, name: clinic.name, region: clinic.region, own: clinic.own, cells }
+          return { id: clinic.id, name: clinic.name, region: clinic.region, own: clinic.own, uis: entry?.state === 'done' && entry.uis, cells }
         })
   const failed = shown.filter((clinic) => entryAt(clinic.id)?.state === 'failed').map((clinic) => ({ id: clinic.id, name: clinic.name }))
   const reading = shown.some((clinic) => {

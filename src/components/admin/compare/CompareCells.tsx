@@ -6,7 +6,10 @@ import type { CellAlert, CellBar, CellColumns, CellNumber, CellTableRow, Compare
 // 의원 하나 × 통계 큰 카드 줄 하나 = 흰 작은 카드 하나(288px 칸). 안에 작은 칸을 시안 차례로 쌓는다(이름은 통계 탭 이름).
 // 숫자는 compareStatsInput이 통계 탭과 같은 순수 함수로 만든 글자 그대로이고, 여기서는 그리기만 한다(훅·네트워크 없음, 단추 없음 — 읽기만).
 // 작은 막대·띠·열 칸은 꾸밈(aria-hidden)이고 HTML 막대다: inline style은 막대 높이·폭 %뿐이다(차트 부품과 같은 방식).
-// 색은 앱 토큰으로 그린다: 90일초진 색 → cat-2, 재진 색 → chart-3, 열 칸 단계 → chart-1~5. 카드 모서리·그림자는 통계 카드와 같은 통계 토큰(rounded-st·shadow-st-card — 테두리 없음, classes.test가 이 폴더에 허용)
+// 색은 앱 토큰으로 그린다: 90일초진 색 → cat-2, 재진 색 → chart-3, 열 칸 단계 → chart-1~5. 카드 모서리·그림자는 통계 카드와 같은 통계 토큰(rounded-st·shadow-st-card — 테두리 없음, classes.test가 이 폴더에 허용).
+// 의사랑 의원(cells.uis, spec uisarang-upload REQ-8813 AC-8813.4, 시안 docs/mockups/uisarang-upload ?s=admin): 칸 차례·모양은 그대로이고
+// 셀 수 없는 작은 칸(신환 재방문율·몇 번까지 받나·처방별 신환·재진·원장님별·시간대별 접수)은 작은 글 '의사랑 엑셀로는 셀 수 없어요',
+// 숫자 칸(Block 전환)은 '–' 아래 같은 작은 글, 처방별 추세 자리 이름은 '묶음별 처방량'(값은 처방량 글)
 
 export type SideRowKey = 'summary' | 'patients' | 'revenue' | 'sunap' | 'calendar' | 'rx' | 'ops'
 
@@ -18,6 +21,9 @@ const NO_SUNAP = '수납일지를 마감한 날이 없어요'
 const SUNAP_NOTE = '수납일지 마감한 날만'
 const NO_CAL = '예약 탭에 적은 예약이 없어요'
 const ONE_DOCTOR = '원장님이 한 분이라 나누어 볼 것이 없어요.'
+const UIS_NA = '의사랑 엑셀로는 셀 수 없어요'
+const UIS_RX = '묶음별 처방량'
+const UIS_NA_NUMBERS: ReadonlySet<string> = new Set(['Block 전환']) // 숫자 칸 가운데 의사랑 엑셀로 셀 수 없는 것
 const MARK: Record<CellAlert['kind'], string> = { up: '▲', down: '▼', warn: '!' }
 const MARK_TONE: Record<CellAlert['kind'], string> = { up: 'text-positive', down: 'text-negative', warn: 'text-warning' }
 const SPLIT_TONE = { covered: 'bg-cat-1', noncovered: 'bg-cat-2', other: 'bg-cat-3' } as const
@@ -35,6 +41,7 @@ const NOTE = 'mt-1.5 text-caption text-muted'
 const NUM_LABEL = 'text-caption text-ink-2'
 const NUM_VALUE = 'mt-0.5 block whitespace-nowrap text-lead font-semibold text-ink tabular-nums'
 const NUM_UNIT = 'ml-px text-caption font-semibold text-ink-2'
+const NUM_NA = 'mt-0.5 block text-caption text-muted'
 const LINE = 'mt-1.5 text-small text-ink-2'
 const STRONG = 'font-semibold text-ink'
 const ALERTS = 'mt-1.5 grid gap-1.5'
@@ -56,6 +63,7 @@ const TD = 'py-1 text-right text-ink-2 tabular-nums'
 const TD_NAME = 'py-1 text-left font-semibold text-ink'
 
 const Dash = () => <p className={NA}>{DASH}</p>
+const UisNa = () => <p className={NA}>{UIS_NA}</p>
 
 function Sub({ title, first, children }: { title: string; first: boolean; children: ReactNode }) {
   return (
@@ -79,8 +87,8 @@ function Subs({ items }: { items: Array<[string, ReactNode]> }) {
   )
 }
 
-// 숫자 칸들(시안 .mk·.mk3): 이름 위 · 큰 숫자 + 작은 단위. 값이 없으면 '–'만
-function Numbers({ cells, columns, flush = false }: { cells: readonly CellNumber[]; columns: 2 | 3; flush?: boolean }) {
+// 숫자 칸들(시안 .mk·.mk3): 이름 위 · 큰 숫자 + 작은 단위. 값이 없으면 '–'만. na에 든 이름은 값이 없을 때 '–' 아래 작은 글(의사랑 의원)
+function Numbers({ cells, columns, flush = false, na }: { cells: readonly CellNumber[]; columns: 2 | 3; flush?: boolean; na?: ReadonlySet<string> }) {
   return (
     <div className={flush ? NUMS[columns] : `${NUMS_GAP} ${NUMS[columns]}`}>
       {cells.map((cell) => (
@@ -90,6 +98,7 @@ function Numbers({ cells, columns, flush = false }: { cells: readonly CellNumber
             {cell.value ?? DASH}
             {cell.value !== null && <small className={NUM_UNIT}>{cell.unit}</small>}
           </strong>
+          {cell.value === null && na?.has(cell.label) === true && <span className={NUM_NA}>{UIS_NA}</span>}
         </p>
       ))}
     </div>
@@ -246,8 +255,9 @@ function Weekdays({ weekdays }: { weekdays: CompareStatsCells['ops']['weekdays']
   )
 }
 
-// 줄마다 작은 칸들(시안 sideCard 차례)
+// 줄마다 작은 칸들(시안 sideCard 차례). 의사랑 의원은 셀 수 없는 칸이 작은 글
 function rowBody(row: SideRowKey, cells: CompareStatsCells): ReactNode {
+  const uis = cells.uis === true
   switch (row) {
     case 'summary':
       return (
@@ -266,8 +276,8 @@ function rowBody(row: SideRowKey, cells: CompareStatsCells): ReactNode {
           items={[
             ['일별 내원', cells.patients.daily === null ? <Dash key="d" /> : <ColumnsWithAxis key="c" cell={cells.patients.daily} />],
             ['환자 구성', <Bars key="b" bars={cells.patients.age} tone="bg-accent" />],
-            ['신환 재방문율', <Numbers key="n" cells={cells.patients.revisit} columns={3} />],
-            ['몇 번까지 받나', <Bars key="b" bars={cells.patients.dropoff} tone="bg-cat-2" />],
+            ['신환 재방문율', uis ? <UisNa key="u" /> : <Numbers key="n" cells={cells.patients.revisit} columns={3} />],
+            ['몇 번까지 받나', uis ? <UisNa key="u" /> : <Bars key="b" bars={cells.patients.dropoff} tone="bg-cat-2" />],
           ]}
         />
       )
@@ -298,7 +308,7 @@ function rowBody(row: SideRowKey, cells: CompareStatsCells): ReactNode {
       if (cells.sunap === null) return <p className={NA}>{NO_SUNAP}</p>
       return (
         <>
-          <Numbers cells={cells.sunap} columns={3} flush />
+          <Numbers cells={cells.sunap} columns={3} flush na={uis ? UIS_NA_NUMBERS : undefined} />
           <p className={NOTE}>{SUNAP_NOTE}</p>
         </>
       )
@@ -309,8 +319,8 @@ function rowBody(row: SideRowKey, cells: CompareStatsCells): ReactNode {
       return (
         <Subs
           items={[
-            ['처방별 추세', <Bars key="b" bars={cells.rx.trend} tone="bg-chart-3" />],
-            ['처방별 신환·재진', cells.rx.split === null ? <Dash key="d" /> : <Table key="t" rows={cells.rx.split} />],
+            [uis ? UIS_RX : '처방별 추세', <Bars key="b" bars={cells.rx.trend} tone="bg-chart-3" />],
+            ['처방별 신환·재진', uis ? <UisNa key="u" /> : cells.rx.split === null ? <Dash key="d" /> : <Table key="t" rows={cells.rx.split} />],
           ]}
         />
       )
@@ -319,8 +329,21 @@ function rowBody(row: SideRowKey, cells: CompareStatsCells): ReactNode {
       return (
         <Subs
           items={[
-            ['원장님별', doctors === null ? <Dash key="d" /> : doctors === 'single' ? <p key="p" className={NA}>{ONE_DOCTOR}</p> : <Table key="t" rows={doctors} />],
-            ['시간대별 접수', <Heat key="h" hours={cells.ops.hours} />],
+            [
+              '원장님별',
+              uis ? (
+                <UisNa key="u" />
+              ) : doctors === null ? (
+                <Dash key="d" />
+              ) : doctors === 'single' ? (
+                <p key="p" className={NA}>
+                  {ONE_DOCTOR}
+                </p>
+              ) : (
+                <Table key="t" rows={doctors} />
+              ),
+            ],
+            ['시간대별 접수', uis ? <UisNa key="u" /> : <Heat key="h" hours={cells.ops.hours} />],
             ['요일별 내원', <Weekdays key="w" weekdays={cells.ops.weekdays} />],
             ['휴일에 따라', holiday === null ? <Dash key="d" /> : <Table key="t" rows={holiday} />],
           ]}

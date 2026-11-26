@@ -18,6 +18,7 @@ import { cellAverage, foldHours, heatLevel, VISIT_HOURS } from '@/lib/analytics/
 import { ratePct, rateSummary } from '@/lib/calendar/counts'
 import { sumPeriod } from '@/lib/revenue/summary'
 import { salesRow } from '@/lib/admin/compare/sales'
+import { toUisDayPayload } from '@/lib/payload/uisarang'
 import { validateDayPayload } from '@/lib/payload/validate'
 import type { DayPayload } from '@/types/payload'
 import type { RevenueDayRow } from '@/types/revenue'
@@ -503,5 +504,163 @@ describe('compareStatsInput — 10년 앞 옛 달도 같은 셈 (AC-8014.5)', ()
     expect(cells.patients.dropoff?.[2]).toEqual({ name: '3번 이상', text: '40.0%', width: 40 })
     expect(cells.summary.goal?.rate).toBe('104.0%') // 2016년 10월은 진료한 날 26일 × 200만 원
     expect(cells.ops.holiday).not.toBeNull()
+  })
+})
+
+// ── 의사랑 의원(spec uisarang-upload REQ-8813 AC-8813.3·AC-8813.4·AC-8813.7, design.md §10-4) ──
+// 줄은 admin_uis_rows jsonb 모양(clinic_emr {emr} · uis_periods {kind, from_day, to_day, payload})을 지어낸 것이다
+
+const UIS_GROUP_ROWS = [
+  ...GROUP_ROWS,
+  { id: '00000000-0000-4000-8000-0000000000a3', name: '주사', codes: ['INJ1'], out_codes: [], cond: [], sort_order: 2 },
+  { id: '00000000-0000-4000-8000-0000000000a4', name: '체외충격파', codes: ['ESWT1'], out_codes: [], cond: [], sort_order: 3 },
+]
+// 처방 코드 줄(코드 글자 차례). 물리치료 = 3,000.5 + 2,603.5 = 5,604 · 주사 1,021.5 · 도수치료 788 · 체외충격파 12 · ZZ9는 어느 묶음에도 없다
+const RX_LINES = [
+  { code: 'ESWT1', name: '가짜 충격파', qty: 12, amount: 600_000 },
+  { code: 'INJ1', name: '가짜 주사', qty: 1021.5, amount: 2_000_000 },
+  { code: 'MM001', name: '가짜 물리 1', qty: 3000.5, amount: 3_000_000 },
+  { code: 'MM002', name: '가짜 물리 2', qty: 2603.5, amount: 1_000_000 },
+  { code: 'MX100', name: '가짜 도수', qty: 788, amount: 8_000_000 },
+  { code: 'ZZ9', name: '가짜 그 밖', qty: 9999, amount: 100_000 },
+]
+const rxPeriod = (from: string, to: string, rows: readonly object[] = RX_LINES) => ({ kind: 'rx', from_day: from, to_day: to, payload: { v: 1, rows, total: null } })
+// 나이대 하루 줄 하나: 60대 8 · 50대 6 · 40대 4 · 생년월일 없음 10(가장 많아도 나이대가 아님), 합 36
+const AGE_DAY = [0, 1, 1, 2, 4, 6, 8, 3, 1, 10]
+const AGE_NEW = [0, 0, 0, 1, 0, 1, 1, 0, 0, 1]
+const ageRow = (day: string) => ({ kind: 'age', from_day: day, to_day: day, payload: { v: 1, patients: 36, newPatients: 4, bands: AGE_DAY, newBands: AGE_NEW } })
+
+function uisRawOf(month: string): CompareRaw {
+  const raw = emptyRaw()
+  const days = eachDay(monthRange(month)).filter(openDay)
+  raw.clinic_emr = [{ emr: 'uisarang' }]
+  raw.stats_days = days.map((day) => ({ day, partial: false, source: 'uisarang', payload: toUisDayPayload({ day, patients: 40, newPatients: 4 }), updated_at: `${day}T12:00:00Z` }))
+  raw.stats_coverage = [{ from_day: monthRange(addMonths(month, -1)).from, to_day: monthRange(month).to }]
+  raw.stats_rx_groups = UIS_GROUP_ROWS
+  raw.stats_day_totals = dayTotals(month)
+  raw.sales_days = days.map(salesRowOf)
+  raw.sunap_days = days.map(sunapRowOf)
+  raw.uis_periods = [rxPeriod(monthRange(month).from, monthRange(month).to), ...days.slice(0, 3).map(ageRow)]
+  return raw
+}
+
+describe('compareStatsInput — 의사랑 의원 (AC-8813.3·AC-8813.4)', () => {
+  it('AC-8813.4: 의사랑 의원(clinic_emr uisarang)이면 uis가 참이고, 비트 의원·clinic_emr 줄 없음이면 uis 열쇠가 없다', () => {
+    expect(compareStatsInput(uisRawOf(MONTH), MONTH).uis).toBe(true)
+    expect(compareStatsInput(rawOf(MONTH), MONTH)).not.toHaveProperty('uis')
+    const bit = rawOf(MONTH)
+    bit.clinic_emr = [{ emr: 'bit' }]
+    expect(compareStatsInput(bit, MONTH)).not.toHaveProperty('uis')
+  })
+
+  it('AC-8813.3: 환자 구성은 그달 나이대 하루 줄 합(내원 건)에서 많은 나이대 셋(생년월일 없음 뺌)과 몫(합 = 열 칸 모두)', () => {
+    const cells = compareStatsInput(uisRawOf(MONTH), MONTH)
+    // 사흘 × 36 = 108: 60대 24 · 50대 18 · 40대 12
+    expect(cells.patients.age).toEqual([
+      { name: '60대', text: `${formatRate(24 / 108)}%`, width: 100 },
+      { name: '50대', text: `${formatRate(18 / 108)}%`, width: percentOf(18, 24) },
+      { name: '40대', text: `${formatRate(12 / 108)}%`, width: percentOf(12, 24) },
+    ])
+    expect(cells.patients.age?.[0]?.text).toBe('22.2%')
+  })
+
+  it('AC-8813.4: 처방 줄은 묶음별 처방량 위 셋(처방량 큰 차례, 값은 처방량 글 — 단위 없음) · 처방별 신환·재진은 없음', () => {
+    const cells = compareStatsInput(uisRawOf(MONTH), MONTH)
+    expect(cells.rx.trend).toEqual([
+      { name: '물리치료', text: '5,604', width: 100 },
+      { name: '주사', text: '1,021.5', width: percentOf(1021.5, 5604) },
+      { name: '도수치료', text: '788', width: percentOf(788, 5604) },
+    ])
+    expect(cells.rx.split).toBeNull()
+  })
+
+  it('AC-8813.4: 한 달 줄이 없어도 하루·한 주 줄로 그달이 다 덮이면(휴진 일요일은 빠져도 됨) 그 합이다', () => {
+    const raw = uisRawOf(MONTH)
+    const one = [{ code: 'MM001', name: '가짜 물리 1', qty: 1.25, amount: 10_000 }]
+    // 2026년 10월: 1일(목)~3일 하루 · 5일·12일·19일 주 · 26일~31일 하루(26일 주는 11월에 걸쳐 안 씀). 4일·11일…은 일요일
+    const spans: [string, string][] = [
+      ['2026-10-01', '2026-10-01'],
+      ['2026-10-02', '2026-10-02'],
+      ['2026-10-03', '2026-10-03'],
+      ['2026-10-05', '2026-10-11'],
+      ['2026-10-12', '2026-10-18'],
+      ['2026-10-19', '2026-10-25'],
+      ['2026-10-26', '2026-11-01'],
+      ...['26', '27', '28', '29', '30', '31'].map((d): [string, string] => [`2026-10-${d}`, `2026-10-${d}`]),
+    ]
+    raw.uis_periods = spans.map(([from, to]) => rxPeriod(from, to, one))
+    expect(compareStatsInput(raw, MONTH).rx.trend).toEqual([{ name: '물리치료', text: '15', width: 100 }]) // 하루 9 + 주 3 = 12줄 × 1.25
+  })
+
+  it('AC-8813.4: 그달이 처방 줄로 다 덮이지 않으면 –(반쪽 합을 그리지 않음)', () => {
+    const raw = uisRawOf(MONTH)
+    raw.uis_periods = [rxPeriod('2026-10-01', '2026-10-01'), rxPeriod('2026-10-05', '2026-10-11')]
+    expect(compareStatsInput(raw, MONTH).rx.trend).toBeNull()
+    raw.uis_periods = []
+    expect(compareStatsInput(raw, MONTH).rx.trend).toBeNull()
+  })
+
+  it('AC-8813.4: 묶음에 든 처방량이 모두 0이면(묶음 밖 처방뿐) –', () => {
+    const raw = uisRawOf(MONTH)
+    raw.uis_periods = [rxPeriod(monthRange(MONTH).from, monthRange(MONTH).to, [RX_LINES[5]!])]
+    expect(compareStatsInput(raw, MONTH).rx.trend).toBeNull()
+  })
+
+  it('AC-8813.4: 모양이 틀린 처방·나이대 줄(저장 모양 검사·기간 모양)은 뺀다', () => {
+    const raw = uisRawOf(MONTH)
+    const { from, to } = monthRange(MONTH)
+    raw.uis_periods = [
+      { ...rxPeriod(from, to), payload: { v: 2, rows: RX_LINES, total: null } },
+      rxPeriod('2026-10-02', '2026-10-09'), // 하루·한 주·한 달이 아님
+      { ...ageRow('2026-10-01'), payload: { v: 1, patients: 99, newPatients: 4, bands: AGE_DAY, newBands: AGE_NEW } },
+    ]
+    const cells = compareStatsInput(raw, MONTH)
+    expect(cells.rx.trend).toBeNull()
+    expect(cells.patients.age).toBeNull()
+  })
+
+  it('AC-8813.4: 셀 수 없는 칸의 값 — 몇 번까지 받나·원장님별·시간대별 접수 null, Block 전환은 –(신환 예약률·90일 예약률은 그대로)', () => {
+    const cells = compareStatsInput(uisRawOf(MONTH), MONTH)
+    expect(cells.patients.dropoff).toBeNull()
+    expect(cells.ops.doctors).toBeNull()
+    expect(cells.ops.hours).toBeNull()
+    expect(cells.sunap?.map((cell) => cell.label)).toEqual(['신환 예약률', '90일 예약률', 'Block 전환'])
+    expect(cells.sunap?.[2]?.value).toBeNull()
+    expect(cells.sunap?.[0]?.value).not.toBeNull()
+  })
+
+  it('AC-8813.2: 날 숫자로 그리는 칸(환자 요약·일별 내원·요일별 내원)은 출처 uisarang 날 줄로 지금 함수 그대로다', () => {
+    const cells = compareStatsInput(uisRawOf(MONTH), MONTH)
+    const today = monthRange(addMonths(MONTH, 1)).from
+    const input: StatsInput = {
+      days: eachDay(monthRange(MONTH)).filter(openDay).map((day) => toUisDayPayload({ day, patients: 40, newPatients: 4 })),
+      covered: [{ from: monthRange(addMonths(MONTH, -1)).from, to: monthRange(MONTH).to }],
+      range: pickRange(today, { kind: 'month', unit: 'day', month: MONTH }, false),
+    }
+    expect(cells.summary.patients).toEqual(summaryCells(input).map((cell) => ({ label: cell.label, value: cell.value === null ? null : formatCount(cell.value), unit: cell.unit })))
+    expect(cells.patients.daily?.columns).toHaveLength(27)
+    expect(cells.ops.weekdays?.values).toEqual(weekdayRows(input.days, input.range)!.slice(0, 6).map((row) => row.average ?? 0))
+    expect(cells.hasData).toBe(true)
+  })
+
+  it('AC-8813.4: 그달 의사랑 줄만 있어도(날 숫자·매출 없음) 자료가 있다', () => {
+    const raw = emptyRaw()
+    raw.clinic_emr = [{ emr: 'uisarang' }]
+    raw.uis_periods = [ageRow('2026-10-02')]
+    expect(compareStatsInput(raw, MONTH).hasData).toBe(true)
+    expect(compareStatsInput({ ...raw, uis_periods: [] }, MONTH).hasData).toBe(false)
+  })
+
+  it("AC-8813.2: 날 줄 출처 'uisarang'은 비트 길에서도 지금 줄 검사를 지난다(빠지지 않음)", () => {
+    const raw = rawOf(MONTH)
+    raw.stats_days = raw.stats_days.map((row) => ({ ...row, source: 'uisarang' }))
+    expect(compareStatsInput(raw, MONTH).summary.patients).toEqual(compareStatsInput(rawOf(MONTH), MONTH).summary.patients)
+  })
+
+  it('AC-8813.7: 새 두 종류 열쇠가 없는 값(열여덟 종류만 만든 CompareRaw)도 비트 의원으로 그대로 센다', () => {
+    const raw = rawOf(MONTH) as Partial<CompareRaw>
+    expect('clinic_emr' in raw || 'uis_periods' in raw).toBe(false)
+    const withEmpty = { ...rawOf(MONTH), clinic_emr: [], uis_periods: [] }
+    expect(compareStatsInput(raw as CompareRaw, MONTH)).toEqual(compareStatsInput(withEmpty, MONTH))
   })
 })

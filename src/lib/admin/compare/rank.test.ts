@@ -9,9 +9,10 @@ import { pickRange } from '@/components/stats/periodPick'
 import { revisitRates } from '@/components/stats/view'
 import { AGE_BANDS, NO_BIRTH } from '@/lib/analytics/patientMix'
 import { rateSummary } from '@/lib/calendar/counts'
+import { toUisDayPayload } from '@/lib/payload/uisarang'
 import { sumPeriod } from '@/lib/revenue/summary'
 import { COMPARE_KINDS, type CompareRaw } from './load'
-import { hasMonthNumbers, monthSalesDays, REPRESENTATIVE, representative, type CompareRow, type Representative } from './rank'
+import { compareSales, hasMonthNumbers, isUisClinic, monthSalesDays, REPRESENTATIVE, representative, type CompareRow, type Representative } from './rank'
 import { salesRow } from './sales'
 
 // 의원 비교 대표 숫자(spec admin-view REQ-8014 AC-8014.4, design.md '대표 숫자 표'·'의원 비교 달 10년' 끝 줄).
@@ -357,6 +358,131 @@ describe('AC-8014.4 monthSalesDays — sales_days 줄 → 매출 날 줄(그달�
     const got = monthSalesDays(octoberRaw(), OCT)
     expect(got.map((row) => row.date)).toEqual(['2026-10-01', '2026-10-02'])
     expect(got[0]).toMatchObject({ visits: 100, newPatients: 10, returnVisits: 90, total: 60_000_000, noncovered: 18_840_000, otherTotal: 0, unconfirmed: false, splitUnconfirmed: false, roughTotal: null })
+  })
+})
+
+// ── 의사랑 의원(spec uisarang-upload REQ-8813, design.md §10-4) ──
+// 줄은 admin_uis_rows jsonb 모양(supabase/migrations/20261127000000_uisarang_upload.sql)을 지어낸 것이다. 숫자는 모두 가짜다
+
+const sum = (values: readonly number[]) => values.reduce((total, n) => total + n, 0)
+// stats_days 날 줄(출처 uisarang, 저장 모양은 toUisDayPayload 그대로)
+const uisDay = (day: string, patients: number, newPatients: number) => ({
+  day,
+  partial: false,
+  source: 'uisarang',
+  payload: toUisDayPayload({ day, patients, newPatients }),
+  updated_at: '2026-11-01T01:00:00+00:00',
+})
+// uis_periods 나이대 하루 줄: 열 칸(AGE_BANDS 아홉 + 생년월일 없음)
+const ageRow = (day: string, bands: number[], newBands: number[], to = day) => ({
+  kind: 'age',
+  from_day: day,
+  to_day: to,
+  payload: { v: 1, patients: sum(bands), newPatients: sum(newBands), bands, newBands },
+})
+// 일일수입통계 매출 날 줄: 신환·재진은 비운다(초진수 ≠ 신환)
+const uisSale = (day: string, total: number) => ({ ...salesDay(day, total, { insurer: total - 1_000_000, copay: 500_000, noncovered: 500_000, other: 0 }, 999), new_patients: null, return_visits: null })
+
+function uisRaw(): CompareRaw {
+  const raw = empty()
+  raw.clinic_emr = [{ emr: 'uisarang' }]
+  raw.stats_days = [uisDay('2026-09-30', 99, 9), uisDay('2026-10-01', 42, 5), uisDay('2026-10-02', 38, 3), uisDay('2026-10-05', 51, 7)]
+  raw.sales_days = [uisSale('2026-09-30', 9_000_000), uisSale('2026-10-01', 3_000_000), uisSale('2026-10-02', 2_500_000)]
+  raw.uis_periods = [
+    // 생년월일 없음(마지막 칸)이 가장 많아도 나이대가 아니다. 60대 = 20 + 10 = 30, 합 = 76 + 50 = 126
+    ageRow('2026-10-01', [0, 1, 2, 3, 4, 10, 20, 5, 1, 30], [0, 0, 1, 0, 0, 1, 1, 0, 0, 2]),
+    ageRow('2026-10-02', [0, 0, 2, 3, 6, 10, 10, 5, 0, 14], [0, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    ageRow('2026-09-30', [0, 0, 0, 0, 0, 0, 0, 900, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), // 지난달: 안 듦
+    { ...ageRow('2026-10-05', [0, 0, 0, 0, 0, 0, 0, 500, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), payload: { v: 1, patients: 1, newPatients: 0, bands: [0, 0, 0, 0, 0, 0, 0, 500, 0, 0], newBands: Array(10).fill(0) } }, // 합이 안 맞음: 뺌
+    ageRow('2026-10-05', [0, 0, 0, 0, 0, 0, 0, 700, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], '2026-10-11'), // 나이대는 하루 줄만: 뺌
+  ]
+  raw.sunap_days = [closedDay('2026-10-01', 10, 4)]
+  raw.stats_goals = [{ month: OCT, visits: null, new_patients: null, revenue: 10_000_000 }]
+  return raw
+}
+
+describe('AC-8813.1 isUisClinic — 의사랑 의원은 admin_uis_rows(clinic_emr)의 emr이 uisarang', () => {
+  it('AC-8813.1: emr이 uisarang이면 참, 그 밖 EMR·줄 없음(함수가 아직 없는 DB)·종류 열쇠 없음(열여덟 종류만 만든 값)이면 거짓', () => {
+    expect(isUisClinic(uisRaw())).toBe(true)
+    for (const emr of ['bit', 'egis', 'other', null]) expect(isUisClinic({ ...empty(), clinic_emr: [{ emr }] })).toBe(false)
+    expect(isUisClinic(empty())).toBe(false)
+    const eighteen = empty() as Partial<CompareRaw>
+    delete eighteen.clinic_emr
+    delete eighteen.uis_periods
+    expect(isUisClinic(eighteen as CompareRaw)).toBe(false)
+  })
+})
+
+describe('AC-8813.2 compareSales — 매출·환자 수 한 줄', () => {
+  it('AC-8813.2: 의사랑 의원은 총진료비 = 그달 sales_days, 내원·신환·재진·하루 평균 = 그달 stats_days 날 숫자(진료한 날 평균)', () => {
+    // 내원 42 + 38 + 51 = 131, 신환 15, 재진 116, 131 ÷ 3 = 43.6, 총진료비 300만 + 250만(9월 뺌)
+    expect(compareSales(uisRaw(), OCT)).toEqual({ total: 5_500_000, visits: 131, newPatients: 15, returnVisits: 116, dayAvg: 43.6, days: 3 })
+  })
+
+  it('AC-8813.2: 의사랑 의원의 날 숫자는 지금 날 줄 검사(validateDayPayload·날·partial·출처)를 지난 줄만 센다', () => {
+    const raw = uisRaw()
+    raw.stats_days = [...raw.stats_days, { ...uisDay('2026-10-06', 500, 0), source: 'ocr' }, { ...uisDay('2026-10-07', 500, 0), day: '2026-10-08' }]
+    expect(compareSales(raw, OCT)?.visits).toBe(131)
+  })
+
+  it('AC-8813.2: 비트 의원은 지금 그대로 salesRow(monthSalesDays) — sales_days의 내원·신환·재진', () => {
+    const raw = octoberRaw()
+    expect(compareSales(raw, OCT)).toEqual(salesRow(monthSalesDays(raw, OCT)))
+    expect(compareSales(raw, OCT)).toMatchObject({ visits: 200, newPatients: 20, returnVisits: 180 })
+  })
+
+  it('AC-8813.7: 열여덟 종류만 만든 값(새 두 종류 열쇠 없음)도 비트 의원으로 그대로 센다', () => {
+    const raw = octoberRaw() as Partial<CompareRaw>
+    delete raw.clinic_emr
+    delete raw.uis_periods
+    expect(compareSales(raw as CompareRaw, OCT)).toEqual(compareSales(octoberRaw(), OCT))
+    expect(representative(raw as CompareRaw, OCT)).toEqual(representative(octoberRaw(), OCT))
+  })
+})
+
+describe('AC-8813.3 representative — 의사랑 의원 대표 숫자', () => {
+  it('AC-8813.3: 가장 많은 나이대 = 그달 나이대 하루 줄 합(내원 건)에서 가장 많은 나이대(생년월일 없음 뺌) ÷ 합', () => {
+    const rep = representative(uisRaw(), OCT)
+    expect(rep.age.text).toBe('60대 · 23.8%') // 30 ÷ 126
+    expect(rep.age.value).toBeCloseTo((30 * 100) / 126, 10)
+  })
+
+  it('AC-8813.3: 나이대 줄이 없거나 모두 생년월일 없음이면 –', () => {
+    const raw = uisRaw()
+    raw.uis_periods = []
+    expect(representative(raw, OCT).age).toEqual({ value: null, text: null })
+    raw.uis_periods = [ageRow('2026-10-01', [0, 0, 0, 0, 0, 0, 0, 0, 0, 12], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0])]
+    expect(representative(raw, OCT).age).toEqual({ value: null, text: null })
+  })
+
+  it('AC-8813.3: 나이대가 같으면 통계 탭 차례(앞)', () => {
+    const raw = uisRaw()
+    raw.uis_periods = [ageRow('2026-10-01', [0, 0, 0, 0, 7, 7, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0])]
+    expect(representative(raw, OCT).age.text).toBe('40대 · 50.0%')
+  })
+
+  it('AC-8813.2·AC-8813.3: 의사랑 의원은 신환 재방문율·Block 전환율·3번 이상 = –, 비급여 비율·신환 예약률·예약 수·목표 달성률은 지금 그대로', () => {
+    const bit = representative(octoberRaw(), OCT)
+    const raw = { ...octoberRaw(), clinic_emr: [{ emr: 'uisarang' }] }
+    const uis = representative(raw, OCT)
+    expect(bit.revisit30.text).not.toBeNull()
+    expect(bit.block.text).not.toBeNull()
+    expect(bit.three.text).not.toBeNull()
+    expect(uis.revisit30).toEqual({ value: null, text: null })
+    expect(uis.block).toEqual({ value: null, text: null })
+    expect(uis.three).toEqual({ value: null, text: null })
+    expect(uis.age).toEqual({ value: null, text: null }) // 의사랑 의원은 달 sections가 아니라 나이대 줄로 센다(여기엔 없음)
+    for (const key of ['nonpay', 'rsvFirst', 'appts', 'goal'] as const) expect(uis[key], key).toEqual(bit[key])
+  })
+
+  it('AC-8813.2: 의사랑 의원 목표 달성률 = 그달 sales_days 총진료비 ÷ 목표', () => {
+    expect(representative(uisRaw(), OCT).goal.text).toBe('55.0%')
+  })
+
+  it("AC-8813.2: 날 줄 출처 'uisarang'은 지금 줄 검사에서 빠지지 않는다(비트 의원으로 그린 값에도 든다)", () => {
+    const raw = octoberRaw()
+    raw.stats_days = raw.stats_days.map((row) => ({ ...row, source: 'uisarang' }))
+    expect(representative(raw, OCT).revisit30.text).toBe('40.0%')
   })
 })
 

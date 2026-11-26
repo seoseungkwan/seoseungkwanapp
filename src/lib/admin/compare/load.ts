@@ -3,9 +3,12 @@ import type { DateRange } from '@/types/dates'
 
 // 의원 비교 한 의원 불러오기(spec admin-view design.md '의원 비교 — 계산' load.ts·'비교 읽기' 표·'불러오기와 한도').
 // 의원 하나 = admin_rows 열여덟 종류를 한 번씩. 줄은 jsonb 그대로 종류별로 묶고, 줄 검사는 쓰는 쪽(TASK-13·14)이 지금 줄 검사 함수로 한다.
-// read는 readAdminRows(lib/storage/adminRows.ts) 모양의 함수다 — 같은 Phase 파일을 부르지 않으려고 종류 이름과 모양을 여기 따로 둔다(TASK-15가 넘긴다)
+// read는 readAdminRows(lib/storage/adminRows.ts) 모양의 함수다 — 같은 Phase 파일을 부르지 않으려고 종류 이름과 모양을 여기 따로 둔다(TASK-15가 넘긴다).
+// 의사랑 두 종류(uis_periods·clinic_emr, admin_uis_rows — spec uisarang-upload REQ-8813, design.md §10-4)도 함께 읽는다. 그 함수가 DB에 없으면
+// (SQL을 아직 붙이지 않음 — readAdminRows가 오류에 missing을 담) 그 둘만 빈 목록으로 받아 그 의원은 비트 의원처럼 그려진다(AC-8813.7).
+// 그 밖 오류·지금 열여덟 종류의 함수 없음은 지금처럼 실패다
 
-/** design.md '비교 읽기' 표 차례 */
+/** design.md '비교 읽기' 표 차례 + 의사랑 둘 */
 export const COMPARE_KINDS = [
   'stats_days',
   'stats_months',
@@ -25,22 +28,31 @@ export const COMPARE_KINDS = [
   'staff_members',
   'staff_pay',
   'staff_settings',
+  'uis_periods',
+  'clinic_emr',
 ] as const
 export type CompareKind = (typeof COMPARE_KINDS)[number]
+/** 의사랑 두 종류 — 함수가 없을 때 빈 목록으로 받는 것 */
+export type CompareUisKind = 'uis_periods' | 'clinic_emr'
 export type CompareRead = (
   kind: CompareKind,
   hospitalIds: readonly string[],
   from: string,
   to: string,
 ) => Promise<readonly { hospitalId: string; row: Record<string, unknown> }[]>
-/** 종류마다 그 의원 줄(jsonb 그대로, 읽은 차례) */
-export type CompareRaw = Record<CompareKind, Record<string, unknown>[]>
+type Rows = Record<string, unknown>[]
+/**
+ * 종류마다 그 의원 줄(jsonb 그대로, 읽은 차례). loadHospital은 스물을 다 채우지만, 새 두 종류는 열쇠가 없어도 되는 칸으로 둔다 —
+ * 읽는 곳은 `raw.uis_periods ?? []`·`raw.clinic_emr ?? []`로 읽어 열여덟 종류만 만든 값도 비트 의원으로 그대로 센다
+ */
+export type CompareRaw = Record<Exclude<CompareKind, CompareUisKind>, Rows> & Partial<Record<CompareUisKind, Rows>>
 
 /**
  * 종류마다 읽는 기간(고른 달 'YYYY-MM'):
  * 날 줄·매출·코드 합·수납·예약·통계 덮음·달 줄(지난달·고른 달) = 지난달 1일 ~ 고른 달 끝(증감 비교·'평소와 다른 것'),
  * 휴일 날 합계 = 고른 달 끝 − 364일 ~ 고른 달 끝('휴일에 따라' 12달), 목표·급여 = 고른 달.
- * 기간으로 거르지 않는 종류(설정·처방 묶음·병원 정보·직원)는 고른 달을 넘긴다(admin_rows가 기간을 늘 받는다)
+ * 기간으로 거르지 않는 종류(설정·처방 묶음·병원 정보·직원)는 고른 달을 넘긴다(admin_rows가 기간을 늘 받는다).
+ * 의사랑 처방·나이대 줄(uis_periods) = 고른 달과 겹치는 줄, 병원 EMR(clinic_emr) = 고른 달(기간을 쓰지 않음)
  */
 export function compareRanges(month: string): Record<CompareKind, DateRange> {
   const one = monthRange(month)
@@ -65,15 +77,32 @@ export function compareRanges(month: string): Record<CompareKind, DateRange> {
     staff_members: one,
     staff_pay: one,
     staff_settings: one,
+    uis_periods: one,
+    clinic_emr: one,
   }
 }
 
-/** 열여덟 종류를 함께 읽는다. 하나라도 실패하면 그 오류로 실패한다(저절로 다시 읽지 않음). 다른 의원 줄은 버린다 */
+const UIS_KINDS: readonly CompareKind[] = ['uis_periods', 'clinic_emr']
+// readAdminRows의 AdminRowsError.missing(함수 없음) — 같은 Phase 파일을 부르지 않으려고 모양으로 본다
+const isMissing = (error: unknown) => typeof error === 'object' && error !== null && (error as { missing?: unknown }).missing === true
+
+/**
+ * 스무 종류를 함께 읽는다. 하나라도 실패하면 그 오류로 실패한다(저절로 다시 읽지 않음). 다른 의원 줄은 버린다.
+ * 다만 의사랑 두 종류가 함수 없음(missing)이면 그 둘만 빈 목록이다(AC-8813.7)
+ */
 export async function loadHospital(read: CompareRead, hospitalId: string, month: string): Promise<CompareRaw> {
   const ranges = compareRanges(month)
+  const readKind = async (kind: CompareKind) => {
+    try {
+      return await read(kind, [hospitalId], ranges[kind].from, ranges[kind].to)
+    } catch (error) {
+      if (UIS_KINDS.includes(kind) && isMissing(error)) return []
+      throw error
+    }
+  }
   const lists = await Promise.all(
     COMPARE_KINDS.map(async (kind) => {
-      const rows = await read(kind, [hospitalId], ranges[kind].from, ranges[kind].to)
+      const rows = await readKind(kind)
       return [kind, rows.filter((item) => item.hospitalId === hospitalId).map((item) => item.row)] as const
     }),
   )
