@@ -2,6 +2,7 @@
 
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { CAL_COLOR_LABEL } from '@/components/calendar/colors'
+import { Icon } from '@/components/common/Icon'
 import { useDesk } from '@/components/shell/role'
 import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
@@ -16,9 +17,11 @@ import { checkGcalLook } from '@/lib/storage/gcal'
 import type { CalKind, CalSettings, CalStaff, KindColor } from '@/types/calendar'
 import { STAFF_NAME_MAX, type ClinicProfile } from '@/types/clinicProfile'
 import { DEFAULT_GCAL_LOOK, type GcalLook, type GcalView } from '@/types/gcal'
+import { hmOf } from '../frame/time'
 import { ColorButton, ColorPalette, GoogleChip } from './ColorPalette'
-import { ARIA, BAND, FOOT, KIND, KIND_PROBLEM, MARKS, NO_TEXT, SAVE_TEXT, STAFF, TITLE } from './labels'
-import { saveColors, type StaffKindsDeps } from './save'
+import { kindExamples } from './kindExamples'
+import { ARIA, BAND, FOOT, KIND, KIND_EX, KIND_PROBLEM, MARKS, NO_TEXT, REREAD, SAVE_TEXT, STAFF, TITLE } from './labels'
+import { rereadAll, saveColors, type StaffKindsDeps } from './save'
 
 export type { StaffKindsDeps } from './save'
 
@@ -29,6 +32,9 @@ export type { StaffKindsDeps } from './save'
 // 시행자 = 병원 정보에서 '예약에 보이기'를 켠 사람(병원 정보 차례). 병원 정보 줄이 없는 의원은 예약 설정의 옛 시행자 목록을 보이기만 한다(고칠 곳이 병원 정보라서).
 // 미리 보기·경고는 lib/calendar(gtitle formatGoogleTitle · gpaint apptPaint·colorWarnings · goff composeOffTitle), 저장은 save.ts saveColors.
 // 데스크·보는 중(관리자)은 보기만 — 칸을 막고 저장 단추가 없다. 폰 전용 모양은 만들지 않는다(넓은 표는 표 칸 안에서 옆으로 밀림)
+// 2차 고침(REQ-8552, design.md 21-9 · 시안 ?s=colors-reread): 종류 칸 설명 둘째 줄(모든 모양) · 보기 상자(kindExamples — 화면 종류·시행자·look, 저장 전 고친 값) ·
+// 맨 아래 '이미 들어온 예약' 칸(이은 뒤 원장만 — 데스크·보는 중·처음 잇기·잇지 않음은 없음). 단추 → deps.reread()(lib/gcal runReread, 구글 안 부름) → 초록 결과 줄 + 작은 글.
+// 결과는 이 부품 상태라 화면을 떠나면 사라진다. 실패 글은 저장 알림 자리·모양에 빌린 저장 실패 글
 
 export type StaffKindsLink = Pick<GcalView, 'calendarId' | 'calendarName' | 'linkedOn' | 'look' | 'defaultHex'>
 
@@ -52,10 +58,13 @@ export type StaffKindsProps = {
   /** 처음 잇기: 저장이 끝나면 가져오기 미리 보기로 */
   onNext?(): void
   onSaved?(saved: SavedColors): void
+  /** 지금 시각(시험용, 없으면 지금) — 다시 알아보기 결과 줄의 끝난 시각 */
+  now?: () => Date
 }
 
 type Mode = 'first' | 'linked' | 'none'
 type Notice = { kind: 'saved' | 'error'; text: string } | null
+type RereadDone = { read: number; kindChanged: number; unread: number; at: string }
 
 const LENS = Array.from({ length: KIND_LEN_MAX / 5 }, (_, i) => (i + 1) * 5)
 const HEX = /^#[0-9A-Fa-f]{6}$/
@@ -104,6 +113,16 @@ function WarnIcon() {
       <path d="M8 1.8 15 14H1z" fill="currentColor" />
       <path d="M8 6v3.6" fill="none" strokeWidth="1.6" strokeLinecap="round" className="stroke-surface" />
       <circle cx="8" cy="11.7" r=".9" className="fill-surface" />
+    </svg>
+  )
+}
+
+/** 동기화 아이콘(시안 ICON.sync) */
+function SyncIcon() {
+  return (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="shrink-0">
+      <path d="M13 6.5A5 5 0 0 0 3.6 5M3 9.5A5 5 0 0 0 12.4 11" />
+      <path d="M3.3 2.5v2.8h2.8M12.7 13.5v-2.8H9.9" />
     </svg>
   )
 }
@@ -170,7 +189,7 @@ function kindProblem(kinds: readonly CalKind[]): string | null {
 
 // ── 화면 ────────────────────────────────────────────────────
 
-export function StaffKinds({ profile, settings, link, deps, band, today, onBack, onNext, onSaved }: StaffKindsProps) {
+export function StaffKinds({ profile, settings, link, deps, band, today, onBack, onNext, onSaved, now = () => new Date() }: StaffKindsProps) {
   const desk = useDesk()
   const viewing = useReadOnly()
   const readOnly = desk || viewing
@@ -189,7 +208,10 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
   const [attempted, setAttempted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
+  const [rereading, setRereading] = useState(false)
+  const [rereadDone, setRereadDone] = useState<RereadDone | null>(null)
   const busyRef = useRef(false)
+  const rereadRef = useRef(false)
   const seq = useRef(0)
 
   // 저장할 값
@@ -245,6 +267,8 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
     return picked
   })()
   const offTitle = composeOffTitle(offNames, null, look.offWord, []) || look.offWord.trim()
+  // 보기 상자(지금 고친 종류·시행자·look으로 실제 알아보기)
+  const examples = kindExamples(nextKinds, cleanStaff, nextLook, today ?? todayInKorea())
 
   const toggle = (key: string) => setOpen((now) => (now === key ? null : key))
   const setPerson = (id: string, patch: Partial<CalStaff>) => setStaff((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)))
@@ -315,6 +339,22 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
     onSaved?.({ profile: outcome.profile ?? profile, kinds: kindsChanged ? nextKinds : firstKinds, look: lookChanged ? nextLook : firstLook })
     if (mode === 'first') onNext?.()
     else setNotice({ kind: 'saved', text: SAVE_TEXT.saved })
+  }
+
+  async function reread() {
+    if (rereadRef.current || readOnly || mode !== 'linked') return
+    rereadRef.current = true
+    setRereading(true)
+    setRereadDone(null)
+    setNotice(null)
+    const outcome = await rereadAll(deps)
+    rereadRef.current = false
+    setRereading(false)
+    if (!outcome.ok) {
+      setNotice({ kind: 'error', text: SAVE_TEXT[outcome.why] })
+      return
+    }
+    setRereadDone({ read: outcome.read, kindChanged: outcome.kindChanged, unread: outcome.unread, at: hmOf(now()) })
   }
 
   const rootStyle = link && HEX.test(link.defaultHex) ? ({ '--cal-default': link.defaultHex } as CSSProperties) : undefined
@@ -425,6 +465,25 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
           <b className="font-semibold text-ink-2">{KIND.lead[1]}</b>
           {KIND.lead[2]}
         </p>
+        <p className={LEAD}>{KIND.lead2}</p>
+        {examples.length > 0 && (
+          <ul aria-label={KIND_EX.label} className="grid gap-0.5 rounded-control border border-line bg-canvas px-3 py-2 text-caption text-ink-2">
+            {examples.map((ex) => (
+              <li key={ex.title}>
+                <span className="tabular-nums">{ex.title}</span>
+                {ex.eventLen !== null && ` · ${KIND_EX.eventLen(ex.eventLen)}`}
+                {' → '}
+                <b className="font-semibold text-ink">{ex.kind}</b>
+                {ex.eventLen !== null && (
+                  <>
+                    {' '}
+                    <span className="text-muted">{KIND_EX.noLen}</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="min-w-0 overflow-x-auto">
           <table aria-label={KIND.title} className="w-full border-collapse text-small">
             <thead>
@@ -725,6 +784,33 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
           </p>
         )}
       </div>
+
+      {mode === 'linked' && !readOnly && (
+        <section aria-labelledby="gcal-colors-reread" className={CARD}>
+          <div className={CARD_HEAD}>
+            <h2 id="gcal-colors-reread" className={H2}>
+              {REREAD.title}
+            </h2>
+            <span className={HINT}>{REREAD.owner}</span>
+          </div>
+          <p className={LEAD}>{REREAD.lead}</p>
+          <p className={HINT}>{REREAD.hint}</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5">
+            <button type="button" disabled={rereading} aria-busy={rereading || undefined} className={ds.button.accentOutlineSmall} onClick={() => void reread()}>
+              <SyncIcon />
+              {rereading ? REREAD.busy : REREAD.button}
+            </button>
+            {rereadDone !== null && (
+              <p role="status" className="flex items-center gap-1.5 text-small font-semibold text-positive">
+                <Icon name="check" />
+                {REREAD.done(rereadDone.read, rereadDone.kindChanged, rereadDone.unread)}{' '}
+                <span className="font-normal text-muted">{REREAD.at(rereadDone.at)}</span>
+              </p>
+            )}
+          </div>
+          {rereadDone !== null && <p className={HINT}>{REREAD.kept}</p>}
+        </section>
+      )}
     </div>
   )
 }

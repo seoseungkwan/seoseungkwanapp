@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { addMonthsToDay, compareYmd } from '@/lib/analytics/dates'
 import type { PaintCtx } from '@/lib/calendar/gshapes'
 import { colorChangeTargets } from '@/lib/calendar/gsync'
+import type { RereadResult } from '@/lib/gcal/reread'
 import { CalendarStorageError, listAppts, saveCalendarSettings, updateAppt } from '@/lib/storage/calendar'
 import { saveClinicProfile } from '@/lib/storage/clinicProfile'
 import { GcalStorageError, saveGcalLook } from '@/lib/storage/gcal'
@@ -15,7 +16,9 @@ import type { GcalLook } from '@/types/gcal'
 // colorChangeTargets가 고른 것에 g_wait='color'를 적고 pushWaiting(TASK-12)을 부른다. 보낼 것이 이미 있는 예약(g_wait 있음)은 그 보내기가 새 색으로 가므로,
 // 구글 짝이 없는 예약·구글에서 지운 예약(g_gone — color 보내기가 되살린다)과 함께 건드리지 않는다.
 // pushWaiting은 기다리지 않고 실패도 삼킨다(못 보낸 것은 g_wait로 남아 맞춤이 1분마다 다시 보낸다).
-// 부르기는 deps로만 한다 — 화면 시험이 가짜를 넣고, 앱은 colorsDeps(client, pushWaiting)로 실제 저장 함수를 묶는다
+// 부르기는 deps로만 한다 — 화면 시험이 가짜를 넣고, 앱은 colorsDeps(client, pushWaiting, reread)로 실제 저장 함수를 묶는다.
+// [이미 들어온 예약 다시 알아보기](REQ-8552 AC-8552.4, design.md 21-9)는 lib/gcal/reread runReread를 그 화면 맞춤 deps로 부르는 함수(reread)를 받아 그대로 부른다(새 셈 없음).
+// 실패 글은 저장 알림과 같게 고른다: 저장소의 인터넷 끊김 오류이거나 브라우저가 연결이 끊겼다고 하면 offline, 그 밖은 failed
 
 export type StaffKindsDeps = {
   saveProfile(profile: ClinicProfile): Promise<ClinicProfile | 'invalid' | 'failed'>
@@ -26,10 +29,12 @@ export type StaffKindsDeps = {
   markColor(id: string): Promise<unknown>
   /** lib/gcal push.ts pushWaiting (TASK-12) */
   pushWaiting(): Promise<unknown>
+  /** lib/gcal reread.ts runReread(맞춤 deps) (TASK-26) — 구글은 부르지 않는다 */
+  reread(): Promise<RereadResult>
 }
 
-/** 실제 저장 함수 묶음. pushWaiting은 TASK-12 lib/gcal pushWaiting(deps)을 부르는 함수를 넘긴다 */
-export function colorsDeps(client: Pick<SupabaseClient, 'from' | 'rpc'>, pushWaiting: () => Promise<unknown>): StaffKindsDeps {
+/** 실제 저장 함수 묶음. pushWaiting은 TASK-12 lib/gcal pushWaiting(deps)을, reread는 TASK-26 runReread(deps)를 부르는 함수를 넘긴다 */
+export function colorsDeps(client: Pick<SupabaseClient, 'from' | 'rpc'>, pushWaiting: () => Promise<unknown>, reread: () => Promise<RereadResult>): StaffKindsDeps {
   return {
     saveProfile: (profile) => saveClinicProfile(client, profile),
     saveKinds: (kinds) => saveCalendarSettings(client, { kinds }),
@@ -37,6 +42,7 @@ export function colorsDeps(client: Pick<SupabaseClient, 'from' | 'rpc'>, pushWai
     listAppts: (from, to) => listAppts(client, from, to),
     markColor: (id) => updateAppt(client, id, { gWait: 'color' }),
     pushWaiting,
+    reread,
   }
 }
 
@@ -65,6 +71,7 @@ const paintKey = (ctx: PaintCtx) =>
   ])
 
 const isOffline = (error: unknown) => (error instanceof CalendarStorageError || error instanceof GcalStorageError) && error.kind === 'offline'
+const offlineNow = () => globalThis.navigator?.onLine === false
 
 async function markTargets(deps: StaffKindsDeps, input: ColorsSave): Promise<void> {
   const { linkedOn, today, before, after } = input
@@ -94,4 +101,17 @@ export async function saveColors(deps: StaffKindsDeps, input: ColorsSave): Promi
   } catch (error) {
     return { ok: false, why: isOffline(error) ? 'offline' : 'failed' }
   }
+}
+
+export type RereadOutcome = { ok: true; read: number; kindChanged: number; unread: number } | { ok: false; why: 'offline' | 'failed' }
+
+/** [이미 들어온 예약 다시 알아보기]: deps.reread() 한 번. runReread는 읽기 실패를 던지지 않고 { ok: false }로 주므로 끊김은 브라우저 연결 상태로도 본다 */
+export async function rereadAll(deps: Pick<StaffKindsDeps, 'reread'>): Promise<RereadOutcome> {
+  try {
+    const done = await deps.reread()
+    if (done.ok) return { ok: true, read: done.read, kindChanged: done.kindChanged, unread: done.unread }
+  } catch (error) {
+    if (isOffline(error)) return { ok: false, why: 'offline' }
+  }
+  return { ok: false, why: offlineNow() ? 'offline' : 'failed' }
 }
