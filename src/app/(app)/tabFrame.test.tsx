@@ -68,7 +68,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/stats': 'stats',
   '/notices': 'notices', // spec notices AC-7423.2 — 쪽 파일이 list·detail·keywords를 놓는다
   '/patients': 'patients',
-  '/sunap': 'sunap', // spec sunap-ilji AC-4907.2
+  '/sunap': 'gsheet', // spec sunap-ilji AC-4907.2 → google-link AC-8514.1: 탭 머리 묶음(SunapTab)이 [웹앱 수납일지]로 sunap 화면을 그린다
   '/calendar': 'calendar', // spec clinic-calendar AC-5905.10
   '/ai-report': 'ai-report',
   '/forms': 'forms', // spec forms AC-3501.1
