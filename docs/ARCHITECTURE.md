@@ -27,6 +27,8 @@ src/
 │   ├── worklog/         # 업무일지 합계·칸 글자 읽기·날짜·개인정보 모양 검사·자동 저장. 환자 구역이 아니다
 │   ├── forms/           # 서식 순수 함수. 휴진 안내: 카드 검사·날짜 글(notice)·테마 23개(themes)·배치(layout)·AI 글과 답 검사(ai)·그림 파일(png) (specs/forms). 환자 안내문: 칸 검사(guide)·배치(guideLayout)·AI 글과 답·숫자 검사(guideAi)·AI 그림 검사(guideDrawing) (specs/forms-guide). 휴진 안내 AI 배경: 고른 그림 값·테마 그림 1·2(themes)·적은 말·프롬프트·줄 검사(background)·강조색(accent)·그림 읽기(backgroundImage, 브라우저) (specs/forms-themes). 환자 구역이 아니다(구역에서는 analytics/dates·payload/validate만 불러 쓴다)
 │   ├── inventory/       # 재고 순수 함수: 이름 맞추기(names)·쓴 양과 달별(usage)·챙길 것(alerts)·차례(order)·비트 코드 목록(bitCodes)·AI 질문과 답 검사(ai)·엑셀 양식과 미리 보기(excel). 환자 구역이 아니다 (specs/inventory)
+│   ├── gcal/            # 예약 맞춤, fetch는 client.ts만 (ADR-053·054, specs/google-link)
+│   ├── gsheet/          # 수납 넣기 계획·돌리기, 환자 자료 없음 (ADR-052, specs/google-link)
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
 │   ├── common/LogoMark.tsx  # 로고 마크 한 곳(병원 십자 C③, 고정 두 색). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
@@ -47,6 +49,7 @@ src/
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
 e2e/                     # E2E. Playwright 시험 `*.spec.ts` + Vitest `*.test.ts`(config.test.ts·lib/). `npm run e2e` (ADR-017)
+google-code/             # 구글 코드 두 벌·시험 (ADR-054, specs/google-link)
 supabase/*.sql           # 시험 계정·처음 관리자 SQL(SQL 편집기에 붙여 넣음). 시험은 supabase/setup-sql.test.ts
 public/                  # fake-sample/ · poster/(서식 안내문: themes/ 테마 그림 46장(테마 23개마다 <열쇠>.svg·<열쇠>-2.svg, specs/forms-themes) · fonts/ Pretendard Bold·Black subset + OFL.txt, specs/forms)
 specs/<기능ID>/          # SDD 명세·TDD 기록
@@ -108,6 +111,8 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
 [청구] (예정) 도우미(비트 DB·화면) → 확장 → lib/bridge(풀지 않음) → Worker → 화면(보기 모양, PC 메모리만)
        고친 메모·완료 표시 → 도우미가 그 PC에 암호화 저장. 서버에는 건수(정수)·설정만 (ADR-020·021)
+[수납일지 시트] 비트 DB ──읽기만──> 도우미 0.14.0 ──HTTPS(주소 HMAC 확인)──> 수납 구글 코드 ──> 그 달 '일일 수납일지' 파일 · 웹앱 브라우저에는 숫자만(넣은 줄 수·결과) ──> Supabase gsheet_runs(숫자)·gsheet_months(파일 id)·gsheet_settings(설정) (ADR-052)
+[예약 캘린더] 웹앱 브라우저 (lib/gcal) <──fetch(text/plain, 비밀 글자)──> 예약 구글 코드 ──> 고른 캘린더 하나 · 로그인한 사용자 권한(RLS) ──> Supabase calendar_appts(+g_* 칸)·calendar_allday·gcal_*(연결·상태·고쳐야 할 것·지움 줄·off 날) (ADR-053)
 ```
 - 환자 줄·차트번호·파일 이름은 Worker 밖으로 나가지 않는다. 차트번호는 메모리 안 번호로만 쓴다 (§4)
 - 예외는 청구·환자 연락 화면뿐이다: 일을 하려면 PC 화면에 환자 줄(차트번호·이름·전화)을 보여야 한다. 그 줄은 화면 줄 울타리 안에서만 그리고 서버·저장소·로그로 가지 않는다 (ADR-020)
@@ -178,6 +183,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `notice_ask_days` · `notice_ask_holds` | 묻기 횟수: 병원·한국 날짜마다 받은 표 수(0~20)와 끝나지 않은 표. 표 권한 없이 DB 함수(`take_notice_ask`·`end_notice_ask`·`notice_ask_left`)로만 센다. AI가 실패하면 표를 돌려준다 (ADR-038) |
 | `notice_keywords` · `notice_keyword_hits` | 내 낱말(병원마다 30개, 1~20자, 띄어쓰기·영문 대소문자만 다른 낱말은 하나만, 넣기·지우기만) · 글마다 맞은 낱말(정의자 트리거만 씀, 읽기만). migration `20261121000001_notice_keywords.sql` (specs/notices 15절) |
 | `location_settings` · `location_candidates` · `location_listings` · `location_notes` · `location_photos` · `location_events` | 입지 분석: 설정(병원마다 한 줄, 점수 설정 `score_rule` jsonb 4,000바이트까지·DB 검사 함수 `location_score_rule_ok`로 모양·범위만 봄, 지금 의원 체외충격파 값, 지우기 없음) · 후보(고른 점 위도 33~39·경도 124~132, 이름 1~40자, 적은 주소 글 100자, 범위 300·500·700·1,000·1,500·2,000·3,000m, 상태 다섯, 층·넓이·간판·위반 건축물 고름, 비용·협상표·점검표·다 함 jsonb, 그날 값 `snapshot` 65,536바이트까지, 마지막 알림 확인 날) · 매물(링크 https만, 넓이·층·보증금·월세·권리금·관리비 원 정수, 중개사 = 주소록 업체) · 날짜별 메모 · 사진 줄(`<병원 id>/<후보 id>/<uuid>.jpg`, 후보마다 30줄, 트리거) · 새 경쟁 의원 알림(개업·폐업·같은 줄 한 번·본 시각만 고침). 바깥 키는 (`hospital_id`, 부모 id) 둘로, 후보를 지우면 메모·사진 줄·알림이 함께 지워지고 매물은 후보 칸만, 업체를 지우면 매물의 중개사 칸만 빈다. 관리자만(`my_hospital_id()` + `admins` 줄) 읽고 쓰며 데스크 정책은 없다. 카카오 결과는 두지 않는다. migration `20261122000000_location.sql` (ADR-043~045, specs/location) |
+| gcal_links · gcal_state · gcal_fixes · gcal_deletes · gcal_off_days · gsheet_settings · gsheet_months · gsheet_runs | 구글 캘린더·시트 잇기(ADR-052~054) |
 
 - Storage 버킷 `form-backgrounds`(내 배경 큰 그림, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만). `storage.objects` 정책은 첫 폴더가 내 병원 id인 것만 읽기·지우기, 올리기는 거기에 더해 이름이 내 `form_backgrounds` 줄의 `path`와 같을 때만이다(고치기 없음). 버킷과 정책은 migration `20261115020000_form_backgrounds.sql`이 만든다 (ADR-029)
 - Storage 버킷 `clinic-logos`(병원 로고, 공개 아님, 한 파일 1,000,000바이트·`image/png`만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 이름이 내 `clinic_profiles.logo_path`와 같을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261119000000_clinic_profile.sql` (ADR-033)
