@@ -396,7 +396,7 @@ describe('AC-8521.1 formatGoogleTitle — 웹앱 → 구글 제목 꼴', () => {
       ...rows.map((r) => ({
         title: formatGoogleTitle(r, LOOK, KINDS, STAFF),
         color: apptPaint(
-          { status: r.status, origDay: r.orig, origStart: r.orig ? 600 : null, gMoved: false, colorFrom: 'app', gColor: null, kindId: r.kindId, staffId: r.staffId },
+          { status: r.status, origDay: r.orig, origStart: r.orig ? 600 : null, gMoved: r.orig !== null, colorFrom: 'app', gColor: null, kindId: r.kindId, staffId: r.staffId }, // google-link AC-8545.1: 이은 병원 변경 칸은 g_moved만 본다
           paint,
         ).key,
       })),
