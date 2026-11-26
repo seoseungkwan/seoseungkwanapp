@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "google-link",
-  "approved_at": "2026-11-26T03:53:56Z",
+  "approved_at": "2026-11-26T04:39:35Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "d2a60fa597217bfd9560126bc16337e124fdb952e5959d6503f7a1745bb0d927",
+  "spec_sha256": "5822c8d46c21efd0730696a0c921efd9c8d79a3db64bfda0d3625f98ec65ae93",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -23,6 +23,7 @@
     "google-code/test/sheet.test.ts",
     "google-code/test/sheetMonths.test.ts",
     "helper/Directory.Build.props",
+    "helper/src/Precheck.Core/Bit/Sql.cs",
     "helper/src/Precheck.Core/Calendar/**",
     "helper/src/Precheck.Core/Precheck.Core.csproj",
     "helper/src/Precheck.Core/Protocol/**",
@@ -193,6 +194,7 @@
     "src/lib/csp.ts",
     "src/lib/errors.test.ts",
     "src/lib/errors.ts",
+    "src/lib/forms/backgroundDocs.test.ts",
     "src/lib/gcal/calendarCode.ts",
     "src/lib/gcal/client.test.ts",
     "src/lib/gcal/client.ts",
