@@ -232,3 +232,79 @@
 - REQ: REQ-8542
 - Files: specs/google-link/user-checks.md
 - TDD: exempt — 진짜 병원 구글 계정·비트 PC에서 사용자와 함께 하는 확인이라 시험으로 만들 수 없다. 사용자가 배포를 말한 뒤에만: SQL 실행 확인(`ssk-supabase-sql`) → 도우미 0.14.0 + 크롬 확장 0.5.0 한 묶음(`helper.yml` zip 둘, `ssk-clinic-pc-files`) 설치 → 수납 구글 코드 붙이기·[그대로 가져오기]·[지금 넣기]·5분 넣기 줄 수(개수만) → 틀 안 시트 열림 → 예약 구글 코드 붙이기(서비스 켜기 포함)·잇기·처음 가져오기·양쪽 2분 맞춤·취소 색·off 줄 → 구글 색 한국어 이름·토마토를 다른 뜻으로 쓰는지 → 비트시트 프로그램 끄기. 본 것과 고칠 것을 `user-checks.md`에 적는다(이름·차트번호·비밀 글자·주소 id는 적지 않음)
+
+## 2차 고침 (2026-11-26 저녁) — Phase 5·6
+
+> REQ-8543~8552 · design.md 21절. 형식·규칙은 맨 위 머리 그대로(같은 Phase는 병렬이고 파일이 겹치지 않음 · 다음 Phase는 앞 Phase를 모두 합친 뒤 · 같은 Phase에서 새로 만드는 것은 서로 부르지 않음 · 시험 이름에 AC ID · 실패(RED)를 본 뒤 만듦 · MVP 모드라 중간 검토 없이 Phase 끝마다 그 Phase 시험 파일과 `npx tsc --noEmit`만). **DB는 표·칸·정책을 바꾸지 않는다 — 새 migration은 `supabase/migrations/20261127000000_google_link_offcolor.sql` 하나(휴무 줄 색 함수, TASK-26)이고 앞 migration 파일은 고치지 않는다.**
+> **환자 이름·차트번호는 이 파일·대화·시험에 옮기지 않는다(사용자 화면 사진에 있었음). 예는 지어낸 것만**(시안의 홍길동·이보기·최시안·장연습 등, 차트번호 네 자리 지어냄).
+> 화면 TASK(27·29·30)의 글자·자리·모양은 승인 시안 2차(`calendar.html` `?s=week` 취소 칸·`fix-range`·`fix-skipall`·`colors-reread`, `notes-calendar.md` '화면 글 › 2차 고침'·'2차 고침 기본값' 2차-1~10, 사용자 2026-11-26 "고치고 만들어") 그대로. 다른 곳은 design.md 21절에 적은 것뿐(취소 표시 글자색 토큰·미리 보기 예 차례). **PC 화면만**(폰 전용 모양·`max-md:` 새 줄·폰 사진 없음).
+>
+> | Phase | TASK | 하는 일 |
+> |---|---|---|
+> | 5 | TASK-25 | 종류 알아서 고르기 + 구글 제목 겹쳐 적지 않기(`lib/calendar/gtitle`) |
+> | 5 | TASK-26 | 다시 알아보기 셈·저장(`lib/gcal/reread`·`rereadAppt`) + 휴무 줄 색 따라가기(받기·처음 가져오기, DB 함수 `gcal_set_off_color` 새 migration 하나) |
+> | 5 | TASK-27 | 예약 탭: 이은 병원 '변경' = `g_moved` · 칸 글 겹침 빼기 · 취소 칸 진한 색 + 바뀐 글 넷 |
+> | 5 | TASK-28 | 수납일지 달 목록 '파일 없음'(`lib/gsheet/runner`) |
+> | 6 | TASK-29 | 고쳐야 할 판: 기간 고르기 · 이 기간 모두 가져오지 않기 |
+> | 6 | TASK-30 | 시행자·종류 화면: 종류 설명 줄 · 보기 상자 · 이미 들어온 예약 다시 알아보기 |
+>
+> - 같은 Phase 파일 겹침 확인(2026-11-26):
+>   - Phase 5 — TASK-25는 `src/lib/calendar/gtitle*`, TASK-26은 `src/lib/gcal/{reread,deps,pull,importRead}*`·`src/lib/storage/{calendar,gcal}*`·`supabase/migrations/20261127000000_google_link_offcolor.sql`·`supabase/googleLinkOffColor.rls.test.ts`, TASK-27은 `src/lib/calendar/{gpaint,gsync,counts}*`·`src/components/calendar/rows/**`·`src/components/calendar/{DetailPanel,MonthGrid,SummaryLine,CalendarScreen,useCalendarData}*`·`src/components/calendar/gcal/{GcalBand*,labels.ts}`·`src/components/gcalSettings/rules/{labels.ts,Rules.test.tsx}`·`src/components/gcalSettings/colors/StaffKinds*`·`src/lib/gcal/push.test.ts`, TASK-28은 `src/lib/gsheet/runner*` → 겹침 없음. TASK-27의 칸 글 겹침 빼기는 TASK-25의 새 함수를 부르지 않고 `rows/parts.tsx`에 따로 둔다. TASK-26 시험은 TASK-25 없이도 결과가 정해지는 기본 종류 꼴만 쓴다.
+>   - Phase 6 — TASK-29는 `src/components/calendar/gcal/{FixPanel*,fixRange*,labels.ts}`·`src/components/calendar/{CalendarScreen,AddPanel}*`·`src/lib/storage/gcal*`, TASK-30은 `src/components/gcalSettings/colors/{StaffKinds*,labels.ts,save.ts,kindExamples*}`·`src/components/gcalSettings/GcalSettingsScreen*` → 겹침 없음. Phase 6은 Phase 5를 모두 합친 뒤에 시작한다(TASK-30이 TASK-25 알아보기·TASK-26 `runReread`를 쓰고, TASK-29는 TASK-27이 고친 `CalendarScreen.tsx`·`gcal/labels.ts`와 TASK-26이 고친 `src/lib/storage/gcal.ts`를, TASK-30은 TASK-27이 고친 `StaffKinds.tsx`를 이어 고친다).
+> - 고치지 않는 것: 위 목록 그대로 — 앞 migration 파일 모두, `src/app/api/**`, `src/middleware.ts`·`src/lib/supabase/**`·`src/lib/auth/**`, 확장 코드, `src/components/worklog/**`, `src/components/sunap/**`, `bitsheet/`, `docs/mockups/google-link/`(승인된 시안) — migration은 새 파일 `20261127000000_google_link_offcolor.sql` 하나만 더한다(TASK-26). 통계 탭(`src/components/stats/**`)·의원 비교(`src/components/admin/**`·`src/lib/admin/**`)도 고치지 않는다. 환자 자료 구역 울타리 그대로: `lib/calendar`는 순수 함수, `components/calendar/rows`는 네트워크·저장소·console 없음, `lib/gcal`은 `client.ts` 밖 fetch·console·브라우저 저장소 없음. 기간 기억(브라우저 저장소)은 `components/calendar/gcal/fixRange.ts`에만 둔다.
+> - 끝(Phase 6을 합친 뒤, TASK 없음): `ssk-finish-check`대로 `npm run lint`·`npm test`·`npm run build`(새로 깨진 것 없음, 이 PC에서 원래 나는 실패는 `specs/google-link/known-failures.md`와 견줌) → `ssk-screen-check`로 PC 너비(1440) 사진(고쳐야 할 판 기간 · 확인 창 · 확인 뒤 · 시행자·종류 다시 알아보기 뒤 · 주 보기 취소 칸)을 찍어 시안 사진(`~/.claude/state/handoff/glink-round2-shots/`)과 견줌(폰 사진 없음) → 독립 검토 한 번(재검토는 사용자에게 묻고).
+> - **사용자 단계**: (1) 시안 승인 — 끝(2026-11-26 "고치고 만들어"). (2) `/sdd approve google-link`. (3) 모두 합친 뒤 배포 전에 Supabase SQL Editor에 `supabase/migrations/20261127000000_google_link_offcolor.sql`을 붙여 넣고 Run(SQL 먼저, 웹 다음 — `ssk-supabase-sql`). 멈추면 그 글을 Claude에게 알린다. Claude는 실제 Supabase에 붙지 않는다. (4) 합치기·배포는 사용자가 말할 때만. 배포 뒤 원장 계정으로 설정 › 구글 캘린더 › 시행자·종류 맨 아래 [이미 들어온 예약 다시 알아보기]를 한 번 누르고, '휴무 줄 색'이 구글 off 일정 색과 다르면 그 칸에서 한 번 고른다(design.md 21-5·21-11).
+
+## TASK-25: 종류 알아서 고르기 · 구글 제목 겹쳐 적지 않기
+- Phase: 5
+- AC: AC-8543.1, AC-8543.2, AC-8543.3, AC-8543.4, AC-8543.5, AC-8548.1, AC-8548.3
+- REQ: REQ-8543, REQ-8548
+- Files: src/lib/calendar/gtitle.ts, src/lib/calendar/gtitle.test.ts
+- Tests: src/lib/calendar/gtitle.test.ts
+- TDD: required — 먼저 `gtitle.test.ts`에 '이 병원 꼴' 차림(design.md 21-1: 시행자 셋·종류 아홉·알아볼 글 = 이름·고정 색 없음·noKind 'fix'·시행자 글이 없는 종류 비움·색 짐작 켬)을 두고 AC-8543.1 표 17줄(`it.each`, 이름에 AC ID와 줄 번호), AC-8543.2 기본 종류 두 줄(`8034 문보기(3천`·`4618 표예시(3천5백`, 세이지), AC-8543.3 타수 꼴(`3천원`은 타수 아님·붙은 숫자는 타수 아님·충격파 종류가 없으면 ⑨ 그대로), AC-8543.4 차례 같음 → 앞 종류, AC-8548.1 여섯 줄, AC-8548.3 기본 종류 제목을 더해 실패(RED)를 본 뒤 `readTitle`·`parseTimed`·`formatGoogleTitle`을 고친다. 지금 `gtitle.test.ts`의 기대는 한 글자도 고치지 않고 지나야 한다(기본 종류 결과 그대로). 종류 목록·저장 값·다른 파일은 건드리지 않는다. 순수 함수 그대로(울타리)
+- 의존: 없음
+
+## TASK-26: 다시 알아보기 셈·저장 · 휴무 줄 색 따라가기
+- Phase: 5
+- AC: AC-8544.1, AC-8544.2, AC-8544.3, AC-8544.4, AC-8544.5, AC-8547.1, AC-8547.2, AC-8547.3, AC-8547.4
+- REQ: REQ-8544, REQ-8547
+- Files: src/lib/gcal/reread.ts, src/lib/gcal/reread.test.ts, src/lib/gcal/deps.ts, src/lib/gcal/pull.ts, src/lib/gcal/pull.test.ts, src/lib/gcal/importRead.ts, src/lib/gcal/importRead.test.ts, src/lib/storage/calendar.ts, src/lib/storage/calendar.test.ts, src/lib/storage/gcal.ts, src/lib/storage/gcal.test.ts, supabase/migrations/20261127000000_google_link_offcolor.sql, supabase/googleLinkOffColor.rls.test.ts
+- Tests: src/lib/gcal/reread.test.ts, src/lib/gcal/pull.test.ts, src/lib/gcal/importRead.test.ts, src/lib/storage/calendar.test.ts, src/lib/storage/gcal.test.ts, supabase/googleLinkOffColor.rls.test.ts
+- TDD: required — RED 먼저: `reread.test.ts`(`createMemoryStore`, 기본 종류 꼴 — 저장 종류 도수 + 구글 제목 `9567 장연습 자보 30분 (원)` → 자보도수·출처 title, `picked` 종류·시행자는 그대로, `g_keep_title` 거짓·`g_from` web·`g_wait` 있는 줄은 그대로, 종류를 못 고르는 제목은 시행자까지 전 값 그대로(적지 않음) + unread, 시행자만 바뀜은 changed에만, 시행자를 비우지 않음, 구글 부르기 0번, 읽은 뒤 `g_title`이 바뀐 줄은 missed, 잇지 않음 not-linked, 읽기 실패 failed), `calendar.test.ts`(`rereadAppt`가 여섯 칸 밖 열쇠·빈 patch는 보내지 않고 failed, 보내는 조건이 `id`·`g_wait is null`·`g_title`·`g_updated`(글자 그대로, null이면 `is null`), 0줄이면 거짓), `googleLinkOffColor.rls.test.ts`(새 migration 파일이 없으면 시험마다 실패 = RED, `existsSync` — `googleLink.rls.test.ts`의 PGlite + Supabase 흉내·계정을 옮기고 사슬은 이 파일보다 앞 migration 모두(파일 이름 차례) → 이 파일 → 이 파일: 원장·데스크 성공(그 병원 `look.offColor`만 바뀜, 다른 `look` 칸·`rules`·`secret` 그대로), 다른 병원 사용자가 불러도 이 병원 줄 그대로, anon 실행 권한 없음, 보는 관리자(요청 머리)면 false·그대로, 11색 밖·null 거절(11색 = `CAL_COLORS`), 정의자·`search_path` 빈 값·권한(public·anon 없음, authenticated 실행), 머리 주석 꼴·LF), `gcal.test.ts`(`setGcalOffColor`가 11색 밖은 보내지 않고 failed, `rpc('gcal_set_off_color', { p_color })`·답 true/false), `pull.test.ts`(off 일정 색 포도 ≠ 휴무 줄 색 바나나 → `setOffColor('grape')` 한 번, 여럿이면 `updated`가 나중인 것, 색 없음·같은 색은 부르지 않음, 던지거나 false여도 받기 결과 그대로), `importRead.test.ts`(처음 가져오기 off 색 같은 셈 + **웹앱에만 있는 사람이 든 off 날을 가져온 뒤 구글로 보낸 off 줄 colorId가 새 색**, `setOffColor`가 `pushWaiting`보다 먼저). 그다음 design.md 21-2·21-5대로 migration(Write 도구, `20261126000000_google_link.sql` 머리 주석 꼴)·`setGcalOffColor`를 만들고 `GcalStore`에 `rereadAppt`·`setOffColor`를 더해 `makeGcalDeps`(저장 함수)·`createMemoryStore`(같은 조건 흉내)를 채운다. 앞 migration 파일·`googleLink.rls.test.ts`는 고치지 않는다. **실제 Supabase에 붙여 넣지 않는다.** `lib/gcal` 울타리(fetch는 `client.ts`만·console·브라우저 저장소 없음) 그대로, 다시 알아보기는 구글을 부르지 않는다. TASK-25를 기다리지 않는다
+- 의존: 없음
+
+## TASK-27: 예약 탭 — 이은 병원 '변경' = g_moved · 칸 글 겹침 빼기 · 취소 칸 진한 색
+- Phase: 5
+- AC: AC-8545.1, AC-8545.2, AC-8545.3, AC-8548.2, AC-8548.3, AC-8549.1, AC-8549.2, AC-8549.3
+- REQ: REQ-8545, REQ-8548, REQ-8549
+- Files: src/lib/calendar/gpaint.ts, src/lib/calendar/gpaint.test.ts, src/lib/calendar/gsync.ts, src/lib/calendar/gsync.test.ts, src/lib/calendar/counts.ts, src/lib/calendar/counts.test.ts, src/components/calendar/rows/**, src/components/calendar/DetailPanel.tsx, src/components/calendar/DetailPanel.test.tsx, src/components/calendar/MonthGrid.tsx, src/components/calendar/MonthGrid.test.tsx, src/components/calendar/SummaryLine.tsx, src/components/calendar/SummaryLine.test.tsx, src/components/calendar/CalendarScreen.tsx, src/components/calendar/CalendarScreen.test.tsx, src/components/calendar/useCalendarData.ts, src/components/calendar/useCalendarData.test.ts, src/components/calendar/gcal/GcalBand.tsx, src/components/calendar/gcal/GcalBand.test.tsx, src/components/calendar/gcal/labels.ts, src/components/gcalSettings/rules/labels.ts, src/components/gcalSettings/rules/Rules.test.tsx, src/components/gcalSettings/colors/StaffKinds.tsx, src/components/gcalSettings/colors/StaffKinds.test.tsx, src/lib/gcal/push.test.ts
+- Tests: src/lib/calendar/gpaint.test.ts, src/lib/calendar/gsync.test.ts, src/lib/calendar/counts.test.ts, src/components/calendar/rows/TimeGrid.test.tsx, src/components/calendar/rows/PhoneWeekList.test.tsx, src/components/calendar/DetailPanel.test.tsx, src/components/calendar/MonthGrid.test.tsx, src/components/calendar/SummaryLine.test.tsx, src/components/calendar/CalendarScreen.test.tsx, src/components/calendar/useCalendarData.test.ts, src/components/calendar/gcal/GcalBand.test.tsx, src/components/gcalSettings/rules/Rules.test.tsx, src/components/gcalSettings/colors/StaffKinds.test.tsx, src/lib/gcal/push.test.ts
+- TDD: required — RED 먼저: 이은 병원에서 `orig_day` 있음·`g_moved` 거짓 → 변경 색 아님(`gpaint`)·꼬리표 없음·'원래 …' 없음·월 보기와 요약 '변경' 0, `g_moved` 참 → 지금처럼; 웹앱 옮김 `googlePatch`에 `gMoved: true`(이은 날 앞·짝 없는 줄도), 원래 자리로 되돌림 `gMoved: false`; 구글 시각 옮김 `decideMapped`에 `gMoved: true`(되돌림은 거짓, `gWait 'color'` 그대로); 잇지 않은 병원은 지금 시험이 고치지 않고 지남(AC-8545.3); 칸 글 `도수 30분(호)`·(호)·30분 → `1234 홍길동 도수 30분(호)`, (원)이면 `1234 홍길동 도수 30분(호) (원)`, 기본 종류 그대로; 이은 병원 취소 칸에 흐림 없음·글자색 규칙·가운데 줄·흰 바탕 `취소` 표시·안내 줄 점과 자세히 막대 진한 색, 바뀐 글 넷(notes 글자 그대로), 잇지 않은 병원의 `칸은 흐리게 남아요`·`예약을 취소했어요. 칸은 흐리게 남아요.`는 그대로. 그다음 design.md 21-3·21-6·21-7대로 고친다. 시험 차림만 고칠 곳(이은 '변경' 예에 `gMoved: true`)과 기대가 바뀌는 곳은 design.md 21-3 목록과 바뀐 글 넷의 옛 기대뿐이고 그 줄에 `google-link AC-8545.x`·`AC-8549.2` 주석. 통계 탭·월간 보고·의원 비교 파일은 고치지 않는다. 울타리(`components/calendar/rows`) 그대로. PC 화면만
+- 의존: 없음
+
+## TASK-28: 수납일지 달 목록 '파일 없음'
+- Phase: 5
+- AC: AC-8546.1, AC-8546.2, AC-8546.3
+- REQ: REQ-8546
+- Files: src/lib/gsheet/runner.ts, src/lib/gsheet/runner.test.ts
+- Tests: src/lib/gsheet/runner.test.ts
+- TDD: required — RED 먼저: 첫 달 목록 답에 이번 달이 없음 → 다음 넣기 전에 `sheet.months`를 다시 부름, 이번 달 파일 id가 든 답 → 그날 다시 부르지 않음(지금 기대), `E-GSHEET-OLD` → 잠그지 않아 넣기마다 다시 부름(넣기는 그대로 되고 넣기 답 파일 id만 적기 그대로), 읽지 못한 답·다른 오류 → 다음 넣기 전 다시, `resetRunner()`가 잠금을 풂. 지금 '새 달 파일' 시험은 차림만 고친다(새 달 파일을 만든 뒤 받는 두 번째 달 목록 답에 그 달을 넣음 — 그 줄에 `google-link AC-8546.1` 주석). 지금 옛 코드 시험(AC-8513.5 '그날은 다시 묻지 않고')은 기대만 두 번째 넣기 전에도 `sheet.months`를 부르는 것으로 바꾸고(시험 이름 글도) 그 줄에 `google-link AC-8546.2` 주석. 옛 코드 표시 같은 새 모듈 값은 두지 않는다. 넣기 답·기록·알림 모양은 바꾸지 않는다
+- 의존: 없음
+
+## TASK-29: 고쳐야 할 판 — 기간 고르기 · 이 기간 모두 가져오지 않기
+- Phase: 6
+- AC: AC-8550.1, AC-8550.2, AC-8550.3, AC-8550.4, AC-8550.5, AC-8551.1, AC-8551.2, AC-8551.3
+- REQ: REQ-8550, REQ-8551
+- Files: src/components/calendar/gcal/FixPanel.tsx, src/components/calendar/gcal/FixPanel.test.tsx, src/components/calendar/gcal/fixRange.ts, src/components/calendar/gcal/fixRange.test.ts, src/components/calendar/gcal/labels.ts, src/components/calendar/AddPanel.tsx, src/components/calendar/AddPanel.test.tsx, src/components/calendar/CalendarScreen.tsx, src/components/calendar/CalendarScreen.test.tsx, src/lib/storage/gcal.ts, src/lib/storage/gcal.test.ts
+- Tests: src/components/calendar/gcal/FixPanel.test.tsx, src/components/calendar/gcal/fixRange.test.ts, src/components/calendar/AddPanel.test.tsx, src/components/calendar/CalendarScreen.test.tsx, src/lib/storage/gcal.test.ts
+- TDD: required — RED 먼저: `fixRange.test.ts`(기억 없음·깨진 값·저장소가 던짐 → 오늘~비움, 기억한 값 그대로, 두 날 포함·끝 비움 = 앞으로 전부, 하루 종일 여러 날 = 시작 날, 오류 둘, 올해 아닌 날 `2025. 11/24 (월)`), `FixPanel.test.tsx`(notes `fix-range`·`fix-skipall` 글 그대로 — 기간 칸·작은 글 둘·판 제목 `고쳐야 할 구글 예약 {n}개` + `· 전체 {N}개`(같으면 없음)·판에 보이는 줄이 하나도 없을 때만 빈 글 + 다른 기간 수·빨간 오류 둘 + 목록·단추 숨김·단추는 남은 것이 있을 때만·확인 창 글(기간 날짜도 올해가 아니면 해 붙임)·첫 초점 [취소]·Esc와 [취소]는 창만 닫음·[가져오지 않기] → `onSkipAll(기간 줄)` 한 번·초록 줄·뺀 줄 없어짐·기간을 바꾸면 초록 줄 없어짐·하나씩 한 줄은 그대로·올해 아닌 날 해 붙임), `CalendarScreen.test.tsx`(한꺼번에 `skipGcalFixes` → 알림 `{n}개를 가져오지 않기로 했어요. 구글에만 남아요.` → 다시 읽어 띠 수·노란 칸 줄어듦, 실패 알림 `넣지 못했어요. 잠시 뒤 다시 눌러 주세요.`, 띠 노란 단추는 기간과 상관없는 전체 수), `AddPanel.test.tsx`(`Drawer` 제목 옆 작은 글 prop — 주면 보이고 안 주면 지금 그대로), `gcal.test.ts`(`skipGcalFixes`가 100개씩 `in('id')`·`eq('state', 'open')`, 틀린 id가 하나면 아무것도 안 보냄, 빈 목록은 안 보냄). 그다음 design.md 21-8대로 만든다. 지금 시험의 고쳐야 할 것 날이 기본 기간(오늘부터) 밖이면 그 시험은 저장소에 기간을 넣거나 기간을 골라 지나게 하고 그 줄에 `google-link AC-8550.1` 주석. 기간 기억은 `fixRange.ts`에만, 읽기·쓰기는 try/catch(`gsheet/view/SheetView.tsx` 새 달 알림 꼴). 확인 창 모양은 `gcalSettings/rules/Rules.tsx` 잇기 끊기 창을 따른다. PC 화면만
+- 의존: Phase 5 전부(TASK-27이 고친 `CalendarScreen.tsx`·`gcal/labels.ts`를 이어 고침)
+
+## TASK-30: 시행자·종류 화면 — 종류 설명 줄 · 보기 상자 · 이미 들어온 예약 다시 알아보기
+- Phase: 6
+- AC: AC-8552.1, AC-8552.2, AC-8552.3, AC-8552.4, AC-8552.5
+- REQ: REQ-8552
+- Files: src/components/gcalSettings/colors/StaffKinds.tsx, src/components/gcalSettings/colors/StaffKinds.test.tsx, src/components/gcalSettings/colors/labels.ts, src/components/gcalSettings/colors/save.ts, src/components/gcalSettings/colors/kindExamples.ts, src/components/gcalSettings/colors/kindExamples.test.ts, src/components/gcalSettings/GcalSettingsScreen.tsx, src/components/gcalSettings/GcalSettingsScreen.test.tsx
+- Tests: src/components/gcalSettings/colors/StaffKinds.test.tsx, src/components/gcalSettings/colors/kindExamples.test.ts, src/components/gcalSettings/GcalSettingsScreen.test.tsx
+- TDD: required — RED 먼저: `kindExamples.test.ts`('이 병원 꼴' → 세 줄 `1234 홍길동 30분 도수 (원)` → `도수 30분(원)` / `1234 홍길동 도수 (호)` · 50분 → `도수 50분(호)` / `1234 홍길동(3천` → `체외충격파 3000`, 기본 종류 → 빈 목록, 그 꼴 종류가 하나뿐이면 그것), `StaffKinds.test.tsx`(notes `colors-reread` 글 그대로 — 종류 설명 둘째 줄(처음 잇기·이은 뒤), 보기 상자 있음·없음, 맨 아래 '이미 들어온 예약' 칸은 이은 뒤 원장만(데스크·보는 중·처음 잇기·잇지 않음은 없음), 단추 → `deps.reread()` 한 번·도는 동안 `다시 알아보는 중…`(못 누름)·결과 줄 `예약 4,358개를 다시 알아봤어요 · 종류가 바뀐 것 1,962개 · 못 알아본 것 31개` + `(14:38)` + 작은 글·실패 때 빌린 저장 실패 글, 조사 `도수 30분(호)로 봐요`·`체외충격파 2000으로 봐요`, 미리 보기 `1234 홍길동 도수 30분 (호)`), `GcalSettingsScreen.test.tsx`(시행자·종류에 넘긴 `reread`가 그 화면 `makeGcalDeps` 묶음으로 `runReread`를 부름 — 가짜 저장소, 구글 부르기 0번). 그다음 design.md 21-9대로 만든다. 알아보기·다시 알아보기 셈은 TASK-25·26 것을 그대로 쓰고 새 셈을 두지 않는다. 지금 시험(기본 종류)은 고치지 않고 지나야 한다. PC 화면만
+- 의존: Phase 5 전부(TASK-25 `parseGoogleEvent`·`formatGoogleTitle`, TASK-26 `runReread`, TASK-27이 고친 `StaffKinds.tsx` 미리 보기)
