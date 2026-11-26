@@ -28,12 +28,15 @@ const ANY_LETTER = /\p{L}/u
 const EDGE_BLANK = /[\s\u200B-\u200D\u2060\uFEFF]/
 
 // 지표 ID 앞글자별 label 모양(input.ts가 만드는 모양 그대로). 가운데가 이름이다.
-// 세 칸 지표의 숫자 든 이름('40대'·'의료급여 1종'·'매탄1동'·'오전 9시'·원장님 이름)도 같은 예외다(spec stats-bit-ai AC-2905.4). 요일 이름에는 숫자가 없다
+// 세 칸 지표의 숫자 든 이름('40대'·'의료급여 1종'·'매탄1동'·'오전 9시'·원장님 이름)도 같은 예외다(spec stats-bit-ai AC-2905.4). 요일 이름에는 숫자가 없다.
+// 의사랑 지표(specs/uisarang-upload AC-8816.8)의 묶음·처방 처방량·총액과 나이대 내원 건수('ESWT 1부위'·'40대')도 같다 — 지금 줄은 꼬리만 더했고,
+// 'agevisit:'는 'age:'로 시작하지 않아 따로 둔다
 const NAME_LABELS: ReadonlyArray<{ id: string; head: string; tails: readonly string[] }> = [
-  { id: 'group:', head: "처방 그룹 '", tails: ["' 환자", "' 신환", "' 재진"] },
-  { id: 'rx:', head: "처방 '", tails: ["' 환자"] },
+  { id: 'group:', head: "처방 그룹 '", tails: ["' 환자", "' 신환", "' 재진", "' 처방량", "' 총액"] },
+  { id: 'rx:', head: "처방 '", tails: ["' 환자", "' 처방량", "' 총액"] },
   { id: 'region:', head: "동네 '", tails: ["' 환자"] },
   { id: 'age:', head: "연령대 '", tails: ["' 환자"] },
+  { id: 'agevisit:', head: "연령대 '", tails: ["' 내원 건수"] },
   { id: 'insurance:', head: "보험 '", tails: ["' 환자"] },
   { id: 'town:', head: "동네 '", tails: ["' 환자"] },
   { id: 'hour:', head: "'", tails: ["' 하루 평균 접수"] },

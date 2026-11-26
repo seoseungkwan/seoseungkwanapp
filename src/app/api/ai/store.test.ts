@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GROUP_KEY, groupKey } from '@/components/stats/treatmentView'
+import { toUisDayPayload } from '@/lib/payload/uisarang'
 import { validateMonthPayload } from '@/lib/payload/validate'
 import type { ReportInput, SavedReport } from '@/types/aiReport'
 import { generateReport, isReportStale, type GenerateDeps } from './generate'
@@ -145,10 +146,21 @@ describe('saveReport · addUsage 저장 쪽 (AC-511.2)', () => {
     const source = readFileSync(fileURLToPath(new URL('./store.ts', import.meta.url)), 'utf8')
     expect(source.split(/\r?\n/)[0]).toBe("import 'server-only'")
     expect(source).not.toMatch(/\.insert\s*\(|\.upsert\s*\(|\.update\s*\(|\.delete\s*\(/)
-    // from은 읽기 다섯만 쓴다: 호출이 정확히 5개이고, 표 이름은 글자 그대로 ai_reports·ai_usage·clinic_profiles(호칭 한 칸, clinic-profile AC-6606.4)·stats_months·stats_rx_groups다
+    // from은 읽기만 쓴다: 호출이 정확히 9개이고, 표 이름은 글자 그대로 ai_reports·ai_usage·clinic_profiles(호칭 한 칸, clinic-profile AC-6606.4)·stats_months·stats_rx_groups와
+    // 의사랑 AI 리포트 읽기 넷 sales_days·stats_coverage·stats_days·uis_periods다(specs/uisarang-upload AC-8816.1 — 쓰기는 여전히 없다)
     const fromCalls = source.match(/\.from\s*\([^)]*\)?/g) ?? []
-    expect(fromCalls).toHaveLength(5)
-    expect([...fromCalls].sort()).toEqual([".from('ai_reports')", ".from('ai_usage')", ".from('clinic_profiles')", ".from('stats_months')", ".from('stats_rx_groups')"])
+    expect(fromCalls).toHaveLength(9)
+    expect([...fromCalls].sort()).toEqual([
+      ".from('ai_reports')",
+      ".from('ai_usage')",
+      ".from('clinic_profiles')",
+      ".from('sales_days')",
+      ".from('stats_coverage')",
+      ".from('stats_days')",
+      ".from('stats_months')",
+      ".from('stats_rx_groups')",
+      ".from('uis_periods')",
+    ])
     expect(source).not.toMatch(/service[_-]?role|SERVICE_ROLE|createClient|createServerClient|supabaseServer/)
     expect(source).not.toMatch(/console\./)
     expect(source).not.toMatch(/fixtures|fake-ai/)
@@ -886,5 +898,363 @@ describe('loadHonorific — 병원 정보 호칭 한 칸 (AC-6606.4)', () => {
 
   it("AC-6606.4: from에서 던져도 '원장님'이다", async () => {
     await expect(loadHonorific(fakeClient().client)).resolves.toBe('원장님')
+  })
+})
+
+// ---------- 의사랑 AI 경영 리포트 읽기 (specs/uisarang-upload REQ-8816 · AC-8816.1, design.md §10-5) ----------
+// 가짜 DB 클라이언트: 표마다 줄 목록을 두고, 읽기 사슬(select·eq·gte·lte·in·order·limit·range)을 적어 두었다가 then에서 그 거르기대로 줄을 골라 준다.
+// 표 대신 함수를 주면 그 답을 그대로 준다(오류·거절·던짐). 그 밖의 이름(insert·rpc·match …)·없는 표는 던진다. 실제 Supabase에 붙지 않는다
+type DbStep = [method: string, ...args: unknown[]]
+type DbCall = { table: string; steps: DbStep[] }
+type DbTable = Record<string, unknown>[] | ((call: DbCall) => RpcResult | Promise<RpcResult>)
+
+const DB_CHAIN = ['select', 'eq', 'gte', 'lte', 'in', 'order', 'limit', 'range']
+
+function pick(rows: Record<string, unknown>[], steps: DbStep[]): Record<string, unknown>[] {
+  let out = rows
+  let columns: string[] | null = null
+  const text = (value: unknown) => String(value)
+  for (const [method, ...args] of steps) {
+    const column = String(args[0])
+    if (method === 'select') columns = String(args[0]).split(',').map((name) => name.trim())
+    else if (method === 'eq') out = out.filter((row) => row[column] === args[1])
+    else if (method === 'in') out = out.filter((row) => (args[1] as unknown[]).includes(row[column]))
+    else if (method === 'gte') out = out.filter((row) => text(row[column]) >= text(args[1]))
+    else if (method === 'lte') out = out.filter((row) => text(row[column]) <= text(args[1]))
+    else if (method === 'limit') out = out.slice(0, args[0] as number)
+    else if (method === 'range') out = out.slice(args[0] as number, (args[1] as number) + 1)
+  }
+  return out.map((row) => (columns === null ? row : Object.fromEntries(columns.filter((name) => name in row).map((name) => [name, row[name]]))))
+}
+
+function fakeDbClient(tables: Record<string, DbTable>) {
+  const calls: DbCall[] = []
+  const touched: string[] = []
+  const guard = (methods: Record<string, (...args: unknown[]) => unknown>): unknown =>
+    new Proxy(
+      {},
+      {
+        get(_target, key) {
+          if (typeof key !== 'string') return undefined
+          touched.push(key)
+          return (
+            methods[key] ??
+            (() => {
+              throw new Error(`쓰면 안 되는 Supabase 메서드: ${key}`)
+            })
+          )
+        },
+      },
+    )
+  const chain = (call: DbCall): unknown => {
+    const methods: Record<string, (...args: unknown[]) => unknown> = {
+      then: (resolve, reject) => {
+        const table = tables[call.table]
+        let result: Promise<RpcResult>
+        try {
+          result = Promise.resolve(typeof table === 'function' ? table(call) : { data: pick(table, call.steps), error: null })
+        } catch (error) {
+          result = Promise.reject(error)
+        }
+        return result.then(resolve as (v: RpcResult) => unknown, reject as (e: unknown) => unknown)
+      },
+    }
+    for (const name of DB_CHAIN) {
+      methods[name] = (...args) => {
+        call.steps.push([name, ...args])
+        return chain(call)
+      }
+    }
+    return guard(methods)
+  }
+  const client = guard({
+    from: (table) => {
+      if (typeof table !== 'string' || !(table in tables)) throw new Error(`읽으면 안 되는 표: ${String(table)}`)
+      const call: DbCall = { table, steps: [] }
+      calls.push(call)
+      return chain(call)
+    },
+  }) as SupabaseClient
+  return { client, calls, touched, tablesCalled: () => calls.map((call) => call.table) }
+}
+
+const uisDay = (day: string, patients: number, newPatients: number, source = 'uisarang') => ({
+  day,
+  partial: false,
+  source,
+  payload: toUisDayPayload({ day, patients, newPatients }),
+  updated_at: '2026-11-01T00:00:00.000Z',
+})
+const uisCov = (from: string, to: string, source = 'uisarang') => ({ from_day: from, to_day: to, source, created_at: '2026-11-01T00:00:00.000Z' })
+const sale = (day: string, total: number | null, rough: number | null = null) => ({ day, total, rough_total: rough, visits: 1, unconfirmed: false })
+const period = (kind: 'rx' | 'age', from: string, to: string, payload: unknown) => ({ kind, from_day: from, to_day: to, payload, updated_at: '2026-11-02T00:00:00.000Z' })
+const RX_OCT = { v: 1, rows: [{ code: 'FAKE-G1', name: '가짜 도수', qty: 12.5, amount: 600_000 }], total: 600_000 }
+const AGE_DAY = { v: 1, patients: 3, newPatients: 1, bands: [0, 0, 0, 0, 1, 1, 1, 0, 0, 0], newBands: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0] }
+
+// 세 달(2026-10 · 2026-09 · 2025-10)과 그 밖 달 · 다른 출처 줄이 섞인 가짜 DB
+function uisTables(over: Record<string, DbTable> = {}): Record<string, DbTable> {
+  return {
+    stats_months: [],
+    stats_rx_groups: GROUP_ROWS,
+    stats_days: [
+      uisDay('2026-10-01', 3, 1),
+      uisDay('2026-10-02', 4, 0),
+      uisDay('2026-09-15', 5, 2),
+      uisDay('2025-10-10', 6, 1),
+      uisDay('2026-08-31', 9, 9), // 세 달 밖
+      uisDay('2026-10-03', 7, 7, 'bit'), // 다른 출처
+    ],
+    stats_coverage: [uisCov('2026-09-01', '2026-10-31'), uisCov('2025-10-01', '2025-10-31'), uisCov('2026-10-01', '2026-10-31', 'bit'), uisCov('2026-07-01', '2026-07-31')],
+    sales_days: [sale('2026-10-01', 100_000), sale('2026-10-02', null, 50_000), sale('2026-09-15', 70_000), sale('2025-10-10', 60_000), sale('2026-11-01', 1)],
+    uis_periods: [
+      period('rx', '2026-10-01', '2026-10-31', RX_OCT),
+      period('rx', '2026-09-15', '2026-09-15', RX_OCT),
+      period('rx', '2026-07-01', '2026-07-31', RX_OCT),
+      period('age', '2026-10-01', '2026-10-01', AGE_DAY),
+      period('age', '2025-10-10', '2025-10-10', AGE_DAY),
+      period('age', '2026-11-02', '2026-11-02', AGE_DAY),
+    ],
+    ...over,
+  }
+}
+
+const RANGES = [
+  ['2026-10-01', '2026-10-31'],
+  ['2026-09-01', '2026-09-30'],
+  ['2025-10-01', '2025-10-31'],
+] as const
+const callsOf = (fake: ReturnType<typeof fakeDbClient>, table: string) => fake.calls.filter((call) => call.table === table).map((call) => call.steps)
+const uisDeps = (loadMonths: GenerateDeps['loadMonths'], callClaude = vi.fn<GenerateDeps['callClaude']>()) => ({
+  callClaude,
+  deps: {
+    loadMonths,
+    callClaude,
+    saveReport: async () => true,
+    addUsage: async () => true,
+    now: () => new Date('2026-11-27T03:00:00.000Z'),
+  } satisfies GenerateDeps,
+})
+
+describe('loadReportMonths — 의사랑 날 줄이 있는지 먼저 본다 (AC-8816.1)', () => {
+  it('AC-8816.1: 비트 의원 빈 달 — 고른 달 stats_months·uisarang 날 줄이 없으면 stats_days를 한 번(고른 달·uisarang·한 줄)만 읽고 멈춘다(uis_periods를 부르지 않음 · 값은 지금 그대로)', async () => {
+    const prev = monthRow('2026-09', 110)
+    const fake = fakeDbClient(uisTables({ stats_months: [prev], stats_days: [uisDay('2026-10-03', 7, 7, 'bit')] }))
+    const months = await loadReportMonths(fake.client, '2026-10')
+    expect(fake.tablesCalled().sort()).toEqual(['stats_days', 'stats_months', 'stats_rx_groups'])
+    expect(callsOf(fake, 'stats_days')).toEqual([[['select', 'day'], ['eq', 'source', 'uisarang'], ['gte', 'day', '2026-10-01'], ['lte', 'day', '2026-10-31'], ['limit', 1]]])
+    expect(months).toEqual({
+      selected: null,
+      prev: prev.payload,
+      lastYear: null,
+      groupNames: { [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' },
+      sections: { selected: null, prev: null, lastYear: null },
+    })
+    expect(Object.keys(months)).not.toContain('uis')
+    expectNoConsole()
+  })
+
+  it('AC-8816.1: 비트 의원 빈 달이면 리포트 만들기는 지금처럼 E-AI-NO-DATA이고 Claude를 부르지 않는다', async () => {
+    const fake = fakeDbClient(uisTables({ stats_days: [] }))
+    const { deps, callClaude } = uisDeps((m) => loadReportMonths(fake.client, m))
+    await expect(generateReport('2026-10', deps)).resolves.toEqual({ ok: false, code: 'E-AI-NO-DATA' })
+    expect(callClaude).not.toHaveBeenCalled()
+    expect(fake.tablesCalled()).not.toContain('uis_periods')
+  })
+
+  it.each<[string, DbTable]>([
+    ['error가 있음', () => ({ data: null, error: READ_ERROR })],
+    ['거절', async () => boom()],
+    ['바로 던짐', () => boom()],
+    ['답이 배열이 아님', () => ({ data: { day: '2026-10-01' }, error: null })],
+  ])('AC-8816.1: 그 먼저 읽기가 %s이면(새 SQL·망 문제) 비트 결과 그대로 — 던지지 않아 E-AI-NO-DATA(E-AI-FAILED 아님)', async (_name, days) => {
+    const fake = fakeDbClient(uisTables({ stats_days: days, uis_periods: () => boom() }))
+    const months = await loadReportMonths(fake.client, '2026-10')
+    expect(months.selected).toBeNull()
+    expect(Object.keys(months)).not.toContain('uis')
+    expect(fake.tablesCalled()).not.toContain('uis_periods')
+    expect(JSON.stringify(months)).not.toContain(SECRET)
+    const { deps, callClaude } = uisDeps((m) => loadReportMonths(fakeDbClient(uisTables({ stats_days: days })).client, m))
+    await expect(generateReport('2026-10', deps)).resolves.toEqual({ ok: false, code: 'E-AI-NO-DATA' })
+    expect(callClaude).not.toHaveBeenCalled()
+    expectNoConsole()
+  })
+
+  it('AC-8816.1: 고른 달 stats_months 줄이 있으면 의사랑 날 줄이 있어도 의사랑 표를 읽지 않는다(비트 길 그대로)', async () => {
+    const fake = fakeDbClient(uisTables({ stats_months: [monthRow('2026-10', 120)] }))
+    const months = await loadReportMonths(fake.client, '2026-10')
+    expect(fake.tablesCalled().sort()).toEqual(['stats_months', 'stats_rx_groups'])
+    expect(Object.keys(months)).toEqual(['selected', 'prev', 'lastYear', 'groupNames', 'sections'])
+  })
+})
+
+describe('loadReportMonths — 의사랑 세 달 읽기 loadUisReportRaw (AC-8816.1)', () => {
+  it('AC-8816.1: 의사랑 날 줄이 있으면 세 달마다 stats_days(uisarang)·stats_coverage(uisarang)·sales_days·uis_periods(rx 겹침·age 안)를 읽는다 — 칸·거르기·차례', async () => {
+    const fake = fakeDbClient(uisTables())
+    await loadReportMonths(fake.client, '2026-10')
+    const page = ['range', 0, 999]
+    expect(callsOf(fake, 'stats_days')).toEqual([
+      [['select', 'day'], ['eq', 'source', 'uisarang'], ['gte', 'day', '2026-10-01'], ['lte', 'day', '2026-10-31'], ['limit', 1]],
+      ...RANGES.map(([from, to]) => [['select', 'day, payload'], ['eq', 'source', 'uisarang'], ['gte', 'day', from], ['lte', 'day', to], ['order', 'day'], page]),
+    ])
+    expect(callsOf(fake, 'stats_coverage')).toEqual(
+      RANGES.map(([from, to]) => [
+        ['select', 'from_day, to_day'],
+        ['eq', 'source', 'uisarang'],
+        ['lte', 'from_day', to],
+        ['gte', 'to_day', from],
+        ['order', 'from_day'],
+        ['order', 'to_day'],
+        page,
+      ]),
+    )
+    expect(callsOf(fake, 'sales_days')).toEqual(RANGES.map(([from, to]) => [['select', 'day, total, rough_total'], ['gte', 'day', from], ['lte', 'day', to], ['order', 'day'], page]))
+    expect(callsOf(fake, 'uis_periods')).toEqual([
+      ...RANGES.map(([from, to]) => [
+        ['select', 'from_day, to_day, payload, updated_at'],
+        ['eq', 'kind', 'rx'],
+        ['lte', 'from_day', to],
+        ['gte', 'to_day', from],
+        ['order', 'from_day'],
+        ['order', 'to_day'],
+        page,
+      ]),
+      ...RANGES.map(([from, to]) => [
+        ['select', 'from_day, to_day, payload, updated_at'],
+        ['eq', 'kind', 'age'],
+        ['gte', 'from_day', from],
+        ['lte', 'to_day', to],
+        ['order', 'from_day'],
+        ['order', 'to_day'],
+        page,
+      ]),
+    ])
+    // 병원 조건·쓰기·rpc가 없다
+    expect([...new Set(fake.touched)].sort()).toEqual(['eq', 'from', 'gte', 'in', 'limit', 'lte', 'order', 'range', 'select', 'then'])
+    expect(JSON.stringify(fake.calls)).not.toMatch(/hospital/)
+  })
+
+  it('AC-8816.1: 읽은 줄은 검사하지 않고 고른 칸만 세 달 차례(고른 달·지난달·작년 같은 달)로 uis에 둔다 · 다른 출처·세 달 밖 줄은 거르기로 빠진다', async () => {
+    const fake = fakeDbClient(uisTables())
+    const months = await loadReportMonths(fake.client, '2026-10')
+    const days = uisTables().stats_days as ReturnType<typeof uisDay>[]
+    const day = (row: ReturnType<typeof uisDay>) => ({ day: row.day, payload: row.payload })
+    expect(months.uis).toEqual({
+      days: [day(days[0]), day(days[1]), day(days[2]), day(days[3])],
+      coverage: [
+        { from_day: '2026-09-01', to_day: '2026-10-31' },
+        { from_day: '2026-09-01', to_day: '2026-10-31' },
+        { from_day: '2025-10-01', to_day: '2025-10-31' },
+      ],
+      sales: [
+        { day: '2026-10-01', total: 100_000, rough_total: null },
+        { day: '2026-10-02', total: null, rough_total: 50_000 },
+        { day: '2026-09-15', total: 70_000, rough_total: null },
+        { day: '2025-10-10', total: 60_000, rough_total: null },
+      ],
+      rx: [
+        { from_day: '2026-10-01', to_day: '2026-10-31', payload: RX_OCT, updated_at: '2026-11-02T00:00:00.000Z' },
+        { from_day: '2026-09-15', to_day: '2026-09-15', payload: RX_OCT, updated_at: '2026-11-02T00:00:00.000Z' },
+      ],
+      age: [
+        { from_day: '2026-10-01', to_day: '2026-10-01', payload: AGE_DAY, updated_at: '2026-11-02T00:00:00.000Z' },
+        { from_day: '2025-10-10', to_day: '2025-10-10', payload: AGE_DAY, updated_at: '2026-11-02T00:00:00.000Z' },
+      ],
+      groups: [
+        { key: MANUAL_KEY, name: '도수치료', codes: ['fake-g2', 'FAKE-G1'], out: [], cond: [] },
+        { key: PT_KEY, name: '물리치료', codes: PT_CODES, out: [], cond: [] },
+      ],
+    })
+    // 비트 길 칸은 지금 그대로(stats_months 줄 없음)
+    expect(months.selected).toBeNull()
+    expect(months.groupNames).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+  })
+
+  it('AC-8816.1: 1,000줄씩 모두 읽는다(1,500줄 → 0~999 · 1000~1999 두 번)', async () => {
+    const many = Array.from({ length: 1500 }, () => uisCov('2026-10-01', '2026-10-31'))
+    const fake = fakeDbClient(uisTables({ stats_coverage: many }))
+    const months = await loadReportMonths(fake.client, '2026-10')
+    const october = callsOf(fake, 'stats_coverage').filter((steps) => steps.some(([method, , value]) => method === 'gte' && value === '2026-10-01'))
+    expect(october.map((steps) => steps.at(-1))).toEqual([
+      ['range', 0, 999],
+      ['range', 1000, 1999],
+    ])
+    // 고른 달 1,500줄 + 지난달·작년 같은 달과는 겹치지 않아 0줄
+    expect(months.uis?.coverage).toHaveLength(1500)
+  })
+
+  it('AC-8816.1: 묶음은 groupDefsOf — groupNamesOf와 같은 거르기·차례·열쇠에 이름·넣는·빼는·조건 처방을 남긴다(같은 열쇠는 앞 묶음 하나)', async () => {
+    const cond = [{ code: 'FAKE-P1', unless: ['FAKE-Y1'] }]
+    const rows = [
+      { name: '나중', codes: ['fake-g3'], out_codes: null, cond: null, sort_order: 5 },
+      { name: '기본 PT', codes: ['FAKE-P1', 'FAKE-P2'], out_codes: ['FAKE-X1'], cond, sort_order: 0 },
+      { name: '빈 묶음', codes: [], sort_order: 0 },
+      { name: '010-1234-5678', codes: ['FAKE-Q1'], sort_order: 0 },
+      { name: '물리치료', codes: PT_CODES, sort_order: 1 },
+    ]
+    const months = await loadReportMonths(fakeDbClient(uisTables({ stats_rx_groups: rows })).client, '2026-10')
+    expect(months.uis?.groups).toEqual([
+      { key: groupKey(['FAKE-P1', 'FAKE-P2'], { out: ['FAKE-X1'], cond }), name: '기본 PT', codes: ['FAKE-P1', 'FAKE-P2'], out: ['FAKE-X1'], cond },
+      { key: PT_KEY, name: '물리치료', codes: PT_CODES, out: [], cond: [] },
+    ])
+    expect(Object.keys(months.groupNames)).toEqual(months.uis?.groups.map((group) => group.key))
+  })
+
+  it.each([['stats_days'], ['stats_coverage'], ['sales_days'], ['uis_periods']])(
+    'AC-8816.1: 의사랑 세 달 읽기 가운데 %s 읽기가 실패하면 고정 글로 던진다 → 리포트 만들기 E-AI-FAILED · 숫자 바뀜 비교 false',
+    async (table) => {
+      // 먼저 읽기(stats_days 한 줄)는 지나고 나머지 읽기만 실패하게: limit가 있는 부름만 줄을 준다
+      const failing: DbTable = (call) =>
+        call.table === 'stats_days' && call.steps.some(([method]) => method === 'limit') ? { data: [{ day: '2026-10-01' }], error: null } : { data: null, error: READ_ERROR }
+      const client = () => fakeDbClient(uisTables({ [table]: failing })).client
+      await expectThrowsWithoutSecret(loadReportMonths(client(), '2026-10'))
+      const { deps, callClaude } = uisDeps((m) => loadReportMonths(client(), m))
+      await expect(generateReport('2026-10', deps)).resolves.toEqual({ ok: false, code: 'E-AI-FAILED' })
+      expect(callClaude).not.toHaveBeenCalled()
+      await expect(isReportStale('2026-10', 'a'.repeat(64), (m) => loadReportMonths(client(), m))).resolves.toBe(false)
+    },
+  )
+
+  it('AC-8816.1: 읽기가 던져도(거절·바로 던짐) 고정 글로 던진다', async () => {
+    await expectThrowsWithoutSecret(loadReportMonths(fakeDbClient(uisTables({ sales_days: async () => boom() })).client, '2026-10'))
+    await expectThrowsWithoutSecret(loadReportMonths(fakeDbClient(uisTables({ uis_periods: () => boom() })).client, '2026-10'))
+  })
+})
+
+describe('generateReport에 의사랑 loadReportMonths를 이어 부름 (AC-8816.1·AC-8816.5)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-27T03:00:00.000Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-8816.1: Claude 입력은 서버가 읽은 의사랑 날 숫자로 만들고(source uisarang) 시스템 글 끝에 의사랑 묶음이 붙는다 · 묶음 처방 코드 목록은 보내지 않는다', async () => {
+    const fake = fakeDbClient(uisTables())
+    const goodText = JSON.stringify({
+      summary: '접수 건수와 총진료비가 함께 늘었습니다.',
+      cards: [
+        { tag: 'up', text: '접수 건수가 늘었습니다.', metric: 'total.patients' },
+        { tag: 'up', text: '총진료비가 늘었습니다.', metric: 'sales.total' },
+        { tag: 'watch', text: '신환은 지켜볼 만합니다.', metric: 'total.newPatients' },
+      ],
+    })
+    const callClaude = vi.fn<GenerateDeps['callClaude']>(async () => ({
+      ok: true as const,
+      text: goodText,
+      usage: { inputTokens: 1000, outputTokens: 500, model: 'claude-opus-5-5' },
+    }))
+    const { deps } = uisDeps((m) => loadReportMonths(fake.client, m), callClaude)
+    const res = await generateReport('2026-10', deps)
+    expect(res.ok).toBe(true)
+    const { system } = callClaude.mock.calls[0][0]
+    const user = callClaude.mock.calls[0][0].user as string
+    expect(system).toContain('[의사랑 엑셀 자료]')
+    const input = JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+    expect(input.source).toBe('uisarang')
+    expect(input.metrics.find((m) => m.id === 'total.patients')?.values).toEqual({ selected: 7, prev: 5, lastYear: 6 })
+    expect(input.metrics.find((m) => m.id === 'sales.total')?.values).toEqual({ selected: 150_000, prev: 70_000, lastYear: 60_000 })
+    expect(user).not.toContain('"codes"')
+    expect(user).not.toContain('fake-g2')
   })
 })

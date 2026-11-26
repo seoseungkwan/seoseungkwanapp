@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { groupKey } from '@/components/stats/treatmentView'
 import { costMicroUsd } from '@/lib/ai/cost'
 import { buildReportInput, reportFingerprint } from '@/lib/ai/input'
 import { parseAiReport } from '@/lib/ai/output'
 import { reportJsonSchema, systemPrompt, userMessage } from '@/lib/ai/prompt'
+import { buildUisReportInput, validateUisReportMonths, type UisReportRaw } from '@/lib/ai/uisInput'
 import { addMonths } from '@/lib/analytics/dates'
+import { toUisDayPayload } from '@/lib/payload/uisarang'
 import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { AiErrorCode, AiUsage, ReportInput } from '@/types/aiReport'
 import type { ClaudeResult } from './claude'
@@ -721,3 +724,155 @@ describe('시스템 글의 호칭 (AC-6606.4)', () => {
     expect(loadHonorific).not.toHaveBeenCalled()
   })
 })
+
+// ── 의사랑 의원 (specs/uisarang-upload REQ-8816, design.md §10-5) ──
+// 고른 달 비트 달 줄이 없고 months.uis가 있으면 validateUisReportMonths → buildUisReportInput으로 입력을 만든다. 숫자·이름은 여기서 지어낸 것이다
+describe('의사랑 길 (AC-8816.1·AC-8816.5·AC-8816.8)', () => {
+  const TODAY_NOW = new Date('2026-11-27T03:00:00.000Z') // 한국 2026-11-27 12:00
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(TODAY_NOW)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const ESWT_KEY = groupKey(['ESWT 1부위'])
+  const dayRow = (day: string, patients: number, newPatients: number) => ({ day, payload: toUisDayPayload({ day, patients, newPatients }) })
+  const uisRaw = (): UisReportRaw => ({
+    days: [dayRow('2026-10-01', 30, 3), dayRow('2026-10-02', 20, 2), dayRow('2026-09-01', 25, 1)],
+    coverage: [{ from_day: '2026-09-01', to_day: '2026-10-31' }],
+    sales: [
+      { day: '2026-10-01', total: 500_000, rough_total: null },
+      { day: '2026-09-01', total: 400_000, rough_total: null },
+    ],
+    rx: [
+      {
+        from_day: '2026-10-01',
+        to_day: '2026-10-31',
+        payload: { v: 1, rows: [{ code: 'ESWT 1부위', name: 'ESWT 1부위', qty: 6, amount: 300_000 }], total: null },
+        updated_at: '2026-11-01T00:00:00.000Z',
+      },
+    ],
+    age: [
+      {
+        from_day: '2026-10-01',
+        to_day: '2026-10-01',
+        payload: { v: 1, patients: 30, newPatients: 3, bands: [0, 0, 0, 0, 30, 0, 0, 0, 0, 0], newBands: [0, 0, 0, 0, 3, 0, 0, 0, 0, 0] },
+        updated_at: '2026-11-01T00:00:00.000Z',
+      },
+      {
+        from_day: '2026-10-02',
+        to_day: '2026-10-02',
+        payload: { v: 1, patients: 20, newPatients: 2, bands: [0, 0, 0, 0, 20, 0, 0, 0, 0, 0], newBands: [0, 0, 0, 0, 2, 0, 0, 0, 0, 0] },
+        updated_at: '2026-11-01T00:00:00.000Z',
+      },
+    ],
+    groups: [{ key: ESWT_KEY, name: 'ESWT 1부위', codes: ['ESWT 1부위'], out: [], cond: [] }],
+  })
+  const uisMonths = (raw: UisReportRaw = uisRaw()): ReportMonths => ({
+    selected: null,
+    prev: null,
+    lastYear: null,
+    groupNames: { [ESWT_KEY]: 'ESWT 1부위' },
+    sections: { selected: null, prev: null, lastYear: null },
+    uis: raw,
+  })
+  const uisInputOf = (raw: UisReportRaw = uisRaw()) => {
+    const valid = validateUisReportMonths(raw, MONTH, '2026-11-27')
+    if (valid === null) throw new Error('검사를 지나야 한다')
+    return buildUisReportInput(valid)
+  }
+  const uisText = JSON.stringify({
+    summary: '접수 건수와 총진료비가 늘었습니다.',
+    cards: [
+      { tag: 'up', text: '접수 건수가 지난달보다 늘었습니다.', metric: 'total.patients' },
+      { tag: 'up', text: '총진료비가 조금 늘었습니다.', metric: 'sales.total' },
+      { tag: 'watch', text: '신환은 지켜볼 만합니다.', metric: 'total.newPatients' },
+    ],
+  })
+
+  it('AC-8816.1·AC-8816.5: 고른 달 비트 달 줄이 없고 uis가 있으면 의사랑 입력으로 Claude를 부르고(시스템 글에 의사랑 묶음) 그 입력의 지문으로 저장한다', async () => {
+    const { deps, order } = setup({ months: uisMonths(), claude: { ok: true, text: uisText, usage: USAGE } })
+    const res = await generateReport(MONTH, deps)
+    expect(order).toEqual(['loadMonths', 'callClaude', 'saveReport', 'addUsage'])
+    if (!res.ok) throw new Error('성공이어야 한다')
+    const input = uisInputOf()
+    expect(input.source).toBe('uisarang')
+    expect(deps.callClaude).toHaveBeenCalledWith({ system: systemPrompt('원장님', 'uisarang'), user: userMessage(input), schema: reportJsonSchema() })
+    expect(deps.callClaude.mock.calls[0][0].system).toContain('[의사랑 엑셀 자료]')
+    const parsed = parseAiReport(uisText, input)!
+    expect(res.report).toEqual({
+      month: MONTH,
+      partial: false,
+      summary: parsed.summary,
+      cards: parsed.cards,
+      model: USAGE.model,
+      inputHash: await reportFingerprint(input),
+      createdAt: NOW.toISOString(),
+    })
+    expect(res.report.cards[1].basis).toBe('근거 · 총진료비 9월 400,000원 → 10월 500,000원 · 작년 10월 자료 없음')
+  })
+
+  it('AC-8816.4: uis가 있어도 고른 달 의사랑 날 줄이 없거나 검사를 못 지나면 Claude를 부르지 않고 E-AI-NO-DATA', async () => {
+    const noDays = { ...uisRaw(), days: [dayRow('2026-09-01', 25, 1)] }
+    const broken = { ...uisRaw(), days: [{ day: '2026-10-01', payload: { schemaVersion: 2 } }, dayRow('2026-09-01', 25, 1)] }
+    for (const raw of [noDays, broken]) {
+      const { deps, order } = setup({ months: uisMonths(raw) })
+      expect(await generateReport(MONTH, deps)).toEqual({ ok: false, code: 'E-AI-NO-DATA' })
+      expect(order).toEqual(['loadMonths'])
+    }
+  })
+
+  it('AC-8816.1: 고른 달 비트 달 줄이 검사를 지나면 uis가 있어도 비트 길 그대로(시스템 글·입력·지문이 지금과 같다)', async () => {
+    const months = { ...fixtureMonths(), uis: uisRaw() }
+    const { deps } = setup({ months })
+    const res = await generateReport(MONTH, deps)
+    if (!res.ok) throw new Error('성공이어야 한다')
+    const input = inputOf(fixtureMonths())
+    expect(deps.callClaude).toHaveBeenCalledWith({ system: systemPrompt(), user: userMessage(input), schema: reportJsonSchema() })
+    expect(deps.callClaude.mock.calls[0][0].system).not.toContain('[의사랑 엑셀 자료]')
+    expect(res.report.inputHash).toBe(await reportFingerprint(input))
+    expect(JSON.parse(middleOf(deps.callClaude.mock.calls[0][0].user as string))).not.toHaveProperty('source')
+  })
+
+  it('AC-8816.5: 비트 입력(source 없음)의 시스템 글은 지금 글 그대로 — 의사랑 묶음이 없다', async () => {
+    const { deps } = setup()
+    await generateReport(MONTH, deps)
+    expect(deps.callClaude.mock.calls[0][0].system).toBe(systemPrompt('원장님'))
+    expect(deps.callClaude.mock.calls[0][0].system).not.toContain('의사랑')
+  })
+
+  it('AC-8816.8: 숫자가 든 묶음·처방·나이대 이름(ESWT 1부위·40대)을 쓴 카드·요약이 지나 리포트가 만들어진다(E-AI-FAILED 아님)', async () => {
+    const text = JSON.stringify({
+      summary: "ESWT 1부위 처방량과 40대 내원이 함께 늘었습니다.",
+      cards: [
+        { tag: 'up', text: "처방 그룹 'ESWT 1부위' 처방량이 늘었습니다.", metric: `group:${ESWT_KEY}.qty` },
+        { tag: 'up', text: "처방 'ESWT 1부위' 총액이 늘었습니다.", metric: 'rx:ESWT 1부위.amount' },
+        { tag: 'watch', text: '40대 내원 건수가 가장 많습니다.', metric: 'agevisit:40대' },
+      ],
+    })
+    const { deps } = setup({ months: uisMonths(), claude: { ok: true, text, usage: USAGE } })
+    const res = await generateReport(MONTH, deps)
+    if (!res.ok) throw new Error(`성공이어야 한다: ${res.code}`)
+    expect(res.report.cards).toHaveLength(3)
+    expect(res.report.cards.map((card) => card.basis)).toEqual([
+      "근거 · 처방 그룹 'ESWT 1부위' 처방량 9월 자료 없음 → 10월 6 · 작년 10월 자료 없음",
+      "근거 · 처방 'ESWT 1부위' 총액 9월 자료 없음 → 10월 300,000원 · 작년 10월 자료 없음",
+      "근거 · 연령대 '40대' 내원 건수 9월 자료 없음 → 10월 50건 · 작년 10월 자료 없음",
+    ])
+  })
+
+  it('AC-8816.1: isReportStale도 같은 의사랑 입력의 지문으로 견준다(같으면 false · 다르면 true · 고른 달 없음이면 false)', async () => {
+    const hash = await reportFingerprint(uisInputOf())
+    await expect(isReportStale(MONTH, hash, async () => uisMonths())).resolves.toBe(false)
+    await expect(isReportStale(MONTH, 'b'.repeat(64), async () => uisMonths())).resolves.toBe(true)
+    const changed = { ...uisRaw(), sales: [{ day: '2026-10-01', total: 510_000, rough_total: null }] }
+    await expect(isReportStale(MONTH, hash, async () => uisMonths(changed))).resolves.toBe(true)
+    await expect(isReportStale(MONTH, hash, async () => uisMonths({ ...uisRaw(), days: [] }))).resolves.toBe(false)
+  })
+})
+
+function middleOf(user: string): string {
+  return user.slice('<data>\n'.length, user.length - '\n</data>'.length)
+}

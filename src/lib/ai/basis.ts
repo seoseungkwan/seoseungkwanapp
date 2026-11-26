@@ -1,4 +1,5 @@
 import { formatCount, formatRate } from '@/components/charts/format'
+import { formatQty } from '@/lib/analytics/uisarang'
 import { averageText } from '@/lib/analytics/visitHours'
 import type { ReportInput, ReportMetric } from '@/types/aiReport'
 
@@ -17,7 +18,8 @@ function monthParts(month: string): [year: string, name: string] {
 
 // 값 글자. null이면 숫자 지표는 '자료 없음', 비율은 그 달 자료가 있으면 '집계 중'(분모가 없거나 아직 셀 수 없음).
 // 접수 건수·재진(visits)은 '건', 사람 수(count)는 '명'(spec ai-report-stats REQ-2004).
-// 원장님 매출(won)은 통계 화면 원장님별과 같은 '원', 하루 평균 접수(average)는 시간대별 접수와 같은 소수 한 자리 '건'(0이면 화면 칸의 '–' 대신 '0건', spec stats-bit-ai AC-2905.1)
+// 원장님 매출(won)은 통계 화면 원장님별과 같은 '원', 하루 평균 접수(average)는 시간대별 접수와 같은 소수 한 자리 '건'(0이면 화면 칸의 '–' 대신 '0건', spec stats-bit-ai AC-2905.1).
+// 의사랑 처방량(qty)은 통계 탭 처방량과 같은 formatQty 글이고 단위가 없다(처방마다 단위가 달라서, specs/uisarang-upload AC-8816.6)
 function valueText(metric: ReportMetric, value: number | null, hasMonth: boolean): string {
   if (value === null) return metric.kind === 'rate' && hasMonth ? IN_PROGRESS : NO_DATA
   switch (metric.kind) {
@@ -31,6 +33,8 @@ function valueText(metric: ReportMetric, value: number | null, hasMonth: boolean
       return `${formatCount(value)}건`
     case 'count':
       return `${formatCount(value)}명`
+    case 'qty':
+      return formatQty(value)
   }
 }
 

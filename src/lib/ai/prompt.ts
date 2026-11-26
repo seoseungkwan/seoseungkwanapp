@@ -53,10 +53,25 @@ const SYSTEM_REST = [
   '- 의학적 판단이나 진료 권고를 하지 않습니다. 숫자 흐름과 운영상 살펴볼 점만 말합니다.',
 ].join('\n')
 
-/** 시스템 글. honorific이 정해 둔 세 호칭 밖이면(주지 않음 포함) '원장님' — 받은 값을 그대로 글에 넣지 않는다 */
-export function systemPrompt(honorific: Honorific = DEFAULT_HONORIFIC): string {
+// 의사랑 엑셀로 올린 숫자로 만든 입력(source: 'uisarang')에만 지금 글 끝에 빈 줄을 두고 붙인다(specs/uisarang-upload AC-8816.5, design.md §10-5 글자 그대로).
+// 비트 입력(source 없음)의 시스템 글·PROMPT_VERSION은 이 묶음이 생기기 전과 한 글자도 다르지 않다
+const UISARANG_BLOCK = [
+  '[의사랑 엑셀 자료]',
+  '- 입력에 source가 uisarang이면 이 의원은 의사랑 엑셀로 올린 숫자입니다.',
+  "- kind가 qty면 처방량(의사랑 총투여량의 합)입니다. 사람 수가 아닙니다. '환자가 늘었다'·'○명'처럼 쓰지 않고 '처방량이 늘었다'처럼 씁니다. 처방마다 단위가 달라 서로 다른 처방의 처방량을 더하거나 견주지 않습니다.",
+  '- 이 자료의 won 지표는 총진료비(그 달 매출 합)와 처방 총액입니다. 원장님 매출이 아닙니다.',
+  '- 연령대 지표(agevisit:)는 내원한 날마다 센 건수입니다. 사람 수가 아닙니다.',
+  '- 신환 재방문율·처방별 환자 수·동네·보험·원장님별·시간대별 접수는 의사랑 엑셀로 셀 수 없어 지표에 없습니다. 이것들을 짐작하거나 말하지 않습니다.',
+].join('\n')
+
+/**
+ * 시스템 글. honorific이 정해 둔 세 호칭 밖이면(주지 않음 포함) '원장님' — 받은 값을 그대로 글에 넣지 않는다.
+ * source가 'uisarang'이면 끝에 [의사랑 엑셀 자료] 묶음을 붙이고, 그 밖(주지 않음 포함)이면 지금 글 그대로다
+ */
+export function systemPrompt(honorific: Honorific = DEFAULT_HONORIFIC, source?: ReportInput['source']): string {
   const to = (HONORIFICS as readonly string[]).includes(honorific) ? honorific : DEFAULT_HONORIFIC
-  return [firstLine(to), SYSTEM_REST].join('\n')
+  const text = [firstLine(to), SYSTEM_REST].join('\n')
+  return source === 'uisarang' ? [text, '', UISARANG_BLOCK].join('\n') : text
 }
 
 // 자료 안 글자가 감싸개를 닫지 못하게 <·>를 JSON 유니코드 이스케이프(6글자 \u003c·\u003e)로 바꾼다.

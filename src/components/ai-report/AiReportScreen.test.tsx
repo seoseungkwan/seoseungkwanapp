@@ -3,11 +3,28 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { StrictMode, type ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ViewingProvider } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { reportCopyText } from '@/lib/ai/reportScreen'
 import { errorInfo } from '@/lib/errors'
 import type { AiErrorCode, AiUsageView, ReportView, ShownReport } from '@/types/aiReport'
 import { AiReportScreen } from './AiReportScreen'
+
+// 병원 정보 훅(specs/uisarang-upload AC-8816.7 · §10-0): 화면이 쓰는 EMR(보는 중이면 보는 의원 EMR)만 이 파일 안에서 정한다.
+// 처음은 지금 시험 환경과 같은 '읽기 실패'(Supabase 설정 없음 → 기본값 · 원장님 · 비트)라 다른 시험은 그대로다
+const clinic = vi.hoisted(() => ({ state: 'failed' as 'loading' | 'ready' | 'failed', emr: 'bit' as 'bit' | 'uisarang' }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({
+  useClinicProfile: () => ({
+    state: clinic.state,
+    profile: { displayName: null, phone: null, address: null, honorific: '원장님', hours: [], closedDates: [], staff: [], logoPath: null, emr: clinic.emr },
+    saved: clinic.state === 'ready',
+    signupName: '',
+    signupPhone: null,
+    name: '',
+    logoDataUrl: null,
+    reload: () => undefined,
+  }),
+}))
 
 // AI 리포트 화면의 상태와 동작(spec ai-report-screen REQ-708~711·713, design.md '화면 상태', 시안 docs/mockups/ai-report/index.html).
 // fetch만 가짜다. reportClient는 진짜를 지난다. 시계도 가짜고 오늘은 prop으로 준다. 숫자는 이 파일 안에서만 지어낸다
@@ -1139,5 +1156,93 @@ describe('StrictMode: effect가 두 번 돌아도', () => {
     await settle()
     expect(reload).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+// ── 의사랑 의원: 리포트 아래 셀 수 없음 안내 (specs/uisarang-upload AC-8816.7, requirements '화면 글자' AI 경영 리포트, 시안 ?s=ai) ──
+describe('AC-8816.7: 의사랑 의원 셀 수 없음 안내', () => {
+  const NOTE_TITLE = '의사랑 엑셀로는 셀 수 없어요'
+  const NOTE_WHY = '신환 재방문율 · 처방별 환자 수 · 동네 · 보험 · 원장님별 · 시간대별 접수는 이 리포트에 넣지 않았어요.'
+  const NOTE_TEXT = `${NOTE_TITLE} · ${NOTE_WHY}`
+  const queryNote = () => screen.queryByText((_, element) => element?.tagName === 'P' && element.textContent === NOTE_TEXT)
+
+  afterEach(() => {
+    clinic.state = 'failed'
+    clinic.emr = 'bit'
+  })
+
+  it('AC-8816.7: 의사랑 의원이고 리포트가 있으면 리포트 아래에 굵은 제목 + " · " + 까닭 한 줄이 있다', async () => {
+    clinic.state = 'ready'
+    clinic.emr = 'uisarang'
+    serve({ [OCT]: viewOf(OCT_REPORT) })
+    await draw()
+    summaryOf(OCT_REPORT)
+    const note = queryNote()
+    expect(note).not.toBeNull()
+    const title = within(note as HTMLElement).getByText(NOTE_TITLE)
+    expect(title.tagName).not.toBe('P')
+    expect(title.className).toContain('font-semibold')
+    // 리포트 본문(요약·카드·복사) 뒤에 온다
+    const copy = copyButton()
+    expect(copy.compareDocumentPosition(note as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(summaryOf(OCT_REPORT).compareDocumentPosition(note as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 사용량 칸 안이 아니다
+    expect(within(screen.getByRole('complementary', { name: 'AI 사용량과 보내는 자료' })).queryByText(NOTE_TITLE)).toBeNull()
+  })
+
+  it('AC-8816.7: 의사랑 의원이어도 리포트가 없는 달이면 안내가 없다', async () => {
+    clinic.state = 'ready'
+    clinic.emr = 'uisarang'
+    serve()
+    await draw()
+    emptyTitle('10월')
+    expect(queryNote()).toBeNull()
+    expect(screen.queryByText(NOTE_TITLE)).toBeNull()
+  })
+
+  it('AC-8816.7: 의사랑 의원이 분석 중이어도 리포트가 있으면 안내는 그대로 남는다', async () => {
+    clinic.state = 'ready'
+    clinic.emr = 'uisarang'
+    serve({ [OCT]: viewOf(OCT_REPORT) })
+    answerPost.mockReturnValueOnce(later().promise)
+    await draw()
+    await confirmRedo()
+    headBusy()
+    expect(queryNote()).not.toBeNull()
+  })
+
+  it('AC-8816.7: 비트 의원 · 병원 정보를 읽는 중·읽지 못함이면 리포트가 있어도 안내가 없다', async () => {
+    serve({ [OCT]: viewOf(OCT_REPORT) })
+    for (const [state, emr] of [['ready', 'bit'], ['loading', 'uisarang'], ['failed', 'uisarang']] as const) {
+      clinic.state = state
+      clinic.emr = emr
+      const view = await draw()
+      summaryOf(OCT_REPORT)
+      expect(queryNote(), `${state}·${emr}`).toBeNull()
+      view.unmount()
+    }
+  })
+
+  it('AC-8816.7: 보는 중이면 보는 의원 EMR로 정한다 — 의사랑 의원을 보는 중이면 안내가 있고 [다시 분석]은 없다', async () => {
+    clinic.state = 'ready'
+    clinic.emr = 'uisarang'
+    serve({ [OCT]: viewOf(OCT_REPORT) })
+    await draw(
+      <ViewingProvider viewing={{ hospitalId: '22222222-2222-4222-8222-222222222222', name: '가짜다른의원' }}>
+        <AiReportScreen today={TODAY} />
+      </ViewingProvider>,
+    )
+    summaryOf(OCT_REPORT)
+    expect(queryNote()).not.toBeNull()
+    expect(queryHeadRedo()).toBeNull()
+  })
+
+  it('AC-8816.7: 안내 줄에 폰 폭 클래스가 없다(PC 화면만)', async () => {
+    clinic.state = 'ready'
+    clinic.emr = 'uisarang'
+    serve({ [OCT]: viewOf(OCT_REPORT) })
+    await draw()
+    const note = queryNote() as HTMLElement
+    expect(note.outerHTML).not.toMatch(/max-md:|max-sm:/)
   })
 })

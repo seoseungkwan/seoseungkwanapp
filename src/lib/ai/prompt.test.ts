@@ -382,3 +382,44 @@ describe('AC-6606.4 systemPrompt(honorific)', () => {
     expect(systemPrompt('선생님')).not.toContain(PROMPT_VERSION)
   })
 })
+
+// ── 의사랑 엑셀 자료 묶음 (specs/uisarang-upload AC-8816.5, design.md §10-5) ──
+describe("AC-8816.5 systemPrompt(honorific, 'uisarang')", () => {
+  // design.md §10-5 글자 그대로
+  const UIS_BLOCK = [
+    '[의사랑 엑셀 자료]',
+    '- 입력에 source가 uisarang이면 이 의원은 의사랑 엑셀로 올린 숫자입니다.',
+    "- kind가 qty면 처방량(의사랑 총투여량의 합)입니다. 사람 수가 아닙니다. '환자가 늘었다'·'○명'처럼 쓰지 않고 '처방량이 늘었다'처럼 씁니다. 처방마다 단위가 달라 서로 다른 처방의 처방량을 더하거나 견주지 않습니다.",
+    '- 이 자료의 won 지표는 총진료비(그 달 매출 합)와 처방 총액입니다. 원장님 매출이 아닙니다.',
+    '- 연령대 지표(agevisit:)는 내원한 날마다 센 건수입니다. 사람 수가 아닙니다.',
+    '- 신환 재방문율·처방별 환자 수·동네·보험·원장님별·시간대별 접수는 의사랑 엑셀로 셀 수 없어 지표에 없습니다. 이것들을 짐작하거나 말하지 않습니다.',
+  ].join('\n')
+
+  it.each(['원장님', '대표원장님', '선생님'] as const)("AC-8816.5: source가 uisarang이면 지금 글('%s') 끝에 빈 줄 + [의사랑 엑셀 자료] 묶음이 글자 그대로 붙는다", (honorific) => {
+    expect(systemPrompt(honorific, 'uisarang')).toBe(`${systemPrompt(honorific)}\n\n${UIS_BLOCK}`)
+  })
+
+  it('AC-8816.5: source가 없으면(비트 입력) 지금 글 그대로 — 의사랑 묶음이 없고 판 번호도 그대로다', () => {
+    expect(systemPrompt('원장님', undefined)).toBe(systemPrompt('원장님'))
+    expect(systemPrompt()).toBe(systemPrompt('원장님'))
+    expect(systemPrompt()).not.toContain('의사랑')
+    expect(systemPrompt()).not.toContain('qty')
+    expect(PROMPT_VERSION).toBe('ai-report-4')
+    expect(systemPrompt('원장님', 'uisarang')).not.toContain(PROMPT_VERSION)
+  })
+
+  it('AC-8816.5: 의사랑 묶음은 맨 끝 한 번뿐이고 지금 줄의 차례·글자는 그대로다', () => {
+    const base = systemPrompt('원장님').split('\n')
+    const uis = systemPrompt('원장님', 'uisarang').split('\n')
+    expect(uis.slice(0, base.length)).toEqual(base)
+    expect(uis.slice(base.length)).toEqual(['', ...UIS_BLOCK.split('\n')])
+    expect(count(systemPrompt('원장님', 'uisarang'), '[의사랑 엑셀 자료]')).toBe(1)
+  })
+
+  it("AC-8816.5: userMessage는 source 칸도 JSON 그대로 싣는다(지문과 같은 JSON.stringify)", () => {
+    const withSource: ReportInput = { ...input([metric('total.newPatients', '신환', 3, 2, null)]), source: 'uisarang' }
+    const message = userMessage(withSource)
+    expect(JSON.parse(middle(message))).toEqual(withSource)
+    expect(middle(message).endsWith(',"source":"uisarang"}')).toBe(true)
+  })
+})
