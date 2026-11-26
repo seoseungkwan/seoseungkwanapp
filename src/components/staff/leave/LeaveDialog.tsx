@@ -8,7 +8,8 @@ import { Segment } from '../schedule/parts'
 // 가림막(ai-report RedoDialog와 같은 bg-ink/36)을 누르거나 Esc를 누르면 닫는다. 긴 칸은 가림막 안에서 위아래로 밀린다.
 // 열리면 초점이 칸으로 옮겨 가 화면 읽기·키보드가 칸부터 읽는다. 폰 전용 모양은 없다(좁으면 좌우 16px만 남기고 같은 칸)
 
-export function LeaveDialog({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
+// wide: 구글 캘린더와 이은 병원의 휴가 넣기 칸 — 오른쪽에 '저장하면 이렇게 바뀌어요'가 붙어 두 칸 너비(google-link AC-8537.1)
+export function LeaveDialog({ title, wide = false, onClose, children }: { title: string; wide?: boolean; onClose(): void; children: ReactNode }) {
   const titleId = useId()
   const box = useRef<HTMLDivElement>(null)
 
@@ -29,7 +30,7 @@ export function LeaveDialog({ title, onClose, children }: { title: string; onClo
 
   return (
     <div onClick={closeOnBackdrop} className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-ink/36 px-4 py-12">
-      <div ref={box} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className={`${ds.layer} grid w-full max-w-140 gap-4 p-5 outline-hidden`}>
+      <div ref={box} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className={`${ds.layer} grid w-full ${wide ? 'max-w-300' : 'max-w-140'} gap-4 p-5 outline-hidden`}>
         <div className="flex items-center justify-between gap-2">
           <h2 id={titleId} className="text-subtitle font-semibold text-ink">
             {title}

@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useStaffBase } from '@/components/staff/useStaffBase'
 import { StaffStoreError } from '@/lib/storage/staff'
 import type { StaffMember } from '@/types/staff'
-import { HAN, JUNG, KIM, LEAVES, LEE, MEMBERS, TODAY, clinicProfile, leave, makeBase, member, run } from './testData'
+import { HAN, JUNG, KIM, LEAVES, LEE, MEMBERS, TODAY, clinicProfile, fakeGcal, leave, makeBase, member, run } from './testData'
 import { LeaveScreen } from './LeaveScreen'
+import { useGcalOff } from './useGcalOff'
 
 // 휴가 화면 (staff REQ-7614, 시안 docs/mockups/staff/leave.html ①·②·④·⑤·⑥ '나'). 폰 장면 ⑦은 만들지 않는다.
 // 공용 읽기 훅(useStaffBase)만 흉내 낸다 — 연차 셈(lib/staff/leave)·근무표 셈(lib/staff/schedule)은 진짜를 쓴다.
@@ -13,6 +14,8 @@ import { LeaveScreen } from './LeaveScreen'
 // 보기 자료의 웹앱 등록일은 가장 이른 입사일보다 앞(2000-01-01)이라 지금 숫자 그대로다. 등록일·넘어온 연차 시작 값을 바꾼 시험은 AC-7604.9 셈을 본다
 
 vi.mock('@/components/staff/useStaffBase', () => ({ useStaffBase: vi.fn() }))
+// 구글 캘린더 연결 읽기(google-link REQ-8537). 따로 정하지 않으면 잇지 않은 병원(null) — 위 시험들은 지금 글·동작 그대로다(AC-8537.3)
+vi.mock('./useGcalOff', () => ({ useGcalOff: vi.fn(() => null) }))
 
 afterEach(cleanup)
 
@@ -46,6 +49,7 @@ function baseWith(leftover: 'pay' | 'carry', id: string, over: Pick<Partial<Staf
 
 beforeEach(() => {
   vi.mocked(useStaffBase).mockReset()
+  vi.mocked(useGcalOff).mockReset().mockReturnValue(null)
 })
 
 describe('AC-7614.1: 연차 현황 표', () => {
@@ -726,4 +730,64 @@ it('AC-7614.1: 보기 자료 — 재직 여섯 명', () => {
   expect(MEMBERS.filter((m) => m.leftOn === null).map((m) => m.name)).toEqual(['최민준', '김하늘', '이도윤', '정유나', '박서연', '한지우'])
   expect([KIM, LEE, HAN].every((m) => m.leftOn === null)).toBe(true)
   expect(clinicProfile().staff.map((s) => s.mark)).toEqual(['이', '박'])
+})
+
+// ── google-link REQ-8537: 이은 병원 휴가 달력 꼬리표 · 지우기 뒤 off 줄 (notes-calendar 'staff') ──
+describe('AC-8537.2: 이은 병원 — 휴가 목록 꼬리표', () => {
+  const calendar = () => screen.findByRole('region', { name: '휴가 달력' })
+  const dayCell = (cal: HTMLElement, day: string) => cal.querySelector<HTMLElement>(`[data-day="${day}"]`)!
+
+  it("AC-8537.2: 하루 종일 휴가는 '구글 off 줄'(이어진 사람은 '예약 휴무' 옆), 반차는 '예약 휴무 · 오후' 옆 '구글에는 안 넣음'", async () => {
+    vi.mocked(useGcalOff).mockReturnValue(fakeGcal({ linkedOn: '2026-11-01' }) as never)
+    show()
+    const cal = await calendar()
+    expect(within(dayCell(cal, '2026-11-07')).getByText('구글 off 줄')).toBeTruthy() // 김하늘 연차(예약 시행자 아님)
+    expect(within(dayCell(cal, '2026-11-18')).getByText('구글 off 줄')).toBeTruthy() // 정유나 병가
+    const park = dayCell(cal, '2026-11-13') // 박서연 오후 반차(예약 (박))
+    expect(within(park).getByText('예약 휴무 · 오후')).toBeTruthy()
+    expect(within(park).getByText('구글에는 안 넣음')).toBeTruthy()
+    expect(within(park).queryByText('구글 off 줄')).toBeNull()
+    expect(within(dayCell(cal, '2026-11-20')).getByText('구글에는 안 넣음')).toBeTruthy() // 한지우 오후 반차
+  })
+
+  it('AC-8537.2: 이은 날보다 이른 휴가에는 구글 off 줄 꼬리표가 없다(이은 날 11-16)', async () => {
+    vi.mocked(useGcalOff).mockReturnValue(fakeGcal() as never)
+    show()
+    const cal = await calendar()
+    expect(within(dayCell(cal, '2026-11-07')).queryByText('구글 off 줄')).toBeNull()
+    expect(within(dayCell(cal, '2026-11-18')).getByText('구글 off 줄')).toBeTruthy()
+  })
+
+  it("AC-8537.2: '예약 시행자가 아닌 직원도'가 꺼지면 그 직원 휴가에는 꼬리표가 없다", async () => {
+    vi.mocked(useGcalOff).mockReturnValue(fakeGcal({ linkedOn: '2026-11-01', offAllStaff: false }) as never)
+    show()
+    const cal = await calendar()
+    expect(within(dayCell(cal, '2026-11-07')).queryByText('구글 off 줄')).toBeNull()
+  })
+
+  it('AC-8537.2: 휴가를 지우면 그 하루 종일 날들의 off 줄을 바로 보낸다(조용히)', async () => {
+    const gcal = fakeGcal({ linkedOn: '2026-08-01' })
+    vi.mocked(useGcalOff).mockReturnValue(gcal as never)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    show()
+    fireEvent.click(within(await statusTable()).getByRole('button', { name: '이도윤' }))
+    const rec = await screen.findByRole('region', { name: '이도윤 휴가 기록' })
+    const row = within(within(rec).getByRole('table', { name: '쓴 휴가' }))
+      .getAllByRole('row')
+      .find((r) => flat(r).includes('여름 휴가'))!
+    fireEvent.click(within(row).getByRole('button', { name: '지우기' }))
+    await waitFor(() => expect(base.store.deleteLeaveGroup).toHaveBeenCalledWith('run-m-lee-2026-08-03'))
+    await waitFor(() => expect(gcal.store.sendOffDay.mock.calls.map((c) => c[0])).toEqual(['2026-08-03', '2026-08-04', '2026-08-05']))
+    expect(screen.queryByRole('status')).toBeNull()
+    confirm.mockRestore()
+  })
+})
+
+describe('AC-8537.3: 잇지 않은 병원 — 휴가 달력 그대로', () => {
+  it('AC-8537.3: 구글 꼬리표가 없다', async () => {
+    show()
+    const cal = await screen.findByRole('region', { name: '휴가 달력' })
+    expect(within(cal).queryByText(/구글/)).toBeNull()
+    expect(within(cal).getAllByText('예약 휴무 · 오후').length).toBeGreaterThan(0)
+  })
 })

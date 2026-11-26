@@ -2,8 +2,11 @@ import { vi } from 'vitest'
 import { eachDay } from '@/lib/analytics/dates'
 import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { defaultStaffSettings, type LeaveDraft } from '@/lib/storage/staff'
+import type { CalAllDay } from '@/types/calendar'
 import type { ClinicProfile } from '@/types/clinicProfile'
+import { GCAL_DEFAULT_HEX, type GcalOffDay } from '@/types/gcal'
 import type { DayChange, DayShift, Leave, LeaveKind, StaffMember, StaffSettings, WeekPlan } from '@/types/staff'
+import type { GcalOffInfo } from './gcalOff'
 
 // 휴가 화면 시험이 같이 쓰는 보기 자료(staff requirements.md '보기 자료', 지어낸 사람). 시험만 불러온다 — 화면 코드는 이 파일을 쓰지 않는다.
 // 오늘 2026-11-21(토), 입사일 기준 · 못 쓴 연차는 수당으로 정산. 휴가 목록은 lib/staff/leave.test.ts의 AC-7604.8 보기와 같다
@@ -166,6 +169,42 @@ export function fakeStore() {
     countAppts: vi.fn(async (): Promise<{ day: string; count: number }[]> => []),
     saveSettings: vi.fn(async (settings: StaffSettings) => settings),
   }
+}
+
+/**
+ * 구글 캘린더와 이은 병원(google-link REQ-8537)의 가짜 연결 — useGcalOff가 주는 값. 캘린더 '2026 가나 정형외과', 이은 날 11-16,
+ * off 줄 사람 = 병원 정보 시행자 둘 + 예약 시행자가 아닌 재직 직원(m- + 빼기 없는 id). 11-27 구글 off 줄은 지금 '정유나 off'
+ */
+export function fakeGcal(over: Partial<GcalOffInfo> = {}) {
+  const info: GcalOffInfo = {
+    calendarName: '2026 가나 정형외과',
+    linkedOn: '2026-11-16',
+    offWord: 'off',
+    offColor: 'grape',
+    defaultHex: GCAL_DEFAULT_HEX,
+    offAllStaff: true,
+    people: [
+      { id: 'cal-lee', name: '이도윤' },
+      { id: 'cal-park', name: '박서연' },
+      { id: 'm-mchoi', name: '최민준' },
+      { id: 'm-mkim', name: '김하늘' },
+      { id: 'm-mjung', name: '정유나' },
+      { id: 'm-mhan', name: '한지우' },
+    ],
+    ...over,
+  }
+  const allday: CalAllDay[] = [
+    { id: 'ad-1', day: '2026-11-25', type: 'memo', memo: '원장님 학회', staffId: null, staffName: null, gEventId: `ssk${'1'.repeat(32)}` },
+    { id: 'ad-2', day: '2026-11-27', type: 'off', memo: null, staffId: 'm-mjung', staffName: '정유나', part: null },
+  ]
+  const offDays: GcalOffDay[] = [{ day: '2026-11-27', gEventId: 'sskoff1', gTitle: '정유나 off', gUpdated: null, wait: false, waitAt: null }]
+  const store = {
+    loadInfo: vi.fn(async (): Promise<GcalOffInfo | null> => info),
+    listAllDay: vi.fn(async (): Promise<CalAllDay[]> => allday),
+    listOffDays: vi.fn(async (): Promise<GcalOffDay[]> => offDays),
+    sendOffDay: vi.fn<(day: string) => Promise<boolean>>(async () => true),
+  }
+  return { info, store }
 }
 
 /** useStaffBase가 주는 값의 가짜(읽기 끝남). 시험마다 칸을 바꿔 쓴다 */

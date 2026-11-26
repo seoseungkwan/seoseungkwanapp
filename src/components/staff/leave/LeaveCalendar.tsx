@@ -8,6 +8,7 @@ import type { ClinicProfile } from '@/types/clinicProfile'
 import type { Leave, StaffMember } from '@/types/staff'
 import { LEAVE_CHIP, LEAVE_KIND_LABEL, leaveLabel } from '../labels'
 import { TableScroll } from '../TableScroll'
+import { GOOGLE_HALF_TAG, GOOGLE_OFF_TAG, leaveTag, type OffCtx } from './gcalOff'
 import { dayCtxOf, dayLabel, linkOf, monthDays, monthTitle } from './leaveView'
 
 // 휴가 달력 (staff AC-7614.2, 시안 leave.html ②). 연차 현황 표 아래 달 보기: 월~일 7칸으로 그 달을 덮는 주 전부(예약 달력 MonthGrid와 같은 모양).
@@ -16,6 +17,7 @@ import { dayCtxOf, dayLabel, linkOf, monthDays, monthTitle } from './leaveView'
 // 칸 전체가 '휴가 넣기' 단추이고(칸 위에 깔림) 칩은 그 위에 따로 놓인 단추다(단추 안에 단추를 두지 않는다).
 // 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) 날짜 칸·칩 단추가 막혀 휴가 넣기 칸이 열리지 않는다. 달 옮기기는 그대로
 // 넓은 달력이라 화면이 좁으면 이 칸만 옆으로 밀린다(TableScroll, AC-7611.4)
+// 구글 캘린더와 이은 병원(off)이면 칩 꼬리표 옆에 하루 종일 휴가 '구글 off 줄'(맡는 사람·이은 날 뒤)·반차 '구글에는 안 넣음'(google-link AC-8537.2)
 
 const WEEK_HEAD = ['월', '화', '수', '목', '금', '토', '일']
 const LEGEND = (['annual', 'half', 'family', 'sick', 'maternity', 'unpaid'] as const).map((kind) => ({ kind, text: LEAVE_KIND_LABEL[kind] }))
@@ -27,13 +29,15 @@ type LeaveCalendarProps = {
   /** 모든 직원(퇴사자 포함) — 칩 이름과 차례 */
   members: readonly StaffMember[]
   profile: ClinicProfile
+  /** 구글 캘린더와 이은 병원이면 연결(꼬리표) */
+  off?: OffCtx | null
   onMonth(step: -1 | 1): void
   onThisMonth(): void
   onDay(day: string): void
   onChip(leave: Leave): void
 }
 
-export function LeaveCalendar({ month, today, leaves, members, profile, onMonth, onThisMonth, onDay, onChip }: LeaveCalendarProps) {
+export function LeaveCalendar({ month, today, leaves, members, profile, off: gcal = null, onMonth, onThisMonth, onDay, onChip }: LeaveCalendarProps) {
   const ctx = dayCtxOf(profile)
   const days = monthDays(month)
   const order = new Map(members.map((m, i) => [m.id, i]))
@@ -138,6 +142,11 @@ export function LeaveCalendar({ month, today, leaves, members, profile, onMonth,
                                 const person = memberOf.get(l.staffId)
                                 if (!person) return null
                                 const link = linkOf(person, profile.staff)
+                                const reserve =
+                                  link !== null ? (
+                                    <span className={ds.chip.warning}>{l.part === null ? '예약 휴무' : `예약 휴무 · ${l.part === 'am' ? '오전' : '오후'}`}</span>
+                                  ) : null
+                                const tag = gcal === null ? null : leaveTag(l, person, gcal, profile.staff)
                                 return (
                                   <span key={l.id} className="flex min-w-0 max-w-full flex-col items-start gap-0.5">
                                     <button
@@ -147,9 +156,20 @@ export function LeaveCalendar({ month, today, leaves, members, profile, onMonth,
                                     >
                                       {`${person.name} ${leaveLabel(l.kind, l.part)}`}
                                     </button>{' '}
-                                    {link !== null ? (
-                                      <span className={ds.chip.warning}>{l.part === null ? '예약 휴무' : `예약 휴무 · ${l.part === 'am' ? '오전' : '오후'}`}</span>
-                                    ) : null}
+                                    {gcal === null || tag === null ? (
+                                      reserve
+                                    ) : (
+                                      <span className="flex flex-wrap items-center gap-1">
+                                        {reserve}
+                                        {tag === 'off' ? (
+                                          <span className={ds.chip.neutral} style={{ color: `var(--cal-${gcal.info.offColor})` }}>
+                                            {GOOGLE_OFF_TAG}
+                                          </span>
+                                        ) : (
+                                          <span className="text-caption text-muted">{GOOGLE_HALF_TAG}</span>
+                                        )}
+                                      </span>
+                                    )}
                                   </span>
                                 )
                               })}

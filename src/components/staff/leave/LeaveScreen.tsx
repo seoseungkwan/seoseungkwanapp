@@ -10,12 +10,15 @@ import { StaffStoreError } from '@/lib/storage/staff'
 import type { ErrorCode } from '@/types/errors'
 import type { DayChange, Leave } from '@/types/staff'
 import { EndNotice } from './EndNotice'
+import { offDaysFor, scopeOf, sendAll, type OffCtx } from './gcalOff'
 import { LeaveCalendar } from './LeaveCalendar'
 import { LeaveEditor, type EditorPreset } from './LeaveEditor'
+import { LeaveNotice, useLeaveNotice } from './LeaveNotice'
 import { LeaveRecord } from './LeaveRecord'
 import { LeaveRules } from './LeaveRules'
 import { LeaveStatusTable, type StatusRow } from './LeaveStatusTable'
 import { endNotice, isActive, linkOf, loadRange, shiftMonth, statusOf, withWeekday } from './leaveView'
+import { useGcalOff } from './useGcalOff'
 
 // 휴가 화면 (staff REQ-7614, 시안 docs/mockups/staff/leave.html ①~⑥ — 폰 장면 ⑦은 만들지 않는다). 제목 '직원'과 작은 메뉴는 staff/layout이 그린다.
 // 첫 모습: ⑥ 이번 달 끝나는 연차 안내 → ① 연차 현황 표 → ② 휴가 달력. 이름을 누르면 ④ 한 사람 기록이 그 자리에 열리고,
@@ -23,7 +26,10 @@ import { endNotice, isActive, linkOf, loadRange, shiftMonth, statusOf, withWeekd
 // 관리자가 다른 의원을 보는 중이면(admin-view AC-8009.3) [휴가 넣기]·[연차 규칙]이 없고 휴가 넣기 칸을 열지 않는다(보기만).
 // 직원·설정·기본 근무·병원 정보는 공용 읽기 훅(useStaffBase), 휴가와 근무표 바뀐 날은 여기서 한 번에 읽는다 —
 // 가장 이른 입사일부터 오늘 + 2년까지(연차 셈은 입사일부터 모든 기간을 차례로 센다). 달력이 그 밖으로 가면 범위를 넓혀 다시 읽는다.
-// 다시 읽는 동안은 앞서 읽은 값을 그대로 보인다. 저장·지우기 뒤에는 휴가만 다시 읽고, 연차 규칙 저장 뒤에는 공용 자료를 다시 읽는다
+// 다시 읽는 동안은 앞서 읽은 값을 그대로 보인다. 저장·지우기 뒤에는 휴가만 다시 읽고, 연차 규칙 저장 뒤에는 공용 자료를 다시 읽는다.
+// 구글 캘린더와 이은 병원(google-link REQ-8537)이면 휴가 넣기 칸이 저장 뒤에도 열린 채 '저장한 뒤'를 보이고(알림은 이 화면이 띄운다),
+// 달력 칩에 '구글 off 줄'·'구글에는 안 넣음' 꼬리표가 붙고, 휴가를 지우면 그 하루 종일 날들의 off 줄을 바로 보낸다(못 보내면 조용히 — 다음 맞춤).
+// 잇지 않은 병원은 지금 그대로다(AC-8537.3)
 
 const DELETE_CONFIRM = '이 휴가를 지울까요? 남은 연차가 다시 늘어나요.'
 
@@ -56,6 +62,10 @@ export function LeaveScreen({ today }: { today: string }) {
   const [failedTag, setFailedTag] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [recordError, setRecordError] = useState<ErrorCode | null>(null)
+  const gcal = useGcalOff()
+  const profileStaff = clinic.profile.staff
+  const off = useMemo((): OffCtx | null => (gcal === null ? null : { ...gcal, scope: scopeOf(gcal.info, profileStaff) }), [gcal, profileStaff])
+  const { notice, say } = useLeaveNotice()
 
   const range = state === 'ready' ? loadRange(members, today, month) : null
   const tag = range === null ? null : `${range.from}~${range.to}#${attempt}`
@@ -100,9 +110,12 @@ export function LeaveScreen({ today }: { today: string }) {
     if (busy || !window.confirm(DELETE_CONFIRM)) return
     setBusy(true)
     setRecordError(null)
+    const group = leaves.filter((l) => l.groupId === groupId)
     try {
       await store.deleteLeaveGroup(groupId)
       retryLeaves()
+      const who = members.find((m) => m.id === group[0]?.staffId)
+      if (off !== null && who !== undefined) void sendAll(off.store, offDaysFor(group, who, off, profileStaff))
     } catch (e) {
       setRecordError(codeOf(e))
     } finally {
@@ -177,6 +190,7 @@ export function LeaveScreen({ today }: { today: string }) {
             leaves={leaves}
             members={members}
             profile={clinic.profile}
+            off={off}
             onMonth={(step) => setMonth((m) => shiftMonth(m, step))}
             onThisMonth={() => setMonth(thisMonth)}
             onDay={(day) => openEditor({ day })}
@@ -196,12 +210,14 @@ export function LeaveScreen({ today }: { today: string }) {
           today={today}
           preset={dialog.preset}
           store={store}
-          onSaved={() => {
-            setDialog(null)
+          off={off}
+          onSaved={(keepOpen) => {
+            if (!keepOpen) setDialog(null)
             retryLeaves()
           }}
           onFailed={retryLeaves}
           onClose={() => setDialog(null)}
+          onNotice={say}
         />
       ) : null}
       {dialog?.kind === 'rules' ? (
@@ -216,6 +232,7 @@ export function LeaveScreen({ today }: { today: string }) {
           onClose={() => setDialog(null)}
         />
       ) : null}
+      <LeaveNotice notice={notice} />
     </div>
   )
 }
