@@ -98,7 +98,7 @@ const HALF_TEXT = { am: '오전', pm: '오후' } as const
 
 /**
  * 그날 종일 칩들. RowsGoogle이 없으면(잇지 않은 병원) 지금 그대로 항목마다 한 칩(allDayText·allDayChipClass).
- * 이은 병원(spec google-link AC-8532.3, 시안 adHTML): 메모 = 캘린더 기본 색 칩 → 하루 종일 휴무는 한 칩 `{이름}, {이름} {offWord}`(휴무 줄 색) →
+ * 이은 병원(spec google-link AC-8532.3, 시안 adHTML): 메모 = 구글 일정 색 칩(색 없음·모름 = 캘린더 기본 색, AC-8554.1) →하루 종일 휴무는 한 칩 `{이름}, {이름} {offWord}`(휴무 줄 색) →
  * 반차는 사람마다 흰 칩 `({표시}) {이름} {오전|오후} 반차`(시행자가 아닌 직원은 이름만). 이름 차례는 받은 차례
  */
 export function dayChips(
@@ -111,6 +111,9 @@ export function dayChips(
     .filter((it) => it.type === 'memo')
     .map((it) => {
       const text = it.memo ?? ''
+      // 3차(REQ-8554 AC-8554.1): 구글 일정 색이 있는 메모는 그 색 그대로, 'default'·모름(null)은 캘린더 기본 색
+      const color = it.gColor && it.gColor !== 'default' ? it.gColor : null
+      if (color) return { key: it.id, text, title: `${text} · 구글 일정 색 그대로`, cls: `${CAL_TONES[color].fill} ${CAL_TONES[color].on}` }
       return { key: it.id, text, title: `${text} · 캘린더 기본 색`, cls: `${CAL_TONES.default.fill} ${CAL_TONES.default.on}` }
     })
   const offs = items.filter((it) => it.type === 'off')

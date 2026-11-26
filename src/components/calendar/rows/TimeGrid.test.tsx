@@ -1011,3 +1011,47 @@ describe('AC-8549.1: 이은 병원의 취소 칸은 진한 취소 색(흐림 없
     expect(mark.className).not.toContain('bg-surface')
   })
 })
+
+// 3차 고침(google-link REQ-8554, design.md 21-13): 구글과 이은 종일 메모는 그 구글 일정 색 그대로
+const COLOR_MEMOS: CalAllDay[] = [
+  { id: 'c-1', day: TODAY, type: 'memo', memo: '김○○,최○○, 강○○ off', staffId: null, staffName: null, gEventId: 'gmemo00001', gColor: 'grape' },
+  { id: 'c-2', day: TODAY, type: 'memo', memo: '주간 회의 13:00', staffId: null, staffName: null, gEventId: 'gmemo00002', gColor: 'default' },
+  { id: 'c-3', day: TODAY, type: 'memo', memo: '웹앱 메모', staffId: null, staffName: null, gEventId: null, gColor: null },
+  { id: 'o-9', day: TODAY, type: 'off', memo: null, staffId: 'na', staffName: '윤○○' },
+]
+
+describe('AC-8554.1: 이은 병원 종일 메모는 구글 일정 색 그대로', () => {
+  it('AC-8554.1: gColor가 11색이면 그 색으로 꽉 채우고 말풍선 "{글} · 구글 일정 색 그대로", 글·칩 차례·누르기는 그대로', () => {
+    const { container, props } = renderGrid({ allday: COLOR_MEMOS, google: linked() })
+    const chip = screen.getByRole('button', { name: '김○○,최○○, 강○○ off' })
+    expect(chip.className).toContain('bg-cal-grape')
+    expect(chip.className).toContain('text-cal-grape-on')
+    expect(chip.className).not.toContain('bg-cal-default')
+    expect(chip.getAttribute('title')).toBe('김○○,최○○, 강○○ off · 구글 일정 색 그대로')
+    expect(chipTexts(container, TODAY)).toEqual(['김○○,최○○, 강○○ off', '주간 회의 13:00', '웹앱 메모', '윤○○ off'])
+    fireEvent.click(chip)
+    expect(props.onAllDay).toHaveBeenLastCalledWith(TODAY)
+  })
+
+  it("AC-8554.1: gColor가 'default'·null이면 지금처럼 캘린더 기본 색·말풍선 '… · 캘린더 기본 색'", () => {
+    renderGrid({ allday: COLOR_MEMOS, google: linked() })
+    for (const name of ['주간 회의 13:00', '웹앱 메모']) {
+      const chip = screen.getByRole('button', { name })
+      expect(chip.className).toContain('bg-cal-default')
+      expect(chip.className).toContain('text-cal-default-on')
+      expect(chip.getAttribute('title')).toBe(`${name} · 캘린더 기본 색`)
+    }
+    // 휴무 한 칩은 지금처럼 휴무 줄 색
+    expect(screen.getByRole('button', { name: '윤○○ off' }).className).toContain('bg-cal-grape')
+  })
+
+  it('AC-8554.1: 다른 색(바질)도 받은 값대로, 잇지 않은 병원은 지금 칩 그대로', () => {
+    renderGrid({ allday: [{ ...COLOR_MEMOS[0], gColor: 'basil' }], google: linked() })
+    expect(screen.getByRole('button', { name: '김○○,최○○, 강○○ off' }).className).toContain('bg-cal-basil')
+    cleanup()
+    renderGrid({ allday: COLOR_MEMOS })
+    const plain = screen.getByRole('button', { name: '김○○,최○○, 강○○ off' })
+    expect(plain.className).toContain('bg-canvas')
+    expect(plain.className).not.toContain('bg-cal-grape')
+  })
+})
