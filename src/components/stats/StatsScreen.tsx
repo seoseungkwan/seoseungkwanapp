@@ -42,7 +42,7 @@ import { useViewSums } from './viewSums'
 // 통계 조각을 모두 저장한 뒤에만 같은 일 안에서 통계가 쥔 같은 비트 연결(useStatsWorker.revenueDays)로 읽는다. 열기만 해서는 비트에서 읽지 않는다
 
 const PERIODS: StatsPeriod[] = ['7d', '30d', '90d', '12m']
-const SOURCE_NAME = { bit: '비트 PC', file: '파일' } as const
+const SOURCE_NAME = { bit: '비트 PC', file: '파일', uisarang: '의사랑 엑셀' } as const
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.' // 사용자가 승인한 문장(AC-514.7). 시안에 없다
 const NOT_SAVED = '일부 기록을 확인하지 못해 저장하지 않았어요'
 

@@ -89,5 +89,9 @@ export type ErrorCode =
   | 'E-GSHEET-LOGIN' | 'E-GSHEET-NOKEY' | 'E-GSHEET-KEY' | 'E-GSHEET-BUSY' | 'E-GSHEET-TEMPLATE' | 'E-GSHEET-FOLDER'
   | 'E-GSHEET-DAY' | 'E-GSHEET-LAYOUT' | 'E-GSHEET-SHAPE' | 'E-GSHEET-EXT' | 'E-GSHEET-DECLINED' | 'E-GSHEET-SECRET'
   | 'E-GSHEET-NOURL' | 'E-GSHEET-NOTEMPLATE' | 'E-GSHEET-OLD' | 'E-GSHEET-FAILED'
+  // 의사랑 엑셀 올리기(specs/uisarang-upload requirements.md '오류 번호'): 파일 받지 않음 열둘(types/uisarang.ts UisRefuseCode) + 100개 넘음 · 저장 · 읽기
+  | 'E-UIS-KIND' | 'E-UIS-PERIOD' | 'E-UIS-ONE-DAY' | 'E-UIS-DATE' | 'E-UIS-FUTURE' | 'E-UIS-FILTER'
+  | 'E-UIS-COLUMN' | 'E-UIS-ROW' | 'E-UIS-TOTAL' | 'E-UIS-TWICE' | 'E-UIS-TOO-MANY' | 'E-UIS-TOO-BIG'
+  | 'E-UIS-UNREADABLE' | 'E-UIS-SAVE-FAILED' | 'E-UIS-READ-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }

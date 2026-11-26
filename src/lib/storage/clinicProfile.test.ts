@@ -11,6 +11,7 @@ import {
   loadSignup,
   loadSignupEmr,
   normalizeLogo,
+  readViewedEmr,
   removeLogo,
   saveClinicProfile,
   uploadLogo,
@@ -692,5 +693,41 @@ describe('AC-7302.2 가입 때 고른 EMR(loadSignupEmr)', () => {
 
   it('AC-7302.2: 부르기가 던지면(네트워크) null이고 오류 글을 밖으로 내지 않는다', async () => {
     await expect(loadSignupEmr(fakeClient(() => 'throw').client)).resolves.toBeNull()
+  })
+})
+
+// 관리자가 다른 의원을 보는 중 그 의원 EMR(specs/uisarang-upload design.md §9·§10-0, AC-8808.8). my_signup_emr()는 부른 사람 자기 병원 EMR이라
+// 보는 중에는 쓸 수 없다 → 관리자 정의자 함수 admin_uis_rows('clinic_emr')의 첫 줄 emr(병원 정보 EMR, 없으면 가입 때 EMR)
+describe('AC-8808.8 보는 의원 EMR(readViewedEmr)', () => {
+  const VIEWED = '22222222-2222-4222-8222-222222222222'
+  const emrReply = (emr: unknown) => ({ data: [{ hospital_id: VIEWED, row: { emr } }] })
+
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)("AC-8808.8: admin_uis_rows가 '%s'를 주면 그 값이고, 함수 하나를 그 의원·오늘 하루로 부른다", async (emr) => {
+    const { client, calls } = fakeClient((call) => (call.kind === 'rpc' ? emrReply(emr) : okReply(call)))
+    expect(await readViewedEmr(client, VIEWED, TODAY)).toBe(emr)
+    expect(opsOf(calls)).toEqual(['rpc.admin_uis_rows'])
+    expect(calls[0]).toEqual({
+      kind: 'rpc',
+      fn: 'admin_uis_rows',
+      args: { p_kind: 'clinic_emr', p_hospital_ids: [VIEWED], p_from: TODAY, p_to: TODAY },
+    })
+  })
+
+  it.each([
+    ['빈 목록(관리자 아님·승인 안 됨)', { data: [] }],
+    ['null', { data: null }],
+    ['배열이 아님', { data: { row: { emr: 'uisarang' } } }],
+    ['row 칸이 없음', { data: [{ hospital_id: VIEWED }] }],
+    ['넷 밖의 값', emrReply('ubcare')],
+    ['대문자', emrReply('UISARANG')],
+    ['오류(함수 없음 — SQL을 아직 붙이지 않음)', { data: null, error: { code: 'PGRST202', message: `not found (${SECRET})` } }],
+    ['오류(관리자 아님)', { data: emrReply('uisarang').data, error: RAW_ERROR }],
+  ] as const)('AC-8808.8: 답이 %s이면 null이다', async (_name, reply) => {
+    const { client } = fakeClient((call) => (call.kind === 'rpc' ? reply : okReply(call)))
+    expect(await readViewedEmr(client, VIEWED, TODAY)).toBeNull()
+  })
+
+  it('AC-8808.8: 부르기가 던지면(네트워크) null이고 오류 글을 밖으로 내지 않는다', async () => {
+    await expect(readViewedEmr(fakeClient(() => 'throw').client, VIEWED, TODAY)).resolves.toBeNull()
   })
 })

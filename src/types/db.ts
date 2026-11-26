@@ -24,8 +24,8 @@ export type AdminRow = {
   created_at: string
 }
 
-// 통계 숫자 저장 표. 기준은 supabase/migrations/20261101000200_stats.sql
-export type StatsSourceColumn = 'bit' | 'file'
+// 통계 숫자 저장 표. 기준은 supabase/migrations/20261101000200_stats.sql(출처 uisarang은 20261127000000_uisarang_upload.sql — stats_days·stats_coverage만, stats_months는 bit·file)
+export type StatsSourceColumn = 'bit' | 'file' | 'uisarang'
 
 export type StatsMonthRow = {
   hospital_id: string

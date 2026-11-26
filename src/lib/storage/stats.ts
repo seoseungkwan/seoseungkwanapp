@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeRanges } from '@/lib/analytics/coverage'
 import { diffDays, isYmd } from '@/lib/analytics/dates'
+import { jsonbBytes } from '@/lib/payload/jsonbText'
 import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { StatsCoverageRow, StatsDayRow } from '@/types/db'
@@ -10,10 +11,12 @@ import type { DayPayload, MonthPayload, MonthSections } from '@/types/payload'
 // 통계 숫자 저장·읽기(브라우저 → Supabase, ADR-004). 서버로 가는 값은 검사한 저장 모양·덮은 기간(날짜 둘)·출처뿐이다.
 // hospital_id는 보내지 않는다 — DB 기본값이 정하고 권한이 막는다(AC-506.2).
 // 실패는 StorageError 하나로 던지고 서버 답은 옮기지 않는다(cause도 없다). 화면은 오류 번호의 정해 둔 문구만 보인다
-export type StatsSource = 'bit' | 'file'
+// 의사랑 엑셀(specs/uisarang-upload design.md §9)은 날 줄·덮은 기간만 쓴다(달 줄·세 칸 합계 없음)
+export type StatsSource = 'bit' | 'file' | 'uisarang'
 export type SupabaseLike = Pick<SupabaseClient, 'from'>
 
-type StorageErrorCode = 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
+// E-UIS-READ-FAILED = 의사랑 처방·나이대 읽기(lib/storage/uisarang.ts)
+type StorageErrorCode = 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED' | 'E-UIS-READ-FAILED'
 type Deps = { client?: SupabaseLike }
 // 데스크 계정 올리기(admin-view REQ-8024 AC-8024.6): desk 참이면 같은 검사·묶음 뒤 표 대신 정의자 함수를 부른다(데스크는 통계 표 정책이 없다)
 type SaveClient = SupabaseLike & Partial<Pick<SupabaseClient, 'rpc'>>
@@ -46,21 +49,10 @@ async function attempt<T>(code: StorageErrorCode, work: () => Promise<T>): Promi
   }
 }
 
-const isSource = (value: unknown): value is StatsSource => value === 'bit' || value === 'file'
+const isSource = (value: unknown): value is StatsSource => value === 'bit' || value === 'file' || value === 'uisarang'
 
-// 표가 재는 글자(jsonb::text)와 같게 쓴다. 콤마·콜론 뒤에 빈칸이 하나 있어 JSON.stringify로 재면 약 10% 적게 나온다
-function jsonbText(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(jsonbText).join(', ')}]`
-  if (typeof value === 'object' && value !== null) {
-    return `{${Object.entries(value)
-      .map(([key, item]) => `${JSON.stringify(key)}: ${jsonbText(item)}`)
-      .join(', ')}}`
-  }
-  return JSON.stringify(value)
-}
-
-const UTF8 = new TextEncoder()
-const tableBytes = (value: unknown): number => UTF8.encode(jsonbText(value)).length
+// 표가 재는 글자(jsonb::text)의 바이트 수. 콤마·콜론 뒤에 빈칸이 하나 있어 JSON.stringify로 재면 약 10% 적게 나온다(lib/payload/jsonbText.ts)
+const tableBytes = jsonbBytes
 
 // 표가 받지 않을 크기도 먼저 거른다. 앞 묶음을 저장한 뒤에야 그 줄이 든 묶음째 실패하지 않게
 function allChecked<P>(values: readonly unknown[], check: (value: unknown) => P | null, maxBytes: number): P[] {
@@ -144,6 +136,8 @@ export async function saveStats(
     const desk = deps?.desk === true
     // 데스크는 비트 저장만 한다(DB가 source = 'bit'로 넣는다)
     if (desk && source !== 'bit') throw new Error('데스크는 비트 저장만')
+    // 의사랑은 달 줄(stats_months)·세 칸 합계를 쓰지 않는다
+    if (source === 'uisarang' && (input.months.length > 0 || (input.sections !== undefined && input.sections !== null))) throw new Error('의사랑은 날 줄만')
     // 파일의 덜 덮인 달 줄은 검사만 하고 보내지 않는다. 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 feat-ai-report뿐이다.
     // 통계 화면의 달 칸은 일 숫자의 합이다. 비트의 덜 덮인 달 줄은 보낸다
     const sectionsOf = monthSectionsPicker(source === 'bit' ? input.sections : null)

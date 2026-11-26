@@ -2,7 +2,8 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr } from '@/lib/storage/clinicProfile'
+import { todayInKorea } from '@/lib/analytics/dates'
+import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr, readViewedEmr } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { ClinicProfile } from '@/types/clinicProfile'
 import { ViewingProvider } from '@/components/shell/viewing'
@@ -16,6 +17,7 @@ vi.mock('@/lib/storage/clinicProfile', async (importOriginal) => ({
   loadClinicProfile: vi.fn(),
   loadSignup: vi.fn(),
   loadSignupEmr: vi.fn(),
+  readViewedEmr: vi.fn(),
   downloadLogo: vi.fn(),
 }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({ fake: true })) }))
@@ -29,11 +31,13 @@ beforeEach(() => {
   vi.mocked(loadClinicProfile).mockReset()
   vi.mocked(loadSignup).mockReset()
   vi.mocked(loadSignupEmr).mockReset()
+  vi.mocked(readViewedEmr).mockReset()
   vi.mocked(downloadLogo).mockReset()
   vi.mocked(supabaseBrowser).mockClear()
   vi.mocked(loadClinicProfile).mockResolvedValue(SAVED)
   vi.mocked(loadSignup).mockResolvedValue(SIGNUP)
   vi.mocked(loadSignupEmr).mockResolvedValue(null)
+  vi.mocked(readViewedEmr).mockResolvedValue(null)
   vi.mocked(downloadLogo).mockResolvedValue(DATA_URL)
 })
 afterEach(cleanup)
@@ -258,5 +262,64 @@ describe('AC-8006.6 보는 중 useClinicProfile 이름', () => {
     await waitFor(() => expect(result.current.state).toBe('ready'))
     expect(result.current.profile).toEqual(SAVED)
     expect(loadClinicProfile).toHaveBeenCalledWith({ fake: true })
+  })
+})
+
+// uisarang-upload REQ-8808 AC-8808.8(design.md §10-0): 보는 중이고 보는 의원 병원 정보 줄이 없으면 EMR은 my_signup_emr()(부른 관리자 자기 병원)가 아니라
+// 그 의원의 EMR(readViewedEmr → admin_uis_rows 'clinic_emr')이고, 읽지 못하면 'bit'다. 보는 중이 아니면 지금 그대로(AC-7302.3 시험들)
+describe('AC-8808.8 보는 중 useClinicProfile EMR', () => {
+  const VIEWING = { hospitalId: '22222222-2222-4222-8222-222222222222', name: '다라 정형외과의원' }
+  const Provider = ViewingProvider as (props: { viewing: typeof VIEWING | null; children?: ReactNode }) => ReactNode
+  const inView = (viewing: typeof VIEWING | null) =>
+    function InView({ children }: { children: ReactNode }) {
+      return createElement(Provider, { viewing }, children)
+    }
+
+  it('AC-8808.8: 보는 중 · 그 의원 줄 없음이면 profile.emr은 그 의원 EMR이고, 내 가입 EMR(my_signup_emr)은 부르지 않는다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(null)
+    vi.mocked(loadSignupEmr).mockResolvedValue('egis')
+    vi.mocked(readViewedEmr).mockResolvedValue('uisarang')
+    const { result } = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(result.current.saved).toBe(false)
+    expect(result.current.profile).toEqual({ ...defaultProfile(), emr: 'uisarang' })
+    expect(readViewedEmr).toHaveBeenCalledExactlyOnceWith({ fake: true }, VIEWING.hospitalId, todayInKorea())
+    expect(loadSignupEmr).not.toHaveBeenCalled()
+  })
+
+  it("AC-8808.8: 보는 중 · 줄 없음 · 그 의원 EMR을 읽지 못하면(null · 거절) 'bit'이고 상태는 ready다", async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(null)
+    vi.mocked(loadSignupEmr).mockResolvedValue('uisarang')
+    const none = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    await waitFor(() => expect(none.result.current.state).toBe('ready'))
+    expect(none.result.current.profile.emr).toBe('bit')
+    vi.mocked(readViewedEmr).mockRejectedValueOnce(new Error('boom'))
+    const thrown = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    await waitFor(() => expect(thrown.result.current.state).toBe('ready'))
+    expect(thrown.result.current.profile.emr).toBe('bit')
+    expect(loadSignupEmr).not.toHaveBeenCalled()
+  })
+
+  it('AC-8808.8: 보는 중이어도 그 의원 병원 정보 줄이 있으면 줄의 emr이 이긴다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue({ ...SAVED, emr: 'egis' })
+    vi.mocked(readViewedEmr).mockResolvedValue('uisarang')
+    const { result } = renderHook(() => useClinicProfile(), { wrapper: inView(VIEWING) })
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(result.current.profile.emr).toBe('egis')
+    expect(loadSignupEmr).not.toHaveBeenCalled()
+  })
+
+  it('AC-8808.8: 보는 중이 아니면(viewing={null}·Provider 없음) 지금 그대로 가입 EMR이고 보는 의원 EMR을 읽지 않는다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(null)
+    vi.mocked(loadSignupEmr).mockResolvedValue('uisarang')
+    vi.mocked(readViewedEmr).mockResolvedValue('egis')
+    const plain = renderHook(() => useClinicProfile())
+    await waitFor(() => expect(plain.result.current.state).toBe('ready'))
+    expect(plain.result.current.profile.emr).toBe('uisarang')
+    const notViewing = renderHook(() => useClinicProfile(), { wrapper: inView(null) })
+    await waitFor(() => expect(notViewing.result.current.state).toBe('ready'))
+    expect(notViewing.result.current.profile.emr).toBe('uisarang')
+    expect(readViewedEmr).not.toHaveBeenCalled()
+    expect(loadSignupEmr).toHaveBeenCalledTimes(2)
   })
 })
