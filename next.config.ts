@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next'
 import { buildCsp } from './src/lib/csp'
 
-// CSP·보안 헤더는 파일럿 그대로(plan.md §6-1). 모든 경로에 붙이고, /location만 CSP·Referrer를 넓힌다(specs/location AC-7916.2)
+// CSP·보안 헤더는 파일럿 그대로(plan.md §6-1). 모든 경로에 붙이고, /location만 CSP·Referrer를 넓힌다(specs/location AC-7916.2).
+// /sunap만 구글 시트 틀(frame-src https://docs.google.com)을 더한 CSP를 쓴다(specs/google-link AC-8504.2, ADR-054)
 const nextConfig: NextConfig = {
   // 붙임 PDF 읽기(unpdf, app/api/ai/notices/attachText.ts만 씀)는 PDF.js 묶음을 스스로 동적 import하고 import.meta.resolve를 쓴다.
   // 서버 묶음(webpack)에 넣지 않고 node_modules에서 그대로 불러온다(specs/notices design 14절)
@@ -20,6 +21,8 @@ const nextConfig: NextConfig = {
       { key: 'Content-Security-Policy', value: buildCsp(isDev, supabaseUrl, { kakao: true }) },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
     ]
+    // 수납일지(/sunap·/sunap/…)만 구글 시트 틀을 띄운다 — CSP 머리 하나만 덮고 Referrer는 전체 줄 no-referrer 그대로(틀도 referrerPolicy no-referrer)
+    const sunap = [{ key: 'Content-Security-Policy', value: buildCsp(isDev, supabaseUrl, { sheetFrame: true }) }]
     return [
       {
         source: '/:path*',
@@ -32,6 +35,8 @@ const nextConfig: NextConfig = {
       },
       { source: '/location', headers: location },
       { source: '/location/:path*', headers: location },
+      { source: '/sunap', headers: sunap },
+      { source: '/sunap/:path*', headers: sunap },
     ]
   },
 }

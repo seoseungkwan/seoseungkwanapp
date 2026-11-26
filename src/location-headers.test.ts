@@ -67,9 +67,34 @@ describe('AC-7916.2 /location 응답 머리', () => {
   it('AC-7916.2 /location 줄은 전체 줄(/:path*) 뒤에 있고, CSP·Referrer-Policy 두 머리만 덮는다', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', SUPABASE)
     const rules = await nextConfig.headers!()
-    expect(rules.map((r) => r.source)).toEqual(['/:path*', '/location', '/location/:path*'])
-    for (const rule of rules.slice(1)) {
+    // google-link AC-8504.2: /location 뒤에 /sunap 줄 둘(CSP만 덮음, src/sunap-headers.test.ts)이 더해졌다
+    expect(rules.map((r) => r.source)).toEqual(['/:path*', '/location', '/location/:path*', '/sunap', '/sunap/:path*'])
+    for (const rule of rules.filter((r) => r.source.startsWith('/location'))) {
       expect(rule.headers.map((h) => h.key)).toEqual(['Content-Security-Policy', 'Referrer-Policy'])
+    }
+  })
+
+  it('AC-8504.3 /location CSP는 카카오 origin·Referrer 그대로이고 connect-src에 구글 코드 두 origin도 있다(frame-src 없음)', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', SUPABASE)
+    for (const path of ['/location', '/location/x']) {
+      const h = await headersFor(path)
+      const csp = h['Content-Security-Policy']!
+      const connect = csp.split(';').map((part) => part.trim().split(/\s+/)).find(([name]) => name === 'connect-src')!.slice(1)
+      expect(connect).toEqual([
+        "'self'",
+        SUPABASE,
+        'https://script.google.com',
+        'https://script.googleusercontent.com',
+        'https://dapi.kakao.com',
+        'https://rv.map.kakao.com',
+        'https://ssl.kakaocdn.net',
+        'https://t1.kakaocdn.net',
+      ])
+      expect(csp).not.toContain('frame-src')
+      expect(csp).toContain("frame-ancestors 'none'")
+      expect(csp).toContain("object-src 'none'")
+      expect(h['Referrer-Policy']).toBe('strict-origin-when-cross-origin')
+      expect(h['X-Frame-Options']).toBe('DENY')
     }
   })
 
