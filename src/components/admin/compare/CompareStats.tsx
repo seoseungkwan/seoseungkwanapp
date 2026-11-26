@@ -11,10 +11,11 @@ import type { CompareStatsCells } from './statsInput'
 // 통계 나란히 보기 판 (spec admin-view REQ-8016 AC-8016.1~AC-8016.4, 시안 docs/mockups/admin-view ?s=compare-region sideSection, design.md '통계 나란히 보기 칸 표').
 // 줄 = 통계 탭 큰 카드 일곱, 칸 = 의원마다 288px. 카드 안 카드가 되지 않게 회색 바탕 위에 제목과 옆으로 미는 칸만 둔다(시안 '모양 결정').
 // 격자: 첫 줄 = 의원 머리, 그다음 줄마다 줄 이름(격자 전체 폭, 글은 왼쪽에 붙음 sticky left-0) + 의원 카드들. 줄 높이 = 그 줄에서 가장 높은 카드(격자 기본 늘이기).
-// props만 받는다(네트워크 없음). 읽는 중·실패 의원은 그 의원 칸만 바뀐다. 판 전체가 읽기만 구역(ReadOnlyArea)이고 단추는 실패 칸의 [다시 불러오기]뿐이다
+// props만 받는다(네트워크 없음). 읽는 중·실패 의원은 그 의원 칸만 바뀐다. 판 전체가 읽기만 구역(ReadOnlyArea)이고 단추는 실패 칸의 [다시 불러오기]뿐이다.
+// 의사랑 의원(uis, spec uisarang-upload AC-8813.1)은 머리 지역·내 의원 칩 뒤에 회색 '의사랑' 칩(칸 상태와 따로)
 
-/** 한 의원. cells = 읽는 중 · 읽기 실패 · 칸 값(compareStatsInput) */
-export type SideClinic = { id: string; name: string; region: string; own: boolean; cells: 'reading' | 'failed' | CompareStatsCells }
+/** 한 의원. cells = 읽는 중 · 읽기 실패 · 칸 값(compareStatsInput). uis = 의사랑 의원(없으면 거짓) */
+export type SideClinic = { id: string; name: string; region: string; own: boolean; uis?: boolean; cells: 'reading' | 'failed' | CompareStatsCells }
 
 /** 줄(시안 SIDE_ROWS 차례·글 그대로). name = 통계 탭 큰 카드 이름(TOC_LINKS), cells = 줄 이름 옆 작은 칸 이름들 */
 export const SIDE_ROWS: readonly { key: SideRowKey; name: string; cells: string }[] = [
@@ -35,6 +36,7 @@ export const NOT_DRAWN: Readonly<Record<string, string>> = {
 const TITLE = '통계 나란히 보기'
 const DESC = '통계 탭 카드를 의원마다 나란히 · 같은 달 · 옆으로 밀어 봐요'
 const MINE = '내 의원'
+const UIS_MARK = '의사랑' // 의사랑 의원 표시(순위 표 첫 칸과 같은 글)
 const READING = '불러오는 중'
 const RETRY = '다시 불러오기'
 const REGION_ALL = '전체'
@@ -129,6 +131,7 @@ export function CompareStats({ month, region, clinics, onRetry }: Props) {
                   <span className={COL_SUB}>
                     {clinic.region}
                     {clinic.own && <span className={ds.chip.accent}>{MINE}</span>}
+                    {clinic.uis === true && <span className={ds.chip.neutral}>{UIS_MARK}</span>}
                   </span>
                 </div>
               ))}

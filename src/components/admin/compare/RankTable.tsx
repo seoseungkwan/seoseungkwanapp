@@ -16,7 +16,8 @@ import { monthText } from './ComparePickers'
 // 의원 비교 순위 표(spec admin-view REQ-8015 AC-8015.2·AC-8015.5·AC-8015.6, REQ-8023 AC-8023.3, design.md '대표 숫자 표'·'화면 글자' 의원 순위).
 // 시안 docs/mockups/admin-view ?s=compare .rank 그대로: 묶음 머리 셋 아래 칸 열아홉, 첫 칸(순위·이름·내 의원·지역)은 왼쪽에 붙고 표 칸만 옆으로 민다.
 // 처음 차례는 총진료비 내림차순, 칸 이름을 누르면 오름 → 내림(sort.ts). 빈 값 –는 늘 맨 아래. 의원 이름은 글자뿐이다(눌러 보기를 시작하지 않음).
-// 월급·매출 표가 같이 쓰는 칸 모양(첫 칸·빈 글·값 글)도 여기 둔다. props만 받는다(PC 화면만, 폰 전용 모양 없음)
+// 월급·매출 표가 같이 쓰는 칸 모양(첫 칸·빈 글·값 글)도 여기 둔다. props만 받는다(PC 화면만, 폰 전용 모양 없음).
+// 의사랑 의원(row.uis, spec uisarang-upload AC-8813.1)은 첫 칸 이름·내 의원 칩 뒤에 회색 '의사랑' 칩(세 표 모두), 순위 표 아래에 한 줄을 더 둔다
 
 // ── 같이 쓰는 모양(시안 .rank) ──
 export const TABLE_WRAP = 'mt-3 overflow-x-auto'
@@ -53,7 +54,10 @@ export function Empty({ note }: { note: [string, string] }) {
   return <EmptyNote title={note[0]}>{note[1]}</EmptyNote>
 }
 
-/** 첫 칸: (순위 번호) + 이름 600 + 내 의원 칩 + (지역이 전체면) 지역 */
+/** 의사랑 의원 표시 칩 글 */
+export const UIS_MARK = '의사랑'
+
+/** 첫 칸: (순위 번호) + 이름 600 + 내 의원 칩 + 의사랑 칩 + (지역이 전체면) 지역 */
 export function NameCell({ row, rank, showRegion }: { row: CompareRow; rank?: number; showRegion: boolean }) {
   return (
     <td className={`${STICKY} h-10 border-b text-ink group-hover:bg-canvas`}>
@@ -63,6 +67,7 @@ export function NameCell({ row, rank, showRegion }: { row: CompareRow; rank?: nu
           {row.name}
         </span>
         {row.own && <span className={ds.chip.accent}>내 의원</span>}
+        {row.uis === true && <span className={ds.chip.neutral}>{UIS_MARK}</span>}
         {showRegion && <span className="text-caption text-muted">{row.region}</span>}
       </div>
     </td>
@@ -128,6 +133,8 @@ const startsGroup = (index: number) => index === 0 || COLUMNS[index - 1]!.group 
 const TITLE = '의원 순위'
 const DESC = '칸 이름을 누르면 그 숫자로 줄을 세워요. 한 번 더 누르면 거꾸로예요.'
 const FOOT = '–는 그 의원에 그 달 숫자가 없는 칸이에요. 줄을 세울 때 늘 맨 아래에 둬요.'
+const UIS_FOOT = '의사랑 표시 의원은 의사랑 엑셀로 올린 숫자예요. 처방 칸은 환자 수가 아니라 처방량이고, 나이대는 내원한 날마다 센 수예요.'
+const UIS_NOTE = 'mt-0.5 text-small text-muted' // 시안 .foot margin-top 2px
 
 const SORT_BUTTON = `-mr-0.5 inline-flex min-h-7 cursor-pointer items-center justify-end gap-0.5 rounded-control px-0.5 font-semibold whitespace-nowrap transition hover:bg-canvas hover:text-ink ${ds.focusRing}`
 
@@ -210,6 +217,7 @@ export function RankTable({ month, region, rows }: Props) {
               </table>
             </div>
             <p className={NOTE}>{FOOT}</p>
+            {rows.some((row) => row.uis === true) && <p className={UIS_NOTE}>{UIS_FOOT}</p>}
           </>
         )}
       </div>

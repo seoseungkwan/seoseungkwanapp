@@ -42,7 +42,8 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 vi.mock('@/components/claim/useBridge', () => ({ useBridge: vi.fn() }))
 
 const TODAY = '2026-11-24'
-const READ_RPCS = ['admin_view_hospitals', 'admin_compare_first_month', 'admin_rows']
+// admin_uis_rows = 의사랑 두 종류 읽기(spec uisarang-upload AC-8813.6, 읽기만) — 이 가짜 DB에는 의사랑 의원이 없어 늘 빈 목록
+const READ_RPCS = ['admin_view_hospitals', 'admin_compare_first_month', 'admin_rows', 'admin_uis_rows']
 
 // admin_view_hospitals 답 줄(DB 모양). 가나 = 내 의원(서울), 사아 = 지역 모름으로 정함
 const HOSPITALS = [
@@ -108,6 +109,7 @@ beforeEach(() => {
     if (name === 'admin_view_hospitals') return Promise.resolve({ data: HOSPITALS, error: null })
     if (name === 'admin_compare_first_month') return firstMonthReply()
     if (name === 'admin_rows') return rowsReply(args ?? {})
+    if (name === 'admin_uis_rows') return Promise.resolve({ data: [], error: null })
     return Promise.resolve({ data: null, error: { message: '모르는 함수' } })
   }
   vi.mocked(useBridge).mockClear()

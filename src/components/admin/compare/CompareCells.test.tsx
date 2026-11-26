@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import { CompareCard, type SideRowKey } from './CompareCells'
+import { CompareStats, type SideClinic } from './CompareStats'
 import type { CompareStatsCells } from './statsInput'
 
 // 통계 나란히 보기 작은 칸(spec admin-view REQ-8016 AC-8016.2, 시안 docs/mockups/admin-view ?s=compare-region sideCard).
@@ -248,5 +250,120 @@ describe('CompareCard — 못 만들 때 글 (AC-8016.2)', () => {
     expect(screen.queryAllByRole('button')).toEqual([])
     expect(screen.queryAllByRole('link')).toEqual([])
     expect(screen.queryAllByRole('textbox')).toEqual([])
+  })
+})
+
+// ── 의사랑 의원 칸(spec uisarang-upload REQ-8813 AC-8813.1·AC-8813.3·AC-8813.4, 시안 docs/mockups/uisarang-upload ?s=admin) ──
+const UIS_NA = '의사랑 엑셀로는 셀 수 없어요'
+const UIS: CompareStatsCells = {
+  ...FULL,
+  uis: true,
+  patients: {
+    ...FULL.patients,
+    age: [
+      { name: '60대', text: '21.3%', width: 100 },
+      { name: '50대', text: '20.5%', width: 96.24 },
+      { name: '40대', text: '14.7%', width: 69.01 },
+    ],
+    dropoff: null,
+  },
+  sunap: [FULL.sunap![0]!, FULL.sunap![1]!, { label: 'Block 전환', value: null, unit: '%' }],
+  rx: {
+    trend: [
+      { name: '물리치료 기본', text: '5,604', width: 100 },
+      { name: '주사', text: '1,021.5', width: 18.23 },
+      { name: '도수치료', text: '788', width: 14.06 },
+    ],
+    split: null,
+  },
+  ops: { ...FULL.ops, doctors: null, hours: null },
+}
+
+describe('CompareCard — 의사랑 의원 (AC-8813.3·AC-8813.4)', () => {
+  it('AC-8813.3·AC-8813.4: 환자 줄 — 환자 구성은 나이대 막대(내원 건 몫), 신환 재방문율·몇 번까지 받나는 작은 글 `의사랑 엑셀로는 셀 수 없어요`', () => {
+    const el = card('patients', UIS)
+    expect(headings(el)).toEqual(['일별 내원', '환자 구성', '신환 재방문율', '몇 번까지 받나'])
+    expect(text(el)).toBe(`${NAME}일별 내원10월 1일10월 31일환자 구성60대21.3%50대20.5%40대14.7%신환 재방문율${UIS_NA}몇 번까지 받나${UIS_NA}`)
+    const notes = within(el).getAllByText(UIS_NA)
+    expect(notes).toHaveLength(2)
+    for (const note of notes) expect(note.className.split(' ')).toEqual(expect.arrayContaining(['text-small', 'text-muted']))
+  })
+
+  it('AC-8813.4: 처방 줄 — `처방별 추세` 자리 이름이 `묶음별 처방량`(위 셋 막대, 값은 처방량 글) · 처방별 신환·재진은 작은 글', () => {
+    const el = card('rx', UIS)
+    expect(headings(el)).toEqual(['묶음별 처방량', '처방별 신환·재진'])
+    expect(text(el)).toBe(`${NAME}묶음별 처방량물리치료 기본5,604주사1,021.5도수치료788처방별 신환·재진${UIS_NA}`)
+    expect(within(el).queryByRole('table')).toBeNull()
+    expect(el.querySelectorAll('[aria-hidden="true"]')).toHaveLength(3)
+  })
+
+  it('AC-8813.4: 그달이 처방 줄로 다 덮이지 않으면 묶음별 처방량은 –', () => {
+    expect(text(card('rx', { ...UIS, rx: { trend: null, split: null } }))).toBe(`${NAME}묶음별 처방량–처방별 신환·재진${UIS_NA}`)
+  })
+
+  it('AC-8813.4: 진료 운영 줄 — 원장님별·시간대별 접수는 작은 글, 요일별 내원·휴일에 따라은 그대로', () => {
+    const el = card('ops', UIS)
+    expect(headings(el)).toEqual(['원장님별', '시간대별 접수', '요일별 내원', '휴일에 따라'])
+    expect(text(el)).toContain(`원장님별${UIS_NA}시간대별 접수${UIS_NA}요일별 내원`)
+    expect(text(el)).toContain('월화수목금토')
+    expect(within(el).getAllByRole('row').map((row) => row.textContent)).toEqual(['공휴일 앞날평소보다 +6%', '공휴일 다음 날평소보다 +18%'])
+  })
+
+  it('AC-8813.4: 예약·전환 줄 — Block 전환은 숫자 – + 아래 작은 글, 신환 예약률·90일 예약률은 그대로', () => {
+    const el = card('sunap', UIS)
+    expect(text(el)).toBe(`${NAME}신환 예약률63.4%90일 예약률51.2%Block 전환–${UIS_NA}수납일지 마감한 날만`)
+    const note = within(el).getByText(UIS_NA)
+    expect(note.className.split(' ')).toEqual(expect.arrayContaining(['text-muted']))
+    expect(note.closest('p')?.textContent).toBe(`Block 전환–${UIS_NA}`)
+  })
+
+  it('AC-8813.4: 마감한 날이 없으면 예약·전환 줄은 지금 글 그대로', () => {
+    expect(text(card('sunap', { ...UIS, sunap: null }))).toBe(`${NAME}수납일지를 마감한 날이 없어요`)
+  })
+
+  it('AC-8813.4: 요약·매출·예약 줄은 비트 의원과 같은 칸 그대로', () => {
+    for (const row of ['summary', 'revenue', 'calendar'] as const) {
+      const uis = text(card(row, UIS))
+      cleanup()
+      expect(uis, row).toBe(text(card(row, FULL)))
+      cleanup()
+    }
+  })
+
+  it('AC-8813.4: 그달 자료가 하나도 없으면 의사랑 의원도 칸 전체가 자료 없음', () => {
+    expect(text(card('patients', { ...UIS, hasData: false }))).toBe(`${NAME}자료 없음`)
+  })
+
+  it('AC-8813.4: 비트 의원(uis 없음) 칸에는 의사랑 글이 없다', () => {
+    for (const row of ['summary', 'patients', 'revenue', 'sunap', 'calendar', 'rx', 'ops'] as const) {
+      expect(text(card(row, FULL)), row).not.toContain(UIS_NA)
+      cleanup()
+    }
+  })
+})
+
+describe('통계 나란히 보기 머리 — 의사랑 칩 (AC-8813.1)', () => {
+  const side = (clinics: SideClinic[]) => {
+    const { container } = render(<CompareStats month="2026-10" region="서울" clinics={clinics} onRetry={() => {}} />)
+    const grid = container.querySelector('#cmp-side .grid') as HTMLElement
+    return [...grid.children].slice(0, clinics.length) as HTMLElement[]
+  }
+
+  it('AC-8813.1: 의사랑 의원 머리는 이름 · 지역 · (내 의원 칩) · 의사랑 칩(회색), 비트 의원은 지금 그대로', () => {
+    const heads = side([
+      { id: 'h-me', name: '하하 정형외과', region: '서울', own: true, uis: true, cells: UIS },
+      { id: 'h-ga', name: '가나 정형외과의원', region: '서울', own: false, uis: true, cells: UIS },
+      { id: 'h-da', name: '다라 정형외과', region: '서울', own: false, cells: FULL },
+    ])
+    expect(heads.map((head) => head.textContent)).toEqual(['하하 정형외과서울내 의원의사랑', '가나 정형외과의원서울의사랑', '다라 정형외과서울'])
+    const chips = [...heads[0]!.querySelectorAll('span span')].map((chip) => chip.textContent)
+    expect(chips).toEqual(['내 의원', '의사랑'])
+    const mark = within(heads[1]!).getByText('의사랑')
+    expect(mark.className).toBe(ds.chip.neutral)
+  })
+
+  it('AC-8813.1: 칩은 칸 상태(읽는 중 등)와 따로 의원 표시(uis)로 그린다', () => {
+    const heads = side([{ id: 'h-ga', name: '가나 정형외과의원', region: '서울', own: false, uis: true, cells: 'reading' }])
+    expect(heads[0]!.textContent).toBe('가나 정형외과의원서울의사랑')
   })
 })

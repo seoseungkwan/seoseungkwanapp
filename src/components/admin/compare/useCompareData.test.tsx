@@ -467,3 +467,103 @@ describe('AC-8023.4 가장 이른 달 한 번 읽기', () => {
     expect(ranges.stats_day_totals).toEqual({ from: '2016-02-02', to: '2017-01-31' })
   })
 })
+
+// ── 의사랑 의원(spec uisarang-upload REQ-8813 AC-8813.1·AC-8813.2·AC-8813.7) ──
+// 다라(서울)가 의사랑 의원: clinic_emr uisarang + 출처 uisarang 날 줄(10월 1일·2일 · 환자 42·38 · 신환 5·3)
+const uisDayRow = (day: string, patients: number, newPatients: number) => ({
+  day,
+  partial: false,
+  source: 'uisarang',
+  payload: {
+    schemaVersion: 2,
+    quality: 'valid',
+    day,
+    partial: false,
+    totals: { patients, newPatients, returning: patients - newPatients, unknown: 0 },
+    rx: [],
+    groups: [],
+    revisit: { cohort: 0, within7: null, within14: null },
+  },
+  updated_at: `${day}T12:00:00Z`,
+})
+function withUis(kind: AdminRowKind, id: string, to: string): AdminRow[] {
+  const month = to.slice(0, 7)
+  if (id !== 'h-da') return rowsFor(kind, id, to)
+  if (kind === 'clinic_emr') return [{ hospitalId: id, row: { emr: 'uisarang' } }]
+  if (kind === 'stats_days') return [uisDayRow(`${month}-01`, 42, 5), uisDayRow(`${month}-02`, 38, 3)].map((row) => ({ hospitalId: id, row }))
+  return rowsFor(kind, id, to)
+}
+// readAdminRows가 함수 없음(PGRST202·42883)에 다는 표시와 같은 모양의 가짜 오류
+const missing = () => Object.assign(new Error('함수 없음(가짜)'), { missing: true })
+
+describe('AC-8813.1·AC-8813.2 의사랑 의원 — 표 줄·나란히 보기 칸에 의사랑 표시', () => {
+  it('AC-8813.1·AC-8813.2: clinic_emr이 uisarang인 의원만 uis 참이고, 매출·환자 수는 총진료비 = sales_days · 내원·신환·재진·하루 평균 = 날 숫자', async () => {
+    read.mockImplementation(async (kind, ids, _from, to) => withUis(kind, ids[0]!, to))
+    const hook = await mount()
+    await allDone(hook)
+    const rows = hook.result.current.rows
+    expect(rows.filter((row) => row.uis).map((row) => row.id)).toEqual(['h-da'])
+    const da = rows.find((row) => row.id === 'h-da')!
+    // sales_days 두 날(각 100건 · 1,500만 원)이 아니라 날 숫자 42 + 38
+    expect(da.sales).toEqual({ total: TOTAL['h-da'], visits: 80, newPatients: 8, returnVisits: 72, dayAvg: 40, days: 2 })
+    const ga = rows.find((row) => row.id === 'h-ga')!
+    expect(ga.uis).toBe(false)
+    expect(ga.sales).toMatchObject({ total: TOTAL['h-ga'], visits: 200, newPatients: 20, returnVisits: 180 })
+  })
+
+  it('AC-8813.1: 지역을 고르면 나란히 보기 의원 칸에도 uis가 있다(전체에서 읽은 뒤 골라도)', async () => {
+    read.mockImplementation(async (kind, ids, _from, to) => withUis(kind, ids[0]!, to))
+    const hook = await mount()
+    await allDone(hook)
+    await pick(hook, '서울')
+    await waitFor(() => expect(hook.result.current.side.every((clinic) => typeof clinic.cells === 'object')).toBe(true))
+    const side = hook.result.current.side
+    expect(side.map((clinic) => [clinic.id, clinic.uis]).sort()).toEqual([
+      ['h-da', true],
+      ['h-ga', false],
+    ])
+    const da = side.find((clinic) => clinic.id === 'h-da')!
+    expect(typeof da.cells === 'object' && da.cells.uis).toBe(true)
+  })
+})
+
+describe('AC-8813.7 admin_uis_rows 함수가 DB에 없을 때 — 의원 비교가 깨지지 않는다', () => {
+  it('AC-8813.7: 새 두 종류 읽기가 모두 함수 없음이어도 실패 의원이 없고 표 줄은 비트 의원 그대로다(의사랑 표시 없음)', async () => {
+    read.mockImplementation(async (kind, ids, _from, to) => {
+      if (kind === 'uis_periods' || kind === 'clinic_emr') throw missing()
+      return rowsFor(kind, ids[0]!, to)
+    })
+    const hook = await mount()
+    await allDone(hook)
+    expect(hook.result.current.failed).toEqual([])
+    expect(hook.result.current.rows).toHaveLength(5)
+    for (const row of hook.result.current.rows) {
+      expect(row.uis).toBe(false)
+      expect(row.sales?.total).toBe(TOTAL[row.id])
+    }
+    await pick(hook, '서울')
+    await waitFor(() => expect(hook.result.current.side.every((clinic) => typeof clinic.cells === 'object')).toBe(true))
+    expect(hook.result.current.side.every((clinic) => clinic.uis === false)).toBe(true)
+  })
+
+  it('AC-8813.7: 새 두 종류의 그 밖 오류는 지금처럼 그 의원만 읽기 실패', async () => {
+    read.mockImplementation(async (kind, ids, _from, to) => {
+      if (kind === 'clinic_emr' && ids[0] === 'h-ma') throw new Error('권한 없음(가짜)')
+      return rowsFor(kind, ids[0]!, to)
+    })
+    const hook = await mount()
+    await allDone(hook)
+    expect(hook.result.current.failed).toEqual([{ id: 'h-ma', name: '마바 정형외과의원' }])
+    expect(hook.result.current.rows.find((row) => row.id === 'h-ga')!.sales?.total).toBe(TOTAL['h-ga'])
+  })
+
+  it('AC-8813.7: 지금 열여덟 종류의 함수 없음은 받아 주지 않는다(그 의원 읽기 실패)', async () => {
+    read.mockImplementation(async (kind, ids, _from, to) => {
+      if (kind === 'stats_days' && ids[0] === 'h-ja') throw missing()
+      return rowsFor(kind, ids[0]!, to)
+    })
+    const hook = await mount()
+    await allDone(hook)
+    expect(hook.result.current.failed).toEqual([{ id: 'h-ja', name: '자차 정형외과의원' }])
+  })
+})

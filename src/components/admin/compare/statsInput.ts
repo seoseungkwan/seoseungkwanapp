@@ -8,11 +8,13 @@ import { groupKey, treatmentRows } from '@/components/stats/treatmentView'
 import { revisitRates, summaryCells, visitTrend, weekdayRows, type StatsInput, type StatsRateCell } from '@/components/stats/view'
 import type { CompareRaw } from '@/lib/admin/compare/load'
 import { salesRow } from '@/lib/admin/compare/sales'
+import { isUisClinic, uisAgeMix, uisGroupQty, uisRxRows, uisAgeRows, type UisAgeMix } from '@/lib/admin/compare/uis'
 import { buildAlerts, type Alert, type AlertGroup } from '@/lib/analytics/alerts'
 import { mergeRanges } from '@/lib/analytics/coverage'
 import { addDays, isMonth, isYmd, monthRange } from '@/lib/analytics/dates'
 import { holidayEffect, type HolidayRow } from '@/lib/analytics/holidayEffect'
 import { NO_BIRTH } from '@/lib/analytics/patientMix'
+import { formatQty } from '@/lib/analytics/uisarang'
 import { cellAverage, foldHours, heatLevel, VISIT_HOURS } from '@/lib/analytics/visitHours'
 import { ratePct, rateSummary } from '@/lib/calendar/counts'
 import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
@@ -29,7 +31,11 @@ import { SUNAP_TOTAL_KEYS, type SunapRates } from '@/types/sunap'
 // 한 의원의 admin_rows 줄(load.ts CompareRaw, jsonb 그대로)을 지금 줄 검사 함수(validate.ts)·저장소와 같은 모양 검사로 받고,
 // 칸 값은 통계 탭과 같은 순수 함수(components/stats/view.ts·revenueView.ts·lib/analytics/*·lib/revenue/*·lib/calendar/counts.ts)로 만든다 — 새 공식이 없다.
 // 기간 = 고른 달(증감 비교 = 지난달, 통계 탭 달 고르기 pickRange와 같다, 오늘 = 다음 달 1일). '휴일에 따라'만 그달 끝까지 12달(stats_day_totals).
-// 저장되지 않은 값은 null이다(화면 '–'·그 칸의 빈 글). 고른 달이 10년 앞 옛 달이어도 셈은 같다
+// 저장되지 않은 값은 null이다(화면 '–'·그 칸의 빈 글). 고른 달이 10년 앞 옛 달이어도 셈은 같다.
+// 의사랑 의원(clinic_emr uisarang, spec uisarang-upload REQ-8813 AC-8813.3·AC-8813.4, design.md §10-4)이면 uis가 참이고,
+// 환자 구성 = 그달 나이대 하루 줄 합(내원 건), 처방별 추세 자리 = 묶음별 처방량 위 셋(그달이 처방 줄로 다 덮일 때만, lib/admin/compare/uis.ts),
+// 셀 수 없는 칸(처방별 신환·재진·몇 번까지 받나·원장님별·시간대별 접수·Block 전환)은 값이 없고 화면이 안내 글을 그린다(CompareCells).
+// 새 두 종류는 열쇠가 없을 수 있어(열여덟 종류만 만든 값) `?? []`로 읽는다 — 그 값은 비트 의원 그대로다
 
 /** 숫자 칸 하나. value null = '–'(단위 없음) */
 export type CellNumber = { label: string; value: string | null; unit: string }
@@ -47,6 +53,8 @@ export type CellTableRow = { name: string; cells: string[] }
 export type CompareStatsCells = {
   /** 그달 자료가 하나라도 있나(없으면 칸 전체 '자료 없음') */
   hasData: boolean
+  /** 의사랑 의원이면 참(비트 의원은 열쇠 없음) — 셀 수 없는 칸은 안내 글, 처방 줄 이름은 묶음별 처방량 */
+  uis?: true
   summary: { patients: CellNumber[]; revenue: CellNumber[]; alerts: CellAlert[] | null; goal: CellGoal | null }
   patients: { daily: CellColumns | null; age: CellBar[] | null; revisit: CellNumber[]; dropoff: CellBar[] | null }
   revenue: { trend: { columns: CellColumns; total: string } | null; split: CellShare[] | null }
@@ -54,6 +62,7 @@ export type CompareStatsCells = {
   sunap: CellNumber[] | null
   /** 예약 수 · 취소율 · 변경율 · 안 옴율. null = 예약 탭에 적은 예약이 없음 */
   calendar: CellNumber[] | null
+  /** trend = 처방별 추세(의사랑 의원은 묶음별 처방량, 값은 처방량 글) */
   rx: { trend: CellBar[] | null; split: CellTableRow[] | null }
   ops: {
     doctors: CellTableRow[] | 'single' | null
@@ -90,12 +99,14 @@ const pctCell = (label: string, text: string): CellNumber => ({ label, value: te
 
 // ── 줄 받기(저장소와 같은 검사) ──────────────────────────────
 
-// stats_days: readPeriod(lib/storage/stats.ts)처럼 payload 검사 + 줄의 날·partial·출처가 맞는 것만. 같은 날은 뒤 줄
+const SOURCES: readonly unknown[] = ['bit', 'file', 'uisarang']
+
+// stats_days: readPeriod(lib/storage/stats.ts)처럼 payload 검사 + 줄의 날·partial·출처(비트·파일·의사랑)가 맞는 것만. 같은 날은 뒤 줄
 function statsDays(rows: readonly Row[]): DayPayload[] {
   const byDay = new Map<string, DayPayload>()
   for (const row of rows) {
     const payload = validateDayPayload(row.payload)
-    if (payload === null || payload.day !== row.day || payload.partial !== row.partial || (row.source !== 'bit' && row.source !== 'file')) continue
+    if (payload === null || payload.day !== row.day || payload.partial !== row.partial || !SOURCES.includes(row.source)) continue
     byDay.set(payload.day, payload)
   }
   return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
@@ -244,9 +255,10 @@ function goalCell(total: number | null, goal: number | null): CellGoal | null {
   return { rate: total === null ? null : `${truncatedOne((total * 100) / goal)}%`, goal: formatManWon(goal), width: total === null ? 0 : percentOf(total, goal) }
 }
 
-function ageBars(sections: MonthSections | null): CellBar[] | null {
-  if (sections === null || sections.mix.people === 0) return null
-  const { people, age } = sections.mix
+// 나이대 열 줄(비트 = 달 sections.mix, 의사랑 = 그달 나이대 하루 줄 합)에서 많은 나이대 셋과 몫
+function ageBars(mix: UisAgeMix | null): CellBar[] | null {
+  if (mix === null || mix.people === 0) return null
+  const { people, age } = mix
   const top = age
     .filter((row) => row.name !== NO_BIRTH && row.people > 0)
     .sort((a, b) => b.people - a.people)
@@ -358,17 +370,39 @@ function holidayCells(rows: HolidayRow[] | null): CellTableRow[] | null {
   })
 }
 
+// 의사랑 처방별 추세 자리 = 묶음별 처방량(묶음 차례 = sort_order, 넣는 처방이 있는 묶음만) 가운데 처방량 큰 차례 셋, 값은 처방량 글(단위 없음).
+// 그달이 처방 줄로 다 덮이지 않았거나 묶음 처방량이 모두 0이면 null(–)
+function uisRxTrend(raw: CompareRaw, month: string, covered: readonly DateRange[], worked: ReadonlySet<string>, groups: readonly StatsRxGroup[]): CellBar[] | null {
+  const ordered = [...groups].filter((group) => group.codes.length > 0).sort((a, b) => a.sortOrder - b.sortOrder)
+  // rxGroups가 고른 줄은 id·out·cond가 늘 있다(열쇠 없음은 타입만의 길)
+  const defs = ordered.map((group) => ({ id: group.id ?? group.name, name: group.name, codes: group.codes, out: group.out ?? [], cond: group.cond ?? [] }))
+  const qty = uisGroupQty(raw, month, { covered, worked }, defs)
+  if (qty === null) return null
+  const top = qty
+    .filter((group) => group.qty > 0)
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, TOP)
+  if (top.length === 0) return null
+  const max = top[0]!.qty
+  return top.map((group) => ({ name: group.name, text: formatQty(group.qty), width: percentOf(group.qty, max) }))
+}
+
 /** 한 의원의 비교 자료(그 달 compareRanges로 읽은 것)와 고른 달('YYYY-MM')로 나란히 보기 칸 값을 만든다 */
 export function compareStatsInput(raw: CompareRaw, month: string): CompareStatsCells {
   if (!isMonth(month)) throw new Error('달 모양이 아님')
   const end = monthRange(month).to
   const today = addDays(end, 1) // 통계 탭이 다음 달 1일에 그달을 고른 것과 같다
   const range = pickRange(today, { kind: 'month', unit: 'day', month }, false)
+  // 의사랑 의원은 달 줄(비트 처방·묶음·dropoff·sections)을 쓰지 않는다 — 그 칸은 셀 수 없음 안내이고 나이대는 의사랑 줄로 센다
+  const uis = isUisClinic(raw)
 
   const days = statsDays(raw.stats_days)
   const monthDays = days.filter((day) => inMonth(day.day, month))
   const input: StatsInput = { days, covered: coverage(raw.stats_coverage), range }
-  const { payload, sections } = monthOf(raw.stats_months, month)
+  const { payload, sections } = uis ? { payload: null, sections: null } : monthOf(raw.stats_months, month)
+  const worked = new Set(days.filter((day) => day.totals.patients >= 1).map((day) => day.day))
+  const first = monthRange(month).from
+  const uisInMonth = uis && [...uisRxRows(raw), ...uisAgeRows(raw)].some((row) => row.from <= end && row.to >= first)
   const groups = rxGroups(raw.stats_rx_groups)
   const keyed = keyedGroups(groups)
   const sales = salesDays(raw.sales_days)
@@ -381,12 +415,14 @@ export function compareStatsInput(raw: CompareRaw, month: string): CompareStatsC
   const revenueInput: RevenueInput = { range, lastDay: end, days: sales, codes: [], monthCodes: [], groups: [], noDayCodes: false }
   const tabs = revenueTabs(revenueInput)
   const trend = visitTrend(input)
-  const axis = { from: monthDay(monthRange(month).from), to: monthDay(end) }
+  const axis = { from: monthDay(first), to: monthDay(end) }
   const alerts = buildAlerts({ today, days, groups: keyed, cal })
   const rates = revisitRates(input)
 
   return {
-    hasData: monthDays.length > 0 || payload !== null || sections !== null || monthSales.length > 0 || closed.length > 0 || monthCal.length > 0 || goal !== null,
+    hasData:
+      monthDays.length > 0 || payload !== null || sections !== null || monthSales.length > 0 || closed.length > 0 || monthCal.length > 0 || goal !== null || uisInMonth,
+    ...(uis ? { uis: true as const } : {}),
     summary: {
       patients: summaryCells(input).map((cell) => ({ label: cell.label, value: cell.value === null ? null : formatCount(cell.value), unit: cell.unit })),
       revenue: revenueCells(revenueInput).map((cell) => ({ label: cell.label, value: cell.value === DASH ? null : cell.value, unit: cell.unit ?? '' })),
@@ -398,7 +434,7 @@ export function compareStatsInput(raw: CompareRaw, month: string): CompareStatsC
         trend === null
           ? null
           : { columns: trend.buckets.map((bucket) => (bucket.blank ? [0, 0] : [bucket.values[0] ?? 0, sum(bucket.values.slice(1))])), ...axis },
-      age: ageBars(sections),
+      age: ageBars(uis ? uisAgeMix(raw, month, worked) : (sections?.mix ?? null)),
       revisit: [rateValue('7일 안', rates.d7), rateValue('14일 안', rates.d14), rateValue('30일 안', rates.d30)],
       dropoff: dropoffBars(payload, keyed),
     },
@@ -409,9 +445,9 @@ export function compareStatsInput(raw: CompareRaw, month: string): CompareStatsC
           : { columns: { columns: tabs.trend.buckets.map((bucket) => [bucket.blank ? 0 : (bucket.values[0] ?? 0)]), ...axis }, total: tabs.trend.lead.amount },
       split: splitShares(sales, month),
     },
-    sunap: sunapCells(closed, sunapSum(monthDays)),
+    sunap: sunapCells(closed, uis ? null : sunapSum(monthDays)),
     calendar: calendarCells(monthCal),
-    rx: rxCells(input, groups, payload),
+    rx: uis ? { trend: uisRxTrend(raw, month, input.covered, worked, groups), split: null } : rxCells(input, groups, payload),
     ops: {
       doctors: doctorRows(sections),
       hours: heatCells(sections),

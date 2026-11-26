@@ -4,7 +4,9 @@ import { ADMIN_ROW_KINDS, AdminRowsError, readAdminRows, type AdminRowKind } fro
 
 // 의원 비교 읽기(spec admin-view REQ-8005 AC-8005.2, design.md '브라우저 함수'·'비교 읽기 ⑧ admin_rows').
 // 실제 Supabase에 붙지 않는다. rpc('admin_rows', …)에 나가는 인자·range 쪽·횟수와 답을 바꾼 모양만 본다.
-// 칸·한도·권한은 supabase/adminView.rls.test.ts가 증명한다
+// 칸·한도·권한은 supabase/adminView.rls.test.ts가 증명한다.
+// 의사랑 두 종류(uis_periods·clinic_emr)는 rpc('admin_uis_rows', …)로 부른다(spec uisarang-upload REQ-8813 AC-8813.6·AC-8813.7, design.md §10-4).
+// 그 함수가 DB에 없으면(SQL을 아직 붙이지 않음 · PGRST202 · 42883) AdminRowsError에 missing이 붙는다 — 칸·한도·권한은 supabase/uisarangUpload.rls.test.ts
 const { rpc, range, from, supabaseBrowser } = vi.hoisted(() => {
   const range = vi.fn()
   const rpc = vi.fn(() => ({ range }))
@@ -35,6 +37,8 @@ const KINDS = [
   'staff_pay',
   'staff_settings',
 ] as const satisfies readonly AdminRowKind[]
+// 의사랑 두 종류(design.md uisarang-upload §10-4): admin_uis_rows로 부른다
+const UIS_KINDS = ['uis_periods', 'clinic_emr'] as const satisfies readonly AdminRowKind[]
 
 const RAW = 'permission denied for function admin_rows (secret detail)'
 const H1 = '11111111-1111-4111-8111-111111111111'
@@ -54,9 +58,9 @@ beforeEach(() => {
 })
 
 describe('readAdminRows(): rpc admin_rows를 1,000줄씩 range로 다 읽기', () => {
-  it('AC-8005.2: 종류는 design.md 표의 열여덟과 같다', () => {
-    expect([...ADMIN_ROW_KINDS].sort()).toEqual([...KINDS].sort())
-    expect(ADMIN_ROW_KINDS).toHaveLength(18)
+  it('AC-8005.2·AC-8813.6: 종류는 design.md 표의 열여덟 + 의사랑 둘(uis_periods·clinic_emr) = 스물이다', () => {
+    expect([...ADMIN_ROW_KINDS].sort()).toEqual([...KINDS, ...UIS_KINDS].sort())
+    expect(ADMIN_ROW_KINDS).toHaveLength(20)
   })
 
   it.each(KINDS)("AC-8005.2: 종류 '%s'는 rpc('admin_rows', { p_kind, p_hospital_ids, p_from, p_to })로 그대로 보낸다", async (kind) => {
@@ -208,5 +212,106 @@ describe('readAdminRows(): 실패는 AdminRowsError(원래 글은 cause에만), 
     range.mockResolvedValueOnce(page(data))
     await expect(readAdminRows('stats_days', IDS, '2026-10-01', '2026-10-31')).rejects.toBeInstanceOf(AdminRowsError)
     expect(rpc).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("readAdminRows(): 의사랑 두 종류는 rpc('admin_uis_rows', …) (AC-8813.6)", () => {
+  it.each(UIS_KINDS)("AC-8813.6: 종류 '%s'는 rpc('admin_uis_rows', { p_kind, p_hospital_ids, p_from, p_to })로 보내고 admin_rows를 부르지 않는다", async (kind) => {
+    await readAdminRows(kind, IDS, '2026-10-01', '2026-10-31')
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('admin_uis_rows', {
+      p_kind: kind,
+      p_hospital_ids: [H1, H2],
+      p_from: '2026-10-01',
+      p_to: '2026-10-31',
+    })
+    expect(range).toHaveBeenCalledExactlyOnceWith(0, 999)
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it.each(KINDS)("AC-8813.6: 지금 종류 '%s'는 그대로 admin_rows다", async (kind) => {
+    await readAdminRows(kind, [H1], '2026-10-01', '2026-10-31')
+    expect(rpc.mock.calls.map((call) => (call as unknown[])[0])).toEqual(['admin_rows'])
+  })
+
+  it('AC-8813.6: 쪽 읽기는 같다 — 1,000줄이면 다음 쪽(1000~1999)을 같은 함수·인자로 한 번 더 읽는다', async () => {
+    const rows = Array.from({ length: 1000 }, (_, k) => ({ hospital_id: H1, row: { kind: 'rx', from_day: '2026-10-01', to_day: '2026-10-01', payload: { v: 1, n: k } } }))
+    range.mockResolvedValueOnce(page(rows)).mockResolvedValueOnce(page([{ hospital_id: H2, row: { emr: 'uisarang' } }]))
+    const got = await readAdminRows('uis_periods', IDS, '2026-10-01', '2026-10-31')
+    expect(got).toHaveLength(1001)
+    expect(got[1000]).toEqual({ hospitalId: H2, row: { emr: 'uisarang' } })
+    expect(range.mock.calls).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ])
+    for (const call of rpc.mock.calls as unknown[][]) expect(call[0]).toBe('admin_uis_rows')
+  })
+
+  it('AC-8813.6: 실패는 다른 종류와 같은 AdminRowsError(원래 글은 cause에만) — 함수 없음이 아니면 missing은 거짓', async () => {
+    const error = { code: '42501', message: RAW }
+    range.mockResolvedValueOnce({ data: null, error, status: 403 })
+    const thrown = await readAdminRows('clinic_emr', IDS, '2026-10-01', '2026-10-01').catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(AdminRowsError)
+    expect((thrown as Error).message).not.toContain('secret detail')
+    expect((thrown as Error).cause).toBe(error)
+    expect((thrown as AdminRowsError).missing).toBe(false)
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8813.6: 답 줄 모양이 틀리면 AdminRowsError(missing 거짓)', async () => {
+    range.mockResolvedValueOnce(page([{ hospital_id: H1, row: null }]))
+    const thrown = await readAdminRows('uis_periods', IDS, '2026-10-01', '2026-10-31').catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(AdminRowsError)
+    expect((thrown as AdminRowsError).missing).toBe(false)
+  })
+})
+
+describe('readAdminRows(): 함수가 DB에 없음 → AdminRowsError missing (AC-8813.7)', () => {
+  it.each([
+    ['PostgREST PGRST202', { code: 'PGRST202', message: `Could not find the function public.admin_uis_rows ${RAW}` }],
+    ['Postgres 42883', { code: '42883', message: `function public.admin_uis_rows does not exist ${RAW}` }],
+  ] as const)('AC-8813.7: %s이면 missing 참인 AdminRowsError(글은 cause에만), 다시 부르지 않는다', async (_name, error) => {
+    range.mockResolvedValueOnce({ data: null, error, status: 404 })
+    const thrown = await readAdminRows('uis_periods', IDS, '2026-10-01', '2026-10-31').catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(AdminRowsError)
+    expect((thrown as AdminRowsError).missing).toBe(true)
+    expect((thrown as Error).message).not.toContain('secret detail')
+    expect((thrown as Error).cause).toBe(error)
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['권한 없음 42501', { code: '42501', message: RAW }],
+    ['인자 틀림 22023', { code: '22023', message: RAW }],
+    ['서버 오류(번호 없음)', { message: RAW }],
+    ['번호가 글이 아님', { code: 42883, message: RAW }],
+  ] as const)('AC-8813.7: 그 밖 오류(%s)는 missing 거짓', async (_name, error) => {
+    range.mockResolvedValueOnce({ data: null, error, status: 500 })
+    const thrown = await readAdminRows('clinic_emr', IDS, '2026-10-01', '2026-10-01').catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(AdminRowsError)
+    expect((thrown as AdminRowsError).missing).toBe(false)
+  })
+
+  it('AC-8813.7: 요청이 던지거나 클라이언트를 만들지 못해도 missing 거짓', async () => {
+    range.mockRejectedValueOnce(new Error(`fetch failed ${RAW}`))
+    const thrown = await readAdminRows('uis_periods', IDS, '2026-10-01', '2026-10-31').catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(AdminRowsError)
+    expect((thrown as AdminRowsError).missing).toBe(false)
+    supabaseBrowser.mockImplementationOnce(() => {
+      throw new Error(RAW)
+    })
+    const noClient = await readAdminRows('uis_periods', IDS, '2026-10-01', '2026-10-31').catch((e: unknown) => e)
+    expect(noClient).toBeInstanceOf(AdminRowsError)
+    expect((noClient as AdminRowsError).missing).toBe(false)
+  })
+
+  it('AC-8813.7: 지금 종류(admin_rows)도 같은 표시를 단다 — 받아 줄지는 부르는 쪽(loadHospital)이 정한다', async () => {
+    range.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: RAW }, status: 404 })
+    const thrown = await readAdminRows('stats_days', IDS, '2026-10-01', '2026-10-31').catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(AdminRowsError)
+    expect((thrown as AdminRowsError).missing).toBe(true)
+  })
+
+  it('AC-8813.7: 그냥 만든 AdminRowsError는 missing 거짓', () => {
+    expect(new AdminRowsError('x').missing).toBe(false)
   })
 })
