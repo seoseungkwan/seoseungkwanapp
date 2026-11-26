@@ -82,6 +82,20 @@ describe('AC-8534.3: [예약표에 넣기] 갈래', () => {
     expect(s.deleteFix).not.toHaveBeenCalled()
   })
 
+  it('AC-8554.4: 하루 종일 일정을 종일 메모로 넣으면 그 일정 색(fix.gColor), 색이 없으면 default를 같은 넣기에 적는다', async () => {
+    const s = store()
+    expect(await putFix(s, fixOf({ gTitle: '김없음 off', gColor: 'grape' }), ['memo'], CTX)).toBe('memo')
+    expect(s.addAllDay).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'memo', gEventId: 'gev9001', gColor: 'grape' }))
+    expect(await putFix(s, fixOf({ gTitle: '김없음 off', gColor: null }), ['memo'], CTX)).toBe('memo')
+    expect(s.addAllDay).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'memo', gEventId: 'gev9001', gColor: 'default' }))
+  })
+
+  it("AC-8554.4: 시간 일정을 '종일 메모로' 넣은 웹앱 메모는 구글 색이 있어도 색을 비운다(null)", async () => {
+    const s = store()
+    expect(await putFix(s, fixOf({ allDay: false, start: 600, len: 60, gTitle: '회의', reason: 'not-appt', gColor: 'tomato' }), ['memo'], CTX)).toBe('memo')
+    expect(s.addAllDay).toHaveBeenCalledWith(expect.objectContaining({ type: 'memo', memo: '회의', gEventId: null, gColor: null }))
+  })
+
   it('AC-8534.3: 고를 거리를 다 고르지 않으면 아무것도 적지 않고 none', async () => {
     const s = store()
     expect(await putFix(s, fixOf({ gTitle: '김없음 off' }), [], CTX)).toBe('none')

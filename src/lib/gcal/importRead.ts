@@ -292,10 +292,11 @@ export async function applyImport(deps: GcalDeps, preview: ImportPreview, picks:
           memo,
           staffId: null,
           staffName: null,
-          // 하루 종일 일정이면 그 일정과 잇는다. 시간 일정을 '종일 메모로 넣기'면 웹앱에만 둔다
+          // 하루 종일 일정이면 그 일정과 잇는다(색도 그 일정 색 — AC-8554.4). 시간 일정을 '종일 메모로 넣기'면 웹앱에만 둔다(색 비움)
           gEventId: m.own ? m.ev.id : null,
           gUpdated: m.own ? m.ev.updated : null,
           gWait: false,
+          gColor: m.own ? (colorFromId(m.ev.colorId) ?? 'default') : null,
         })
         if (saved !== 'blocked') {
           existing = [...existing, saved]

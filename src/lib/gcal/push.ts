@@ -169,7 +169,9 @@ class Sender {
     if (!siblings.length) Object.assign(fields, { allDay: true, start: row.day, end: addDays(row.day, 1) })
     const reply = await this.put(row.gEventId, fields)
     const ev = readEvent(reply.event)
-    await store.markMemoSent(row.id, row.gWaitAt, ev?.updated)
+    const sent = await store.markMemoSent(row.id, row.gWaitAt, ev?.updated)
+    // 웹앱 메모는 구글에서 색 없는 일정이 된다 → 색이 비었으면 'default'(이미 색이 있으면 0줄 — 구글에서 온 색 그대로, AC-8554.4). 실패는 삼킨다
+    if (sent) await store.fillMemoColor(row.id, 'default').catch(() => false)
     // 같은 일정의 다른 날 줄도 같은 글로(구글 일정은 하나다)
     if (ev) for (const s of siblings) if (s.memo !== row.memo) await store.applyMemo(s.id, { memo: row.memo }, ev.updated, s.gWaitAt ?? null)
     return true

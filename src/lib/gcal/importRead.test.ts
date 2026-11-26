@@ -277,3 +277,25 @@ describe('AC-8547.2·AC-8547.3 처음 가져오기: 휴무 줄 색은 구글 off
     expect(bad.mem.db.link.look.offColor).toBe('banana')
   })
 })
+
+describe('AC-8554.4 처음 가져오기: 종일 메모 줄 색', () => {
+  it("AC-8554.4: 하루 종일 일정에서 온 메모는 그 일정 색(색 없음 = default), 시간 일정을 '종일 메모로' 넣은 웹앱 메모는 색을 비우고, 구글 일정 색은 그대로다", async () => {
+    const { app, mem, deps } = rig()
+    app.store.allDay('evmemo002', '2026-12-04', '2026-12-05', { summary: '원장님 세미나', colorId: '7' })
+    const p = await preview(deps)
+    const done = await applyImport(deps, p, { evfut0002: ['staff:s-won'], evfut0003: ['memo'] })
+    expect(done).toMatchObject({ ok: true, memos: 4 })
+
+    const memos = mem.db.allday.filter((r) => r.type === 'memo').sort((a, b) => (a.day < b.day ? -1 : 1))
+    expect(memos.map((r) => [r.day, r.memo, r.gEventId, r.gColor])).toEqual([
+      ['2026-11-29', '원장님 회의', null, null],
+      ['2026-12-01', '원장님 학회', 'evmemo001', 'default'],
+      ['2026-12-02', '원장님 학회', 'evmemo001', 'default'],
+      ['2026-12-04', '원장님 세미나', 'evmemo002', 'peacock'],
+    ])
+    const sent = mem.calls.filter((c) => c.fn === 'addAllDay' && (c.args[0] as { type: string }).type === 'memo').map((c) => c.args[0] as { gColor?: unknown })
+    expect(sent.every((r) => 'gColor' in r)).toBe(true)
+    expect(app.store.event('evmemo002')?.colorId).toBe('7')
+    expect(app.store.writes().map((c) => c.api)).toEqual(['Events.insert'])
+  })
+})

@@ -113,6 +113,7 @@ export async function putFix(store: FixStore, fix: GcalFix, keys: readonly strin
       gEventId: own ? fix.gEventId : null,
       gUpdated: own ? fix.gUpdated : null,
       gWait: false,
+      gColor: own ? (fix.gColor ?? 'default') : null, // 그 구글 일정 색(AC-8554.4), 웹앱에만 둔 메모는 비움
     })
     if (saved === 'blocked') return 'none'
     if (own) await store.deleteFix(fix.id)
