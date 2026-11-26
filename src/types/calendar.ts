@@ -95,6 +95,8 @@ export type CalAllDay = {
   gUpdated?: string | null
   gWait?: boolean
   gWaitAt?: string | null // DB 트리거만 적는다(읽기만)
+  /** 구글 일정 색(메모 줄만, google-link REQ-8554 design.md 21-13). 'default' = 구글에서 색 없음, null = 웹앱에만 있음·아직 못 읽음 */
+  gColor?: CalColor | 'default' | null
 }
 
 // 설정 줄이 없을 때(DB 기본값과 같다, google-link design.md 7-4). 시행자는 비어 있다(설정에서 더한다)
