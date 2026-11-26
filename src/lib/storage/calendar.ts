@@ -527,6 +527,33 @@ export async function markApptSent(client: Client, id: string, sent: ApptSent, e
   return data.length > 0
 }
 
+/** 다시 알아보기가 쓰는 칸(google-link design.md 21-2): 종류 둘·시행자 셋·알아본 출처만 */
+export type ApptReread = Partial<Pick<ApptDraft, 'kindId' | 'kindName' | 'staffId' | 'staffName' | 'staffMark' | 'gHow'>>
+/** 읽을 때 본 구글 제목·g_updated(DB 글자 그대로, 없으면 null) */
+export type ApptRereadExpect = { gTitle: string; gUpdated: string | null }
+const REREAD_KEYS: readonly string[] = ['kindId', 'kindName', 'staffId', 'staffName', 'staffMark', 'gHow']
+
+/**
+ * 다시 알아본 종류·시행자를 적는다(조건 고치기, AC-8544.5): 그 id 줄의 g_wait가 없고 구글 제목·g_updated가 읽은 글자 그대로일 때만.
+ * g_updated는 DB가 준 글자를 그대로 견준다(Date를 거치지 않는다). 여섯 칸 밖 열쇠·빈 patch·틀린 값이면 보내지 않고 failed.
+ * 0줄(그사이 다른 PC가 고침)이면 거짓. g_wait·날·시작을 쓰지 않으니 트리거가 g_wait_at·처음 자리를 적지 않는다
+ */
+export async function rereadAppt(client: Client, id: string, patch: ApptReread, expect: ApptRereadExpect): Promise<boolean> {
+  const target = requireId(id)
+  if (!isRecord(patch) || !isRecord(expect)) throw failed()
+  if (Object.keys(patch).some((key) => !REREAD_KEYS.includes(key))) throw failed()
+  const { gTitle, gUpdated } = expect
+  if (!isText(gTitle, 0, G_TITLE_MAX) || !(gUpdated === null || isTimestamp(gUpdated))) throw failed()
+  const body = apptBody(patch)
+  if (body === 'blocked' || Object.keys(body).length === 0) throw failed()
+  const { data } = await send(() => {
+    const query = client.from(APPTS).update(body).eq('id', target).is('g_wait', null).eq('g_title', gTitle)
+    return (gUpdated === null ? query.is('g_updated', null) : query.eq('g_updated', gUpdated)).select('id')
+  })
+  if (!Array.isArray(data)) throw failed()
+  return data.length > 0
+}
+
 /**
  * 처음 가져오기·받기 넣기: 500줄씩 on conflict (hospital_id, g_event_id) do nothing. 줄마다 열두 칸 + 구글 칸 열두 칸(받지 않은 칸은 DB 기본값).
  * 구글 일정 id가 없거나 모양이 틀린 줄이 하나라도 있으면 아무것도 보내지 않고 failed. 이름·메모가 개인정보 모양인 줄은 빼고 센다(blocked)

@@ -35,6 +35,7 @@ import {
   saveOffDay,
   setArrivalProgress,
   setFixState,
+  setGcalOffColor,
   setLinkedOn,
   unlinkGcal,
   upsertGcalFixes,
@@ -844,6 +845,51 @@ describe('AC-8505.1 off 줄 사람 목록 loadOffNames', () => {
   })
 })
 
+// ── 휴무 줄 색 따라가기 (google-link REQ-8547 AC-8547.4, design.md 21-5) ─────────
+
+describe('AC-8547.4 휴무 줄 색 setGcalOffColor', () => {
+  it.each([...G_COLORS])("AC-8547.4: 구글 11색 %s는 rpc('gcal_set_off_color', { p_color })로 보내고 답 true면 참이다", async (color) => {
+    const { client, calls } = fakeClient(okWith(true))
+    await expect(setGcalOffColor(client, color)).resolves.toBe(true)
+    expect(calls).toEqual([['rpc', 'gcal_set_off_color', { p_color: color }]])
+  })
+
+  it.each<[string, unknown]>([
+    ['false', false],
+    ['null', null],
+    ["글자 'true'", 'true'],
+    ['목록', [true]],
+  ])('AC-8547.4: 답이 %s면 거짓이다(바뀐 줄 없음 — 보는 중·연결 줄 없음)', async (_name, data) => {
+    const { client } = fakeClient(okWith(data))
+    await expect(setGcalOffColor(client, 'grape')).resolves.toBe(false)
+  })
+
+  it.each<[string, unknown]>([
+    ['옛 색 이름', 'red'],
+    ['대문자', 'Grape'],
+    ['colorId 글', '3'],
+    ['캘린더 기본 색', 'default'],
+    ['빈 글자', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['숫자', 3],
+  ])('AC-8547.4: 11색 밖(%s)이면 보내지 않고 failed다', async (_name, color) => {
+    const { client, calls } = fakeClient(okWith(true))
+    expect((await caught(() => setGcalOffColor(client, color as GcalLook['offColor']))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8547.4: 진짜 클라이언트로도 POST /rest/v1/rpc/gcal_set_off_color { p_color } 한 번', async () => {
+    const fakeFetch = fetchReturning(true)
+    await expect(setGcalOffColor(realClient(fakeFetch), 'peacock')).resolves.toBe(true)
+    expect(fakeFetch).toHaveBeenCalledTimes(1)
+    const [input, init] = fakeFetch.mock.calls[0]
+    expect(new globalThis.URL(String(input)).pathname).toBe('/rest/v1/rpc/gcal_set_off_color') // URL 이름은 이 파일의 지어낸 주소가 쓴다
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ p_color: 'peacock' })
+  })
+})
+
 // ── 비밀 글자·실패 ──────────────────────────────────────────
 
 type Run = (client: GcalClient) => Promise<unknown>
@@ -871,6 +917,7 @@ const ALL: [string, Run][] = [
   ['listWaitingOffDays', (c) => listWaitingOffDays(c)],
   ['saveOffDay', (c) => saveOffDay(c, { day: DAY, gEventId: EVENT2, gTitle: '박지원 off', gUpdated: STAMP, wait: false })],
   ['loadOffNames', (c) => loadOffNames(c)],
+  ['setGcalOffColor', (c) => setGcalOffColor(c, 'grape')],
 ]
 
 describe('AC-8505.1 비밀 글자는 loadGcalLink 답에만', () => {

@@ -25,7 +25,7 @@ import {
 
 // 예약 구글 캘린더 연결 저장 (spec google-link REQ-8505 AC-8505.1·AC-8505.3, design.md 7-3·10-3). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
 // 표: 연결 gcal_links · 맞춤 상태 gcal_state · 고쳐야 할 것 gcal_fixes · 지울 것 gcal_deletes · off 날 gcal_off_days, 함수 calendar_off_names()
-// (migration 20261126000000_google_link.sql). 병원 하나에 한 줄인 표(연결·상태)는 (hospital_id) 겹침으로 덮어쓴다 — hospital_id는 DB 기본값.
+// (migration 20261126000000_google_link.sql), 휴무 줄 색 함수 gcal_set_off_color()(20261127000000_google_link_offcolor.sql). 병원 하나에 한 줄인 표(연결·상태)는 (hospital_id) 겹침으로 덮어쓴다 — hospital_id는 DB 기본값.
 // 보내는 몸통은 정해 둔 열쇠를 골라 새로 만든다({ ...받은 값 } 금지). hospital_id·id·시각 칸(updated_at·created_at)은 보내지 않는다.
 // 비밀 글자(gcal_links.secret)는 loadGcalLink만 돌려준다. loadGcalView는 읽되 있는지만 알려 주고, 다른 함수는 그 칸을 읽지 않는다.
 // 구글에서 온 글(고쳐야 할 것 제목·알아본 글, off 줄 제목)은 maskPrivate로 전화·주민번호·메일 조각을 가린 뒤 DB 한도로 잘라 보낸다(AC-8505.3).
@@ -56,6 +56,7 @@ const FIXES = 'gcal_fixes'
 const DELETES = 'gcal_deletes'
 const OFF_DAYS = 'gcal_off_days'
 const OFF_NAMES = 'calendar_off_names'
+const OFF_COLOR = 'gcal_set_off_color'
 const LINK_COLUMNS = 'script_url,secret,calendar_id,calendar_name,default_hex,linked_on,rules,look'
 const STATE_COLUMNS = 'pulled_until,last_ok_at,fail_since,fail_code,arrival_until,arrival_done'
 const FIX_COLUMNS = 'id,g_event_id,day,start_min,len_min,all_day,g_color,g_title,reason,guess,state,g_updated'
@@ -289,6 +290,17 @@ export async function saveGcalRules(client: GcalClient, rules: GcalRules): Promi
   const checked = checkGcalRules(rules)
   if (checked === null) return 'invalid'
   await upsertLink(client, { rules: checked })
+}
+
+/**
+ * 휴무 줄 색만 구글 off 일정 색으로(spec google-link REQ-8547, design.md 21-5). 데스크도 부르도록 DB 정의자 함수 gcal_set_off_color가
+ * 내 병원 연결 줄의 look.offColor 한 칸만 바꾼다(migration 20261127000000_google_link_offcolor.sql). 구글 11색이 아니면 보내지 않고 failed.
+ * 답이 true면 참(바뀜), 그 밖(보는 중·연결 줄이나 보이기가 없음)은 거짓
+ */
+export async function setGcalOffColor(client: GcalClient, color: GColor): Promise<boolean> {
+  if (!isColor(color)) throw failed()
+  const { data } = await send(() => client.rpc(OFF_COLOR, { p_color: color }))
+  return data === true
 }
 
 /** 이은 날(맞춤 시작 0시, 처음 가져오기 끝) */
