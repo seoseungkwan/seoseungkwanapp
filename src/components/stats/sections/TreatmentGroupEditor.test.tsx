@@ -1174,3 +1174,30 @@ describe('AC-3711.14: 휴대폰 모양(768px 미만)', () => {
     expect(nestedBoxes(document.body)).toEqual([])
   })
 })
+
+describe('AC-8812.7: 건수 없는 찾기 목록(의사랑 처방량은 환자 건수가 아니다)', () => {
+  const OUT_GROUPS: StatsRxGroup[] = [{ id: 'a1', name: '도수치료', codes: ['TH01'], out: ['IN03'], sortOrder: 0 }]
+
+  it('AC-8812.7: counts가 null이면 넣는 처방·빼는 처방 줄에 기간 건수 글자가 없다', () => {
+    draw({ counts: null, groups: OUT_GROUPS })
+    expect(codesIn(0).join(' ')).not.toMatch(/최근 30일|\d건/)
+    expect(within(groupAt(0)).getByRole('list', { name: '빼는 처방' }).textContent).not.toMatch(/최근 30일|\d건/)
+  })
+
+  it('AC-8812.7: counts가 null이면 찾기 줄에도 건수 글자가 없다(이름·코드·막힌 표시는 그대로)', async () => {
+    const user = userEvent.setup()
+    draw({ counts: null, groups: OUT_GROUPS })
+    await openAdder(user, 0)
+    const rows = foundNames()
+    expect(rows).toEqual(['가상 도수치료TH01이 묶음에 있음', '나무 온열치료TH02', '다람 주사IN03빼는 처방에 있음', '라온 근막치료MS04'])
+    for (const text of rows) expect(text).not.toMatch(/\d건/)
+  })
+
+  it('AC-8812.7: 비트 길(counts가 Map)은 지금처럼 기간 건수를 그린다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: OUT_GROUPS })
+    expect(codesIn(0).join(' ')).toContain('최근 30일 214건')
+    await openAdder(user, 0)
+    expect(foundNames()).toContain('나무 온열치료TH021,234건')
+  })
+})

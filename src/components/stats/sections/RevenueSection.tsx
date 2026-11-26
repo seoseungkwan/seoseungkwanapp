@@ -11,6 +11,8 @@ import { BANNER, KpiRow, Note as RevenueNote, NoticeLine, STRONG } from '@/compo
 import { SplitTable } from '@/components/revenue/RevenueSplit'
 import { TreatmentBars } from '@/components/revenue/TreatmentBars'
 import type { BarsView, Lead, PerVisitTab, RevenueTabs, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
+import { UIS_WHY } from '@/components/stats/uisarang/texts'
+import { UisNoteSection } from '@/components/stats/uisarang/UisNote'
 import type { StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { StatsRxGroup } from '@/types/rxGroups'
@@ -58,6 +60,8 @@ type Props = {
   // 신환 1명당 탭(stats-insights AC-6106.4, pv-month AC-7202.3): 비트 칸 보기와 통계 기간, 처방 칸 묶음(이름을 붙인다). bit를 주지 않으면 탭이 없다
   bit?: { view: BitSectionsShown; range: StatsRange }
   groups?: readonly StatsRxGroup[]
+  // 의사랑 의원(uisarang-upload AC-8812.8): 치료별 매출 탭만 셀 수 없음 안내이고 옛 도우미 안내 줄이 없다(의사랑 날은 늘 날 단위 처방 줄이 없다). 나머지 탭은 그대로
+  uis?: boolean
 }
 
 function How({ paragraphs }: { paragraphs: readonly string[] }) {
@@ -222,7 +226,7 @@ function OldHelperNote() {
 
 const NO_GROUPS: readonly StatsRxGroup[] = []
 
-export function RevenueSection({ tabs, noDayCodes, onReread, className, bit, groups = NO_GROUPS }: Props) {
+export function RevenueSection({ tabs, noDayCodes, onReread, className, bit, groups = NO_GROUPS, uis = false }: Props) {
   if (tabs === 'reading') {
     return (
       <Section title={TITLE} className={className}>
@@ -256,12 +260,12 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, bit, gro
     <RxSection
       title={TITLE}
       label={TABLIST_LABEL}
-      notice={noDayCodes ? <OldHelperNote /> : undefined}
+      notice={noDayCodes && !uis ? <OldHelperNote /> : undefined}
       className={className}
       tabs={[
         { name: '매출 추이', panel: <TrendPanel tab={tabs.trend} /> },
         { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} /> },
-        { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} /> },
+        { name: '치료별 매출', panel: uis ? <UisNoteSection title="치료별 매출" why={UIS_WHY.treat} /> : <TreatmentsPanel tab={tabs.treatments} /> },
         { name: '건당 진료비', panel: <PerVisitPanel tab={tabs.perVisit} /> },
         ...(bit === undefined ? [] : [{ name: '신환 1명당', panel: <PatientValueSection view={bit.view} groups={groups} range={bit.range} /> }]),
       ]}

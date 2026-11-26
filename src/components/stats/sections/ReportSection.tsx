@@ -6,6 +6,8 @@ import { Icon } from '@/components/common/Icon'
 import { MonthlyReport } from '@/components/stats/report/MonthlyReport'
 import { firstReportMonth, monthlyReport, reportMonths, type ReportCalendar } from '@/components/stats/report/reportData'
 import { useReportReads } from '@/components/stats/report/useReportReads'
+import { UIS_WHY } from '@/components/stats/uisarang/texts'
+import { UisNote } from '@/components/stats/uisarang/UisNote'
 import { wideSpan, type WideDays } from '@/components/stats/useWideDays'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, monthOf, monthRange } from '@/lib/analytics/dates'
@@ -203,9 +205,22 @@ function PickBody({ pick }: { pick: PickReport }) {
   )
 }
 
-type Props = { report: ReportData | null; hospitalName: string; today: string; saved: boolean; pick?: PickReport | null; className?: string; honorific?: Honorific }
+// uis = 의사랑 의원(uisarang-upload AC-8812.2): 비트 보고 자리('비트 PC에서 불러오면 보여요')가 셀 수 없음 안내다. [고른 기간 보고]는 그대로
+type Props = {
+  report: ReportData | null
+  hospitalName: string
+  today: string
+  saved: boolean
+  pick?: PickReport | null
+  className?: string
+  honorific?: Honorific
+  uis?: boolean
+}
 
-export function ReportSection({ report, hospitalName, today, saved, pick = null, className, honorific }: Props) {
+// 비트 보고 자리(오늘 일일보고 등 비트 글): 비트 의원은 '비트 PC에서 불러오면 보여요', 의사랑 의원은 셀 수 없음 안내
+const BitOnlyNote = ({ uis }: { uis: boolean }) => (uis ? <UisNote>{UIS_WHY.report}</UisNote> : <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>)
+
+export function ReportSection({ report, hospitalName, today, saved, pick = null, className, honorific, uis = false }: Props) {
   const title = reportTitle(honorific)
   const [chosen, setKey] = useState<PickKey>(pick === null ? 'today' : 'pick')
   // 고른 기간 보고가 없어지면(빠른 단추로 돌아옴) 오늘 일일보고다. 화면은 들어오고 나갈 때 이 칸을 다시 그린다
@@ -213,7 +228,7 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
   if (report === null && pick === null) {
     return (
       <Section title={title} desc={saved ? DESC : undefined} className={className}>
-        <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
+        <BitOnlyNote uis={uis} />
       </Section>
     )
   }
@@ -240,7 +255,7 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
       {key === 'pick' && pick !== null && <PickBody pick={pick} />}
       {key !== 'pick' && report === null && (
         <>
-          <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
+          <BitOnlyNote uis={uis} />
           <Actions copyText={null} />
         </>
       )}
@@ -291,6 +306,7 @@ export type MonthlyReportProps = {
   bit?: BitSectionsShown // 비트 칸 답. 주지 않거나 null·'waiting'이면 몇 번까지 받나·1명당 매출 칸이 없다
   goal?: GoalRead<Goal> // 이번 달 목표(useStatsGoals). 주지 않으면 이번 달도 따로 읽는다
   revision?: number // 저장·[다시 읽기]·비트 매출 읽기가 끝날 때마다 는다(고른 달의 매출·목표를 다시 읽는다, AC-6108.5)
+  uis?: boolean // 의사랑 의원(uisarang-upload AC-8817.5). StatsSections가 넘기기만 하고 쓰는 것은 월간 보고서 의사랑 칸(TASK-9)이다. 주지 않으면 거짓
 }
 
 export function MonthlyReportSection({ today, hospitalName, wide, groups, calendar, bit, goal, revision = 0 }: MonthlyReportProps) {
