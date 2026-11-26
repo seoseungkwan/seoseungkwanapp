@@ -272,8 +272,9 @@ const lines = (term: string) => {
   return [...(dt?.nextElementSibling?.querySelectorAll('[data-line]') ?? [])].map(squash)
 }
 const ARRIVAL_NOTE = '도착은 구글에 보내지 않아요(설정 › 맞춤 방법).'
+// google-link AC-8549.2: '웹앱에는 흐린 칸으로 남아요' → '웹앱에도 그 색 칸으로 남아요'(notes-calendar 'week 취소 칸 · 바뀐 글')
 const COLOR_NOTE =
-  '[예약 취소]하면 구글 일정 색이 취소 색(토마토)으로 바뀌고, 웹앱에는 흐린 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(흑연)으로 바뀌어요. [지우기]는 둘 다에서 지워요.'
+  '[예약 취소]하면 구글 일정 색이 취소 색(토마토)으로 바뀌고, 웹앱에도 그 색 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(흑연)으로 바뀌어요. [지우기]는 둘 다에서 지워요.'
 
 describe('AC-8533.1: 자세히의 구글 캘린더 구역', () => {
   it('AC-8533.1: 구글에서 온 예약 — 꼬리표·제목 원문·색 출처·알아본 것·들어온 때·맞춤·고치기·취소 풀이·이 일정 열기가 notes-calendar detail 그대로다', () => {
@@ -334,7 +335,7 @@ describe('AC-8533.1: 자세히의 구글 캘린더 구역', () => {
   })
 
   it('AC-8533.1: 웹앱에서 옮긴 예약은 "원래 {11/18 (수) 15:00}" 그대로이고 색은 변경 색', () => {
-    drawLinked({ ...FROM_WEB, origDay: '2026-11-18', origStart: 900 }, GOOGLE, SETTINGS)
+    drawLinked({ ...FROM_WEB, origDay: '2026-11-18', origStart: 900, gMoved: true }, GOOGLE, SETTINGS) // google-link AC-8545.1: 옮기면 g_moved 참
     expect(dl().at(-1)).toEqual(['변경', '원래 11/18 (수) 15:00'])
     expect(Object.fromEntries(gdl())['색']).toBe('흑연 변경 색')
   })
@@ -357,5 +358,55 @@ describe('AC-8533.1: 자세히의 구글 캘린더 구역', () => {
     cleanup()
     drawLinked({ ...FROM_WEB, gEventId: null }, GOOGLE, SETTINGS)
     expect(gsec()).toBeNull()
+  })
+})
+
+// ── 2차 고침 (spec google-link REQ-8545·REQ-8549): 이은 병원의 '변경' = g_moved · 취소 칸은 취소 색 ──
+const bar = () => screen.getByRole('dialog').querySelector<HTMLElement>('[aria-hidden="true"].rounded-control')!
+
+describe("AC-8545.1: 이은 병원 자세히의 '변경' 줄은 g_moved만", () => {
+  it("AC-8545.1: 처음 자리가 있어도 g_moved가 거짓이면(구글에서 변경 색을 다른 색으로 바꿈) '변경' 줄이 없고 색도 변경 색이 아니다", () => {
+    drawLinked({ ...FROM_WEB, origDay: '2026-11-18', origStart: 900, gMoved: false }, GOOGLE, SETTINGS)
+    expect(dl().map(([dt]) => dt)).toEqual(['날짜', '시간', '메모'])
+    expect(Object.fromEntries(gdl())['색']).toBe('블루베리 설정의 시행자·종류 색')
+    expect(bar().style.backgroundColor).toBe('var(--cal-blueberry)')
+  })
+
+  it("AC-8545.1: g_moved가 참이고 처음 자리가 있으면 '원래 …', 처음 자리가 없으면 '구글에서 변경 색으로 바뀜'", () => {
+    drawLinked({ ...FROM_WEB, origDay: '2026-11-18', origStart: 900, gMoved: true }, GOOGLE, SETTINGS)
+    expect(dl().at(-1)).toEqual(['변경', '원래 11/18 (수) 15:00'])
+    cleanup()
+    drawLinked({ ...FROM_WEB, gMoved: true }, GOOGLE, SETTINGS)
+    expect(dl().at(-1)).toEqual(['변경', '구글에서 변경 색으로 바뀜 처음 시간은 몰라요'])
+  })
+
+  it("AC-8545.3: 잇지 않은 병원은 지금 그대로 처음 자리가 있으면 '원래 …'(g_moved와 상관없이), g_moved만으로는 줄이 없다", () => {
+    draw({ ...DETAIL, gMoved: false })
+    expect(dl().at(-1)).toEqual(['변경', '원래 11/18 (수) 15:00'])
+    cleanup()
+    draw({ ...DETAIL, origDay: null, origStart: null, gMoved: true })
+    expect(dl().map(([dt]) => dt)).toEqual(['날짜', '시간', '메모'])
+  })
+})
+
+describe('AC-8549: 이은 병원 자세히의 취소 — 진한 취소 색 막대 · 도착 줄 글', () => {
+  it("AC-8549.2: 이은 병원의 취소한 예약 도착 줄은 '칸은 취소 색으로 남아요'", () => {
+    drawLinked({ ...FROM_GOOGLE, status: 'cancel' })
+    expect(screen.getByText('취소한 예약')).toBeTruthy()
+    expect(screen.getByText('칸은 취소 색으로 남아요')).toBeTruthy()
+    expect(screen.queryByText('칸은 흐리게 남아요')).toBeNull()
+  })
+
+  it('AC-8549.1: 자세히의 색 막대는 흐림 없는 취소 색(토마토)이다', () => {
+    drawLinked({ ...FROM_GOOGLE, status: 'cancel' })
+    expect(bar().style.backgroundColor).toBe('var(--cal-tomato)')
+    expect(bar().className).not.toMatch(/opacity/)
+    expect(bar().style.opacity).toBe('')
+  })
+
+  it("AC-8549.3: 잇지 않은 병원은 지금 그대로 '칸은 흐리게 남아요'", () => {
+    draw({ ...DETAIL, status: 'cancel' })
+    expect(screen.getByText('칸은 흐리게 남아요')).toBeTruthy()
+    expect(screen.queryByText('칸은 취소 색으로 남아요')).toBeNull()
   })
 })

@@ -1108,4 +1108,82 @@ describe('google-link 예약 탭', () => {
     await waitFor(() => expect(setArrivalProgress).toHaveBeenCalledWith(CLIENT, '2025-11-16', true))
     expect(await screen.findByText('지난 예약 도착을 다 채웠어요.')).toBeTruthy()
   })
+
+  // ── 2차 고침 (REQ-8545·REQ-8549): 이은 병원의 '변경' = g_moved · 취소 칸은 취소 색 ──
+  it("AC-8549.2: 이은 병원에서 [예약 취소]하면 알림이 '예약을 취소했어요. 칸은 취소 색으로 남아요.'다", async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, gEventId: PAIRED, gFrom: 'web' } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '예약 취소' }))
+    expect(await screen.findByText('예약을 취소했어요. 칸은 취소 색으로 남아요.')).toBeTruthy()
+    expect(screen.queryByText('예약을 취소했어요. 칸은 흐리게 남아요.')).toBeNull()
+  })
+
+  it("AC-8549.3: 잇지 않은 병원은 지금 그대로 '예약을 취소했어요. 칸은 흐리게 남아요.'다", async () => {
+    await open()
+    await waitFor(() => expect(loadGcalView).toHaveBeenCalledWith(CLIENT))
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '예약 취소' }))
+    expect(await screen.findByText('예약을 취소했어요. 칸은 흐리게 남아요.')).toBeTruthy()
+  })
+
+  it('AC-8549.1: 이은 병원 안내 줄의 취소 색 점은 흐림 없는 취소 색(토마토)이고, 취소 칸도 흐림 없이 토마토로 꽉 채운다', async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    const dots = [...document.querySelectorAll<HTMLElement>('[data-swatch="tomato"]')]
+    expect(dots.length).toBeGreaterThan(0)
+    for (const dot of dots) {
+      expect(dot.style.backgroundColor).toBe('var(--cal-tomato)')
+      expect(dot.className).not.toMatch(/opacity/)
+    }
+    const cancel = block(/^18842 문○○/)
+    expect(cancel.className).toContain('bg-cal-tomato')
+    expect(cancel.className).not.toMatch(/opacity-/)
+  })
+
+  it("AC-8545.1: 이은 병원은 처음 자리만 있고 g_moved가 거짓인 예약을 '변경'으로 그리거나 세지 않는다(칸·합계 줄)", async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    expect(within(block(/^30117 송○○ 주사 \(원\)/)).queryByText('변경')).toBeNull()
+    expect(items(screen.getByRole('button', { name: /이 주 합계/ }))).toEqual(['예약 4', '취소 1 (25.0%)', '변경 0 (0.0%)', '안 옴 1 (25.0%)'])
+  })
+
+  it("AC-8545.1: 이은 병원은 g_moved 참인 예약만 칸 '변경'·합계 줄·월 칸 '변경 N'으로 센다", async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a4' ? { ...a, gMoved: true } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    expect(within(block(/^30117 송○○ 주사 \(원\)/)).getByText('변경')).toBeTruthy()
+    expect(items(screen.getByRole('button', { name: /이 주 합계/ }))[2]).toBe('변경 1 (25.0%)')
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    const month = await screen.findByRole('region', { name: '월 보기' })
+    expect(within(month).getByRole('button', { name: /^11월 19일/ }).textContent).toContain('변경 1')
+  })
+
+  it("AC-8545.1: 이은 병원 월 보기는 처음 자리만 있는 예약(g_moved 거짓)을 '변경 N'에 세지 않는다", async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    const month = await screen.findByRole('region', { name: '월 보기' })
+    expect(within(month).getByRole('button', { name: /^11월 19일/ }).textContent).not.toContain('변경')
+  })
+
+  it('AC-8545.2: 이은 병원에서 [고치기]로 시작을 옮겨 저장하면 같은 쓰기에 g_moved 참을 싣는다', async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, gEventId: PAIRED, gFrom: 'web' } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '고치기' }))
+    const panel = dialog('예약 고치기')
+    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '1000' } })
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateAppt).mock.calls[0]![2]).toEqual(expect.objectContaining({ start: 600, gWait: 'move', gMoved: true }))
+  })
 })

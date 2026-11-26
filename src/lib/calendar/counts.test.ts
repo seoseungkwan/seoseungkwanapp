@@ -186,6 +186,30 @@ describe('AC-5907.1 rateSummary·monthTrend·ratePct: 취소·변경·안 옴 �
     expect(cells.map((c) => c.moved)).toEqual([2, 0])
   })
 
+  it("AC-8545.1: 구글과 이은 병원(linked)은 g_moved만 '변경'으로 센다 — 처음 자리만 있고 g_moved 거짓이면 변경 아님(요약·시행자별·종류별·월 칸)", () => {
+    const rows = [
+      row('2026-11-02', 'dosu', { origDay: '2026-11-01' }), // 구글에서 변경 색을 다른 색으로 바꿈
+      row('2026-11-02', 'jabo', { gMoved: true, origDay: '2026-11-01' }),
+      row('2026-11-03', 'dosu', { gMoved: true }),
+      row('2026-11-03', 'dosu', { gMoved: true, status: 'cancel' }),
+    ]
+    const s = rateSummary(rows, true)
+    expect({ total: s.total, cancel: s.cancel, moved: s.moved, noshow: s.noshow }).toEqual({ total: 4, cancel: 1, moved: 3, noshow: 0 })
+    expect(s.byKind).toEqual([
+      { id: 'dosu', label: '도수', total: 3, cancel: 1, moved: 2, noshow: 0 },
+      { id: 'jabo', label: '자보도수', total: 1, cancel: 0, moved: 1, noshow: 0 },
+    ])
+    expect(monthCells(rows, [], '2026-11-02', '2026-11-03', '2026-11-20', true).map((c) => c.moved)).toEqual([1, 1])
+  })
+
+  it('AC-8545.3: 잇지 않은 병원(linked 기본 거짓)은 지금 그대로 처음 자리도 변경으로 센다(통계 탭·월간 보고·의원 비교는 기본값)', () => {
+    const rows = [row('2026-11-02', 'dosu', { origDay: '2026-11-01' }), row('2026-11-02', 'dosu', { gMoved: true }), row('2026-11-02', 'dosu')]
+    expect(rateSummary(rows).moved).toBe(2)
+    expect(rateSummary(rows, false).moved).toBe(2)
+    expect(monthCells(rows, [], '2026-11-02', '2026-11-02', '2026-11-20').map((c) => c.moved)).toEqual([2])
+    expect(monthCells(rows, [], '2026-11-02', '2026-11-02', '2026-11-20', false).map((c) => c.moved)).toEqual([2])
+  })
+
   it("AC-8503.3: 시행자 없는 예약(시행자 null)은 시행자별 표에서 '시행자 없음' 한 줄(id NO_STAFF_ID)로 묶인다", () => {
     const rows = [row('2026-11-02', 'dosu', { staffId: null }), row('2026-11-03', 'dosu', { staffId: null, status: 'cancel' }), row('2026-11-03', 'dosu')]
     expect(NO_STAFF_LABEL).toBe('시행자 없음')

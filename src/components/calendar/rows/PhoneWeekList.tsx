@@ -9,14 +9,15 @@ import { shownStatus } from '@/lib/calendar/rules'
 import type { BitGhost, CalAllDay, ShownStatus } from '@/lib/calendar/shapes'
 import type { CalAppt, CalSettings } from '@/types/calendar'
 import { apptColor, CAL_TONES, type CalPaint } from '../colors'
-import { apptLabel, dateNum, dayChips, dayLabel, ghostLabel, hm, isMoved, linkedApptLabel, MovedMark, WaitMark, weekdayName } from './parts'
+import { apptLabel, dateNum, dayChips, dayLabel, ghostLabel, hm, isMoved, kindBits, linkedApptLabel, MovedMark, WaitMark, weekdayName } from './parts'
 
 // 폰 주 보기(768px 미만, spec clinic-calendar AC-5905.8·AC-5906.2, 시안 ?s=phone-week·기본값 7번).
 // 날짜별 목록: 날짜 줄(요약) + 종일 칩 + 펼치면 그날 예약 줄. 처음에는 오늘만 펼친다. 울타리 안 부품: props로만 받고 누름은 콜백으로만 넘긴다.
 // 받은 휴진일(closedDates, spec clinic-profile AC-6603.3)은 날짜 줄에 '휴진' + 카드 회색. 펼치기·예약 줄·+ 종일은 그대로다.
 // 반차 휴무 칩은 같은 모양에 글만 '오전 휴무'·'오후 휴무'(parts allDayText, spec staff AC-7616.1).
 // 구글과 이은 병원(google: RowsGoogle, spec google-link AC-8532.2·AC-8532.3): 지금 목록 모양 그대로 색 띠만 apptPaint, '변경' 꼬리표는 gMoved에도,
-// 못 보낸 예약은 주황 시계, 종일 칩은 예약표와 같다(parts dayChips). 고쳐야 할 구글 일정은 이 목록에 넣지 않는다(띠의 고쳐야 할 판에서 본다)
+// 못 보낸 예약은 주황 시계, 종일 칩은 예약표와 같다(parts dayChips). 고쳐야 할 구글 일정은 이 목록에 넣지 않는다(띠의 고쳐야 할 판에서 본다).
+// 이은 병원의 '변경' 꼬리표는 g_moved만(google-link AC-8545.1). 종류 줄은 종류 이름에 든 시행자 표시를 다시 적지 않는다(parts kindBits, AC-8548.2)
 
 export type PhoneWeekListProps = {
   days: readonly string[]
@@ -203,6 +204,7 @@ function ApptRow({
   const cancel = shown === 'cancel'
   const chip = STATUS_CHIP[shown]
   const label = google ? linkedApptLabel(appt, shown, google.waiting) : apptLabel(appt, shown)
+  const { mark } = kindBits(appt)
   return (
     <button type="button" aria-label={label} title={label} onClick={() => onOpen(appt.id)} className={ROW}>
       <span className={`w-11 shrink-0 text-body leading-4.5 font-semibold tabular-nums ${cancel ? 'text-muted line-through' : 'text-ink'}`}>
@@ -222,7 +224,7 @@ function ApptRow({
           <span className={cancel ? 'line-through' : ''}>{appt.name}</span>
         </b>
         <small className="block truncate text-caption text-ink-2">
-          {appt.staffId === null ? appt.kindName : `${appt.kindName} (${appt.staffMark}) ${appt.staffName}`}
+          {appt.staffId === null ? appt.kindName : `${appt.kindName}${mark === null ? '' : ` (${mark})`} ${appt.staffName}`}
           {appt.memo ? ` · ${appt.memo}` : ''}
         </small>
       </span>

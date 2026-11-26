@@ -80,9 +80,21 @@ describe('AC-8521.2 apptPaint — 칸 색 차례: 취소 → 변경 → 구글�
     })
   })
 
-  it('AC-8521.2: ② 변경(처음 자리 있음·g_moved)은 변경 색', () => {
-    expect(apptPaint(appt({ origDay: '2026-11-25', origStart: 900 }), CTX)).toEqual({ key: 'graphite', colorId: '8', why: 'change' })
+  it('AC-8521.2: ② 변경(g_moved)은 변경 색', () => {
+    // google-link AC-8545.1: 이은 병원의 '변경'은 g_moved만 본다 — 웹앱에서 옮긴 예에 gMoved: true(옮길 때 같은 쓰기에 실음)
+    expect(apptPaint(appt({ origDay: '2026-11-25', origStart: 900, gMoved: true }), CTX)).toEqual({ key: 'graphite', colorId: '8', why: 'change' })
     expect(apptPaint(appt({ gMoved: true, colorFrom: 'google', gColor: 'tangerine' }), CTX)).toEqual({ key: 'graphite', colorId: '8', why: 'change' })
+  })
+
+  it('AC-8545.1: 처음 자리(orig_day)가 있어도 g_moved가 거짓이면(구글에서 변경 색을 다른 색으로 바꿈) 변경 색이 아니다', () => {
+    expect(apptPaint(appt({ origDay: '2026-11-25', origStart: 900 }), CTX)).toEqual({ key: 'lavender', colorId: '1', why: 'setting' })
+    expect(apptPaint(appt({ origDay: '2026-11-25', origStart: 900, colorFrom: 'google', gColor: 'tangerine' }), CTX)).toEqual({
+      key: 'tangerine',
+      colorId: '6',
+      why: 'google',
+    })
+    expect(apptPaint(appt({ origDay: '2026-11-25', origStart: null }), CTX).why).toBe('setting')
+    expect(apptPaint(appt({ origDay: null, origStart: 900 }), CTX).why).toBe('setting')
   })
 
   it('AC-8521.2: ③ 구글에서 온 색은 그 일정 색, 색이 없으면 캘린더 기본 색(colorId 없음)', () => {

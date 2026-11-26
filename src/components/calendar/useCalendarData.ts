@@ -152,7 +152,7 @@ export function useCalendarData(period: CalendarPeriod): CalendarData {
 /** 저장 잇기가 보는 연결: 이은 날·맞춤 방법 도착. 잇지 않은 병원은 null */
 export type GoogleSaveLink = { linkedOn: string; arrival: 'off' | 'title' } | null
 
-type GoogleWrite = Partial<Pick<CalAppt, 'gEventId' | 'gFrom' | 'gWait' | 'gKeepTitle' | 'colorFrom'>>
+type GoogleWrite = Partial<Pick<CalAppt, 'gEventId' | 'gFrom' | 'gWait' | 'gKeepTitle' | 'colorFrom' | 'gMoved'>>
 
 const onOrAfter = (day: string, from: string) => compareYmd(day, from) >= 0
 // 못 보낸 일이 겹치면 큰 일을 남긴다(통째 보내기가 작은 일을 덮는다). 같은 크기면 새 일
@@ -175,7 +175,9 @@ export function googleMemo(link: GoogleSaveLink, day: string): { gEventId?: stri
 /**
  * 고치기·옮기기·취소·되돌리기·도착: 바뀐 칸으로 g_wait를 정한다. 날짜·시작 → move, 칸(이름·차트번호·길이·메모·시행자·종류) → edit(+ 구글 제목을 두던
  * 예약은 g_keep_title false, 구글 색이던 예약의 시행자·종류를 바꾸면 color_from app), 취소 → cancel, 되돌리기 → uncancel,
- * 도착(왔음·안 옴·자동) → 맞춤 방법이 'title'일 때만 edit. 짝 없는 예약이 이은 날 이후면 새 예약처럼 보낸다
+ * 도착(왔음·안 옴·자동) → 맞춤 방법이 'title'일 때만 edit. 짝 없는 예약이 이은 날 이후면 새 예약처럼 보낸다.
+ * 날짜·시작을 옮기면 모든 갈래(짝 있음 · 이은 날 뒤 새 짝 · 이은 날 앞이나 짝 없음)에 g_moved를 싣는다: 원래 자리(orig_day·orig_start)로
+ * 되돌리면 거짓, 아니면 참(이은 병원의 '변경' = g_moved, google-link AC-8545.2)
  */
 export function googlePatch(link: GoogleSaveLink, before: CalAppt, patch: Partial<ApptDraft>): GoogleWrite {
   if (link === null) return {}
@@ -193,8 +195,10 @@ export function googlePatch(link: GoogleSaveLink, before: CalAppt, patch: Partia
   }
   if (wait === null) return {}
   const day = patch.day ?? before.day
-  if (before.gEventId === null) return onOrAfter(day, link.linkedOn) ? { gEventId: newGoogleEventId(), gFrom: 'web', gWait: 'new' } : {}
-  const out: GoogleWrite = { gWait: merge(before.gWait, wait) }
+  const start = patch.start ?? before.start
+  const movedFlag: GoogleWrite = moved ? { gMoved: !(day === before.origDay && start === before.origStart) } : {}
+  if (before.gEventId === null) return onOrAfter(day, link.linkedOn) ? { gEventId: newGoogleEventId(), gFrom: 'web', gWait: 'new', ...movedFlag } : movedFlag
+  const out: GoogleWrite = { gWait: merge(before.gWait, wait), ...movedFlag }
   if (fields.length > 0 && before.gKeepTitle) out.gKeepTitle = false
   if ((fields.includes('staffId') || fields.includes('kindId')) && before.colorFrom === 'google') out.colorFrom = 'app'
   return out

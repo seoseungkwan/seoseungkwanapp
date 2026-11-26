@@ -656,7 +656,8 @@ const CTX: RowsGoogle['ctx'] = {
 const linked = (over: Partial<RowsGoogle> = {}): RowsGoogle => ({ ctx: CTX, fixes: [], waiting: new Set<string>(), ...over })
 
 const G_APPTS: CalAppt[] = [
-  ...APPTS,
+  // google-link AC-8545.1: 이은 병원에서 웹앱으로 옮긴 예약은 같은 쓰기에 g_moved 참을 싣는다
+  ...APPTS.map((a) => (a.id === 'a-moved' ? { ...a, gMoved: true } : a)),
   // 구글에서 귤로 칠한 일정((가) 블루베리가 아니라 귤), 색을 안 고른 일정(캘린더 기본 색), 구글에서 흑연(변경 색)으로 바꾼 일정
   appt({ id: 'g-orange', day: '2026-11-19', start: 900, chart: '27750', name: '정모○', colorFrom: 'google', gColor: 'tangerine', gEventId: 'ev-1' }),
   appt({ id: 'g-plain', day: '2026-11-19', start: 660, chart: '84560', name: '윤모○', colorFrom: 'google', gColor: null, gEventId: 'ev-2' }),
@@ -685,12 +686,12 @@ describe('AC-8532.2: 칸 색은 구글 색 차례로 꽉 채우고 글자색은 
     expect(block(/^84560 윤모○/).className).toContain('text-cal-default-on')
   })
 
-  it('AC-8532.2: 취소한 예약은 취소 색(토마토)으로 꽉 채우고 흐림·가운데 줄·"취소" 표시다(흰 바탕이 아니다)', () => {
+  it('AC-8532.2·AC-8549.1: 취소한 예약은 취소 색(토마토)으로 꽉 채우고 흐림 없이 가운데 줄·"취소" 표시다(흰 바탕이 아니다)', () => {
     renderGrid({ appts: G_APPTS, google: linked() })
     const cancel = block(/^18842 문○○/)
     expect(cancel.className).toContain('bg-cal-tomato')
     expect(cancel.className).toContain('text-cal-tomato-on')
-    expect(cancel.className).toContain('opacity-55')
+    expect(cancel.className).not.toMatch(/opacity-/) // google-link AC-8549.1: 흐리게 칠하지 않는다
     expect(cancel.className).not.toContain('bg-surface')
     expect(within(cancel).getByText('문○○').className).toContain('line-through')
     expect(within(cancel).getByTitle('취소').textContent).toBe('취소')
@@ -903,5 +904,110 @@ describe('AC-8532.5: 시행자 없는 지난 예약', () => {
     expect(past.getAttribute('aria-label')).toBe('73450 한예○ 도수 10:00–10:30 30분')
     expect(past.className).toContain('bg-cal-banana')
     expect(past.className).toContain('text-cal-banana-on')
+  })
+})
+
+// ---------- google-link 2차 고침(REQ-8545·8548·8549): '변경' = g_moved · 칸 글 겹침 빼기 · 취소 칸 진한 색 ----------
+
+describe("AC-8545.1: 이은 병원의 '변경' 표시는 g_moved만 본다", () => {
+  it("AC-8545.1: 처음 자리(orig_day)가 있어도 g_moved가 거짓이면 변경 색·'변경' 꼬리표·이름표 '· 변경 (원래 …)'이 없다", () => {
+    renderGrid({ appts: APPTS, google: linked() })
+    const moved = block(/^10231 김○○/)
+    expect(moved.className).toContain('bg-cal-blueberry')
+    expect(moved.className).not.toContain('bg-cal-graphite')
+    expect(within(moved).queryByTitle('날짜나 시작 시간을 옮김')).toBeNull()
+    expect(moved.getAttribute('aria-label')).toBe('10231 김○○ 도수 (가) 09:30–10:00 30분 · 왔음')
+  })
+
+  it("AC-8545.1: g_moved가 참이고 처음 자리가 있으면 이름표 끝이 '· 변경 (원래 {M/D (요일) HH:MM})'", () => {
+    renderGrid({ appts: G_APPTS, google: linked() })
+    expect(block(/^10231 김○○/).getAttribute('aria-label')).toBe('10231 김○○ 도수 (가) 09:30–10:00 30분 · 왔음 · 변경 (원래 11/18 (수) 15:00)')
+  })
+
+  it("AC-8545.3: 잇지 않은 병원은 지금 그대로 처음 자리가 있으면 '변경'(g_moved와 상관없이)", () => {
+    renderGrid({ appts: APPTS })
+    const moved = block(/^10231 김○○/)
+    expect(within(moved).getByTitle('날짜나 시작 시간을 옮김').textContent).toBe('변경')
+    expect(moved.getAttribute('aria-label')).toBe('10231 김○○ 도수 (가) 09:30–10:00 30분 · 왔음 · 변경 (원래 11/18 (수) 15:00)')
+  })
+})
+
+// 종류 이름에 길이·시행자 표시가 든 병원('이 병원 꼴' — design.md 21-1). 이름·차트번호는 지어낸 값
+const OWN = (over: Partial<CalAppt>) =>
+  appt({ id: 'own', day: TODAY, start: 600, chart: '1234', name: '홍길동', staffId: 'ga', staffName: '정호연', staffMark: '호', kindId: 'dosu30ho', kindName: '도수 30분(호)', ...over })
+
+describe('AC-8548.2: 칸 글은 종류 이름에 든 시행자 표시·길이를 겹쳐 적지 않는다', () => {
+  it('AC-8548.2: `도수 30분(호)`·(호)·30분 → 칸 `1234 홍길동 도수 30분(호)`, 이름표에도 표시·길이를 다시 적지 않는다', () => {
+    renderGrid({ appts: [OWN({})] })
+    const cell = block(/^1234 홍길동/)
+    expect(text(cell)).toBe('1234 홍길동 도수 30분(호)')
+    expect(cell.getAttribute('aria-label')).toBe('1234 홍길동 도수 30분(호) 10:00–10:30')
+  })
+
+  it('AC-8548.2: 시행자가 (원)이면 `1234 홍길동 도수 30분(호) (원)`, 길이가 이름과 다르면(40분) 끝 길이는 적는다', () => {
+    renderGrid({ appts: [OWN({ staffName: '박지원', staffMark: '원' })] })
+    expect(text(block(/^1234 홍길동/))).toBe('1234 홍길동 도수 30분(호) (원)')
+    cleanup()
+    renderGrid({ appts: [OWN({ staffName: '박지원', staffMark: '원', len: 40 })] })
+    expect(text(block(/^1234 홍길동/))).toBe('1234 홍길동 도수 30분(호) (원) 40분')
+    expect(block(/^1234 홍길동/).getAttribute('aria-label')).toBe('1234 홍길동 도수 30분(호) (원) 10:00–10:40 40분')
+  })
+
+  it('AC-8548.2: 이은 병원 이름표도 같고, 일 보기 둘째 줄은 `10:00–10:30 · 메모`(길이를 다시 적지 않음)', () => {
+    renderGrid({ appts: [OWN({ memo: '자보' })], google: linked() })
+    expect(block(/^1234 홍길동/).getAttribute('aria-label')).toBe('1234 홍길동 도수 30분(호) 10:00–10:30')
+    cleanup()
+    renderGrid({ days: [TODAY], appts: [OWN({ memo: '자보' })] })
+    const day = block(/^1234 홍길동/)
+    expect(within(day).getByText('10:00–10:30')).toBeTruthy()
+    expect(within(day).queryByText('· 30분')).toBeNull()
+    expect(within(day).getByText('· 자보')).toBeTruthy()
+    expect(text(day)).not.toContain('30분 ·')
+  })
+
+  it('AC-8548.3: 지금 기본 종류(이름에 길이·표시 없음)는 칸 글이 지금과 같다(`1234 홍길동 도수 (호) 30분`)', () => {
+    renderGrid({ appts: [OWN({ kindId: 'dosu', kindName: '도수' })] })
+    expect(text(block(/^1234 홍길동/))).toBe('1234 홍길동 도수 (호) 30분')
+    expect(block(/^1234 홍길동/).getAttribute('aria-label')).toBe('1234 홍길동 도수 (호) 10:00–10:30 30분')
+    cleanup()
+    renderGrid({ days: [TODAY], appts: [OWN({ kindId: 'dosu', kindName: '도수', memo: '자보' })] })
+    const day = block(/^1234 홍길동/)
+    expect(within(day).getByText('10:00–10:30')).toBeTruthy()
+    expect(within(day).getByText('· 30분')).toBeTruthy()
+    expect(within(day).getByText('· 자보')).toBeTruthy()
+  })
+})
+
+describe('AC-8549.1: 이은 병원의 취소 칸은 진한 취소 색(흐림 없음) + 글자색 규칙 + 가운데 줄 + 흰 바탕 "취소" 표시', () => {
+  it('AC-8549.1: 토마토 취소 칸은 흰 글자색(text-cal-tomato-on)·가운데 줄이고 "취소" 표시는 흰 바탕(bg-surface) 빨강 글자', () => {
+    renderGrid({ appts: G_APPTS, google: linked() })
+    const cancel = block(/^18842 문○○/)
+    expect(cancel.className).toContain('bg-cal-tomato')
+    expect(cancel.className).toContain('text-cal-tomato-on')
+    expect(cancel.className).not.toMatch(/opacity-/)
+    for (const word of ['18842', '문○○']) expect(within(cancel).getByText(word).className).toContain('line-through')
+    const mark = within(cancel).getByTitle('취소')
+    expect(mark.className).toContain('bg-surface')
+    expect(mark.className).toContain('text-negative')
+    expect(mark.className).not.toContain('bg-line')
+  })
+
+  it('AC-8549.1: 밝은 취소 색(바나나)으로 바꾼 병원은 그 색의 글자색(text-cal-banana-on, 검정)이다', () => {
+    renderGrid({ appts: G_APPTS, google: linked({ ctx: { ...CTX, look: { ...CTX.look, cancel: 'banana' } } }) })
+    const cancel = block(/^18842 문○○/)
+    expect(cancel.className).toContain('bg-cal-banana')
+    expect(cancel.className).toContain('text-cal-banana-on')
+    expect(cancel.className).not.toMatch(/opacity-/)
+  })
+
+  it('AC-8549.3: 잇지 않은 병원의 취소 칸은 지금 그대로 흰 바탕·흐린 글·가운데 줄, "취소" 표시는 회색', () => {
+    renderGrid({ appts: APPTS })
+    const cancel = block(/^18842 문○○/)
+    expect(cancel.className).toContain('bg-surface')
+    expect(cancel.className).toContain('text-muted')
+    expect(within(cancel).getByText('문○○').className).toContain('line-through')
+    const mark = within(cancel).getByTitle('취소')
+    expect(mark.className).toContain('bg-line')
+    expect(mark.className).not.toContain('bg-surface')
   })
 })
