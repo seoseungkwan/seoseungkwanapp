@@ -6,8 +6,8 @@ import { ViewingProvider, type Viewing } from '@/components/shell/viewing'
 import { EXTENSION_ID } from '@/lib/bridge/extensionId'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
-import { enterBackground } from './bitLane'
-import { useBridge } from './useBridge'
+import { borrowScreenCall, enterBackground } from './bitLane'
+import { INPUT_QUIET_MS, useBridge } from './useBridge'
 
 // 화면이 쓰는 통로 훅 (design.md 6-1, REQ-006). 진짜 connectScreenBridge·connectBridge에 가짜 chrome.runtime(Port)만 넣는다.
 // "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.4.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.3.0)
@@ -384,5 +384,137 @@ describe('useBridge: 비트 통로 차례 (admin-view AC-8021.8)', () => {
     act(() => release())
     expect(fake.ports).toHaveLength(1)
     unmount()
+  })
+})
+
+// ── google-link: 화면 통로 빌려주기(AC-8513.4, design.md 11절) ──
+// ready일 때 화면이 쥔 통로의 call을 bitLane에 빌려주고(그 화면이 보내는 중인 요청·스트림이 있으면 busy), 닫거나 ready가 아니게 되면 거둔다.
+// 빌린 부르기는 화면의 call·stream을 거치지 않는다(화면 busy로 세지 않음). 수납 명령 답은 도우미 오류 답으로 돌려 본다
+describe('useBridge: 화면 통로 빌려주기 (google-link AC-8513.4)', () => {
+  const ready = async () => {
+    const fake = fakeChrome()
+    const hook = renderHook(() => useBridge())
+    await waitFor(() => expect(fake.port().sent).toHaveLength(1))
+    helloOk(fake.port())
+    await waitFor(() => expect(hook.result.current.state).toBe('ready'))
+    return { fake, ...hook }
+  }
+
+  it('AC-8513.4: ready 전(hello 기다림)에는 빌려주지 않고, ready가 되면 그 화면 hello의 판 글자와 함께 빌려준다', async () => {
+    const fake = fakeChrome()
+    const { result } = renderHook(() => useBridge())
+    await waitFor(() => expect(fake.port().sent).toHaveLength(1))
+    expect(borrowScreenCall()).toBeNull()
+    helloOk(fake.port())
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(borrowScreenCall()).toMatchObject({ helperVersion: '0.4.0', extensionVersion: '0.1.0' })
+  })
+
+  it('AC-8513.4: 빌린 call은 화면이 쥔 같은 Port로 sheet.* 를 보내고 도우미 답(오류 번호)을 그대로 돌려준다', async () => {
+    const { fake } = await ready()
+    const borrowed = borrowScreenCall()!
+    let reply: Promise<unknown> = Promise.resolve()
+    act(() => {
+      reply = borrowed.call('sheet.status', {}).catch((e: unknown) => e)
+    })
+    expect(fake.ports).toHaveLength(1)
+    expect(fake.port().last()).toMatchObject({ cmd: 'sheet.status', args: {} })
+    answer(fake.port(), { type: 'error', code: 'E-GSHEET-SECRET' })
+    const error = await reply
+    expect(error).toBeInstanceOf(BridgeError)
+    expect((error as BridgeError).code).toBe('E-GSHEET-SECRET')
+  })
+
+  it('AC-8513.4: 청구 화면 스트림(claim.month)을 기다리는 동안에는 빌리지 않고, 끝나면 다시 빌려준다', async () => {
+    const { fake, result } = await ready()
+    let streaming: Promise<unknown> = Promise.resolve()
+    act(() => {
+      streaming = result.current.stream('claim.month', { from: '2026-11-01', to: '2026-11-26' })
+    })
+    expect(fake.port().last()).toMatchObject({ cmd: 'claim.month' })
+    expect(borrowScreenCall()).toBeNull()
+    answer(fake.port(), { type: 'end', count: 0, bytes: 0, sha256: '0'.repeat(64) })
+    await streaming
+    expect(borrowScreenCall()).not.toBeNull()
+  })
+
+  it('AC-8513.4: 화면 call(bit.check)을 기다리는 동안 빌린 call은 화면 Port로 보내지 않고 E-BRIDGE-BUSY로 끝난다', async () => {
+    const { fake, result } = await ready()
+    const borrowed = borrowScreenCall()!
+    let checking: Promise<unknown> = Promise.resolve()
+    act(() => {
+      checking = result.current.call('bit.check', {}).catch((e: unknown) => e)
+    })
+    const sent = fake.port().sent.length
+    const error = await borrowed.call('sheet.fill', { day: '2026-11-26', mode: 'fillEmpty', auto: true, settings: {} }).catch((e: unknown) => e)
+    expect((error as { code?: string }).code).toBe('E-BRIDGE-BUSY')
+    expect(fake.port().sent).toHaveLength(sent)
+    answer(fake.port(), { type: 'error', code: 'E-BIT-NOT-FOUND' })
+    await checking
+    expect(borrowScreenCall()).not.toBeNull()
+  })
+
+  it('AC-8513.4: 빌린 부르기가 기다리는 동안은 화면 busy로 세지 않는다(넣기의 다음 부르기가 막히지 않게)', async () => {
+    const { fake } = await ready()
+    act(() => {
+      void borrowScreenCall()!.call('sheet.status', {}).catch(() => undefined)
+    })
+    expect(fake.port().last()).toMatchObject({ cmd: 'sheet.status' })
+    expect(borrowScreenCall()).not.toBeNull()
+  })
+
+  it('AC-8513.4: Worker가 보낸 청구 입력(bit.input) 진행 중에는 빌리지 않고, 다 넣었거나 진행 숫자가 오래 오지 않으면 다시 빌려준다', async () => {
+    const fake = fakeChrome()
+    const worker = { postMessage: vi.fn() }
+    const { result } = renderHook(() => useBridge({ worker }))
+    await waitFor(() => expect(worker.postMessage).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(fake.port().sent).toHaveLength(1))
+    helloOk(fake.port())
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    const workerPort = worker.postMessage.mock.calls[0][1][0] as MessagePort
+    // Worker가 통로 포트로 bit.input을 보낸다(글자는 지어낸 빈 묶음)
+    workerPort.postMessage({ type: 'send', ticket: 1, cmd: 'bit.input', payload: '{"items":[]}' })
+    await waitFor(() => expect(fake.port().last()).toMatchObject({ cmd: 'bit.input' }))
+    const id = fake.port().last().id as string
+    act(() => fake.port().reply({ v: 1, id, type: 'progress', done: 1, total: 3 }))
+    expect(borrowScreenCall()).toBeNull()
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + INPUT_QUIET_MS + 1)
+    expect(borrowScreenCall()).not.toBeNull()
+    clock.mockReturnValue(now)
+    act(() => fake.port().reply({ v: 1, id, type: 'progress', done: 2, total: 3 }))
+    expect(borrowScreenCall()).toBeNull()
+    act(() => fake.port().reply({ v: 1, id, type: 'progress', done: 3, total: 3 }))
+    expect(borrowScreenCall()).not.toBeNull()
+    clock.mockRestore()
+    workerPort.close()
+  })
+
+  it('AC-8513.4: 화면을 닫으면(unmount) 거두고, 이미 빌린 call은 E-BRIDGE-BUSY로 끝난다', async () => {
+    const { unmount } = await ready()
+    const borrowed = borrowScreenCall()!
+    unmount()
+    expect(borrowScreenCall()).toBeNull()
+    const error = await borrowed.call('sheet.status', {}).catch((e: unknown) => e)
+    expect((error as { code?: string }).code).toBe('E-BRIDGE-BUSY')
+  })
+
+  it('AC-8513.4: 끊기면(disconnected)·다시 확인(retry) 중에는 거두고, 다시 ready가 되면 빌려준다', async () => {
+    const { fake, result } = await ready()
+    act(() => result.current.retry())
+    expect(borrowScreenCall()).toBeNull()
+    helloOk(fake.port())
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    expect(borrowScreenCall()).not.toBeNull()
+    act(() => fake.port().fireDisconnect())
+    await waitFor(() => expect(result.current.state).toBe('disconnected'))
+    expect(borrowScreenCall()).toBeNull()
+  })
+
+  it('AC-8513.4: 보는 중이면 빌려주지 않는다', async () => {
+    countedChrome()
+    renderHook(() => useBridge(), { wrapper: inView(VIEWING) })
+    await act(async () => {})
+    expect(borrowScreenCall()).toBeNull()
   })
 })

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useReadOnly } from '@/components/shell/viewing'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { connectScreenBridge, type ScreenBridge, type WorkerLike } from '@/lib/bridge/workerSink'
-import type { BridgeState, ChromeRuntimeLike, HelloResult } from '@/types/bridge'
-import { enterScreen, leaveScreen } from './bitLane'
+import type { BridgeState, ChromeRuntimeLike, HelloResult, Progress, SmallCommand } from '@/types/bridge'
+import { enterScreen, leaveScreen, lendScreenCall } from './bitLane'
 
 // 화면이 쓰는 통로 훅 (design.md 5절·6-1, REQ-006). 환자 자료 구역 밖이다: 화면은 connectScreenBridge에 크롬 runtime과 Worker 객체만 넘기고,
 // 상태·버전·검사한 답·진행 숫자만 받는다. 조각과 보낼 글자는 받지 않는다(send 없음 — 보낼 글자는 Worker가 통로 포트로 보낸다, AC-004.11).
@@ -14,6 +14,10 @@ import { enterScreen, leaveScreen } from './bitLane'
 // 쥔 쪽이 없으면 지금과 같은 차례로 바로 붙는다.
 // 다른 의원을 보는 중(admin-view AC-8008.4, useReadOnly)이면 이 PC 비트에 붙지 않는다: chrome.runtime을 건드리지 않고 통로 차례에도 들지 않으며,
 // 상태는 no-extension이고 call·stream은 보내지 않고 E-EXT-MISSING으로 끝난다
+// 화면 통로 빌려주기(spec google-link AC-8513.4, design.md 11절): ready인 동안 이 연결의 숫자 명령 부르기를 bitLane에 빌려주고(hello 판 글자와 함께),
+// ready가 아니게 되거나 닫을 때 거둔다. busy = 이 화면이 보내는 중인 call·stream이 있음, 또는 Worker가 보낸 청구 입력(bit.input)의
+// 진행 숫자가 아직 끝(total)에 닿지 않았고 마지막 숫자가 INPUT_QUIET_MS 안에 왔음(멈춤 단추 등으로 끝 숫자가 안 오면 그 뒤 풀림).
+// 빌린 부르기는 이 훅의 call을 거치지 않아 busy로 세지 않는다. 보는 중에는 빌려주지 않는다
 
 export type UseBridge = {
   state: BridgeState
@@ -50,6 +54,9 @@ const VIEW_COMMANDS = {
 }
 const codeOf = (e: unknown) => (e instanceof BridgeError ? e.code : 'E-BRIDGE-REJECTED')
 
+/** 청구 입력 진행 숫자가 이만큼 오지 않으면 입력이 끝난 것으로 본다(빌려주기만 풀 뿐, 입력은 건드리지 않는다) */
+export const INPUT_QUIET_MS = 30_000
+
 /** worker는 같은 객체를 계속 넘긴다(바뀌면 새로 붙는다) */
 export function useBridge(opts?: { worker?: WorkerLike }): UseBridge {
   const worker = opts?.worker
@@ -61,6 +68,10 @@ export function useBridge(opts?: { worker?: WorkerLike }): UseBridge {
   const [state, setState] = useState<BridgeState>('connecting')
   const [hello, setHello] = useState<HelloResult | null>(null)
   const [helloError, setHelloError] = useState<string | null>(null)
+  /** 이 화면이 보내고 답을 기다리는 call·stream 수(빌려주기 busy) */
+  const waitingRef = useRef(0)
+  /** 이 연결의 마지막 청구 입력 진행 숫자와 받은 때(빌려주기 busy) */
+  const inputRef = useRef<{ done: number; total: number; at: number } | null>(null)
 
   /** 그 연결의 hello. 그동안 화면을 바꿨거나 새로 붙었으면 버린다. 끊긴 연결의 hello는 E-BRIDGE-DISCONNECTED로 거절된다 */
   const runHello = useCallback((bridge: ScreenBridge) => {
@@ -93,11 +104,19 @@ export function useBridge(opts?: { worker?: WorkerLike }): UseBridge {
       const opened = connectScreenBridge({ runtime: chromeRuntime(), worker })
       bridge = opened
       bridgeRef.current = opened
+      inputRef.current = null
       setHello(null)
       setState(opened.state())
-      unsubscribe = opened.onState((s) => {
+      const offState = opened.onState((s) => {
         if (bridgeRef.current === opened && !helloPending.current) setState(s)
       })
+      const offProgress = opened.onProgress((p: Progress) => {
+        if (bridgeRef.current === opened) inputRef.current = { done: p.done, total: p.total, at: Date.now() }
+      })
+      unsubscribe = () => {
+        offState()
+        offProgress()
+      }
       runHello(opened)
     }
     if (enterScreen(connect)) connect()
@@ -129,15 +148,38 @@ export function useBridge(opts?: { worker?: WorkerLike }): UseBridge {
     setAttempt((n) => n + 1)
   }, [runHello])
 
-  const commands = useMemo(
-    () => ({
-      call: ((cmd, args) => bridgeRef.current?.call(cmd, args) ?? notOpen()) as ScreenBridge['call'],
-      stream: ((cmd, args) => bridgeRef.current?.stream(cmd, args) ?? notOpen()) as ScreenBridge['stream'],
+  const commands = useMemo(() => {
+    // 답을 기다리는 동안 센다(빌려주기 busy). 부른 쪽에는 같은 약속을 그대로 돌려준다
+    const counted = <T,>(work: Promise<T>): Promise<T> => {
+      waitingRef.current += 1
+      const done = () => {
+        waitingRef.current -= 1
+      }
+      work.then(done, done)
+      return work
+    }
+    return {
+      call: ((cmd, args) => counted(bridgeRef.current?.call(cmd, args) ?? notOpen())) as ScreenBridge['call'],
+      stream: ((cmd, args) => counted(bridgeRef.current?.stream(cmd, args) ?? notOpen())) as ScreenBridge['stream'],
       onProgress: ((fn) => bridgeRef.current?.onProgress(fn) ?? (() => {})) as ScreenBridge['onProgress'],
       close: () => bridgeRef.current?.close(),
-    }),
-    [],
-  )
+    }
+  }, [])
+
+  // ready인 동안 숫자 명령 부르기를 빌려준다(빌린 쪽은 sheet.* 만 — bitLane이 거른다). ready가 아니게 되거나 닫으면 거둔다
+  useEffect(() => {
+    if (readOnly || state !== 'ready') return
+    const inputBusy = () => {
+      const input = inputRef.current
+      return input !== null && input.done < input.total && Date.now() - input.at < INPUT_QUIET_MS
+    }
+    return lendScreenCall({
+      call: (cmd, args) => bridgeRef.current?.call(cmd as SmallCommand, args as never) ?? notOpen(),
+      busy: () => waitingRef.current > 0 || inputBusy(),
+      helperVersion: hello?.helperVersion ?? null,
+      extensionVersion: hello?.extensionVersion ?? null,
+    })
+  }, [readOnly, state, hello])
 
   if (readOnly) return { state: 'no-extension', hello: VIEW_HELLO, helloError: null, helperUpdateAvailable: false, ...VIEW_COMMANDS, retry }
   return { state, hello, helloError, helperUpdateAvailable: hello?.helperUpdateAvailable ?? false, ...commands, retry }

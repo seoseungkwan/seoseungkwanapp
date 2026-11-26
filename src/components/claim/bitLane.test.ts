@@ -249,3 +249,117 @@ describe('bitLane: 모듈 (AC-8021.8)', () => {
     for (const word of ['fetch(', 'localStorage', 'sessionStorage', 'indexedDB', 'document.cookie', 'chrome', 'react', 'console.']) expect(text, word).not.toContain(word)
   })
 })
+
+// 비트 통로 빌리기(spec google-link REQ-8513 AC-8513.4, design.md 11절). 같은 쪽 화면이 쥔 통로로 수납 넣기가 sheet.* 숫자 명령만 빌려 부른다.
+// 화면이 보내는 중인 요청·스트림이 하나라도 있으면(busy) 빌리지 않고, 빌린 뒤에 화면이 바빠지면 그 차례 부르기는 E-BRIDGE-BUSY로 끝난다
+describe('bitLane: 화면 통로 빌리기 (google-link AC-8513.4)', () => {
+  const coded = (code: string) => expect.objectContaining({ code })
+  const lent = (over: { busy?: () => boolean; helperVersion?: string | null; extensionVersion?: string | null } = {}) => {
+    const call = vi.fn(async (cmd: string, args: Record<string, unknown>) => ({ cmd, args }))
+    return { call, busy: over.busy ?? (() => false), helperVersion: over.helperVersion ?? '0.14.0', extensionVersion: over.extensionVersion ?? '0.5.0' }
+  }
+
+  it('AC-8513.4: 빌려준 화면이 없으면 borrowScreenCall은 null이다', () => {
+    const l = createBitLane()
+    expect(l.borrowScreenCall()).toBeNull()
+  })
+
+  it('AC-8513.4: 화면이 빌려주면 그 화면의 call로 sheet.* 를 그대로 부르고, 화면 hello의 판 글자를 함께 준다', async () => {
+    const l = createBitLane()
+    const screen = lent()
+    l.lendScreenCall(screen)
+    const borrowed = l.borrowScreenCall()
+    expect(borrowed).not.toBeNull()
+    expect(borrowed!.helperVersion).toBe('0.14.0')
+    expect(borrowed!.extensionVersion).toBe('0.5.0')
+    await expect(borrowed!.call('sheet.status', {})).resolves.toEqual({ cmd: 'sheet.status', args: {} })
+    await borrowed!.call('sheet.fill', { day: '2026-11-26', mode: 'fillEmpty', auto: true, settings: {} })
+    expect(screen.call.mock.calls.map(([cmd]) => cmd)).toEqual(['sheet.status', 'sheet.fill'])
+    expect(screen.call).toHaveBeenLastCalledWith('sheet.fill', { day: '2026-11-26', mode: 'fillEmpty', auto: true, settings: {} })
+  })
+
+  it('AC-8513.4: 빌린 통로로는 sheet.* 밖 명령을 부르지 못하고(E-BRIDGE-REJECTED) 스트림도 없다', async () => {
+    const l = createBitLane()
+    const screen = lent()
+    l.lendScreenCall(screen)
+    const borrowed = l.borrowScreenCall()!
+    for (const cmd of ['bit.check', 'bit.register', 'claim.dates', 'revenue.days', 'claim.month', 'store.save', 'bit.input', 'hello', 'sheet', 'sheet.', 'xsheet.status']) {
+      await expect(borrowed.call(cmd, {}), cmd).rejects.toEqual(coded('E-BRIDGE-REJECTED'))
+    }
+    expect(screen.call).not.toHaveBeenCalled()
+    expect(Object.keys(borrowed).sort()).toEqual(['call', 'extensionVersion', 'helperVersion'])
+  })
+
+  it('AC-8513.4: 화면이 보내는 중인 요청·스트림이 있으면(busy) 빌리지 않는다(null)', () => {
+    const l = createBitLane()
+    let busy = true
+    l.lendScreenCall(lent({ busy: () => busy }))
+    expect(l.borrowScreenCall()).toBeNull()
+    busy = false
+    expect(l.borrowScreenCall()).not.toBeNull()
+  })
+
+  it('AC-8513.4: 빌린 뒤 화면이 바빠지면 그 차례 부르기는 화면 call을 부르지 않고 E-BRIDGE-BUSY로 끝난다', async () => {
+    const l = createBitLane()
+    let busy = false
+    const screen = lent({ busy: () => busy })
+    l.lendScreenCall(screen)
+    const borrowed = l.borrowScreenCall()!
+    await borrowed.call('sheet.status', {})
+    busy = true
+    await expect(borrowed.call('sheet.fill', {})).rejects.toEqual(coded('E-BRIDGE-BUSY'))
+    expect(screen.call).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-8513.4: 화면이 거두면(닫을 때) 빌릴 수 없고, 이미 빌린 call은 E-BRIDGE-BUSY로 끝난다. 거두기는 두 번 불러도 된다', async () => {
+    const l = createBitLane()
+    const screen = lent()
+    const revoke = l.lendScreenCall(screen)
+    const borrowed = l.borrowScreenCall()!
+    revoke()
+    revoke()
+    expect(l.borrowScreenCall()).toBeNull()
+    await expect(borrowed.call('sheet.status', {})).rejects.toEqual(coded('E-BRIDGE-BUSY'))
+    expect(screen.call).not.toHaveBeenCalled()
+  })
+
+  it('AC-8513.4: 빌려준 화면이 둘이면 마지막 화면 것을 빌리고, 하나라도 바쁘면 빌리지 않는다. 먼저 거둔 화면은 빠진다', async () => {
+    const l = createBitLane()
+    let firstBusy = false
+    const first = lent({ busy: () => firstBusy, helperVersion: '0.14.0' })
+    const second = lent({ helperVersion: '0.14.1' })
+    const revokeFirst = l.lendScreenCall(first)
+    const revokeSecond = l.lendScreenCall(second)
+    expect(l.borrowScreenCall()!.helperVersion).toBe('0.14.1')
+    firstBusy = true
+    expect(l.borrowScreenCall()).toBeNull()
+    revokeFirst()
+    await l.borrowScreenCall()!.call('sheet.status', {})
+    expect(second.call).toHaveBeenCalledTimes(1)
+    revokeSecond()
+    expect(l.borrowScreenCall()).toBeNull()
+  })
+
+  it('AC-8513.4: 판 글자를 주지 않은 화면이면 빌린 판 글자는 null이다(옛 판처럼 다룬다)', () => {
+    const l = createBitLane()
+    l.lendScreenCall({ call: vi.fn(async () => ({})), busy: () => false })
+    expect(l.borrowScreenCall()).toMatchObject({ helperVersion: null, extensionVersion: null })
+  })
+
+  it('AC-8513.4: 저절로 올리기가 통로를 쥐고 있으면(enterBackground) 빌리지 않는다', () => {
+    const l = createBitLane()
+    l.lendScreenCall(lent())
+    const release = l.enterBackground(vi.fn())
+    expect(l.borrowScreenCall()).toBeNull()
+    release?.()
+  })
+
+  it('AC-8513.4: 앱이 쓰는 차례 하나로 lendScreenCall·borrowScreenCall을 내보낸다', async () => {
+    const screen = lent()
+    const revoke = lane.lendScreenCall(screen)
+    await lane.borrowScreenCall()!.call('sheet.status', {})
+    expect(screen.call).toHaveBeenCalledWith('sheet.status', {})
+    revoke()
+    expect(lane.borrowScreenCall()).toBeNull()
+  })
+})
