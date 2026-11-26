@@ -147,6 +147,37 @@ const ALL_CODES = [
   'E-LIBRARY-UPLOAD-FAILED',
   'E-LIBRARY-DOWNLOAD-FAILED',
   'E-LIBRARY-DELETE-FAILED',
+  'E-GCAL-REACH',
+  'E-GCAL-KEY',
+  'E-GCAL-GONE',
+  'E-GCAL-LIMIT',
+  'E-GCAL-LOGIN',
+  'E-GCAL-OLD',
+  'E-GCAL-SERVICE',
+  'E-GCAL-URL',
+  'E-GCAL-NOKEY',
+  'E-GSHEET-NET',
+  'E-GSHEET-TIMEOUT',
+  'E-GSHEET-CUT',
+  'E-GSHEET-DENIED',
+  'E-GSHEET-URL',
+  'E-GSHEET-SERVER',
+  'E-GSHEET-LOGIN',
+  'E-GSHEET-NOKEY',
+  'E-GSHEET-KEY',
+  'E-GSHEET-BUSY',
+  'E-GSHEET-TEMPLATE',
+  'E-GSHEET-FOLDER',
+  'E-GSHEET-DAY',
+  'E-GSHEET-LAYOUT',
+  'E-GSHEET-SHAPE',
+  'E-GSHEET-EXT',
+  'E-GSHEET-DECLINED',
+  'E-GSHEET-SECRET',
+  'E-GSHEET-NOURL',
+  'E-GSHEET-NOTEMPLATE',
+  'E-GSHEET-OLD',
+  'E-GSHEET-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1649,5 +1680,131 @@ describe('AC-8104.1 자료실 오류 번호 일곱', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(LIBRARY)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 예약 구글 오류 번호(specs/google-link design.md 14절 표, TASK-4). 글은 그 표 글자 그대로다(끝 마침표 있음).
+// 시안 notes-calendar `err` 오류 상자의 E-GCAL-REACH 글과 '그 밖의 오류 번호' 셋도 같은 글이다
+const GCAL = {
+  'E-GCAL-REACH': {
+    what: '구글 캘린더에 닿지 못했어요.',
+    fix: '인터넷이 되는지 확인해 주세요. 계속되면 설정 › 구글 캘린더에서 [연결 시험]을 눌러 보세요.',
+  },
+  'E-GCAL-KEY': {
+    what: '비밀 글자가 맞지 않아요.',
+    fix: '설정에서 코드를 다시 복사해 붙여 주세요.',
+  },
+  'E-GCAL-GONE': {
+    what: '고른 캘린더를 찾을 수 없거나 고칠 권한이 없어요.',
+    fix: '설정 › 구글 캘린더에서 캘린더를 다시 골라 주세요.',
+  },
+  'E-GCAL-LIMIT': {
+    what: '구글이 오늘 부를 수 있는 횟수를 넘었어요.',
+    fix: '내일 저절로 다시 맞춰요(받아 오는 간격을 5분으로 늘려 주세요).',
+  },
+  'E-GCAL-LOGIN': {
+    what: '구글이 코드 대신 로그인 화면을 보냈어요.',
+    fix: '배포할 때 액세스 권한을 [모든 사용자]로 했는지, 주소가 /exec로 끝나는지 확인해 주세요.',
+  },
+  'E-GCAL-OLD': {
+    what: '구글 코드가 옛 판이에요.',
+    fix: '설정 › 구글 캘린더 › 잇기에서 [구글 코드 복사]로 새로 붙이고 새 버전으로 배포해 주세요.',
+  },
+  'E-GCAL-SERVICE': {
+    what: '구글 코드에서 캘린더 서비스가 켜져 있지 않아요.',
+    fix: "구글 코드 편집기 왼쪽 [서비스] 옆 [+]에서 'Google Calendar API'를 추가하고 새 버전으로 배포해 주세요.",
+  },
+  'E-GCAL-URL': {
+    what: '코드 주소 모양이 맞지 않아요.',
+    fix: "구글이 준 '웹 앱 주소'(https://script.google.com/macros/s/…/exec)를 붙여 넣어 주세요.",
+  },
+  'E-GCAL-NOKEY': {
+    what: '구글 코드에 비밀 글자가 들어가지 않았어요.',
+    fix: '[구글 코드 복사]로 다시 복사해 붙여 주세요.',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-8524.2 예약 구글 오류 번호 아홉', () => {
+  it.each(Object.keys(GCAL) as Array<keyof typeof GCAL>)(
+    "AC-8524.2: %s는 번호가 있고 무엇이·어떻게 고치나가 design.md '예약 오류 번호' 표 글자 그대로다",
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(GCAL[code])
+    },
+  )
+
+  it('AC-8524.2: 이 명세가 더하는 E-GCAL- 번호는 표의 아홉뿐이고, 그 밖 번호 수는 그대로다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-GCAL-')).sort()).toEqual(Object.keys(GCAL).sort())
+    expect(Object.keys(GCAL)).toHaveLength(9)
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-8524.2: 아홉 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(GCAL)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 수납 구글 오류 번호(specs/google-link design.md 9-3 표, TASK-4). 무엇이는 모두 같은 글, 어떻게 고치나는 표의 까닭 글 그대로다
+// (notes-sunap `err-google` 까닭 글 + 시안과 다른 곳 2·17의 EXT·DECLINED). 통로는 이 파일에 있는 번호의 오류 답만 받는다(isErrorCode)
+const GSHEET_WHAT = '구글 시트에 넣지 못했어요'
+const GSHEET_FIX = {
+  'E-GSHEET-NET': '구글 연결 안 됨: 인터넷 연결을 확인해 주세요.',
+  'E-GSHEET-TIMEOUT': '구글이 제때 답하지 않았어요. 잠시 뒤 다시 해 보세요.',
+  'E-GSHEET-CUT': '구글과 연결이 중간에 끊겼어요. 잠시 뒤 다시 해 보세요.',
+  'E-GSHEET-DENIED': "구글 웹 앱에 들어갈 수 없어요. 배포할 때 '액세스 권한: 모든 사용자'로 했는지 확인해 주세요.",
+  'E-GSHEET-URL': '구글에서 받은 주소가 맞지 않아요. 주소를 다시 붙여 넣어 주세요.',
+  'E-GSHEET-SERVER': '구글 쪽에서 잠시 문제가 생겼어요. 조금 뒤 다시 해 보세요.',
+  'E-GSHEET-LOGIN':
+    "구글이 웹 앱 대신 로그인·안내 화면을 보냈어요. 안내문대로 '액세스 권한: 모든 사용자'로 배포하고 권한 허용까지 했는지, 주소가 /exec 로 끝나는지 확인해 주세요.",
+  'E-GSHEET-NOKEY': '구글 코드에 비밀 글자가 아직 들어가지 않았어요. [구글에 붙일 코드 복사]로 다시 붙이고 새 버전으로 배포해 주세요.',
+  'E-GSHEET-KEY': '비밀 글자가 맞지 않아요. [구글에 붙일 코드 복사]로 다시 붙이고 새 버전으로 배포해 주세요.',
+  'E-GSHEET-BUSY': '구글이 다른 넣기를 하는 중이에요. 잠시 뒤 다시 해 보세요.',
+  'E-GSHEET-TEMPLATE': '원본 시트를 열 수 없어요. 설정의 원본 시트 주소를 확인해 주세요.',
+  'E-GSHEET-FOLDER': '넣을 폴더를 열 수 없어요. 설정의 폴더 주소를 확인해 주세요.',
+  'E-GSHEET-DAY': '그날 시트를 찾지 못했어요. 원본에 1~31 시트가 있는지 확인해 주세요.',
+  'E-GSHEET-LAYOUT': '시트 칸 설정이 맞지 않아요. 설정 › 시트를 확인해 주세요.',
+  'E-GSHEET-SHAPE': '보낸 내용 모양이 맞지 않아요. 웹앱과 구글 코드가 같은 판인지 확인해 주세요.',
+  'E-GSHEET-EXT': '이 PC의 크롬 확장이 옛 판이라 넣지 못해요. 비트 PC 연결 화면에서 새 확장을 받아 바꾼 뒤 웹앱을 새로 고쳐 주세요.',
+  'E-GSHEET-DECLINED': '이 PC의 확인 창에서 주소를 바꾸지 않았어요. 넣기는 전에 쓰던 주소로 해요.',
+  'E-GSHEET-SECRET':
+    '이 PC에서 비밀 글자를 읽지 못했어요. 설정 › 구글 연결 › [구글에 붙일 코드 복사]로 비밀 글자를 새로 만들어 구글에 다시 붙여 주세요.',
+  'E-GSHEET-NOURL': "설정 › 구글 연결에서 '구글에서 받은 주소'를 넣어 주세요.",
+  'E-GSHEET-NOTEMPLATE': "설정 › 시트에서 '원본 시트 주소'를 넣어 주세요.",
+  'E-GSHEET-OLD': '구글 코드가 옛 판이에요 — [설정] › 구글 연결에서 코드를 새로 붙여 주세요',
+  'E-GSHEET-FAILED': '구글 쪽에서 일을 마치지 못했어요.',
+} as const satisfies Partial<Record<ErrorCode, string>>
+
+describe('AC-8515.5 수납 구글 오류 번호 스물둘', () => {
+  it.each(Object.keys(GSHEET_FIX) as Array<keyof typeof GSHEET_FIX>)(
+    "AC-8515.5: %s는 번호가 있고 무엇이는 '구글 시트에 넣지 못했어요', 어떻게 고치나는 design.md '수납 오류 번호' 표의 까닭 글 그대로다",
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual({ what: GSHEET_WHAT, fix: GSHEET_FIX[code] })
+    },
+  )
+
+  it('AC-8515.5: 이 명세가 더하는 E-GSHEET- 번호는 표의 스물둘뿐이고(EXT·DECLINED 포함), 그 밖 번호 수는 그대로다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-GSHEET-')).sort()).toEqual(Object.keys(GSHEET_FIX).sort())
+    expect(Object.keys(GSHEET_FIX)).toHaveLength(22)
+    expect(Object.keys(GSHEET_FIX)).toEqual(expect.arrayContaining(['E-GSHEET-EXT', 'E-GSHEET-DECLINED']))
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  it('AC-8515.5: 까닭 글은 notes-sunap 시안 글이라 같은 뜻의 예약 글(E-GCAL-KEY)과 섞이지 않는다', () => {
+    expect(errorInfo('E-GSHEET-KEY').fix).not.toBe(errorInfo('E-GCAL-KEY').fix)
+    expect(errorInfo('E-GSHEET-NOKEY').fix).toContain('[구글에 붙일 코드 복사]')
+    expect(errorInfo('E-GCAL-NOKEY').fix).toContain('[구글 코드 복사]')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-8515.5: 스물둘 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(GSHEET_FIX)) expect(union).toContain(`'${code}'`)
   })
 })

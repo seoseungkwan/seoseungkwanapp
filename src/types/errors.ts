@@ -81,5 +81,13 @@ export type ErrorCode =
   // 자료실(specs/library requirements.md '시안에 없어 이 명세가 정한 글'): 목록 읽기 · 크기 · 파일 이름 길이 · 같은 이름 · 올리기 · 받기 · 지우기 실패
   | 'E-LIBRARY-READ-FAILED' | 'E-LIBRARY-FILE-SIZE' | 'E-LIBRARY-FILE-NAME' | 'E-LIBRARY-FILE-EXISTS'
   | 'E-LIBRARY-UPLOAD-FAILED' | 'E-LIBRARY-DOWNLOAD-FAILED' | 'E-LIBRARY-DELETE-FAILED'
+  // 예약 구글 캘린더(specs/google-link design.md 14절): 닿지 못함 · 비밀 글자 틀림 · 캘린더 없음 · 한도 · 로그인 화면 · 옛 판 · 서비스 꺼짐 · 주소 모양 · 비밀 글자 자리 그대로
+  | 'E-GCAL-REACH' | 'E-GCAL-KEY' | 'E-GCAL-GONE' | 'E-GCAL-LIMIT' | 'E-GCAL-LOGIN'
+  | 'E-GCAL-OLD' | 'E-GCAL-SERVICE' | 'E-GCAL-URL' | 'E-GCAL-NOKEY'
+  // 수납일지 구글 시트(specs/google-link design.md 9-3): 도우미가 주는 번호 + 웹이 정하는 E-GSHEET-EXT
+  | 'E-GSHEET-NET' | 'E-GSHEET-TIMEOUT' | 'E-GSHEET-CUT' | 'E-GSHEET-DENIED' | 'E-GSHEET-URL' | 'E-GSHEET-SERVER'
+  | 'E-GSHEET-LOGIN' | 'E-GSHEET-NOKEY' | 'E-GSHEET-KEY' | 'E-GSHEET-BUSY' | 'E-GSHEET-TEMPLATE' | 'E-GSHEET-FOLDER'
+  | 'E-GSHEET-DAY' | 'E-GSHEET-LAYOUT' | 'E-GSHEET-SHAPE' | 'E-GSHEET-EXT' | 'E-GSHEET-DECLINED' | 'E-GSHEET-SECRET'
+  | 'E-GSHEET-NOURL' | 'E-GSHEET-NOTEMPLATE' | 'E-GSHEET-OLD' | 'E-GSHEET-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }
