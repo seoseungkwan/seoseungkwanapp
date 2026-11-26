@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sunapPct } from '@/components/stats/sunapView'
-import { monthCells, monthTrend, ratePct, rateSummary } from './counts'
+import { monthCells, monthTrend, NO_STAFF_ID, NO_STAFF_LABEL, ratePct, rateSummary } from './counts'
 import type { ApptAuto, ApptStatus, CalAllDay, CalCountRow } from './shapes'
 
 // 지어낸 예약 수 줄(listCalendarCounts 모양: 이름·차트번호·메모 칸 없음)
@@ -10,8 +10,24 @@ const STAFF_NAME: Record<string, string> = { ga: '한○○', na: '윤○○', d
 const row = (
   day: string,
   kindId: Kind,
-  { status = 'auto', auto = null, origDay = null, staffId = 'ga' }: { status?: ApptStatus; auto?: ApptAuto; origDay?: string | null; staffId?: string } = {},
-): CalCountRow => ({ day, staffId, staffName: STAFF_NAME[staffId], kindId, kindName: KIND_NAME[kindId], status, auto, origDay })
+  {
+    status = 'auto',
+    auto = null,
+    origDay = null,
+    staffId = 'ga',
+    gMoved = false,
+  }: { status?: ApptStatus; auto?: ApptAuto; origDay?: string | null; staffId?: string | null; gMoved?: boolean } = {},
+): CalCountRow => ({
+  day,
+  staffId,
+  staffName: staffId === null ? null : STAFF_NAME[staffId]!,
+  kindId,
+  kindName: KIND_NAME[kindId],
+  status,
+  auto,
+  origDay,
+  gMoved,
+})
 const off = (day: string, staffId: string): CalAllDay => ({ id: `off-${day}`, day, type: 'off', memo: null, staffId, staffName: STAFF_NAME[staffId] })
 const memo = (day: string, text: string): CalAllDay => ({ id: `memo-${day}`, day, type: 'memo', memo: text, staffId: null, staffName: null })
 
@@ -148,6 +164,35 @@ describe('AC-5907.1 rateSummary·monthTrend·ratePct: 취소·변경·안 옴 �
       for (let part = 0; part <= whole; part++) if (ratePct(part, whole) !== sunapPct(part, whole)) diff.push(`${part}/${whole}`)
     }
     expect(diff).toEqual([])
+  })
+
+  it("AC-8503.4: 구글에서 변경 색이 된 예약(g_moved, 처음 자리 없음)도 '변경'으로 센다 — 요약·시행자별·종류별·달마다·월 칸 모두, 처음 자리와 둘 다 있어도 한 번", () => {
+    const rows = [
+      row('2026-11-02', 'dosu', { gMoved: true }),
+      row('2026-11-02', 'jabo', { gMoved: true, origDay: '2026-11-01' }),
+      row('2026-11-03', 'dosu', { gMoved: true, status: 'cancel' }),
+      row('2026-11-03', 'dosu'),
+    ]
+    const s = rateSummary(rows)
+    expect({ total: s.total, cancel: s.cancel, moved: s.moved, noshow: s.noshow }).toEqual({ total: 4, cancel: 1, moved: 3, noshow: 0 })
+    expect(s.byStaff).toEqual([{ id: 'ga', label: '한○○', total: 4, cancel: 1, moved: 3, noshow: 0 }])
+    expect(s.byKind).toEqual([
+      { id: 'dosu', label: '도수', total: 3, cancel: 1, moved: 2, noshow: 0 },
+      { id: 'jabo', label: '자보도수', total: 1, cancel: 0, moved: 1, noshow: 0 },
+    ])
+    expect(monthTrend(rows, ['2026-11'])).toEqual([{ month: '2026-11', total: 4, cancel: 1, moved: 3, noshow: 0 }])
+    // 월 칸은 취소를 빼고 센다(지금 규칙 그대로)
+    const cells = monthCells(rows, [], '2026-11-02', '2026-11-03', '2026-11-20')
+    expect(cells.map((c) => c.moved)).toEqual([2, 0])
+  })
+
+  it("AC-8503.3: 시행자 없는 예약(시행자 null)은 시행자별 표에서 '시행자 없음' 한 줄(id NO_STAFF_ID)로 묶인다", () => {
+    const rows = [row('2026-11-02', 'dosu', { staffId: null }), row('2026-11-03', 'dosu', { staffId: null, status: 'cancel' }), row('2026-11-03', 'dosu')]
+    expect(NO_STAFF_LABEL).toBe('시행자 없음')
+    expect(rateSummary(rows).byStaff).toEqual([
+      { id: NO_STAFF_ID, label: '시행자 없음', total: 2, cancel: 1, moved: 0, noshow: 0 },
+      { id: 'ga', label: '한○○', total: 1, cancel: 0, moved: 0, noshow: 0 },
+    ])
   })
 
   it('AC-5907.1: monthTrend는 준 달 차례로 달마다 네 수(예약 없는 달은 0, 준 달 밖 줄은 뺌)', () => {

@@ -323,11 +323,11 @@ function ProfileForm({ view }: { view: ClinicProfileView }) {
     })
   }
 
-  // 새 사람: 이름은 비우고(적으면 표시가 첫 글자를 따라간다), 색은 아직 안 쓴 첫 색(다 쓰면 회색), 예약에 보이기 켬
+  // 새 사람: 이름은 비우고(적으면 표시가 첫 글자를 따라간다), 색은 아직 안 쓴 첫 색(11색을 다 쓰면 차례대로 다시), 예약에 보이기 켬
   function addPerson() {
     if (staffFull) return
     const used = new Set(draft.staff.map((person) => person.color))
-    const color = CAL_COLORS.find((c) => !used.has(c)) ?? 'gray'
+    const color = CAL_COLORS.find((c) => !used.has(c)) ?? CAL_COLORS[draft.staff.length % CAL_COLORS.length]!
     const added: StaffRow = { id: newStaffId([...view.profile.staff, ...draft.staff]), name: '', role: 'staff', mark: '', color, calendar: true, markTouched: false }
     edit((d) => (d.staff.length >= STAFF_MAX ? d : { ...d, staff: [...d.staff, added] }))
   }

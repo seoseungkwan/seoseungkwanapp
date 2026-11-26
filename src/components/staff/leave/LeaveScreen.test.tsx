@@ -356,9 +356,9 @@ describe('AC-7614.2: 휴가 달력', () => {
   it('AC-7614.2: 휴가 종류마다 색이 다르다(연차 파랑·반차 청록·병가 분홍 — 예약 달력 색)', async () => {
     show()
     const cal = await calendar()
-    expect(within(cal).getByRole('button', { name: '김하늘 연차' }).className).toContain('bg-cal-blue-soft')
-    expect(within(cal).getByRole('button', { name: '정유나 오전 반차' }).className).toContain('bg-cal-teal-soft')
-    expect(within(cal).getByRole('button', { name: '정유나 병가' }).className).toContain('bg-cal-pink-soft')
+    expect(within(cal).getByRole('button', { name: '김하늘 연차' }).className).toContain('bg-leave-annual-soft')
+    expect(within(cal).getByRole('button', { name: '정유나 오전 반차' }).className).toContain('bg-leave-half-soft')
+    expect(within(cal).getByRole('button', { name: '정유나 병가' }).className).toContain('bg-leave-sick-soft')
   })
 
   it('AC-7614.2: 휴진일(일요일)은 회색 칸에 휴진, 오늘 칸 표시, 달 첫날은 11/1', async () => {

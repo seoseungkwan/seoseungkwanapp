@@ -130,14 +130,28 @@ function closedDays(raw: CompareRaw, range: DateRange): SunapClosedDay[] {
 const STATUSES: readonly unknown[] = ['auto', 'came', 'noshow', 'cancel']
 const AUTOS: readonly unknown[] = ['came', 'noshow', null]
 
-// calendar_counts 줄(lib/storage/calendar.ts 숫자 칸 읽기와 같은 칸): 이름·차트번호·메모는 없다
+// calendar_counts 줄(lib/storage/calendar.ts 숫자 칸 읽기와 같은 칸): 이름·차트번호·메모는 없다.
+// 시행자 두 칸은 함께 null(시행자 없음, google-link AC-8503.3)이어도 받고, g_moved는 칸이 없거나 null이면 거짓(AC-8503.4)
 function apptRows(raw: CompareRaw, range: DateRange) {
   return raw.calendar_counts.flatMap((row) => {
-    const { day, staff_id: staffId, staff_name: staffName, kind_id: kindId, kind_name: kindName, status, auto, orig_day: origDay } = row
+    const { day, staff_id: staffId, staff_name: staffName, kind_id: kindId, kind_name: kindName, status, auto, orig_day: origDay, g_moved: gMoved } = row
     if (typeof day !== 'string' || !isYmd(day) || !inRange(day, range)) return []
-    if (!isFilled(staffId) || !isFilled(staffName) || !isFilled(kindId) || !isFilled(kindName)) return []
+    const noStaff = staffId === null && staffName === null
+    if (!(noStaff || (isFilled(staffId) && isFilled(staffName))) || !isFilled(kindId) || !isFilled(kindName)) return []
     if (!STATUSES.includes(status) || !AUTOS.includes(auto) || !(origDay === null || (typeof origDay === 'string' && isYmd(origDay)))) return []
-    return [{ staffId, staffName, kindId, kindName, status: status as 'auto', auto: auto as null, origDay: origDay as string | null }]
+    if (!(gMoved === undefined || gMoved === null || typeof gMoved === 'boolean')) return []
+    return [
+      {
+        staffId: staffId as string | null,
+        staffName: staffName as string | null,
+        kindId,
+        kindName,
+        status: status as 'auto',
+        auto: auto as null,
+        origDay: origDay as string | null,
+        gMoved: gMoved === true,
+      },
+    ]
   })
 }
 

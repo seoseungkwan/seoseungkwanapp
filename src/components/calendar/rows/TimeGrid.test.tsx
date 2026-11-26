@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CalAllDay } from '@/lib/calendar/shapes'
-import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalStaff } from '@/types/calendar'
+import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalKind, type CalStaff } from '@/types/calendar'
 import type { DayHours } from '@/types/clinicProfile'
 import { BLOCK_GUTTER_PX, placeStyle } from './ApptBlock'
 import { GHOST_NOTE } from './GhostBlock'
@@ -14,12 +14,20 @@ import { TimeGrid, type TimeGridProps } from './TimeGrid'
 afterEach(cleanup)
 
 const STAFF: CalStaff[] = [
-  { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-  { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-  { id: 'da', name: '조○○', mark: '다', color: 'purple' },
-  { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+  { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+  { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+  { id: 'da', name: '조○○', mark: '다', color: 'grape' },
+  { id: 'won', name: '원장님', mark: '원', color: 'graphite' },
 ]
-const SETTINGS = { ...DEFAULT_CAL_SETTINGS, staff: STAFF } // 08:00–20:00
+// 옛 기본 종류(주사 분홍 → 플라밍고·진료 연두 → 세이지, google-link design.md 7-4 옮기기 표). 새 DB 기본값(충격파만 세이지)과 달라 시험 안에 둔다
+const KINDS: CalKind[] = [
+  { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+  { id: 'jabo', name: '자보도수', len: 30, color: null, words: ['자보도수', '자보'] },
+  { id: 'shock', name: '충격파', len: 15, color: null, words: ['충격파', '타'] },
+  { id: 'inj', name: '주사', len: 10, color: 'flamingo', words: ['주사'] },
+  { id: 'visit', name: '진료', len: 10, color: 'sage', words: ['진료'] },
+]
+const SETTINGS = { ...DEFAULT_CAL_SETTINGS, kinds: KINDS, staff: STAFF } // 08:00–20:00
 const WEEK = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21']
 const TODAY = '2026-11-17'
 
@@ -40,6 +48,20 @@ const base: CalAppt = {
   auto: null,
   origDay: null,
   origStart: null,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
 }
 const appt = (over: Partial<CalAppt>): CalAppt => ({ ...base, ...over })
 
@@ -190,13 +212,28 @@ describe('AC-5905.1: 주 보기 시간 표(10분 = 20px, 보이는 시간, 오�
     expect(text(block(/^신○○/))).toBe('신○○ 도수 (퇴) 30분')
   })
 
-  it('AC-5905.1: 색은 종류 색(주사 분홍) 또는 시행자 색(도수 → (가) 파랑)이고, 목록에 없는 시행자의 예약은 회색이다', () => {
+  it('AC-5905.1·AC-8503.1·AC-8503.5: 색은 종류 색(주사 플라밍고) 또는 시행자 색(도수 → (가) 블루베리)으로 칸을 꽉 채우고 글자는 그 색의 글자색이다. 목록에 없는 시행자의 예약은 캘린더 기본 색이다', () => {
     renderGrid()
-    expect(block(/^10231 김○○/).className).toContain('bg-cal-blue-soft')
-    expect(block(/^10231 김○○/).className).toContain('border-cal-blue')
-    expect(block(/^23580 정○○/).className).toContain('bg-cal-teal-soft')
-    expect(block(/^30117 송○○/).className).toContain('bg-cal-pink-soft')
-    expect(block(/^신○○/).className).toContain('bg-cal-gray-soft')
+    const moved = block(/^10231 김○○/).className
+    expect(moved).toContain('bg-cal-blueberry')
+    expect(moved).toContain('text-cal-blueberry-on')
+    expect(block(/^23580 정○○/).className).toContain('bg-cal-basil')
+    expect(block(/^23580 정○○/).className).toContain('text-cal-basil-on')
+    expect(block(/^30117 송○○/).className).toContain('bg-cal-flamingo')
+    expect(block(/^30117 송○○/).className).toContain('text-cal-flamingo-on')
+    expect(block(/^신○○/).className).toContain('bg-cal-default')
+    expect(block(/^신○○/).className).toContain('text-cal-default-on')
+    for (const name of [/^10231 김○○/, /^23580 정○○/, /^30117 송○○/, /^신○○/]) {
+      expect(block(name).className, String(name)).not.toMatch(/-soft\b|border-cal-|ring-cal-|\btext-ink\b/)
+    }
+  })
+
+  it('AC-8503.3: 시행자 없는 예약(세 칸 null)은 칸 글에 (표시)가 없고, 시행자 색 따름 종류면 캘린더 기본 색이다', () => {
+    renderGrid({ appts: [appt({ id: 'a-none', start: 600, chart: '40001', name: '무○○', staffId: null, staffName: null, staffMark: null })] })
+    const none = block(/^40001 무○○/)
+    expect(text(none)).toBe('40001 무○○ 도수 30분')
+    expect(none.getAttribute('title')).toBe('40001 무○○ 도수 10:00–10:30 30분')
+    expect(none.className).toContain('bg-cal-default')
   })
 
   it('AC-5905.1: 취소 칸은 흰 바탕·흐린 글·가운데 줄로 남고 색 바탕이 없다', () => {
@@ -242,13 +279,15 @@ describe('AC-5905.1: 주 보기 시간 표(10분 = 20px, 보이는 시간, 오�
     expect(props.onSlot).not.toHaveBeenCalled()
   })
 
-  it('AC-5905.1: 종일 줄은 메모 칩과 시행자 휴무 칩(그 시행자 색, 목록에 없으면 회색)이고, 칸·칩·+ 종일을 누르면 onAllDay(날짜)다', () => {
+  it('AC-5905.1·AC-8503.5: 종일 줄은 메모 칩과 시행자 휴무 칩(그 시행자 색으로 꽉 채움, 목록에 없으면 캘린더 기본 색)이고, 칸·칩·+ 종일을 누르면 onAllDay(날짜)다', () => {
     const { container, props } = renderGrid()
     expect(screen.getByText('종일')).toBeTruthy()
     expect(screen.getByRole('button', { name: '주간 회의 13:00' })).toBeTruthy()
     const off = screen.getByRole('button', { name: '(나) 윤○○ 휴무' })
-    expect(off.className).toContain('bg-cal-teal-soft')
-    expect(screen.getByRole('button', { name: '퇴사○○ 휴무' }).className).toContain('bg-cal-gray-soft')
+    expect(off.className).toContain('bg-cal-basil')
+    expect(off.className).toContain('text-cal-basil-on')
+    expect(off.className).not.toMatch(/-soft\b|border-cal-/)
+    expect(screen.getByRole('button', { name: '퇴사○○ 휴무' }).className).toContain('bg-cal-default')
     fireEvent.click(off)
     expect(props.onAllDay).toHaveBeenCalledTimes(1)
     expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-18')
@@ -595,8 +634,8 @@ describe('AC-7616.1: 일·주 보기 종일 줄의 반차 휴무 칩', () => {
     ]
     const { props } = renderGrid({ allday })
     const am = screen.getByRole('button', { name: '(가) 한○○ 오전 휴무' })
-    expect(am.className).toContain('bg-cal-blue-soft')
-    expect(screen.getByRole('button', { name: '(다) 조○○ 오후 휴무' }).className).toContain('bg-cal-purple-soft')
+    expect(am.className).toContain('bg-cal-blueberry')
+    expect(screen.getByRole('button', { name: '(다) 조○○ 오후 휴무' }).className).toContain('bg-cal-grape')
     expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' })).toBeTruthy()
     fireEvent.click(am)
     expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-17')

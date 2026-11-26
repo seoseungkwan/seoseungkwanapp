@@ -9,8 +9,8 @@ import { mergeClinic, plainDays } from './clinic'
 const CAL: CalSettings = {
   ...DEFAULT_CAL_SETTINGS,
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'old', name: '옛○○', mark: '옛', color: 'purple' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'old', name: '옛○○', mark: '옛', color: 'grape' },
   ],
   openHour: 9,
   closeHour: 18,
@@ -34,9 +34,9 @@ const PROFILE: ClinicProfile = {
   ],
   closedDates: ['2026-11-20', '2026-12-25'],
   staff: [
-    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: true },
-    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: false },
-    { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'navy', calendar: true },
+    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'basil', calendar: true },
+    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'graphite', calendar: false },
+    { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blueberry', calendar: true },
   ],
   logoPath: null,
   emr: 'bit',
@@ -48,8 +48,8 @@ describe('AC-6603.1: 시행자는 병원 정보의 예약에 보이기 사람들
   it('AC-6603.1: 병원 정보가 있으면 staff = calendar 참인 사람만, 병원 정보 차례, 예약 시행자 모양(id·이름·표시·색)으로', () => {
     const merged = mergeClinic(CAL, PROFILE)
     expect(merged.staff).toEqual([
-      { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-      { id: 'ga', name: '한○○', mark: '가', color: 'navy' },
+      { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+      { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
     ])
     expect(merged.staff.map((s) => Object.keys(s))).toEqual([
       ['id', 'name', 'mark', 'color'],
@@ -111,7 +111,7 @@ describe('AC-6603.2: 시간 줄·요일 진료시간', () => {
     expect(PROFILE.hours[0]).toEqual(WEEKDAY)
     expect(PROFILE.closedDates).toEqual(['2026-11-20', '2026-12-25'])
     const fallback = mergeClinic(CAL, null)
-    fallback.staff.push({ id: 'x', name: 'x', mark: 'x', color: 'blue' })
+    fallback.staff.push({ id: 'x', name: 'x', mark: 'x', color: 'blueberry' })
     expect(CAL.staff).toHaveLength(2)
   })
 })

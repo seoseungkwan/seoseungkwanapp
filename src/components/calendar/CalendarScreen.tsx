@@ -139,7 +139,7 @@ type Layer =
 
 type Ask = { field: 'name' | 'chart'; q: string }
 
-const countRow = ({ day, staffId, staffName, kindId, kindName, status, auto, origDay }: CalAppt): CalCountRow => ({
+const countRow = ({ day, staffId, staffName, kindId, kindName, status, auto, origDay, gMoved }: CalAppt): CalCountRow => ({
   day,
   staffId,
   staffName,
@@ -148,6 +148,7 @@ const countRow = ({ day, staffId, staffName, kindId, kindName, status, auto, ori
   status,
   auto,
   origDay,
+  gMoved,
 })
 
 export function CalendarScreen({ initialToday }: { initialToday: string }) {

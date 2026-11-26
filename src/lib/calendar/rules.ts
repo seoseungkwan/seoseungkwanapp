@@ -72,7 +72,7 @@ export function shownStatus(appt: Pick<CalAppt, 'status' | 'auto'>): ShownStatus
   return appt.auto ?? 'none'
 }
 
-/** [다음 주에도]: 날짜만 7일 뒤, 상태 auto. 도착·처음 자리·id 칸은 넣지 않는다(새 예약) */
+/** [다음 주에도]: 날짜만 7일 뒤, 상태 auto. 도착·처음 자리·id·구글 칸은 넣지 않는다(새 예약). 시행자 없는 예약은 세 칸 그대로 null */
 export function nextWeek(appt: ApptDraft): ApptDraft {
   return {
     day: addDays(appt.day, 7),
@@ -114,8 +114,9 @@ const START_DIGITS = /^(\d{1,2})(\d{2})$/ // 930·1430
 const START_HOUR_MIN = /^(\d{1,2})(?::|\.|시\s*|\s+)(\d{1,2})\s*분?$/ // 14:30·9:30·14.30·14시30분·14 30
 const START_HOUR = /^(\d{1,2})\s*시?$/ // 14·14시
 const HALF_DAY = 720
+const START_STEP = 5 // 시작 칸(분)
 
-/** 쳐서 넣은 시작 시간 → 분(0~1430, 10분 단위). 못 읽으면 'format', 10분 단위가 아니면 'step'.
+/** 쳐서 넣은 시작 시간 → 분(0~1435, 5분 단위 — google-link AC-8503.6). 못 읽으면 'format', 5분 단위가 아니면 'step'.
  * 시가 12 미만이고 보이는 시작보다 앞인데 +12시간이 보이는 끝보다 앞이면 오후로 본다('230' → 14:30) */
 export function parseStart(text: string, openHour: number, closeHour: number): number | 'format' | 'step' {
   const t = text.trim()
@@ -124,7 +125,7 @@ export function parseStart(text: string, openHour: number, closeHour: number): n
   const hour = Number(m[1])
   const minute = m[2] === undefined ? 0 : Number(m[2])
   if (hour > 23 || minute > 59) return 'format'
-  if (minute % 10 !== 0) return 'step'
+  if (minute % START_STEP !== 0) return 'step'
   const at = hour * 60 + minute
   return hour < 12 && at < openHour * 60 && at + HALF_DAY < closeHour * 60 ? at + HALF_DAY : at
 }

@@ -62,8 +62,8 @@ const PROFILE_ROW = {
   hours: DEFAULT_HOURS,
   closed_dates: ['2026-12-24', '2026-12-31'],
   staff: [
-    { id: 'kim', name: '김가짜', role: 'doctor', mark: '김', color: 'blue', calendar: true },
-    { id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'teal', calendar: false },
+    { id: 'kim', name: '김가짜', role: 'doctor', mark: '김', color: 'blueberry', calendar: true },
+    { id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'basil', calendar: false },
   ],
   logo_path: OLD_PATH,
   emr: 'egis',
@@ -188,7 +188,7 @@ const opsOf = (calls: Call[]) =>
   calls.map((c) => (c.kind === 'table' ? `${c.table}.${c.op}` : c.kind === 'storage' ? `${c.bucket}.${c.op}` : c.kind === 'rpc' ? `rpc.${c.fn}` : 'session'))
 
 const day = (open: number, close: number, lunchFrom: number | null = null, lunchTo: number | null = null): DayHours => ({ open, close, lunchFrom, lunchTo })
-const person = (over: Partial<ClinicStaff> = {}): ClinicStaff => ({ id: 'kim', name: '김가짜', role: 'doctor', mark: '김', color: 'blue', calendar: true, ...over })
+const person = (over: Partial<ClinicStaff> = {}): ClinicStaff => ({ id: 'kim', name: '김가짜', role: 'doctor', mark: '김', color: 'blueberry', calendar: true, ...over })
 const profile = (over: Partial<ClinicProfile> = {}): ClinicProfile => ({ ...defaultProfile(), ...over })
 const hoursWith = (index: number, value: DayHours): DayHours[] => DEFAULT_HOURS.map((d, i) => (i === index ? value : d))
 
@@ -255,8 +255,8 @@ describe('AC-6601.3·AC-6602.3·AC-6602.5 병원 정보 검사(checkProfile)', (
     expect(checkProfile(profile({ closedDates: ['2026-02-30'] })).join()).toContain('휴진일')
   })
 
-  it('AC-6602.5: 사람은 30명까지, id 1~40자 겹침 없음, 이름 1~10자, 원장님/직원, 예약 표시 한 글자 겹침 없음, 예약 20색, 예약에 보이기는 참거짓', () => {
-    const thirty = Array.from({ length: 30 }, (_, i) => person({ id: `p${i}`, name: `가짜${i}`, mark: String.fromCodePoint(0xac00 + i), color: CAL_COLORS[i % 20] }))
+  it('AC-6602.5: 사람은 30명까지, id 1~40자 겹침 없음, 이름 1~10자, 원장님/직원, 예약 표시 한 글자 겹침 없음, 예약 11색(AC-8503.2), 예약에 보이기는 참거짓', () => {
+    const thirty = Array.from({ length: 30 }, (_, i) => person({ id: `p${i}`, name: `가짜${i}`, mark: String.fromCodePoint(0xac00 + i), color: CAL_COLORS[i % CAL_COLORS.length]! }))
     expect(checkProfile(profile({ staff: thirty }))).toEqual([])
     expect(checkProfile(profile({ staff: [...thirty, person({ id: 'x', mark: '끝' })] })).join()).toContain('30')
     const wrongs: Partial<ClinicStaff>[] = [
@@ -268,6 +268,9 @@ describe('AC-6601.3·AC-6602.3·AC-6602.5 병원 정보 검사(checkProfile)', (
       { mark: '' },
       { mark: '김가' },
       { color: 'gold' as never },
+      { color: 'blue' as never },
+      { color: 'gray' as never },
+      { color: 'default' as never },
       { calendar: 'yes' as never },
     ]
     for (const over of wrongs) expect(checkProfile(profile({ staff: [person(over)] })), JSON.stringify(over)).not.toEqual([])
@@ -341,7 +344,7 @@ describe('AC-6602.4·AC-6602.7 병원 정보 저장(saveClinicProfile)', () => {
     honorific: '선생님',
     emr: 'uisarang',
     closedDates: ['2026-12-31', '2025-11-17', '2025-11-18', '2026-01-01'],
-    staff: [person({ name: ' 김가짜 ', mark: ' 김 ' }), person({ id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'teal', calendar: false })],
+    staff: [person({ name: ' 김가짜 ', mark: ' 김 ' }), person({ id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'basil', calendar: false })],
     logoPath: OLD_PATH,
   })
 
@@ -369,8 +372,8 @@ describe('AC-6602.4·AC-6602.7 병원 정보 저장(saveClinicProfile)', () => {
       hours: [...DEFAULT_HOURS],
       closed_dates: ['2025-11-18', '2026-01-01', '2026-12-31'],
       staff: [
-        { id: 'kim', name: '김가짜', role: 'doctor', mark: '김', color: 'blue', calendar: true },
-        { id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'teal', calendar: false },
+        { id: 'kim', name: '김가짜', role: 'doctor', mark: '김', color: 'blueberry', calendar: true },
+        { id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'basil', calendar: false },
       ],
     })
     expect(JSON.stringify(call.body)).not.toContain(HOSPITAL)

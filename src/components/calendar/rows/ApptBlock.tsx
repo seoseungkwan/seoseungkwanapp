@@ -2,13 +2,14 @@ import type { ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { shownStatus } from '@/lib/calendar/rules'
 import type { BlockPlace } from '@/lib/calendar/shapes'
-import type { CalAppt, CalColor } from '@/types/calendar'
-import { CAL_TONES } from '../colors'
+import type { CalAppt } from '@/types/calendar'
+import { CAL_TONES, type CalPaint } from '../colors'
 import { apptLabel, Hatch, hm, MovedMark, StatusMark } from './parts'
 
-// 예약 칸 하나(spec clinic-calendar AC-5905.1·AC-5906.2, 시안 .ev·evHTML). 옅은 바탕 + 왼쪽 3px 띠(종류 색 또는 시행자 색),
-// 글은 `차트번호 이름 종류 (표시)` + 길이(일 보기는 둘째 줄에 시간·길이·메모). 칸이 좁으면 낱말 사이에서 줄을 바꾸고, 다 안 들어가면 끝을 자른다
-// (전체 글은 마우스 올림·화면 읽기). 취소 = 흰 바탕·흐린 글·가운데 줄, 안 옴 = 옅은 빗금
+// 예약 칸 하나(spec clinic-calendar AC-5905.1·AC-5906.2 · google-link AC-8503.2, 시안 .ev·evHTML). 색으로 꽉 채운 칸(종류 색 또는 시행자 색)에
+// 그 색의 글자색(--cal-<이름>-on), 차트번호·시간·길이·메모는 같은 글자색을 조금 흐리게(시안 .tk opacity .82).
+// 글은 `차트번호 이름 종류 (표시)` + 길이(일 보기는 둘째 줄에 시간·길이·메모). 시행자 없는 예약은 (표시) 없이. 칸이 좁으면 낱말 사이에서 줄을 바꾸고,
+// 다 안 들어가면 끝을 자른다(전체 글은 마우스 올림·화면 읽기). 취소 = 흰 바탕·흐린 글·가운데 줄, 안 옴 = 옅은 빗금
 
 export type BlockMode = 'week' | 'day'
 
@@ -46,7 +47,7 @@ export function ApptBlock({
   top: number
   height: number
   mode: BlockMode
-  color: CalColor
+  color: CalPaint
   onOpen: (id: string) => void
 }) {
   const shown = shownStatus(appt)
@@ -54,26 +55,26 @@ export function ApptBlock({
   const tone = CAL_TONES[color]
   const lines = linesFor(height, mode)
   const label = apptLabel(appt, shown)
-  const look = cancel ? 'border-transparent bg-surface text-muted ring-line-strong' : `${tone.soft} ${tone.edge} ${tone.ring} text-ink`
+  const look = cancel ? 'bg-surface text-muted ring-1 ring-line-strong ring-inset' : `${tone.fill} ${tone.on}`
   const tk = (extra = '') => `whitespace-nowrap ${cancel ? 'text-muted line-through' : extra}`
   const end = appt.start + appt.len
   const tail: ReactNode =
     mode === 'week' ? (
       <>
         {' '}
-        <span className={tk('text-muted')}>{appt.len}분</span>
+        <span className={tk('opacity-82')}>{appt.len}분</span>
       </>
     ) : (
       <>
         {lines < 2 ? ' ' : <br />}
-        <span className={tk('text-ink-2')}>
+        <span className={tk('opacity-82')}>
           {hm(appt.start)}–{hm(end)}
         </span>{' '}
-        <span className={tk('text-muted')}>· {appt.len}분</span>
+        <span className={tk('opacity-82')}>· {appt.len}분</span>
         {appt.memo ? (
           <>
             {' '}
-            <span className={tk('text-muted')}>· {appt.memo}</span>
+            <span className={tk('opacity-82')}>· {appt.memo}</span>
           </>
         ) : null}
       </>
@@ -89,7 +90,7 @@ export function ApptBlock({
       title={label}
       onClick={() => onOpen(appt.id)}
       style={placeStyle(place, top, height)}
-      className={`absolute z-1 flex cursor-pointer flex-col overflow-clip rounded-control border-l-3 text-left text-caption ring-1 ring-inset hover:z-4 hover:shadow-float focus-visible:z-4 ${PAD[mode]} ${look} ${ds.focusRing}`}
+      className={`absolute z-1 flex cursor-pointer flex-col overflow-clip rounded-control text-left text-caption hover:z-4 hover:shadow-float focus-visible:z-4 ${PAD[mode]} ${look} ${ds.focusRing}`}
     >
       {shown === 'noshow' ? <Hatch kind="noshow" className="text-surface opacity-60" /> : null}
       <span className="relative line-clamp-1" style={{ WebkitLineClamp: lines }}>
@@ -97,12 +98,13 @@ export function ApptBlock({
         {appt.origDay ? <MovedMark /> : null}
         {appt.chart ? (
           <>
-            <span className={tk('text-ink-2 tabular-nums')}>{appt.chart}</span>{' '}
+            <span className={tk('opacity-82 tabular-nums')}>{appt.chart}</span>{' '}
           </>
         ) : null}
         <span className={`font-semibold ${tk()}`}>{appt.name}</span>{' '}
         <span className={tk()}>
-          {appt.kindName} ({appt.staffMark})
+          {appt.kindName}
+          {appt.staffMark === null ? null : ` (${appt.staffMark})`}
         </span>
         {tail}
       </span>

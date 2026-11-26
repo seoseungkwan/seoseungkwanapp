@@ -557,11 +557,11 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
   const CHART = '99001' // 가짜 차트번호
   const SLOT: CalSlotRow = { day: '2026-10-05', staffId: 's1', staffName: '김시행', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 540, len: 60, chart: CHART }
   const CALENDAR: StatsCalendarShown = {
-    rows: [{ day: '2026-10-05', staffId: 's1', staffName: '김시행', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, origDay: null }],
+    rows: [{ day: '2026-10-05', staffId: 's1', staffName: '김시행', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, origDay: null, gMoved: false }],
     today: TODAY,
     onReread: vi.fn(),
     slots: { rows: [SLOT], offs: [] },
-    settings: { kinds: [{ id: 'dosu', name: '도수', len: 30, color: null }], staff: [{ id: 's1', name: '김선생', mark: '김', color: 'blue' }], openHour: 9, closeHour: 18, sunday: false },
+    settings: { kinds: [{ id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] }], staff: [{ id: 's1', name: '김선생', mark: '김', color: 'blueberry' }], openHour: 9, closeHour: 18, sunday: false },
   }
   const printSpy = vi.fn()
 

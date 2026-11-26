@@ -5,39 +5,17 @@ import { useRef, useState, type ReactNode } from 'react'
 import { useDesk } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { CAL_LABEL_MAX, KIND_LEN_MAX, checkCalendarKinds, type CalKindProblem } from '@/lib/storage/calendar'
-import { CAL_COLORS, type CalColor, type CalKind, type CalSettings } from '@/types/calendar'
+import { CAL_COLORS, type CalKind, type CalSettings, type KindColor } from '@/types/calendar'
 import { Drawer } from './AddPanel'
 import { CalIcon, Swatch, calVar } from './CalendarToolbar'
+import { CAL_COLOR_LABEL, CAL_DEFAULT_LABEL, CAL_FOLLOW_LABEL, kindColorLabel } from './colors'
 
 // 예약 설정 판 (spec clinic-calendar AC-5905.5, 시안 ?s=settings).
-// 종류: ▲▼ 차례·이름(10자)·기본 길이(5~120분)·색(고정 20색 또는 시행자 색 따름)·지우기(하나는 남긴다).
+// 종류: ▲▼ 차례·이름(10자)·기본 길이(5~120분)·색(시행자 색 따름 · 캘린더 기본 색 · 구글 일정 11색, google-link AC-8503.2)·지우기(하나는 남긴다).
+// 알아볼 글(words)은 이 판이 고치지 않고 그대로 넘긴다(새 종류는 이름 하나 — 고치는 곳은 구글 캘린더 설정).
 // 검사는 lib/storage checkCalendarKinds(+ 같은 종류 이름은 이 판이 본다).
 // 시행자·보이는 시간·주 보기 요일은 병원 정보에서 온다(spec clinic-profile AC-6603.4): 그 구역 대신 안내 글 + 원장에게만 [병원 정보로 가기](/settings).
 // 판 안에서 고친 종류 사본을 쥐고 [저장]은 onSave로 받은 설정에 고친 종류만 바꿔 넘긴다(저장은 화면이 한다, 서버로는 종류만 간다)
-
-/** 색 이름(시안 PALETTE 차례 = CAL_COLORS 차례, 회색은 맨 끝) */
-export const COLOR_NAMES: Record<CalColor, string> = {
-  blue: '파랑',
-  teal: '청록',
-  purple: '보라',
-  orange: '주황',
-  pink: '분홍',
-  lime: '연두',
-  navy: '남색',
-  sky: '하늘',
-  brown: '갈색',
-  red: '빨강',
-  yellow: '노랑',
-  green: '초록',
-  mint: '민트',
-  magenta: '자주',
-  wine: '와인',
-  forest: '진초록',
-  lavender: '연보라',
-  coral: '산호',
-  black: '검정',
-  gray: '회색',
-}
 
 type Problem = CalKindProblem | 'kind-dup'
 const PROBLEM_TEXT: Record<Problem, string> = {
@@ -79,27 +57,29 @@ function colorButton(open: boolean) {
   }`
 }
 
-/** 종류 색판(시안 .pal): '시행자 색 따름'이 맨 앞. 동그라미 20색(calendar-colors AC-6001.3) */
-function Palette({ color, onPick }: { color: CalColor | null; onPick(color: CalColor | null): void }) {
+const pickButton = (on: boolean) =>
+  `inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-control border bg-surface px-2 text-caption text-ink ${ds.focusRing} ${
+    on ? 'border-ink font-semibold ring-1 ring-ink ring-inset' : 'border-line-strong'
+  }`
+
+/** 종류 색판(시안 .gpal): '시행자 색 따름' · '캘린더 기본 색'이 앞, 그다음 구글 일정 11색(colorId 1~11 차례) */
+function Palette({ color, onPick }: { color: KindColor; onPick(color: KindColor): void }) {
   return (
     <div role="group" aria-label="색 고르기" className="flex flex-wrap items-center gap-1.5 rounded-control bg-canvas p-2">
-      <button
-        type="button"
-        aria-pressed={color === null}
-        className={`inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-control border bg-surface px-2 text-caption text-ink ${ds.focusRing} ${
-          color === null ? 'border-ink font-semibold ring-1 ring-ink ring-inset' : 'border-line-strong'
-        }`}
-        onClick={() => onPick(null)}
-      >
+      <button type="button" aria-pressed={color === null} className={pickButton(color === null)} onClick={() => onPick(null)}>
         <Swatch color={null} />
-        시행자 색 따름
+        {CAL_FOLLOW_LABEL}
+      </button>
+      <button type="button" aria-pressed={color === 'default'} className={pickButton(color === 'default')} onClick={() => onPick('default')}>
+        <Swatch color="default" />
+        {CAL_DEFAULT_LABEL}
       </button>
       {CAL_COLORS.map((c) => (
         <button
           key={c}
           type="button"
-          aria-label={COLOR_NAMES[c]}
-          title={COLOR_NAMES[c]}
+          aria-label={CAL_COLOR_LABEL[c]}
+          title={CAL_COLOR_LABEL[c]}
           aria-pressed={color === c}
           className={`size-7 cursor-pointer rounded-control border-2 border-surface ${ds.focusRing} max-md:size-11 ${color === c ? 'ring-2 ring-ink' : 'ring-1 ring-line-strong'}`}
           style={{ backgroundColor: calVar(c) }}
@@ -162,7 +142,8 @@ export function CalendarSettings({ settings, busy = false, error, onSave, onClos
   // 받은 설정(병원 정보와 합친 시행자·시간 포함)에 고친 종류만 바꿔 넘긴다
   function save() {
     if (problem !== null || busy) return
-    onSave({ ...settings, kinds: kinds.map((k) => ({ id: k.id, name: k.name.trim(), len: k.len, color: k.color })) })
+    const words = (k: CalKind) => (k.words.length > 0 ? k.words : [k.name.trim()]) // 새 종류 = 이름 하나
+    onSave({ ...settings, kinds: kinds.map((k) => ({ id: k.id, name: k.name.trim(), len: k.len, color: k.color, words: words(k) })) })
   }
 
   const foot = (
@@ -244,7 +225,7 @@ export function CalendarSettings({ settings, busy = false, error, onSave, onClos
                       onClick={() => setPalette(open ? null : `k:${kind.id}`)}
                     >
                       <Swatch color={kind.color} />
-                      {kind.color ? COLOR_NAMES[kind.color] : '시행자 색 따름'}
+                      {kindColorLabel(kind.color)}
                       <span aria-hidden="true" className="text-caption text-muted">
                         ▼
                       </span>
@@ -270,7 +251,7 @@ export function CalendarSettings({ settings, busy = false, error, onSave, onClos
           <button
             type="button"
             className={ds.button.secondarySmall}
-            onClick={() => setKinds([...kinds, { id: newId(), name: '', len: 30, color: null }])}
+            onClick={() => setKinds([...kinds, { id: newId(), name: '', len: 30, color: null, words: [] }])}
           >
             <PlusIcon />
             종류 더하기

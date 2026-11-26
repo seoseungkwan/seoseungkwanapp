@@ -67,6 +67,7 @@ const cal = (day: string, staffId: string, staffName: string, status: CalCountRo
   status,
   auto,
   origDay,
+  gMoved: false,
 })
 // 10월: 예약 4 · 취소 1 · 변경 1 · 안 옴 1. 시행자 s1 3건(안 옴 1) · s2 1건
 const CAL_ROWS: CalCountRow[] = [
@@ -77,8 +78,8 @@ const CAL_ROWS: CalCountRow[] = [
   cal('2026-10-06', 's2', '박시행', 'came', null, '2026-10-02'),
 ]
 const SETTINGS: CalSettings = {
-  kinds: [{ id: 'dosu', name: '도수', len: 30, color: null }],
-  staff: [{ id: 's1', name: '김선생', mark: '김', color: 'blue' }],
+  kinds: [{ id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] }],
+  staff: [{ id: 's1', name: '김선생', mark: '김', color: 'blueberry' }],
   openHour: 9,
   closeHour: 18,
   sunday: false,

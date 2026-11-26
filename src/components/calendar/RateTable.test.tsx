@@ -24,6 +24,7 @@ const row = (over: Partial<CalCountRow>): CalCountRow => ({
   status: 'auto',
   auto: null,
   origDay: null,
+  gMoved: false,
   ...over,
 })
 
@@ -88,14 +89,14 @@ describe('AC-5907.2: RateBreakdown — 시행자별·종류별 두 표', () => {
   it('AC-5907.2: 설정이 있으면 설정 차례(예약 0도 보임)·(표시) 이름, 지운 시행자·종류는 아래에 저장된 이름으로', () => {
     const settings: CalSettings = {
       kinds: [
-        { id: 'jabo', name: '자보도수', len: 30, color: null },
-        { id: 'dosu', name: '도수', len: 30, color: null },
-        { id: 'visit', name: '진료', len: 10, color: 'lime' },
+        { id: 'jabo', name: '자보도수', len: 30, color: null, words: ['자보도수'] },
+        { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+        { id: 'visit', name: '진료', len: 10, color: 'sage', words: ['진료'] },
       ],
       staff: [
-        { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-        { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-        { id: 'ra', name: '강○○', mark: '라', color: 'orange' },
+        { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+        { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+        { id: 'ra', name: '강○○', mark: '라', color: 'tangerine' },
       ],
       openHour: 8,
       closeHour: 20,

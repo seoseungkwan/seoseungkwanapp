@@ -13,13 +13,13 @@ afterEach(cleanup)
 
 const SETTINGS: CalSettings = {
   kinds: [
-    { id: 'dosu', name: '도수', len: 30, color: null },
-    { id: 'jabo', name: '자보도수', len: 30, color: null },
-    { id: 'inj', name: '주사', len: 10, color: 'pink' },
+    { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+    { id: 'jabo', name: '자보도수', len: 30, color: null, words: ['자보도수'] },
+    { id: 'inj', name: '주사', len: 10, color: 'flamingo', words: ['주사'] },
   ],
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
   ],
   openHour: 8,
   closeHour: 20,
@@ -39,29 +39,9 @@ const problem = () => document.querySelector('[data-problem]')?.textContent ?? '
 const saved = (calls: ReturnType<typeof draw>) => calls.save.mock.calls[0]![0] as CalSettings
 const paletteNames = (palette: HTMLElement) => within(palette).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)
 
-// 20색 색판 차례(calendar-colors AC-6001.1): 옛 아홉(파랑~갈색) → 새 열 → 회색(맨 끝)
-const PALETTE_20 = [
-  '파랑',
-  '청록',
-  '보라',
-  '주황',
-  '분홍',
-  '연두',
-  '남색',
-  '하늘',
-  '갈색',
-  '빨강',
-  '노랑',
-  '초록',
-  '민트',
-  '자주',
-  '와인',
-  '진초록',
-  '연보라',
-  '산호',
-  '검정',
-  '회색',
-]
+// 색판 차례(google-link AC-8503.2): 시행자 색 따름 · 캘린더 기본 색 · 구글 일정 11색(colorId 1~11 차례, 시안 이름)
+const PALETTE_11 = ['라벤더', '세이지', '포도', '플라밍고', '바나나', '귤', '공작', '흑연', '블루베리', '바질', '토마토']
+const OLD_20 = ['파랑', '청록', '보라', '주황', '분홍', '연두', '남색', '하늘', '갈색', '빨강', '노랑', '초록', '민트', '자주', '와인', '진초록', '연보라', '산호', '검정', '회색']
 
 describe('AC-5905.5: 설정 판 — 글', () => {
   it('AC-5905.5·AC-6603.4: 제목·종류 칸 제목·설명·알아 둘 글 세 줄이 시안 그대로(시행자·보이는 시간 칸은 병원 정보로 옮김)', () => {
@@ -114,33 +94,43 @@ describe('AC-5905.5: 종류', () => {
     expect(len.options[len.options.length - 1]!.textContent).toBe('120분')
     fireEvent.change(len, { target: { value: '45' } })
     fireEvent.click(saveButton())
-    expect(saved(calls).kinds[1]).toEqual({ id: 'jabo', name: '자보', len: 45, color: null })
+    expect(saved(calls).kinds[1]).toEqual({ id: 'jabo', name: '자보', len: 45, color: null, words: ['자보도수'] }) // 알아볼 글은 그대로 둔다(고치는 곳은 구글 캘린더 설정)
   })
 
-  it('AC-5905.5·AC-6001.3: 색 단추를 누르면 색판 — 시행자 색 따름 또는 20색', () => {
+  it('AC-5905.5·AC-8503.2: 색 단추를 누르면 색판 — 시행자 색 따름 · 캘린더 기본 색 · 11색(시안 이름), 옛 20색 이름은 없다', () => {
     const calls = draw()
     const injColor = within(kindRows()[2]!).getByRole('button', { name: /색/ })
-    expect(injColor.textContent).toContain('분홍')
+    expect(injColor.textContent).toContain('플라밍고')
     expect(within(kindRows()[0]!).getByRole('button', { name: /색/ }).textContent).toContain('시행자 색 따름')
     fireEvent.click(injColor)
     expect(injColor.getAttribute('aria-expanded')).toBe('true')
     const palette = within(kindRows()[2]!).getByRole('group', { name: '색 고르기' })
-    expect(paletteNames(palette)).toEqual(['시행자 색 따름', ...PALETTE_20])
+    expect(paletteNames(palette)).toEqual(['시행자 색 따름', '캘린더 기본 색', ...PALETTE_11])
+    for (const old of OLD_20) expect(within(palette).queryByRole('button', { name: old }), old).toBeNull()
     fireEvent.click(within(palette).getByRole('button', { name: '시행자 색 따름' }))
     fireEvent.click(within(kindRows()[0]!).getByRole('button', { name: /색/ }))
-    fireEvent.click(within(within(kindRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '하늘' }))
+    fireEvent.click(within(within(kindRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '공작' }))
     fireEvent.click(saveButton())
-    expect(saved(calls).kinds.map((k) => k.color)).toEqual(['sky', null, null])
+    expect(saved(calls).kinds.map((k) => k.color)).toEqual(['peacock', null, null])
   })
 
-  it("AC-6001.3: 새 색(빨강)을 골라 [저장]하면 색 이름 'red'로 저장되고, 색 단추 글도 빨강이다", () => {
+  it("AC-8503.2: 토마토를 골라 [저장]하면 색 이름 'tomato'로 저장되고, 색 단추 글도 토마토다", () => {
     const calls = draw()
     const dosuColor = within(kindRows()[0]!).getByRole('button', { name: /색/ })
     fireEvent.click(dosuColor)
-    fireEvent.click(within(within(kindRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '빨강' }))
-    expect(within(kindRows()[0]!).getByRole('button', { name: /색/ }).textContent).toContain('빨강')
+    fireEvent.click(within(within(kindRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '토마토' }))
+    expect(within(kindRows()[0]!).getByRole('button', { name: /색/ }).textContent).toContain('토마토')
     fireEvent.click(saveButton())
-    expect(saved(calls).kinds.map((k) => k.color)).toEqual(['red', null, 'pink'])
+    expect(saved(calls).kinds.map((k) => k.color)).toEqual(['tomato', null, 'flamingo'])
+  })
+
+  it("AC-8503.2: '캘린더 기본 색'을 고르면 색 이름 'default'로 저장되고 색 단추 글도 캘린더 기본 색이다", () => {
+    const calls = draw()
+    fireEvent.click(within(kindRows()[1]!).getByRole('button', { name: /색/ }))
+    fireEvent.click(within(within(kindRows()[1]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '캘린더 기본 색' }))
+    expect(within(kindRows()[1]!).getByRole('button', { name: /색/ }).textContent).toContain('캘린더 기본 색')
+    fireEvent.click(saveButton())
+    expect(saved(calls).kinds.map((k) => k.color)).toEqual([null, 'default', 'flamingo'])
   })
 
   it('AC-5905.5: 지우기는 종류가 하나 남으면 막히고, 더하기는 빈 이름 줄 → 이름을 적어야 저장된다', () => {
@@ -157,6 +147,7 @@ describe('AC-5905.5: 종류', () => {
     fireEvent.click(saveButton())
     const kinds = saved(calls).kinds
     expect(kinds.map((k) => k.name)).toEqual(['자보도수', '체외충격파'])
+    expect(kinds.map((k) => k.words)).toEqual([['자보도수'], ['체외충격파']]) // 새 종류의 알아볼 글은 이름 하나
     expect(kinds[1]!.id).not.toBe('jabo')
     expect(kinds[1]!.id).not.toBe('dosu')
   })

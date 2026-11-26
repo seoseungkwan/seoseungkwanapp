@@ -18,7 +18,7 @@ import { offText } from './rows/parts'
 // [저장]은 onSave로 칸만 넘긴다(이름·메모 앞뒤 빈칸 빼고, 빈 차트번호는 null). 서버에 넣는 일은 화면이 한다
 // 시작은 쳐서 넣는 글 칸이다(spec calendar-colors AC-6002.2~4): 읽히면 바로 draft.start, 못 읽는 동안은 저장을 막고 벗어나면 오류 글
 
-const START_ERROR = { format: '시간을 14:30처럼 적어 주세요', step: '10분 단위로 적어 주세요 (예: 14:30)' } as const
+const START_ERROR = { format: '시간을 14:30처럼 적어 주세요', step: '5분 단위로 적어 주세요 (예: 14:30)' } as const
 const LEN_MIN = 5
 const LEN_MAX = 240
 const LEN_STEP = 5
@@ -56,8 +56,8 @@ export function draftOf(appt: CalAppt): AddDraft {
     name: appt.name,
     chart: appt.chart ?? '',
     staffId: appt.staffId,
-    staffName: appt.staffName,
-    staffMark: appt.staffMark,
+    staffName: appt.staffName ?? '', // 시행자 없는 예약(구글에서 옴)은 빈 글 — 고치기 판의 '없음'은 TASK-12
+    staffMark: appt.staffMark ?? '',
     kindId: appt.kindId,
     kindName: appt.kindName,
     memo: appt.memo,
@@ -216,9 +216,9 @@ export function AddPanel({
   ].filter((m) => m !== null)
   const ready = missing.length === 0
 
-  // 시작 고르기 목록: 보이는 시간 안 10분 칸(지금 값이 칸 밖이면 그 값도 둔다)
+  // 시작 고르기 목록: 보이는 시간 안 5분 칸(google-link AC-8503.3, 지금 값이 칸 밖이면 그 값도 둔다)
   const starts: number[] = []
-  for (let m = settings.openHour * 60; m < settings.closeHour * 60; m += 10) starts.push(m)
+  for (let m = settings.openHour * 60; m < settings.closeHour * 60; m += 5) starts.push(m)
   if (!starts.includes(draft.start)) starts.push(draft.start)
   starts.sort((a, b) => a - b)
 
@@ -320,7 +320,7 @@ export function AddPanel({
             ))}
           </datalist>
           <span id={`${ids}-start-hint`} className={startError ? ds.fieldError : HINT}>
-            {startError ?? '1430처럼 쳐도 돼요 · 10분 단위'}
+            {startError ?? '1430처럼 쳐도 돼요 · 5분 단위'}
           </span>
         </div>
         <div className="grid min-w-0 content-start gap-1.5">

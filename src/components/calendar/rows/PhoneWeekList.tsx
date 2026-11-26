@@ -46,7 +46,8 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
       else next.add(day)
       return next
     })
-  const staffOrder = (id: string) => {
+  // 시행자 없는 예약(null)·목록에 없는 시행자는 뒤
+  const staffOrder = (id: string | null) => {
     const i = settings.staff.findIndex((s) => s.id === id)
     return i < 0 ? settings.staff.length : i
   }
@@ -135,7 +136,7 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
                     key={it.id}
                     type="button"
                     onClick={() => onAllDay(day)}
-                    className={`flex h-6 max-w-full min-w-0 cursor-pointer items-center rounded-control px-2 text-caption font-semibold text-ink ${allDayChipClass(it, settings.staff)} ${ds.focusRing}`}
+                    className={`flex h-6 max-w-full min-w-0 cursor-pointer items-center rounded-control px-2 text-caption font-semibold ${allDayChipClass(it, settings.staff)} ${ds.focusRing}`}
                   >
                     <span className="truncate">{allDayText(it, settings.staff)}</span>
                   </button>
@@ -175,7 +176,7 @@ function ApptRow({ appt, settings, onOpen }: { appt: CalAppt; settings: Pick<Cal
         {hm(appt.start)}
         <small className="block text-caption font-normal text-muted no-underline">{appt.len}분</small>
       </span>
-      <span data-bar className={`w-1 shrink-0 self-stretch rounded-control ${CAL_TONES[apptColor(appt, settings)].solid}`} />
+      <span data-bar className={`w-1 shrink-0 self-stretch rounded-control ${CAL_TONES[apptColor(appt, settings)].fill}`} />
       <span className="min-w-0 flex-1 leading-4.5">
         <b className={`block truncate text-body font-semibold ${cancel ? 'text-muted line-through' : 'text-ink'}`}>
           {appt.origDay ? <MovedMark /> : null}
@@ -187,7 +188,7 @@ function ApptRow({ appt, settings, onOpen }: { appt: CalAppt; settings: Pick<Cal
           <span className={cancel ? 'line-through' : ''}>{appt.name}</span>
         </b>
         <small className="block truncate text-caption text-ink-2">
-          {appt.kindName} ({appt.staffMark}) {appt.staffName}
+          {appt.staffId === null ? appt.kindName : `${appt.kindName} (${appt.staffMark}) ${appt.staffName}`}
           {appt.memo ? ` · ${appt.memo}` : ''}
         </small>
       </span>

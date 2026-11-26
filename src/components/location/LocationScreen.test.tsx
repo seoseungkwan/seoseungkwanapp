@@ -385,16 +385,19 @@ describe('PC 배치 · 링크 · 같은 id (AC-7901.4)', () => {
     for (const b of candButtons) expect(b.className.split(/\s+/), b.textContent ?? '').toContain('text-body')
   })
 
-  it('AC-7909.3: 지도 둘레 다른 과 점이 빌려 쓰는 예약 색판(cal-lavender)은 UI_GUIDE 예약 색판 절에 빌림 예외 두 줄(직원 탭·입지 지도)로 적혀 있고, 색은 그대로다', () => {
+  it('AC-7909.3·AC-8503.1: 지도 둘레 다른 과 점은 예약 색판을 빌리지 않고 지도 전용 토큰(map-other·map-other-ring)을 쓰며, UI_GUIDE 예약 색판 절의 빌림 예외 두 줄은 직원·지도 전용 토큰 한 줄이 되었다(색은 그대로)', () => {
     const guide = readFileSync(join(process.cwd(), 'docs/UI_GUIDE.md'), 'utf8')
     const part = guide.split(/^### /m).find((s) => s.startsWith('예약 색판')) ?? ''
-    const borrow = part.split(/\r?\n/).filter((l) => l.startsWith('- 빌림 예외'))
-    expect(borrow).toHaveLength(2)
-    expect(borrow[0]).toContain('components/staff/labels.ts')
-    expect(borrow[1]).toContain('components/location/map/KakaoMap.tsx')
-    expect(borrow[1]).toContain('cal-lavender')
+    const lines = part.split(/\r?\n/)
+    expect(lines.filter((l) => l.startsWith('- 빌림 예외'))).toEqual([])
+    const own = lines.filter((l) => l.startsWith('- 직원·지도 전용 토큰'))
+    expect(own).toHaveLength(1)
+    for (const word of ['components/staff/labels.ts', 'components/staff/schedule/WeekTable.tsx', 'components/location/map/KakaoMap.tsx', 'map-other', 'leave-annual', 'staff-dot', '#A78BFA', '#7C3AED']) {
+      expect(own[0], word).toContain(word)
+    }
     const map = readFileSync(join(process.cwd(), 'src/components/location/map/KakaoMap.tsx'), 'utf8')
-    expect(map).toContain("other: 'block size-1.5 rounded-full bg-cal-lavender ring-1 ring-cal-purple/50'")
+    expect(map).toContain("other: 'block size-1.5 rounded-full bg-map-other ring-1 ring-map-other-ring/50'")
+    expect(map).not.toMatch(/\bcal-/)
   })
 
   it('AC-7901.4: 화면·훅 소스에 폰 전용 모양(max-md:)·폰 모양이 든 공용 묶음·Next Link가 없다 — /location 안에서 다른 탭으로 가는 링크는 평범한 <a href>', () => {

@@ -69,7 +69,7 @@ const SAVED: ClinicProfile = {
     { open: 540, close: 720, lunchFrom: null, lunchTo: null },
   ],
   closedDates: ['2026-12-25', '2027-01-01'],
-  staff: [person(1, { name: '김원장', role: 'doctor', mark: '김', color: 'blue' }), person(2, { name: '이직원', mark: '이', color: 'teal', calendar: false })],
+  staff: [person(1, { name: '김원장', role: 'doctor', mark: '김', color: 'blueberry' }), person(2, { name: '이직원', mark: '이', color: 'basil', calendar: false })],
   logoPath: null,
 }
 
@@ -332,7 +332,7 @@ describe('AC-6602.5 원장님·직원', () => {
     expect(one.getByRole('button', { name: '원장님' }).getAttribute('aria-pressed')).toBe('true')
     expect(one.getByRole('button', { name: '직원' }).getAttribute('aria-pressed')).toBe('false')
     expect((one.getByRole('textbox', { name: '예약 표시 글자' }) as HTMLInputElement).value).toBe('김')
-    expect(one.getByRole('button', { name: '색 고르기 (파랑)' })).toBeTruthy()
+    expect(one.getByRole('button', { name: '색 고르기 (블루베리)' })).toBeTruthy()
     expect((one.getByRole('checkbox', { name: '예약에 보이기' }) as HTMLInputElement).checked).toBe(true)
     expect((one.getByRole('button', { name: '1번째 사람 위로' }) as HTMLButtonElement).disabled).toBe(true)
     expect((one.getByRole('button', { name: '1번째 사람 아래로' }) as HTMLButtonElement).disabled).toBe(false)
@@ -344,17 +344,17 @@ describe('AC-6602.5 원장님·직원', () => {
   })
 
   it('AC-6602.5: [사람 더하기] → 이름을 적으면 표시 글자는 이름 첫 글자, 색은 아직 안 쓴 첫 색, 예약에 보이기 체크', async () => {
-    const user = await renderReady(SAVED) // 파랑·청록을 쓴다
+    const user = await renderReady(SAVED) // 블루베리·바질을 쓴다 → 안 쓴 첫 색은 라벤더(구글 colorId 차례)
     await user.click(screen.getByRole('button', { name: '사람 더하기' }))
     const row = within(staffRows()[2]!)
     await user.type(row.getByRole('textbox', { name: '이름' }), '박물리')
     expect((row.getByRole('textbox', { name: '예약 표시 글자' }) as HTMLInputElement).value).toBe('박')
-    expect(row.getByRole('button', { name: '색 고르기 (보라)' })).toBeTruthy()
+    expect(row.getByRole('button', { name: '색 고르기 (라벤더)' })).toBeTruthy()
     expect((row.getByRole('checkbox', { name: '예약에 보이기' }) as HTMLInputElement).checked).toBe(true)
     await user.click(saveButton())
     await screen.findByText('저장했어요')
     const added = lastSaved().staff[2]!
-    expect(added).toMatchObject({ name: '박물리', mark: '박', color: 'purple', calendar: true })
+    expect(added).toMatchObject({ name: '박물리', mark: '박', color: 'lavender', calendar: true })
     expect(['doctor', 'staff']).toContain(added.role)
     expect(added.id.length).toBeGreaterThan(0)
     expect(added.id.length).toBeLessThanOrEqual(40)
@@ -375,8 +375,8 @@ describe('AC-6602.5 원장님·직원', () => {
     await user.click(saveButton())
     await screen.findByText('저장했어요')
     const [first, second] = lastSaved().staff
-    expect(first).toMatchObject({ name: '최가나', mark: '★', color: 'blue' })
-    expect(second).toMatchObject({ name: '정다', mark: '정', color: 'teal' })
+    expect(first).toMatchObject({ name: '최가나', mark: '★', color: 'lavender' })
+    expect(second).toMatchObject({ name: '정다', mark: '정', color: 'sage' })
     expect(first!.id).not.toBe(second!.id)
   })
 
@@ -396,18 +396,20 @@ describe('AC-6602.5 원장님·직원', () => {
     expect(saveButton().disabled).toBe(true)
   })
 
-  it("AC-6602.5: '원장님'/'직원'·예약에 보이기·색(예약 20색)을 고치고 ▲▼로 차례를 바꾸고 [빼기]로 뺀다", async () => {
-    const user = await renderReady({ ...SAVED, staff: [...SAVED.staff, person(3, { name: '박셋', mark: '박', color: 'purple' })] })
+  it("AC-6602.5·AC-8503.2: '원장님'/'직원'·예약에 보이기·색(구글 11색)을 고치고 ▲▼로 차례를 바꾸고 [빼기]로 뺀다", async () => {
+    const user = await renderReady({ ...SAVED, staff: [...SAVED.staff, person(3, { name: '박셋', mark: '박', color: 'grape' })] })
     const second = within(staffRows()[1]!)
     await user.click(second.getByRole('button', { name: '원장님' }))
     await user.click(second.getByRole('checkbox', { name: '예약에 보이기' }))
-    await user.click(second.getByRole('button', { name: '색 고르기 (청록)' }))
+    await user.click(second.getByRole('button', { name: '색 고르기 (바질)' }))
     const palette = within(second.getByRole('group', { name: '색 고르기' }))
-    expect(palette.getAllByRole('button')).toHaveLength(20)
-    expect(palette.getByRole('button', { name: '청록' }).getAttribute('aria-pressed')).toBe('true')
-    await user.click(palette.getByRole('button', { name: '주황' }))
+    expect(palette.getAllByRole('button')).toHaveLength(11)
+    expect(palette.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['라벤더', '세이지', '포도', '플라밍고', '바나나', '귤', '공작', '흑연', '블루베리', '바질', '토마토'])
+    for (const old of ['파랑', '청록', '보라', '주황', '회색']) expect(palette.queryByRole('button', { name: old })).toBeNull()
+    expect(palette.getByRole('button', { name: '바질' }).getAttribute('aria-pressed')).toBe('true')
+    await user.click(palette.getByRole('button', { name: '귤' }))
     expect(second.queryByRole('group', { name: '색 고르기' })).toBeNull()
-    expect(second.getByRole('button', { name: '색 고르기 (주황)' })).toBeTruthy()
+    expect(second.getByRole('button', { name: '색 고르기 (귤)' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: '3번째 사람 위로' }))
     expect(staffNames()).toEqual(['김원장', '박셋', '이직원'])
     await user.click(screen.getByRole('button', { name: '1번째 사람 아래로' }))
@@ -417,8 +419,8 @@ describe('AC-6602.5 원장님·직원', () => {
     await user.click(saveButton())
     await screen.findByText('저장했어요')
     expect(lastSaved().staff).toEqual([
-      person(3, { name: '박셋', mark: '박', color: 'purple' }),
-      { ...SAVED.staff[1], role: 'doctor', calendar: true, color: 'orange' },
+      person(3, { name: '박셋', mark: '박', color: 'grape' }),
+      { ...SAVED.staff[1], role: 'doctor', calendar: true, color: 'tangerine' },
     ])
   })
 

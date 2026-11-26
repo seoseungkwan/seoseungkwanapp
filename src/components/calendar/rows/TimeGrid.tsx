@@ -74,7 +74,8 @@ export function TimeGrid({
   const slots = (close - open) / 10
   const yOf = (min: number) => ((min - open) / 10) * SLOT_PX
   const bodyHeight = yOf(close)
-  const staffOrder = (id: string) => {
+  // 시행자 없는 예약(null)·목록에 없는 시행자는 뒤
+  const staffOrder = (id: string | null) => {
     const i = settings.staff.findIndex((s) => s.id === id)
     return i < 0 ? settings.staff.length : i
   }
@@ -279,7 +280,7 @@ export function TimeGrid({
                     e.stopPropagation()
                     onAllDay(day)
                   }}
-                  className={`flex h-5.5 max-w-full min-w-0 cursor-pointer items-center rounded-control px-1.5 text-left text-caption font-semibold text-ink ${allDayChipClass(it, settings.staff)} ${ds.focusRing}`}
+                  className={`flex h-5.5 max-w-full min-w-0 cursor-pointer items-center rounded-control px-1.5 text-left text-caption font-semibold ${allDayChipClass(it, settings.staff)} ${ds.focusRing}`}
                 >
                   <span className="truncate">{allDayText(it, settings.staff)}</span>
                 </button>

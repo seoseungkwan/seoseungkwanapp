@@ -3,7 +3,8 @@
 import { useId, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { nextWeek, shownStatus, slotLabel } from '@/lib/calendar/rules'
-import type { CalAppt, CalColor, CalSettings } from '@/types/calendar'
+import type { CalAppt, CalSettings } from '@/types/calendar'
+import { apptColor } from './colors'
 import { Drawer } from './AddPanel'
 import { CalIcon, CameMark, CancelTag, NoshowMark, calVar, dayLabel, hm } from './CalendarToolbar'
 
@@ -13,13 +14,6 @@ import { CalIcon, CameMark, CancelTag, NoshowMark, calVar, dayLabel, hm } from '
 
 /** 도착 단추가 부르는 값: auto = 비트 따라(손으로 고른 값 지움) */
 export type ArrivalPick = 'auto' | 'came' | 'noshow'
-
-// 예약 칸 색: 종류 고정 색 → 시행자 색 따름이면 담당 색 → 지운 종류·시행자는 회색
-export function apptColor(appt: Pick<CalAppt, 'kindId' | 'staffId'>, settings: CalSettings): CalColor {
-  const kind = settings.kinds.find((k) => k.id === appt.kindId)
-  if (kind?.color) return kind.color
-  return settings.staff.find((s) => s.id === appt.staffId)?.color ?? 'gray'
-}
 
 const ARRIVALS: readonly [ArrivalPick, string][] = [
   ['auto', '자동 (비트 따라)'],
@@ -125,7 +119,7 @@ export function DetailPanel({ appt, settings, copied = false, busy = false, erro
             <span className="mr-2 text-ink-2 tabular-nums">{appt.chart ?? '차트번호 없음'}</span>
             <span>{appt.name}</span>
           </p>
-          <p className="text-body text-ink-2">{`${appt.kindName} · (${appt.staffMark}) ${appt.staffName}`}</p>
+          <p className="text-body text-ink-2">{appt.staffId === null ? `${appt.kindName} · 시행자 없음` : `${appt.kindName} · (${appt.staffMark}) ${appt.staffName}`}</p>
         </div>
       </div>
       <dl className="grid grid-cols-[56px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body">

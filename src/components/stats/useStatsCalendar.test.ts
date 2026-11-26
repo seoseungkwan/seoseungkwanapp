@@ -32,11 +32,12 @@ const row = (day: string, over: Partial<CalCountRow> = {}): CalCountRow => ({
   status: 'auto',
   auto: null,
   origDay: null,
+  gMoved: false,
   ...over,
 })
 const ROWS_A = [row('2026-10-02'), row('2026-11-03', { status: 'cancel' })]
 const ROWS_B = [row('2026-09-10')]
-const SETTINGS: CalSettings = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blue' }] }
+const SETTINGS: CalSettings = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blueberry' }] }
 // 병원 정보가 없을 때 합친 설정: 예약 설정 그대로 + 월~토 08:00~20:00·휴진일 없음
 const EIGHT_TO_EIGHT: DayHours = { open: 480, close: 1200, lunchFrom: null, lunchTo: null }
 const MERGED: CalSettings = { ...SETTINGS, days: [...Array<DayHours>(6).fill(EIGHT_TO_EIGHT), null], closedDates: [] }
@@ -49,9 +50,9 @@ const PROFILE: ClinicProfile = {
   hours: [WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, null, { open: 600, close: 780, lunchFrom: null, lunchTo: null }],
   closedDates: ['2026-11-20'],
   staff: [
-    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: true },
-    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: false },
-    { id: 'ga', name: '가짜○○', role: 'staff', mark: '가', color: 'navy', calendar: true },
+    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'basil', calendar: true },
+    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'graphite', calendar: false },
+    { id: 'ga', name: '가짜○○', role: 'staff', mark: '가', color: 'blueberry', calendar: true },
   ],
   logoPath: null,
   emr: 'bit',
@@ -98,8 +99,8 @@ describe('AC-6603.5: 통계 예약 칸의 시행자 목록·차례는 예약 화
     expect(result.current.settings).toEqual({
       kinds: SETTINGS.kinds,
       staff: [
-        { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-        { id: 'ga', name: '가짜○○', mark: '가', color: 'navy' },
+        { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+        { id: 'ga', name: '가짜○○', mark: '가', color: 'blueberry' },
       ],
       openHour: 9,
       closeHour: 18,

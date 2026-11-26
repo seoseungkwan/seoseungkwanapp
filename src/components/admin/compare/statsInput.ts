@@ -210,14 +210,17 @@ function closedDays(rows: readonly Row[]): SunapClosedDay[] {
 const isStatus = (value: unknown): value is ApptStatus => (STATUSES as readonly unknown[]).includes(value)
 const isAuto = (value: unknown): value is ApptAuto => value === null || value === 'came' || value === 'noshow'
 
-// calendar_counts: 예약 저장소(toCount)와 같은 검사. 이름·차트번호 없는 수 세기 줄이다
+// calendar_counts: 예약 저장소(toCount)와 같은 검사. 이름·차트번호 없는 수 세기 줄이다.
+// 시행자 두 칸은 함께 null(시행자 없음, google-link AC-8503.3)이어도 받고, g_moved는 칸이 없거나 null이면 거짓(AC-8503.4)
 function calRows(rows: readonly Row[]): CalCountRow[] {
   return rows.flatMap((row): CalCountRow[] => {
-    const { day, staff_id: staffId, staff_name: staffName, kind_id: kindId, kind_name: kindName, status, auto, orig_day: origDay } = row
-    if (!isDay(day) || !lengthIn(staffId, 1, CAL_ID_MAX) || !lengthIn(staffName, 1, CAL_LABEL_MAX)) return []
+    const { day, staff_id: staffId, staff_name: staffName, kind_id: kindId, kind_name: kindName, status, auto, orig_day: origDay, g_moved: gMoved } = row
+    const noStaff = staffId === null && staffName === null
+    if (!isDay(day) || !(noStaff || (lengthIn(staffId, 1, CAL_ID_MAX) && lengthIn(staffName, 1, CAL_LABEL_MAX)))) return []
     if (!lengthIn(kindId, 1, CAL_ID_MAX) || !lengthIn(kindName, 1, CAL_LABEL_MAX) || !isStatus(status) || !isAuto(auto)) return []
     if (!(origDay === null || isDay(origDay))) return []
-    return [{ day, staffId, staffName, kindId, kindName, status, auto, origDay }]
+    if (!(gMoved === undefined || gMoved === null || typeof gMoved === 'boolean')) return []
+    return [{ day, staffId: staffId as string | null, staffName: staffName as string | null, kindId, kindName, status, auto, origDay, gMoved: gMoved === true }]
   })
 }
 

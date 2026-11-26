@@ -1,6 +1,6 @@
 // 직원 탭 화면이 함께 쓰는 글자와 휴가 색 (staff design.md 6절 '공용'). 글자는 요구사항·시안 글자 그대로다.
 // 같은 Phase의 형 파일(types/staff.ts)을 기다리지 않게 열쇠 형을 여기 따로 적는다 — 이름·값은 design.md 3절과 같아 그대로 넘긴다.
-// 휴가 색은 예약 달력 색 토큰(globals.css --cal-*)을 빌린다(시안 leave.html '휴가 종류 색'). Tailwind가 찾게 클래스 이름은 통째로 적는다
+// 휴가 색은 직원 전용 휴가 토큰(globals.css --leave-*, 옛 예약 색 값 그대로 — google-link design.md 10-1)이다(시안 leave.html '휴가 종류 색'). Tailwind가 찾게 클래스 이름은 통째로 적는다
 
 type EmploymentKey = 'regular' | 'contract' | 'part'
 type LeaveKindKey = 'annual' | 'half' | 'family' | 'sick' | 'maternity' | 'unpaid'
@@ -42,10 +42,10 @@ const leaveChip = 'inline-block max-w-full truncate rounded-control border-l-3 p
 
 /** 휴가 종류 칩 클래스(AC-7614.2): 연차 파랑·반차 청록·경조사 보라·병가 분홍·출산·육아휴직 초록·무급(결근) 회색 점선 */
 export const LEAVE_CHIP: Record<LeaveKindKey, string> = {
-  annual: `${leaveChip} border-cal-blue bg-cal-blue-soft text-cal-blue`,
-  half: `${leaveChip} border-cal-teal bg-cal-teal-soft text-cal-teal`,
-  family: `${leaveChip} border-cal-purple bg-cal-purple-soft text-cal-purple`,
-  sick: `${leaveChip} border-cal-pink bg-cal-pink-soft text-cal-pink`,
-  maternity: `${leaveChip} border-cal-forest bg-cal-forest-soft text-cal-forest`,
-  unpaid: `${leaveChip} border border-dashed border-cal-gray bg-cal-gray-soft text-cal-gray`,
+  annual: `${leaveChip} border-leave-annual bg-leave-annual-soft text-leave-annual`,
+  half: `${leaveChip} border-leave-half bg-leave-half-soft text-leave-half`,
+  family: `${leaveChip} border-leave-family bg-leave-family-soft text-leave-family`,
+  sick: `${leaveChip} border-leave-sick bg-leave-sick-soft text-leave-sick`,
+  maternity: `${leaveChip} border-leave-maternity bg-leave-maternity-soft text-leave-maternity`,
+  unpaid: `${leaveChip} border border-dashed border-leave-unpaid bg-leave-unpaid-soft text-leave-unpaid`,
 }

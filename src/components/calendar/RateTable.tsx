@@ -3,7 +3,7 @@ import { formatCount } from '@/components/charts/format'
 import { ds } from '@/components/ui/classes'
 import { ratePct } from '@/lib/calendar/counts'
 import type { RateCounts, RateRow, RateSummary } from '@/lib/calendar/shapes'
-import type { CalColor, CalSettings } from '@/types/calendar'
+import type { CalSettings, KindColor } from '@/types/calendar'
 import { Swatch } from './CalendarToolbar'
 
 // 취소·변경·안 옴 표 (spec clinic-calendar AC-5907.2·AC-5907.3, 시안 ?s=summary·?s=stats의 .bt 표).
@@ -125,7 +125,7 @@ export function RateTable({ head, rows, total, totalLabel = '합계', selected, 
   )
 }
 
-type Listed = { id: string; name: string; mark?: string; color: CalColor | null }
+type Listed = { id: string; name: string; mark?: string; color: KindColor }
 
 // 설정 차례로 줄을 세운다(예약 0도 보임). 설정에 없는(지운) 줄은 아래에 저장된 이름으로
 function inOrder(found: readonly RateRow[], listed: readonly Listed[]): RateTableRow[] {

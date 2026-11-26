@@ -38,7 +38,7 @@ const CHANGED = MON.map((ymd, w) => (w === 0 ? day(ymd, 80, 30, 26) : day(ymd, 1
 const FLAT = MON.map((ymd) => day(ymd, 100, 20, 20))
 
 function appt(ymd: string, status: CalCountRow['status']): CalCountRow {
-  return { day: ymd, staffId: 's1', staffName: '김○○', kindId: 'dosu', kindName: '도수', status, auto: null, origDay: null }
+  return { day: ymd, staffId: 's1', staffName: '김○○', kindId: 'dosu', kindName: '도수', status, auto: null, origDay: null, gMoved: false }
 }
 // 도수 예약 안 옴: 이번 주 10건 중 2건(20%) · 앞선 4주 20건 중 2건(10%)
 const CAL = [

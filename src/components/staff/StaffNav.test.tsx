@@ -146,21 +146,22 @@ describe('labels — 직원 탭 글자와 휴가 색', () => {
     expect(OVERTIME_KIND_LABEL).toEqual({ extended: '연장', night: '야간', holiday: '휴일' })
   })
 
-  it('AC-7614.2: 휴가 색은 예약 달력 색 토큰을 빌린다 — 연차 파랑·반차 청록·경조사 보라·병가 분홍·출산·육아휴직 초록·무급(결근) 회색 점선', () => {
+  it('AC-7614.2·AC-8503.1: 휴가 색은 직원 전용 휴가 토큰(옛 예약 색 값 그대로)이다 — 연차 파랑·반차 청록·경조사 보라·병가 분홍·출산·육아휴직 초록·무급(결근) 회색 점선', () => {
     const tone: Record<keyof typeof LEAVE_CHIP, string> = {
-      annual: 'cal-blue',
-      half: 'cal-teal',
-      family: 'cal-purple',
-      sick: 'cal-pink',
-      maternity: 'cal-forest',
-      unpaid: 'cal-gray',
+      annual: 'leave-annual',
+      half: 'leave-half',
+      family: 'leave-family',
+      sick: 'leave-sick',
+      maternity: 'leave-maternity',
+      unpaid: 'leave-unpaid',
     }
     expect(Object.keys(LEAVE_CHIP).sort()).toEqual(Object.keys(LEAVE_KIND_LABEL).sort())
     for (const [kind, color] of Object.entries(tone) as Array<[keyof typeof LEAVE_CHIP, string]>) {
       const classes = LEAVE_CHIP[kind].split(/\s+/)
       expect(classes, kind).toEqual(expect.arrayContaining([`bg-${color}-soft`, `text-${color}`, `border-${color}`, 'border-l-3', 'truncate', 'max-w-full']))
-      // 다른 색 토큰이 섞이지 않는다
-      expect(classes.filter((c) => /cal-/.test(c) && !c.includes(color)), kind).toEqual([])
+      // 다른 색 토큰이 섞이지 않고, 예약 색판(cal-*)은 빌리지 않는다
+      expect(classes.filter((c) => /leave-/.test(c) && !c.includes(color)), kind).toEqual([])
+      expect(classes.filter((c) => /cal-/.test(c)), kind).toEqual([])
       if (kind === 'unpaid') expect(classes, kind).toContain('border-dashed')
       else expect(classes, kind).not.toContain('border-dashed')
     }

@@ -23,7 +23,8 @@ export const STATUS_TEXT: Record<ShownStatus, string> = { came: '왔음', noshow
 
 /** 예약 칸·줄의 전체 글(마우스 올림·화면 읽기). 시안 evHTML label */
 export function apptLabel(appt: CalAppt, shown: ShownStatus): string {
-  const head = [appt.chart, appt.name, appt.kindName, `(${appt.staffMark})`, `${hm(appt.start)}–${hm(appt.start + appt.len)}`, `${appt.len}분`]
+  // 시행자 없는 예약(시행자 null, google-link AC-8503.3)은 (표시) 없이
+  const head = [appt.chart, appt.name, appt.kindName, appt.staffMark === null ? '' : `(${appt.staffMark})`, `${hm(appt.start)}–${hm(appt.start + appt.len)}`, `${appt.len}분`]
   const moved = appt.origDay !== null && appt.origStart !== null ? ` · 변경 (원래 ${slotLabel(appt.origDay, appt.origStart)})` : ''
   return `${head.filter(Boolean).join(' ')}${STATUS_TEXT[shown] ? ` · ${STATUS_TEXT[shown]}` : ''}${moved}`
 }
@@ -105,9 +106,9 @@ export function allDayText(item: CalAllDay, staff: readonly CalStaff[]): string 
   return `${mark ? `(${mark}) ` : ''}${item.staffName ?? ''} ${offText(item.part)}`
 }
 
-/** 종일 칩 모양: 메모 = 회색, 휴무 = 그 시행자 옅은 색 + 왼쪽 3px 띠 */
+/** 종일 칩 모양(글자색 포함): 메모 = 회색 바탕 검정 글, 휴무 = 그 시행자 색으로 꽉 채움 + 그 색의 글자색(google-link AC-8503.2, 목록에 없는 시행자 = 캘린더 기본 색) */
 export function allDayChipClass(item: CalAllDay, staff: readonly CalStaff[]): string {
-  if (item.type === 'memo') return 'bg-canvas ring-1 ring-line-strong ring-inset'
+  if (item.type === 'memo') return 'bg-canvas text-ink ring-1 ring-line-strong ring-inset'
   const tone = CAL_TONES[staffColor(item.staffId, staff)]
-  return `border-l-3 ${tone.soft} ${tone.edge}`
+  return `${tone.fill} ${tone.on}`
 }

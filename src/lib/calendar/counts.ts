@@ -5,10 +5,18 @@ import type { CalAllDay, CalCountRow, MonthCell, MonthRate, RateCounts, RateRow,
 // 월 보기 수·취소/변경/안 옴 수(spec clinic-calendar AC-5902.5·AC-5907.1). 순수 함수다.
 // 월 칸은 취소를 세지 않는다(변경도 취소 뺌). 요약 줄·통계는 취소도 센다: 예약 = 기간의 줄(취소 포함, 지운 것은 이미 없음)
 
-type MonthInput = Pick<CalCountRow, 'day' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'>
-type RateInput = Pick<CalCountRow, 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'>
+// gMoved(구글에서 변경 색이 됨, google-link AC-8503.4)는 처음 자리처럼 '변경'에 센다. 칸이 없는 줄(옛 모양)은 거짓으로 본다
+type Moved = { gMoved?: boolean }
+type MonthInput = Pick<CalCountRow, 'day' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'> & Moved
+type RateInput = Pick<CalCountRow, 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'> & Moved
 
 export const NO_RATE = '–'
+/** 시행자 없는 예약(시행자 세 칸 null)의 묶음 id·이름(시행자별 표·다시 예약, google-link design.md 10-1) */
+export const NO_STAFF_ID = ''
+export const NO_STAFF_LABEL = '시행자 없음'
+
+/** 변경 = 처음 자리가 있거나 구글에서 변경 색이 됨 */
+const isMoved = (row: Pick<CalCountRow, 'origDay'> & Moved) => Boolean(row.origDay) || row.gMoved === true
 
 /** part ÷ whole → '33.3%'(소수 첫째 자리 반올림, 통계 sunapPct와 같은 규칙). whole이 0이면 '–' */
 export function ratePct(part: number, whole: number): string {
@@ -35,7 +43,7 @@ export function monthCells<A extends Pick<CalAllDay, 'day'>>(
     const kind = cell.kinds.find((k) => k.kindId === a.kindId)
     if (kind) kind.n++
     else cell.kinds.push({ kindId: a.kindId, kindName: a.kindName, n: 1 })
-    if (a.origDay) cell.moved++
+    if (isMoved(a)) cell.moved++
     if (cell.noshow !== null && shownStatus(a) === 'noshow') cell.noshow++
   }
   for (const item of allday) cells.get(item.day)?.allday.push(item)
@@ -46,15 +54,15 @@ export function monthCells<A extends Pick<CalAllDay, 'day'>>(
 
 const zero = (): RateCounts => ({ total: 0, cancel: 0, moved: 0, noshow: 0 })
 
-function add(counts: RateCounts, row: Pick<CalCountRow, 'status' | 'auto' | 'origDay'>): void {
+function add(counts: RateCounts, row: Pick<CalCountRow, 'status' | 'auto' | 'origDay'> & Moved): void {
   counts.total++
   if (row.status === 'cancel') counts.cancel++
-  if (row.origDay) counts.moved++
+  if (isMoved(row)) counts.moved++
   if (shownStatus(row) === 'noshow') counts.noshow++
 }
 
 /** 기간 예약의 예약·취소·변경·안 옴 수와 시행자별·종류별 같은 네 수. 표는 예약 많은 차례(같으면 먼저 나온 차례),
- * 이름은 그 id의 마지막(가장 늦은) 줄에 저장된 이름 — 지운 시행자·종류도 그 이름 그대로 나온다 */
+ * 이름은 그 id의 마지막(가장 늦은) 줄에 저장된 이름 — 지운 시행자·종류도 그 이름 그대로 나온다. 시행자 없는 예약은 '시행자 없음' 한 줄(NO_STAFF_ID) */
 export function rateSummary(rows: readonly RateInput[]): RateSummary {
   const total = zero()
   const byStaff = new Map<string, RateRow>()
@@ -67,7 +75,7 @@ export function rateSummary(rows: readonly RateInput[]): RateSummary {
   }
   for (const row of rows) {
     add(total, row)
-    group(byStaff, row.staffId, row.staffName, row)
+    group(byStaff, row.staffId ?? NO_STAFF_ID, row.staffId === null ? NO_STAFF_LABEL : (row.staffName ?? NO_STAFF_LABEL), row)
     group(byKind, row.kindId, row.kindName, row)
   }
   const ranked = (map: Map<string, RateRow>) => [...map.values()].sort((a, b) => b.total - a.total)

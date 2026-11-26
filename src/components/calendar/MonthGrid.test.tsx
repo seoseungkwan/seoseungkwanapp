@@ -11,13 +11,13 @@ import { MonthGrid, type MonthGridProps } from './MonthGrid'
 afterEach(cleanup)
 
 const STAFF: CalStaff[] = [
-  { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-  { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
+  { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+  { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
 ]
 const SETTINGS = { kinds: DEFAULT_CAL_SETTINGS.kinds, staff: STAFF }
 const TODAY = '2026-11-17'
 
-const base: CalCountRow = { day: TODAY, staffId: 'ga', staffName: '한○○', kindId: 'dosu', kindName: '도수', status: 'auto', auto: null, origDay: null }
+const base: CalCountRow = { day: TODAY, staffId: 'ga', staffName: '한○○', kindId: 'dosu', kindName: '도수', status: 'auto', auto: null, origDay: null, gMoved: false }
 const row = (over: Partial<CalCountRow>): CalCountRow => ({ ...base, ...over })
 
 const ROWS: CalCountRow[] = [
@@ -105,7 +105,7 @@ describe('AC-5905.1: 월 보기는 날마다 수만(monthCells), 월~일 7칸', 
     renderMonth()
     expect(within(cell(/^11월 16일/)).getByText('주간 회의 13:00')).toBeTruthy()
     const off = within(cell(/^11월 18일/)).getByText('(나) 윤○○ 휴무')
-    expect(off.className).toContain('bg-cal-teal-soft')
+    expect(off.className).toContain('bg-cal-basil')
   })
 
   it('AC-5905.1: 예약 없는 날은 수 글이 없고, 달 밖 날은 흐리게 보인다', () => {
@@ -172,8 +172,8 @@ describe('AC-7616.1: 월 칸의 반차 휴무 칩', () => {
     ]
     renderMonth({ allday })
     const pm = within(cell(/^11월 13일/)).getByText('(나) 윤○○ 오후 휴무')
-    expect(pm.className).toContain('bg-cal-teal-soft')
-    expect(within(cell(/^11월 20일/)).getByText('(가) 한○○ 오전 휴무').className).toContain('bg-cal-blue-soft')
+    expect(pm.className).toContain('bg-cal-basil')
+    expect(within(cell(/^11월 20일/)).getByText('(가) 한○○ 오전 휴무').className).toContain('bg-cal-blueberry')
     expect(within(cell(/^11월 18일/)).getByText('(나) 윤○○ 휴무')).toBeTruthy()
   })
 })

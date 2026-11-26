@@ -18,6 +18,7 @@ const row = (over: Partial<CalCountRow>): CalCountRow => ({
   status: 'auto',
   auto: null,
   origDay: null,
+  gMoved: false,
   ...over,
 })
 // 10줄: 취소 2 · 처음 자리 1(취소 아님) · 안 옴 1 (design.md '예')
