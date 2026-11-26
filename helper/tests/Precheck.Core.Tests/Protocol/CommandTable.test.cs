@@ -54,12 +54,14 @@ public class CommandTableTests
         Assert.Equal(file, CommandTable.EmbeddedBytes());
     }
 
-    [Fact(DisplayName = "AC-001.2 명령 표에는 design.md 4-3의 명령 12개가 있고 환자 자료 여부가 맞다")]
+    // google-link AC-8511.1: 수납 명령 여덟(sheet.*, 모두 환자 자료 아님)을 더했다
+    [Fact(DisplayName = "AC-001.2 명령 표에는 design.md 4-3의 명령 12개 + 수납 sheet.* 8개가 있고 환자 자료 여부가 맞다")]
     public void TableHasTwelveCommands()
     {
         var patient = new[] { "claim.month", "claim.memos", "store.load", "store.save", "bit.input", "sam.latest", "contact.targets", "stats.rows" };
         var notPatient = new[] { "hello", "bit.check", "bit.register", "claim.dates",
-            "revenue.days" };
+            "revenue.days",
+            "sheet.status", "sheet.code", "sheet.link", "sheet.import", "sheet.ping", "sheet.catalog", "sheet.months", "sheet.fill" };
 
         Assert.Equal(patient.Concat(notPatient).OrderBy(n => n, StringComparer.Ordinal),
             Table.Names.OrderBy(n => n, StringComparer.Ordinal));

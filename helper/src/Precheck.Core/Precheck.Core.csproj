@@ -13,5 +13,7 @@
   <ItemGroup>
     <!-- 명령 표 원본 하나: 확장·웹·도우미가 같은 파일을 읽는다 (design.md 4-3) -->
     <EmbeddedResource Include="../../../src/lib/bridge/commands.json" LogicalName="commands.json" />
+    <!-- 수납 구글 코드(google-link design.md 8-1). sheet.code가 비밀 글자 자리 __TOKEN__을 바꿔 클립보드에 넣는다(SheetCode.Load) -->
+    <EmbeddedResource Include="../../../google-code/sheet/Code.gs" LogicalName="SheetCode.gs" />
   </ItemGroup>
 </Project>

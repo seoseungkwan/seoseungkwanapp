@@ -69,6 +69,8 @@ public sealed class WebAppReply
     public int ShareFailed { get; set; }
     /// <summary>쓴 날짜 시트 gid(8판 write).</summary>
     public long SheetGid { get; set; }
+    /// <summary>답에 sheetGid가 있었나(7판 write에는 없다 — gid 0인 첫 시트와 가르려고, TASK-10).</summary>
+    public bool HasSheetGid { get; set; }
     /// <summary>months 답(8판).</summary>
     public List<SheetMonth> Months { get; set; } = new List<SheetMonth>();
     /// <summary>hello 답 mac(base64url, 8판). 맞는지는 부르는 쪽이 같은 시간 비교로 본다.</summary>

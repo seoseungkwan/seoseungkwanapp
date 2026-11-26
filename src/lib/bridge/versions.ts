@@ -5,7 +5,7 @@ import { PROTOCOL } from './protocol'
 /** 이보다 낮은 도우미는 막는다(update-helper) */
 export const MIN_HELPER = '0.3.0'
 /** 이보다 낮은 도우미는 쓰게 두되 "새 도우미가 있어요"를 보인다 */
-export const LATEST_HELPER = '0.13.2'
+export const LATEST_HELPER = '0.14.0'
 /** 이보다 낮은 확장은 막는다(update-extension) */
 export const MIN_EXTENSION = '0.1.0'
 /**
@@ -33,6 +33,21 @@ export const VALUE_HELPER = '0.11.0'
  * 이보다 낮으면 청구 화면이 [뒤에 붙이기]를 보이지 않는다(AC-6611.1). 다른 도구는 막지 않는다(MIN_HELPER는 그대로)
  */
 export const APPEND_HELPER = '0.12.0'
+/**
+ * 수납일지 구글 시트 명령 sheet.*(spec google-link design.md 9-2)를 아는 도우미. 이보다 낮으면 수납일지 구글 시트는 sheet.*를 부르지 않고
+ * 도우미 업데이트 안내(nobit)만 보인다(AC-8541.2). 다른 도구는 막지 않는다(MIN_HELPER는 그대로)
+ */
+export const SHEET_HELPER = '0.14.0'
+/**
+ * 예약 탭 지난 도착 채우기가 1년 전까지 가는 도우미(contact.targets kind 'calday' 시작 한도 오늘−400일, spec google-link AC-8511.6).
+ * 이보다 낮으면 지난 도착 채우기는 옛 한도(오늘−62일) 안만 한다(AC-8541.2). 다른 도구는 막지 않는다
+ */
+export const CAL_PAST_HELPER = '0.14.0'
+/**
+ * sheet.*를 넘겨주는 크롬 확장(명령표를 빌드 때 묶어 넣어 목록 밖 명령은 E-BRIDGE-REJECTED). 이보다 낮으면 수납 넣기는 부르지 않고
+ * E-GSHEET-EXT 안내만 보인다(AC-8541.2). 다른 도구는 막지 않는다(MIN_EXTENSION은 그대로). extension/manifest.json version과 같다
+ */
+export const SHEET_EXTENSION = '0.5.0'
 
 export type WebVersions = { protocol: number; minHelper: string; latestHelper: string; minExtension: string }
 

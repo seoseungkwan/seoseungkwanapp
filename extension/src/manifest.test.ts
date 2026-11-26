@@ -75,8 +75,9 @@ describe('AC-003.1 extension/manifest.json', () => {
     }
   })
 
-  it('AC-6401.2: manifest.version은 0.4.0이다', () => {
-    expect(readJson(MANIFEST).version).toBe('0.4.0')
+  // google-link AC-8511.1: 수납 명령 여덟(sheet.*)을 담은 새 명령표로 다시 묶어 0.5.0으로 올린다(주소는 그대로)
+  it('AC-6401.2 AC-8511.1: manifest.version은 0.5.0이다', () => {
+    expect(readJson(MANIFEST).version).toBe('0.5.0')
   })
 
   it('key는 commands.json extensionKey이고, 그 key로 계산한 ID가 commands.json extensionId와 같다', () => {
@@ -185,6 +186,16 @@ describe('AC-003.8 npm run ext:build', { timeout: 120_000 }, () => {
     }
     const table = (await import(pathToFileURL(path.join(DIST, 'commands.js')).href)) as { default: unknown }
     expect(table.default).toEqual(commands)
+  })
+
+  it('AC-8511.1 새로 묶은 dist의 checkRequest는 수납 명령 sheet.* 여덟을 거절하지 않는다', async () => {
+    const relay = (await import(pathToFileURL(path.join(DIST, 'relay.js')).href)) as {
+      checkRequest: (msg: unknown) => { ok: boolean }
+    }
+    const sheet = ['sheet.status', 'sheet.code', 'sheet.link', 'sheet.import', 'sheet.ping', 'sheet.catalog', 'sheet.months', 'sheet.fill']
+    for (const cmd of sheet) {
+      expect(relay.checkRequest({ v: commands.protocol, id: 's-1', cmd, args: {} }).ok, cmd).toBe(true)
+    }
   })
 
   it('dist/background.js를 불러오면 chrome.runtime.onConnectExternal에 스스로 듣는 함수를 건다', async () => {

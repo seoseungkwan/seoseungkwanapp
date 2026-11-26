@@ -15,7 +15,7 @@ namespace Precheck.Core.Calendar;
 /// 차례: 칸 검사(비트를 건드리지 않음) → 등록 병원 확인(HospitalGate) → SQL(CalendarSql) → JSON 하나. 통계 화면·비트 로그인 창은 쓰지 않는다. 나누기(chunk … end)는 ContactCommands가 한다.
 /// calfind {from = to = 오늘, q}: q(앞뒤 빈칸 뺌)가 숫자 1~10자리면 차트번호가 같은 환자, 아니면 이름이 q로 시작하는 환자(두 글자 이상, % _ [ 없음).
 /// 답 {v:1, kind, today, more, rows}, 줄 = [차트번호, 이름, 성별 'M'|'F'|null, 생일 yyyyMMdd|null, 마지막 내원 yyyyMMdd|null], 마지막 내원 늦은 차례 20명까지(더 있으면 more).
-/// calday {from, to}(42일까지, 오늘−62일 ~ 오늘+92일): 답 {v:1, kind, from, to, today, came, rsv}.
+/// calday {from, to}(42일까지, 오늘−400일 ~ 오늘+92일 — google-link AC-8511.6이 62일에서 넓힘): 답 {v:1, kind, from, to, today, came, rsv}.
 /// came 줄 = [날 yyyyMMdd, 차트번호](센 접수, 중복 없음, 날·차트 차례), rsv 줄 = [차트번호|null, 이름|null, 접수 시각 yyyyMMddHHmm](접수 시각 차례).
 /// 이상한 줄(차트번호가 숫자 1~10자가 아님·날이나 시각이 틀림·기간 밖) 하나 때문에 전체가 막히지 않게 그 줄만 건너뛴다. 전화·주소·주민번호·메모는 읽지 않는다.
 /// </summary>
@@ -44,8 +44,8 @@ public static class CalendarTargets
     /// <summary>calday 한 번에 읽는 날 수 한도(시작·끝 포함, 월 보기 6주).</summary>
     public const int MaxDays = 42;
 
-    /// <summary>calday 시작은 오늘−62일보다 앞일 수 없다.</summary>
-    public const int BackDays = 62;
+    /// <summary>calday 시작은 오늘−400일보다 앞일 수 없다(지난 도착 채우기가 1년 전까지, google-link AC-8511.6. 0.13.x까지는 62일).</summary>
+    public const int BackDays = 400;
 
     /// <summary>calday 끝은 오늘+92일보다 뒤일 수 없다.</summary>
     public const int AheadDays = 92;

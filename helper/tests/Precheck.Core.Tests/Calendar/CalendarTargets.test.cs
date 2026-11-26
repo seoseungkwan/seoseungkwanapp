@@ -411,9 +411,13 @@ public class CalendarTargetsTests
         Assert.Equal(new (string?, string?)[] { ("contact.targets", null) }, rig.Log);
     }
 
-    [Theory(DisplayName = "AC-5903.3 calday: 42일 안이고 오늘−62일 ≤ from, to ≤ 오늘+92일이면 된다")]
+    // google-link AC-8511.6: 시작 한도를 오늘−62일에서 오늘−400일로 넓혔다(42일 한 번 한도는 그대로)
+    [Theory(DisplayName = "AC-5903.3 AC-8511.6 calday: 42일 안이고 오늘−400일 ≤ from, to ≤ 오늘+92일이면 된다")]
     [InlineData("2026-10-30", "2026-10-30")]
-    [InlineData("2026-08-29", "2026-08-29")]   // 오늘−62일
+    [InlineData("2026-08-29", "2026-08-29")]   // 오늘−62일(옛 한도)
+    [InlineData("2026-08-28", "2026-09-05")]   // 오늘−63일(옛 한도 밖, 이제 됨)
+    [InlineData("2025-09-25", "2025-09-25")]   // 오늘−400일
+    [InlineData("2025-09-25", "2025-11-05")]   // 오늘−400일부터 42일
     [InlineData("2026-08-29", "2026-10-09")]   // 42일
     [InlineData("2026-12-20", "2027-01-30")]   // 42일, 끝 = 오늘+92일
     [InlineData("2027-01-30", "2027-01-30")]
@@ -427,9 +431,10 @@ public class CalendarTargetsTests
         Assert.Equal(0, json.GetProperty("rsv").GetArrayLength());
     }
 
-    [Theory(DisplayName = "AC-5903.3 calday: 43일 이상·오늘−62일보다 이름·오늘+92일보다 늦음·거꾸로면 비트를 건드리지 않고 E-HELPER-BAD-MESSAGE")]
-    [InlineData("2026-08-28", "2026-08-28")]   // 오늘−63일
-    [InlineData("2026-08-28", "2026-09-05")]
+    [Theory(DisplayName = "AC-5903.3 AC-8511.6 calday: 43일 이상·오늘−400일보다 이름·오늘+92일보다 늦음·거꾸로면 비트를 건드리지 않고 E-HELPER-BAD-MESSAGE")]
+    [InlineData("2025-09-24", "2025-09-24")]   // 오늘−401일
+    [InlineData("2025-09-24", "2025-10-01")]
+    [InlineData("2025-09-25", "2025-11-06")]   // 오늘−400일부터 43일
     [InlineData("2027-01-31", "2027-01-31")]   // 오늘+93일
     [InlineData("2027-01-20", "2027-01-31")]
     [InlineData("2026-10-01", "2026-11-12")]   // 43일
@@ -535,7 +540,8 @@ public class CalendarTargetsTests
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(CalData.RsvSqlText, extra)).Code);
     }
 
-    [Fact(DisplayName = "AC-5903.4 명령 표: contact.targets kind 값에 calfind·calday, args에 선택 칸 q(글자 1~20)만 더했고 명령 이름 목록(13개)·protocol 1은 그대로다")]
+    // google-link AC-8511.1: 수납 명령 여덟(sheet.*)을 더했다. contact.targets 모양은 그대로
+    [Fact(DisplayName = "AC-5903.4 명령 표: contact.targets kind 값에 calfind·calday, args에 선택 칸 q(글자 1~20)만 더했고 명령 이름 목록(13개 + 수납 sheet.* 8개)·protocol 1은 그대로다")]
     public void CommandTableAddsKindsAndQ()
     {
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
@@ -543,6 +549,7 @@ public class CalendarTargetsTests
         Assert.Equal(new[]
         {
             "bit.check", "bit.input", "bit.register", "claim.dates", "claim.memos", "claim.month", "contact.targets", "hello", "revenue.days", "sam.latest",
+            "sheet.catalog", "sheet.code", "sheet.fill", "sheet.import", "sheet.link", "sheet.months", "sheet.ping", "sheet.status",
             "stats.rows", "store.load", "store.save",
         }, commands.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
         var args = commands.GetProperty("contact.targets").GetProperty("args");
@@ -556,6 +563,18 @@ public class CalendarTargetsTests
 
     // ── AC-5903.5 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-5903.5 AC-6912.6 도우미 판은 0.13.2이다(예약 탭 비트 읽기는 0.10.0부터. 웹 LATEST_HELPER 0.13.2·CAL_HELPER 0.10.0, MIN·SUNAP·LIST 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroEleven() => Assert.Equal("0.13.2", HelperVersion.Value);
+    [Fact(DisplayName = "AC-5903.5 AC-6912.6 AC-8511.6 도우미 판은 0.14.0이다(예약 탭 비트 읽기는 0.10.0부터, 지난 도착 400일은 0.14.0부터. 웹 LATEST_HELPER·CAL_PAST_HELPER 0.14.0·CAL_HELPER 0.10.0, MIN·SUNAP·LIST 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroEleven() => Assert.Equal("0.14.0", HelperVersion.Value);
+
+    [Fact(DisplayName = "AC-8511.6 calday 시작 한도는 오늘−400일(CalendarTargets.BackDays), 한 번에 42일 한도는 그대로")]
+    public void DayBackDaysIsFourHundred()
+    {
+        Assert.Equal(400, global::Precheck.Core.Calendar.CalendarTargets.BackDays);
+        Assert.Equal(42, global::Precheck.Core.Calendar.CalendarTargets.MaxDays);
+        using var rig = NewRig();
+        var json = Replies.JoinJson(rig.SendArgs(CalData.Day("2025-09-25", "2025-11-05")));
+        Assert.Equal("2025-09-25", json.GetProperty("from").GetString());
+        using var early = NewRig();
+        Assert.Equal("E-HELPER-BAD-MESSAGE", Replies.OnlyError(early.SendArgs(CalData.Day("2025-09-24", "2025-09-24"))));
+    }
 }

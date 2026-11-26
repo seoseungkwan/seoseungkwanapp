@@ -54,6 +54,37 @@ describe('AC-003.2 AC-6401.1 우리 사이트 origin(새 주소·옛 주소)만 
   })
 })
 
+// spec google-link TASK-10: 확장 코드는 그대로, 새 명령표(수납 명령 여덟)로 다시 묶은 0.5.0이 sheet.*를 통과시킨다
+describe('AC-8511.1 수납 명령 sheet.* 여덟은 통과한다', () => {
+  const SHEET_ARGS: Record<string, Record<string, unknown>> = {
+    'sheet.status': {},
+    'sheet.code': {},
+    'sheet.link': { url: 'https://script.google.com/macros/s/AKfycbFAKE0123456789/exec', shareWith: ['desk@fake.test'] },
+    'sheet.import': {},
+    'sheet.ping': { settings: { templateUrl: 'x' } },
+    'sheet.catalog': {},
+    'sheet.months': { settings: {}, months: ['2026-10'] },
+    'sheet.fill': { day: '2026-10-30', mode: 'fillEmpty', auto: true, settings: {} },
+  }
+
+  it('AC-8511.1 명령 표에 sheet.* 여덟이 있다', () => {
+    expect(Object.keys(commands.commands).filter((c) => c.startsWith('sheet.'))).toEqual(Object.keys(SHEET_ARGS))
+  })
+
+  it.each(Object.keys(SHEET_ARGS))('AC-8511.1 %s 요청은 checkRequest를 지나고 봉투를 고치지 않는다', (cmd) => {
+    const msg = request({ cmd, args: SHEET_ARGS[cmd] })
+    const checked = checkRequest(msg)
+    expect(checked.ok).toBe(true)
+    if (checked.ok) expect(checked.req).toBe(msg)
+  })
+
+  it('AC-8511.1 비슷한 이름(sheet.delete·sheet.Fill)은 여전히 E-BRIDGE-REJECTED', () => {
+    for (const cmd of ['sheet.delete', 'sheet.Fill', 'sheet']) {
+      expect(checkRequest(request({ cmd })).ok, cmd).toBe(false)
+    }
+  })
+})
+
 describe('AC-003.3 봉투 {v, id, cmd, args} 검사', () => {
   it.each(Object.keys(commands.commands))('명령 표의 %s 는 통과하고 같은 객체를 그대로 돌려준다', (cmd) => {
     const msg = request({ cmd, args: cmd === 'bit.input' ? { payload: '{"items":[]}' } : {} })

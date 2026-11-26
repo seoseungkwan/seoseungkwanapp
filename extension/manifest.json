@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "청구 사전점검 연결",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "병원 업무 사이트의 청구 사전점검 화면과 이 PC의 도우미를 이어 줍니다. 자료를 저장하지 않습니다.",
   "permissions": [
     "nativeMessaging"

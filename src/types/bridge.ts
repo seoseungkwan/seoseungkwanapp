@@ -9,7 +9,20 @@ export type SmallCommand = 'bit.check' | 'bit.register' | 'claim.dates'
 export type PatientCommand = 'claim.month' | 'claim.memos' | 'store.load' | 'sam.latest' | 'contact.targets' | 'stats.rows'
 /** 보내는 명령: Worker가 만든 JSON 글자를 args.payload에 그대로(AC-004.9) */
 export type PatientSendCommand = 'store.save' | 'bit.input'
-export type CommandName = 'hello' | SmallCommand | PatientCommand | PatientSendCommand
+/**
+ * 수납일지 구글 시트 명령(spec google-link design.md 9-2): 답은 result 하나(숫자·표시만, 모양은 lib/gsheet/reply.ts가 본다).
+ * 모두 patient:false. 코드 주소·함께 쓸 메일 칸은 sheet.link에만 있다(그 PC 도우미 확인 창 [바꾸기]로만 바뀜, ADR-052)
+ */
+export type SheetCommand =
+  | 'sheet.status'
+  | 'sheet.code'
+  | 'sheet.link'
+  | 'sheet.import'
+  | 'sheet.ping'
+  | 'sheet.catalog'
+  | 'sheet.months'
+  | 'sheet.fill'
+export type CommandName = 'hello' | SmallCommand | SheetCommand | PatientCommand | PatientSendCommand
 
 type Empty = Record<string, never>
 type Period = { from: string; to: string } // YYYY-MM-DD
@@ -27,6 +40,14 @@ export type ArgsMap = {
   'contact.targets': Period & { kind: 'followup' | 'injection' | 'lapsed' | 'reservation' | 'sunap' | 'calfind' | 'calday'; q?: string }
   'stats.rows': Period
   'revenue.days': Period
+  'sheet.status': Empty
+  'sheet.code': Empty
+  'sheet.link': { url: string; shareWith: string[] }
+  'sheet.import': Empty
+  'sheet.ping': { settings: Record<string, unknown> }
+  'sheet.catalog': { hospital?: string }
+  'sheet.months': { settings: Record<string, unknown>; months: string[] }
+  'sheet.fill': { day: string; mode: 'fillEmpty' | 'overwrite'; auto: boolean; settings: Record<string, unknown> }
 }
 export type ArgsOf<C extends keyof ArgsMap> = ArgsMap[C]
 
