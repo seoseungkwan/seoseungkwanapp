@@ -147,8 +147,8 @@ export function clinicProfile(over: Partial<ClinicProfile> = {}): ClinicProfile 
   return {
     ...defaultProfile(),
     staff: [
-      { id: 'cal-lee', name: '이도윤', role: 'staff', mark: '이', color: 'blue', calendar: true },
-      { id: 'cal-park', name: '박서연', role: 'staff', mark: '박', color: 'teal', calendar: true },
+      { id: 'cal-lee', name: '이도윤', role: 'staff', mark: '이', color: 'blueberry', calendar: true },
+      { id: 'cal-park', name: '박서연', role: 'staff', mark: '박', color: 'basil', calendar: true },
     ],
     ...over,
   }

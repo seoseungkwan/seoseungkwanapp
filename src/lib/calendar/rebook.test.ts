@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ApptAuto, ApptStatus, CalSlotRow } from '@/types/calendar'
+import { NO_STAFF_ID } from './counts'
 import { rebookRates } from './rebook'
 
 // 시행자별 다시 예약 (spec stats-insights REQ-6104 AC-6104.2, design.md '다시 예약').
@@ -11,8 +12,19 @@ const EDGE = '2026-11-04' // 오늘 − 14일
 const slot = (
   day: string,
   chart: string | null,
-  { staffId = 'ga', status = 'came', auto = null }: { staffId?: string; status?: ApptStatus; auto?: ApptAuto } = {},
-): CalSlotRow => ({ day, staffId, staffName: staffId === 'ga' ? '한○○' : '윤○○', kindId: 'dosu', kindName: '도수', status, auto, start: 600, len: 30, chart })
+  { staffId = 'ga', status = 'came', auto = null }: { staffId?: string | null; status?: ApptStatus; auto?: ApptAuto } = {},
+): CalSlotRow => ({
+  day,
+  staffId,
+  staffName: staffId === null ? null : staffId === 'ga' ? '한○○' : '윤○○',
+  kindId: 'dosu',
+  kindName: '도수',
+  status,
+  auto,
+  start: 600,
+  len: 30,
+  chart,
+})
 
 // 다섯 명이 와서(대상 5) 셋이 14일 안에 같은 시행자 예약을 또 잡았다
 const FIVE = [
@@ -86,6 +98,22 @@ describe('AC-6104.2 rebookRates: 시행자별 다시 예약', () => {
       { staffId: 'ga', targets: 5, rebooked: 3, pct: 60 },
     ])
     expect(rebookRates([], TODAY)).toEqual([])
+  })
+
+  it("AC-8503.3: 시행자 없는 예약(시행자 null)은 '시행자 없음' 한 묶음(id NO_STAFF_ID = 빈 글자)으로 센다 — 다른 시행자 예약과 섞이지 않는다", () => {
+    const none = FIVE.map((row) => ({ ...row, staffId: null, staffName: null }))
+    const rows = [...none, slot('2026-10-02', '97001'), slot('2026-10-05', '97001', { status: 'auto' })]
+    expect(NO_STAFF_ID).toBe('')
+    expect(rebookRates(rows, TODAY)).toEqual([
+      { staffId: NO_STAFF_ID, targets: 5, rebooked: 3, pct: 60 },
+      { staffId: 'ga', targets: 1, rebooked: 1, pct: null },
+    ])
+    // 시행자 없는 첫 예약 뒤 같은 차트번호를 시행자 있는 예약으로 다시 잡아도 '같은 시행자'가 아니다
+    const mixed = [slot('2026-10-01', '98001', { staffId: null }), slot('2026-10-03', '98001', { status: 'auto' })]
+    expect(rebookRates(mixed, TODAY)).toEqual([
+      { staffId: NO_STAFF_ID, targets: 1, rebooked: 0, pct: null },
+      { staffId: 'ga', targets: 0, rebooked: 0, pct: null },
+    ])
   })
 
   it('AC-6104.2: 결과에 차트번호가 없다(시행자 id·대상 수·다시 예약 수·비율만)', () => {

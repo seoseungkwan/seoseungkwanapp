@@ -14,18 +14,18 @@ afterEach(cleanup)
 
 const SETTINGS: CalSettings = {
   kinds: [
-    { id: 'dosu', name: '도수', len: 30, color: null },
-    { id: 'jabo', name: '자보도수', len: 30, color: null },
-    { id: 'shock', name: '충격파', len: 15, color: null },
-    { id: 'inj', name: '주사', len: 10, color: 'pink' },
-    { id: 'visit', name: '진료', len: 10, color: 'lime' },
+    { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+    { id: 'jabo', name: '자보도수', len: 30, color: null, words: ['자보도수', '자보'] },
+    { id: 'shock', name: '충격파', len: 15, color: null, words: ['충격파', '타'] },
+    { id: 'inj', name: '주사', len: 10, color: 'flamingo', words: ['주사'] },
+    { id: 'visit', name: '진료', len: 10, color: 'sage', words: ['진료'] },
   ],
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-    { id: 'da', name: '조○○', mark: '다', color: 'purple' },
-    { id: 'ra', name: '강○○', mark: '라', color: 'orange' },
-    { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+    { id: 'da', name: '조○○', mark: '다', color: 'grape' },
+    { id: 'ra', name: '강○○', mark: '라', color: 'tangerine' },
+    { id: 'won', name: '원장님', mark: '원', color: 'graphite' },
   ],
   openHour: 8,
   closeHour: 20,
@@ -49,6 +49,20 @@ const appt = (over: Partial<CalAppt>): CalAppt => ({
   auto: null,
   origDay: null,
   origStart: null,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
   ...over,
 })
 const APPTS = [appt({}), appt({ id: 'a2', start: 900, staffId: 'na', staffName: '윤○○', staffMark: '나', status: 'cancel' })]
@@ -96,7 +110,7 @@ const startOptions = () => {
 const READY: AddDraft = { ...newDraft('2026-11-18', 900), name: '이○○', staffId: 'ga', staffName: '한○○', staffMark: '가', kindId: 'inj', kindName: '주사', len: 10 }
 
 describe('AC-5905.2: 예약 더하기 — 칸·꼭 채울 칸·저장', () => {
-  it('AC-5905.2·AC-6002.2: 판 제목·칸 이름이 시안 그대로이고 날짜 아래 요일, 시작은 HH:MM 글 칸(10분 단위 고르기 목록)', () => {
+  it('AC-5905.2·AC-6002.2: 판 제목·칸 이름이 시안 그대로이고 날짜 아래 요일, 시작은 HH:MM 글 칸(5분 단위 고르기 목록, AC-8503.6)', () => {
     draw()
     expect(screen.getByRole('dialog', { name: '예약 더하기' })).toBeTruthy()
     expect((screen.getByLabelText('날짜') as HTMLInputElement).value).toBe('2026-11-18')
@@ -105,9 +119,9 @@ describe('AC-5905.2: 예약 더하기 — 칸·꼭 채울 칸·저장', () => {
     expect(start.value).toBe('15:00')
     const list = startOptions()
     expect(list[0]).toBe('08:00')
-    expect(list[1]).toBe('08:10')
-    expect(list[list.length - 1]).toBe('19:50')
-    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+    expect(list[1]).toBe('08:05')
+    expect(list[list.length - 1]).toBe('19:55')
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 5분 단위')).toBeTruthy()
     expect(screen.getByText('신환이면 비워요')).toBeTruthy()
     expect(screen.getByRole('group', { name: '담당' })).toBeTruthy()
     expect(screen.getByRole('group', { name: '종류' })).toBeTruthy()
@@ -369,7 +383,7 @@ describe('AC-5905.2·AC-5906.2: 고치기', () => {
 })
 
 describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④)', () => {
-  it('AC-6002.2: 시작은 글 칸 — 이름표 시작, placeholder "예: 1430", 숫자 자판, 자동 채움 끔, 고르기 목록은 보이는 시간 안 10분 칸 HH:MM', () => {
+  it('AC-6002.2·AC-8503.6: 시작은 글 칸 — 이름표 시작, placeholder "예: 1430", 숫자 자판, 자동 채움 끔, 고르기 목록은 보이는 시간 안 5분 칸 HH:MM', () => {
     draw()
     const start = startInput()
     expect(start.tagName).toBe('INPUT')
@@ -379,11 +393,12 @@ describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④
     expect(start.getAttribute('autocomplete')).toBe('off')
     expect(start.value).toBe('15:00')
     const list = startOptions()
-    expect(list).toHaveLength(72) // 8시~20시, 10분 칸
-    expect(list.slice(0, 3)).toEqual(['08:00', '08:10', '08:20'])
+    expect(list).toHaveLength(144) // 8시~20시, 5분 칸
+    expect(list.slice(0, 3)).toEqual(['08:00', '08:05', '08:10'])
+    expect(list).toContain('09:15')
     expect(list).toContain('15:00')
     expect(list.every((v) => /^\d{2}:\d{2}$/.test(v))).toBe(true)
-    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 5분 단위')).toBeTruthy()
     expect(start.getAttribute('aria-invalid')).toBeNull()
   })
 
@@ -421,17 +436,31 @@ describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④
     expect(onSave.mock.calls[0]![0].start).toBe(570)
   })
 
+  it('AC-8503.6: 5분 단위 시작(0915 · 14:35)을 받아 판 시각이 바뀌고 저장된다', () => {
+    const { onSave } = draw({ start: READY })
+    fireEvent.change(startInput(), { target: { value: '0915' } })
+    expect(screen.getByText('09:15 – 09:25')).toBeTruthy()
+    fireEvent.blur(startInput())
+    expect(startInput().value).toBe('09:15')
+    expect(startInput().getAttribute('aria-invalid')).toBeNull()
+    fireEvent.change(startInput(), { target: { value: '14:35' } })
+    fireEvent.blur(startInput())
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 5분 단위')).toBeTruthy()
+    fireEvent.click(saveButton())
+    expect(onSave.mock.calls[0]![0].start).toBe(875)
+  })
+
   it("AC-6002.3: 못 읽는 글이 있는 동안 판 시각은 그대로, 저장 줄은 '시작 칸을 채우면 저장할 수 있어요'이고 [저장]이 막힌다. 치는 동안에는 오류 글이 없다", () => {
     const { onSave } = draw({ start: READY })
-    fireEvent.change(startInput(), { target: { value: '1435' } })
+    fireEvent.change(startInput(), { target: { value: '1432' } })
     expect(screen.getByText('15:00 – 15:10')).toBeTruthy()
     expect(need()).toBe('시작 칸을 채우면 저장할 수 있어요')
     expect((saveButton() as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(saveButton())
     expect(onSave).not.toHaveBeenCalled()
-    expect(document.body.textContent).not.toContain('10분 단위로 적어 주세요')
+    expect(document.body.textContent).not.toContain('5분 단위로 적어 주세요')
     expect(startInput().getAttribute('aria-invalid')).toBeNull()
-    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 5분 단위')).toBeTruthy()
   })
 
   it("AC-6002.3: 이름·담당·종류도 비었으면 '시작'이 맨 앞이다", () => {
@@ -443,14 +472,14 @@ describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④
   it('AC-6002.3: 못 읽는 글을 두고 칸을 벗어나면 칸 아래 오류 글과 aria-invalid, 바르게 고치면 오류가 사라지고 저장된다', () => {
     const { onSave } = draw({ start: READY })
     const start = startInput()
-    fireEvent.change(start, { target: { value: '1435' } })
+    fireEvent.change(start, { target: { value: '1432' } })
     fireEvent.blur(start)
-    expect(start.value).toBe('1435')
-    const step = screen.getByText('10분 단위로 적어 주세요 (예: 14:30)')
+    expect(start.value).toBe('1432')
+    const step = screen.getByText('5분 단위로 적어 주세요 (예: 14:30)')
     expect(step.className).toContain('text-negative')
     expect(start.getAttribute('aria-invalid')).toBe('true')
     expect(start.getAttribute('aria-describedby')).toBe(step.id)
-    expect(screen.queryByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeNull()
+    expect(screen.queryByText('1430처럼 쳐도 돼요 · 5분 단위')).toBeNull()
 
     fireEvent.change(start, { target: { value: '25시' } })
     fireEvent.blur(start)
@@ -463,7 +492,7 @@ describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④
     expect(start.getAttribute('aria-invalid')).toBeNull()
     fireEvent.blur(start)
     expect(start.value).toBe('14:40')
-    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 5분 단위')).toBeTruthy()
     expect(need()).toBe('')
     fireEvent.click(saveButton())
     expect(onSave.mock.calls[0]![0].start).toBe(880)

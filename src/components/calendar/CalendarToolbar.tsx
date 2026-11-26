@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { weekdayOf } from '@/lib/analytics/dates'
-import type { CalColor, CalSettings } from '@/types/calendar'
+import type { CalSettings, KindColor } from '@/types/calendar'
+import type { CalPaint } from './colors'
 
 // 예약 탭 도구 줄·안내 줄 (spec clinic-calendar AC-5905.1·AC-5905.8, 시안 docs/mockups/clinic-calendar ?s=week·phone-week).
 // props·콜백만 받는다: 기간 옮기기·보기 바꾸기·판 열기는 화면(CalendarScreen)이 한다. 글은 시안 그대로다.
@@ -41,13 +42,13 @@ export function periodLabel(view: CalView, from: string, to: string): string {
 
 // ── 색(--cal-* 토큰) ─────────────────────────────────────────
 
-/** 예약 색 20색의 화면 값. 토큰 이름만 쓰고 값은 globals.css :root에 있다 */
-export const calVar = (color: CalColor) => `var(--cal-${color})`
-// '시행자 색 따름' 표시의 네 조각(시안 i.sw.follow의 파랑·청록·보라·주황, 그라데이션 대신 네 칸)
-const FOLLOW: readonly CalColor[] = ['blue', 'teal', 'purple', 'orange']
+/** 예약 색 11색·캘린더 기본 색의 화면 값. 토큰 이름만 쓰고 값은 globals.css :root에 있다 */
+export const calVar = (color: CalPaint) => `var(--cal-${color})`
+// '시행자 색 따름' 표시의 네 조각(시안 google-link i.gsw.follow의 라벤더·바나나·플라밍고 + 바질, 그라데이션 대신 네 칸)
+const FOLLOW: readonly CalPaint[] = ['lavender', 'banana', 'flamingo', 'basil']
 
-/** 색 표시 10px. color null = 시행자 색 따름(네 칸) */
-export function Swatch({ color, className = '' }: { color: CalColor | null; className?: string }) {
+/** 색 표시 10px. color null = 시행자 색 따름(네 칸), 'default' = 캘린더 기본 색 */
+export function Swatch({ color, className = '' }: { color: KindColor; className?: string }) {
   if (color === null) {
     return (
       <svg aria-hidden="true" data-swatch="follow" width="10" height="10" viewBox="0 0 10 10" className={`shrink-0 rounded-control ${className}`}>

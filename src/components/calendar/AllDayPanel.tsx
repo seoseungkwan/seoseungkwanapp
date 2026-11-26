@@ -89,7 +89,7 @@ export function AllDayPanel({ day, items, settings, anchor = null, busy = false,
               return (
                 <li key={item.id} className="flex items-center justify-between gap-2 py-0.5 text-small text-ink">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    {item.type === 'off' ? <Swatch color={person?.color ?? 'gray'} /> : <CalIcon name="info" size={14} className="text-muted" />}
+                    {item.type === 'off' ? <Swatch color={person?.color ?? 'default'} /> : <CalIcon name="info" size={14} className="text-muted" />}
                     <span data-label className="min-w-0 break-words">
                       {label}
                     </span>

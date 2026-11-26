@@ -44,10 +44,24 @@ const appt = (id: string, day = '2026-11-17'): CalAppt => ({
   auto: null,
   origDay: null,
   origStart: null,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
 })
-const COUNT: CalCountRow = { day: '2026-11-17', staffId: 'ga', staffName: '한○○', kindId: 'dosu', kindName: '도수', status: 'auto', auto: null, origDay: null }
+const COUNT: CalCountRow = { day: '2026-11-17', staffId: 'ga', staffName: '한○○', kindId: 'dosu', kindName: '도수', status: 'auto', auto: null, origDay: null, gMoved: false }
 const OFF: CalAllDay = { id: 'd1', day: '2026-11-18', type: 'off', memo: null, staffId: 'na', staffName: '윤○○' }
-const SETTINGS: CalSettings = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '한○○', mark: '가', color: 'blue' }] }
+const SETTINGS: CalSettings = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '한○○', mark: '가', color: 'blueberry' }] }
 // 병원 정보가 없을 때 합친 값: 예약 설정 그대로 + 월~토 08:00~20:00(점심 없음)·일요일 없음·휴진일 없음
 const EIGHT_TO_EIGHT: DayHours = { open: 480, close: 1200, lunchFrom: null, lunchTo: null }
 const PLAIN_WEEK: DayHours[] = [EIGHT_TO_EIGHT, EIGHT_TO_EIGHT, EIGHT_TO_EIGHT, EIGHT_TO_EIGHT, EIGHT_TO_EIGHT, EIGHT_TO_EIGHT, null]
@@ -62,9 +76,9 @@ const PROFILE: ClinicProfile = {
   hours: [WEEKDAY, WEEKDAY, null, WEEKDAY, WEEKDAY, { open: 540, close: 780, lunchFrom: null, lunchTo: null }, null],
   closedDates: ['2026-11-20'],
   staff: [
-    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: true },
-    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: false },
-    { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blue', calendar: true },
+    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'basil', calendar: true },
+    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'graphite', calendar: false },
+    { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blueberry', calendar: true },
   ],
   logoPath: null,
   emr: 'bit',
@@ -72,8 +86,8 @@ const PROFILE: ClinicProfile = {
 const MERGED_PROFILE: CalSettings = {
   kinds: SETTINGS.kinds,
   staff: [
-    { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
+    { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
   ],
   openHour: 9,
   closeHour: 18,

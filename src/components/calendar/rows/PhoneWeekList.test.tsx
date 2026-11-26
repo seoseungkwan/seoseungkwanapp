@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CalAllDay } from '@/lib/calendar/shapes'
-import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalStaff } from '@/types/calendar'
+import type { CalAppt, CalKind, CalStaff } from '@/types/calendar'
 import { PhoneWeekList, type PhoneWeekListProps } from './PhoneWeekList'
 
 // 폰 주 보기(768px 미만, spec clinic-calendar AC-5905.8, 시안 ?s=phone-week·기본값 7번): 날짜별 목록, 오늘만 펼침, 날짜 줄을 누르면 펼치고 접는다.
@@ -11,12 +11,20 @@ import { PhoneWeekList, type PhoneWeekListProps } from './PhoneWeekList'
 afterEach(cleanup)
 
 const STAFF: CalStaff[] = [
-  { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-  { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-  { id: 'da', name: '조○○', mark: '다', color: 'purple' },
-  { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+  { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+  { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+  { id: 'da', name: '조○○', mark: '다', color: 'grape' },
+  { id: 'won', name: '원장님', mark: '원', color: 'graphite' },
 ]
-const SETTINGS = { kinds: DEFAULT_CAL_SETTINGS.kinds, staff: STAFF }
+// 옛 기본 종류(주사 분홍 → 플라밍고·진료 연두 → 세이지, google-link design.md 7-4 옮기기 표)
+const KINDS: CalKind[] = [
+  { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+  { id: 'jabo', name: '자보도수', len: 30, color: null, words: ['자보도수', '자보'] },
+  { id: 'shock', name: '충격파', len: 15, color: null, words: ['충격파', '타'] },
+  { id: 'inj', name: '주사', len: 10, color: 'flamingo', words: ['주사'] },
+  { id: 'visit', name: '진료', len: 10, color: 'sage', words: ['진료'] },
+]
+const SETTINGS = { kinds: KINDS, staff: STAFF }
 const WEEK = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21']
 const TODAY = '2026-11-17'
 
@@ -37,6 +45,20 @@ const base: CalAppt = {
   auto: null,
   origDay: null,
   origStart: null,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
 }
 const appt = (over: Partial<CalAppt>): CalAppt => ({ ...base, ...over })
 
@@ -105,9 +127,9 @@ describe('AC-5905.8: 폰 주 보기는 날짜별 목록이다(오늘만 펼침)'
     expect(within(moved).getByText('김○○')).toBeTruthy()
     expect(within(moved).getByText('도수 (가) 한○○ · 허리 · 3회차')).toBeTruthy()
     expect(within(moved).getByText('왔음')).toBeTruthy()
-    expect(moved.querySelector('[data-bar]')!.className).toContain('bg-cal-blue')
+    expect(moved.querySelector('[data-bar]')!.className).toContain('bg-cal-blueberry')
     expect(within(row(/^30117 송○○/)).getByText('주사 (원) 원장님')).toBeTruthy()
-    expect(row(/^30117 송○○/).querySelector('[data-bar]')!.className).toContain('bg-cal-pink')
+    expect(row(/^30117 송○○/).querySelector('[data-bar]')!.className).toContain('bg-cal-flamingo')
     expect(within(row(/^23580 정○○/)).getByText('안 옴')).toBeTruthy()
   })
 
@@ -146,7 +168,7 @@ describe('AC-5905.8: 폰 주 보기는 날짜별 목록이다(오늘만 펼침)'
     const { props } = renderList()
     expect(screen.getByRole('button', { name: '주간 회의 13:00' })).toBeTruthy()
     const off = screen.getByRole('button', { name: '(나) 윤○○ 휴무' })
-    expect(off.className).toContain('bg-cal-teal-soft')
+    expect(off.className).toContain('bg-cal-basil')
     fireEvent.click(off)
     expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-18')
     const adds = screen.getAllByRole('button', { name: '+ 종일' })
@@ -210,8 +232,8 @@ describe('AC-7616.1: 폰 주 보기의 반차 휴무 칩', () => {
     ]
     const { props } = renderList({ allday })
     const am = screen.getByRole('button', { name: '(나) 윤○○ 오전 휴무' })
-    expect(am.className).toContain('bg-cal-teal-soft')
-    expect(screen.getByRole('button', { name: '퇴사○○ 오후 휴무' }).className).toContain('bg-cal-gray-soft')
+    expect(am.className).toContain('bg-cal-basil')
+    expect(screen.getByRole('button', { name: '퇴사○○ 오후 휴무' }).className).toContain('bg-cal-default') // 목록에 없는 시행자 = 캘린더 기본 색(AC-8503.5)
     expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' })).toBeTruthy()
     fireEvent.click(am)
     expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-16')

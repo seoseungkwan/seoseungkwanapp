@@ -11,11 +11,11 @@ import { AllDayPanel } from './AllDayPanel'
 afterEach(cleanup)
 
 const SETTINGS: CalSettings = {
-  kinds: [{ id: 'dosu', name: '도수', len: 30, color: null }],
+  kinds: [{ id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] }],
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-    { id: 'da', name: '조○○', mark: '다', color: 'purple' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+    { id: 'da', name: '조○○', mark: '다', color: 'grape' },
   ],
   openHour: 8,
   closeHour: 20,
@@ -45,7 +45,7 @@ describe('AC-5905.4: 종일 판', () => {
   it('AC-5905.4: 휴무 항목은 그 시행자 색 표시(--cal-* 토큰)', () => {
     draw()
     const off = screen.getAllByRole('listitem')[1]!
-    expect(off.querySelector<HTMLElement>('[data-swatch]')!.style.backgroundColor).toBe('var(--cal-teal)')
+    expect(off.querySelector<HTMLElement>('[data-swatch]')!.style.backgroundColor).toBe('var(--cal-basil)')
   })
 
   it('AC-5905.4: 메모(기본)는 20자까지 적고 [더하기]로 넣는다. 빈 메모는 넣지 않는다', () => {

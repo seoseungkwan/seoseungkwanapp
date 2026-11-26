@@ -96,7 +96,7 @@ const PROFILE: ClinicProfile = {
   phone: '0311234567',
   address: '가짜시 가짜로 1',
   closedDates: ['2026-12-25'],
-  staff: [{ id: 'p-1', name: '김원장', role: 'doctor', mark: '김', color: 'blue', calendar: true }],
+  staff: [{ id: 'p-1', name: '김원장', role: 'doctor', mark: '김', color: 'blueberry', calendar: true }],
   logoPath: null,
 }
 const CREATED = '2026-11-17T01:00:00.000Z'

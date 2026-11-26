@@ -9,15 +9,15 @@ import { CalendarLegend, CalendarToolbar, periodLabel, type CalView } from './Ca
 
 const SETTINGS: CalSettings = {
   kinds: [
-    { id: 'dosu', name: '도수', len: 30, color: null },
-    { id: 'jabo', name: '자보도수', len: 30, color: null },
-    { id: 'shock', name: '충격파', len: 15, color: null },
-    { id: 'inj', name: '주사', len: 10, color: 'pink' },
-    { id: 'visit', name: '진료', len: 10, color: 'lime' },
+    { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+    { id: 'jabo', name: '자보도수', len: 30, color: null, words: ['자보도수'] },
+    { id: 'shock', name: '충격파', len: 15, color: null, words: ['충격파'] },
+    { id: 'inj', name: '주사', len: 10, color: 'flamingo', words: ['주사'] },
+    { id: 'visit', name: '진료', len: 10, color: 'sage', words: ['진료'] },
   ],
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'won', name: '원장님', mark: '원', color: 'graphite' },
   ],
   openHour: 8,
   closeHour: 20,

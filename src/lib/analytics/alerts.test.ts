@@ -39,7 +39,7 @@ function series(dates: readonly string[], values: readonly (number | null)[], fi
 const visits = (dates: readonly string[], values: readonly (number | null)[]) => series(dates, values)
 
 function appt(ymd: string, status: CalCountRow['status'], { kindId = 'dosu', kindName = '도수', auto = null }: { kindId?: string; kindName?: string; auto?: CalCountRow['auto'] } = {}): CalCountRow {
-  return { day: ymd, staffId: 's1', staffName: '김○○', kindId, kindName, status, auto, origDay: null }
+  return { day: ymd, staffId: 's1', staffName: '김○○', kindId, kindName, status, auto, origDay: null, gMoved: false }
 }
 // n줄(앞 noshow줄은 안 옴, 나머지는 왔음)을 날짜들에 돌려 가며 놓는다
 function appts(dates: readonly string[], n: number, noshow: number, extra: { kindId?: string; kindName?: string } = {}): CalCountRow[] {

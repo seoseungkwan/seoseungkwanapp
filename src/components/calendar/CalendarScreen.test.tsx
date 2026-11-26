@@ -108,9 +108,9 @@ const TODAY = '2026-11-17'
 const SETTINGS: CalSettings = {
   ...DEFAULT_CAL_SETTINGS,
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
-    { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'na', name: '윤○○', mark: '나', color: 'basil' },
+    { id: 'won', name: '원장님', mark: '원', color: 'graphite' },
   ],
 }
 
@@ -131,6 +131,20 @@ const appt = (id: string, over: Partial<CalAppt>): CalAppt => ({
   auto: null,
   origDay: null,
   origStart: null,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
   ...over,
 })
 const BASE_APPTS: CalAppt[] = [
@@ -158,7 +172,7 @@ let db: { appts: CalAppt[]; allday: CalAllDay[]; settings: CalSettings }
 const inRange = (day: string, from: string, to: string) => day >= from && day <= to
 
 function savedOf(draft: ApptDraft, id: string): CalAppt {
-  return { ...draft, id, auto: null, origDay: null, origStart: null }
+  return { gEventId: null, gUpdated: null, gTitle: null, gColor: null, colorFrom: 'app', gKeepTitle: false, gMoved: false, gGone: false, gWait: null, gWaitAt: null, gNote: null, gFrom: null, gHow: null, createdAt: '2026-11-01T00:00:00+00:00', ...draft, id, auto: null, origDay: null, origStart: null }
 }
 
 beforeEach(() => {
@@ -184,7 +198,7 @@ beforeEach(() => {
     .mockImplementation(async (_c, from, to) =>
       db.appts
         .filter((a) => inRange(a.day, from, to))
-        .map(({ day, staffId, staffName, kindId, kindName, status, auto, origDay }) => ({ day, staffId, staffName, kindId, kindName, status, auto, origDay })),
+        .map(({ day, staffId, staffName, kindId, kindName, status, auto, origDay, gMoved }) => ({ day, staffId, staffName, kindId, kindName, status, auto, origDay, gMoved })),
     )
   vi.mocked(addAppt).mockReset().mockImplementation(async (_c, draft) => savedOf(draft, `new-${draft.day}`))
   vi.mocked(updateAppt)
@@ -378,12 +392,12 @@ describe('AC-6002 시작 시간 쳐서 넣기 (spec calendar-colors)', () => {
     const panel = openAdd()
     fillBasics(panel)
     const start = within(panel).getByLabelText('시작') as HTMLInputElement
-    fireEvent.change(start, { target: { value: '1435' } })
+    fireEvent.change(start, { target: { value: '1432' } })
     expect(screen.getByText('새 예약 10:50–11:00')).toBeTruthy()
     expect(panel.querySelector('[data-need]')?.textContent).toBe('시작 칸을 채우면 저장할 수 있어요')
     expect((within(panel).getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.blur(start)
-    expect(within(panel).getByText('10분 단위로 적어 주세요 (예: 14:30)')).toBeTruthy()
+    expect(within(panel).getByText('5분 단위로 적어 주세요 (예: 14:30)')).toBeTruthy()
     expect(start.getAttribute('aria-invalid')).toBe('true')
     expect(addAppt).not.toHaveBeenCalled()
   })
@@ -535,11 +549,11 @@ describe('AC-5905.4 종일 줄', () => {
     expect(within(document.querySelector('[data-allday-day="2026-11-19"]')!).getByText('학회')).toBeTruthy()
   })
 
-  it('AC-5905.4: 그날 항목을 지우면 deleteAllDay로 지운다. 휴무 칩은 그 시행자 색(청록)이다', async () => {
+  it('AC-5905.4: 그날 항목을 지우면 deleteAllDay로 지운다. 휴무 칩은 그 시행자 색(바질)이다', async () => {
     await open()
     const cell = document.querySelector<HTMLElement>('[data-allday-day="2026-11-18"]')!
     const chip = within(cell).getByRole('button', { name: '(나) 윤○○ 휴무' })
-    expect(chip.className).toContain('bg-cal-teal-soft')
+    expect(chip.className).toContain('bg-cal-basil')
     fireEvent.click(chip)
     const pop = dialog('11월 18일 (수) · 종일')
     fireEvent.click(within(pop).getByRole('button', { name: '지우기' }))
@@ -574,11 +588,11 @@ describe('AC-5905.5 설정', () => {
     expect(within(panel).queryByRole('group', { name: '주 보기 요일' })).toBeNull()
   })
 
-  it('AC-5905.5: 목록에서 지운 시행자의 예약은 저장된 이름 그대로 회색으로 보인다', async () => {
+  it('AC-5905.5·AC-8503.5: 목록에서 지운 시행자의 예약은 저장된 이름 그대로 캘린더 기본 색으로 보인다', async () => {
     db.settings = { ...SETTINGS, staff: SETTINGS.staff.filter((s) => s.id !== 'na') }
     await open()
     const gone = block(/^23580 정○○ 자보도수 \(나\)/)
-    expect(gone.className).toContain('bg-cal-gray-soft')
+    expect(gone.className).toContain('bg-cal-default')
   })
 })
 
@@ -718,9 +732,9 @@ describe('AC-6603 예약이 병원 정보를 쓴다 (spec clinic-profile)', () =
     hours: [W, W, null, W, W, { open: 540, close: 780, lunchFrom: null, lunchTo: null }, null], // 수·일 휴진
     closedDates: ['2026-11-19'],
     staff: [
-      { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: true },
-      { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blue', calendar: true },
-      { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: false },
+      { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'graphite', calendar: true },
+      { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blueberry', calendar: true },
+      { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'basil', calendar: false },
     ],
     logoPath: null,
     emr: 'bit',
@@ -822,8 +836,8 @@ describe('AC-7616.2 반차 휴무 경고의 경계 = 그 요일 병원 정보 �
     hours: [W, TUE, W, W, W, { open: 540, close: 780, lunchFrom: null, lunchTo: null }, null],
     closedDates: [],
     staff: [
-      { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: true },
-      { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blue', calendar: true },
+      { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'graphite', calendar: true },
+      { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blueberry', calendar: true },
     ],
     logoPath: null,
     emr: 'bit',

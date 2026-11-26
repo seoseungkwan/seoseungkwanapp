@@ -122,47 +122,47 @@
   --text-st-34: var(--fs-st-34);
   --text-st-40: var(--fs-st-40);
 
-  /* 예약 색판(clinic-calendar AC-5905.1, UI_GUIDE '예약 색판'). 진한 색(띠·폰 목록 띠·색 표시)과 옅은 바탕(예약 칸·휴무 칩). 예약 탭(components/calendar)만 쓴다 */
-  --color-cal-blue: var(--cal-blue);
-  --color-cal-blue-soft: var(--cal-blue-soft);
-  --color-cal-teal: var(--cal-teal);
-  --color-cal-teal-soft: var(--cal-teal-soft);
-  --color-cal-purple: var(--cal-purple);
-  --color-cal-purple-soft: var(--cal-purple-soft);
-  --color-cal-orange: var(--cal-orange);
-  --color-cal-orange-soft: var(--cal-orange-soft);
-  --color-cal-pink: var(--cal-pink);
-  --color-cal-pink-soft: var(--cal-pink-soft);
-  --color-cal-lime: var(--cal-lime);
-  --color-cal-lime-soft: var(--cal-lime-soft);
-  --color-cal-navy: var(--cal-navy);
-  --color-cal-navy-soft: var(--cal-navy-soft);
-  --color-cal-sky: var(--cal-sky);
-  --color-cal-sky-soft: var(--cal-sky-soft);
-  --color-cal-brown: var(--cal-brown);
-  --color-cal-brown-soft: var(--cal-brown-soft);
-  --color-cal-red: var(--cal-red);
-  --color-cal-red-soft: var(--cal-red-soft);
-  --color-cal-yellow: var(--cal-yellow);
-  --color-cal-yellow-soft: var(--cal-yellow-soft);
-  --color-cal-green: var(--cal-green);
-  --color-cal-green-soft: var(--cal-green-soft);
-  --color-cal-mint: var(--cal-mint);
-  --color-cal-mint-soft: var(--cal-mint-soft);
-  --color-cal-magenta: var(--cal-magenta);
-  --color-cal-magenta-soft: var(--cal-magenta-soft);
-  --color-cal-wine: var(--cal-wine);
-  --color-cal-wine-soft: var(--cal-wine-soft);
-  --color-cal-forest: var(--cal-forest);
-  --color-cal-forest-soft: var(--cal-forest-soft);
+  /* 예약 색판(google-link AC-8503.1, UI_GUIDE '예약 색판'): 구글 일정 11색 + 캘린더 기본 색. 칸을 꽉 채우는 바탕과 그 위 글자색(-on). 예약 탭(components/calendar)만 쓴다 */
   --color-cal-lavender: var(--cal-lavender);
-  --color-cal-lavender-soft: var(--cal-lavender-soft);
-  --color-cal-coral: var(--cal-coral);
-  --color-cal-coral-soft: var(--cal-coral-soft);
-  --color-cal-black: var(--cal-black);
-  --color-cal-black-soft: var(--cal-black-soft);
-  --color-cal-gray: var(--cal-gray);
-  --color-cal-gray-soft: var(--cal-gray-soft);
+  --color-cal-lavender-on: var(--cal-lavender-on);
+  --color-cal-sage: var(--cal-sage);
+  --color-cal-sage-on: var(--cal-sage-on);
+  --color-cal-grape: var(--cal-grape);
+  --color-cal-grape-on: var(--cal-grape-on);
+  --color-cal-flamingo: var(--cal-flamingo);
+  --color-cal-flamingo-on: var(--cal-flamingo-on);
+  --color-cal-banana: var(--cal-banana);
+  --color-cal-banana-on: var(--cal-banana-on);
+  --color-cal-tangerine: var(--cal-tangerine);
+  --color-cal-tangerine-on: var(--cal-tangerine-on);
+  --color-cal-peacock: var(--cal-peacock);
+  --color-cal-peacock-on: var(--cal-peacock-on);
+  --color-cal-graphite: var(--cal-graphite);
+  --color-cal-graphite-on: var(--cal-graphite-on);
+  --color-cal-blueberry: var(--cal-blueberry);
+  --color-cal-blueberry-on: var(--cal-blueberry-on);
+  --color-cal-basil: var(--cal-basil);
+  --color-cal-basil-on: var(--cal-basil-on);
+  --color-cal-tomato: var(--cal-tomato);
+  --color-cal-tomato-on: var(--cal-tomato-on);
+  --color-cal-default: var(--cal-default);
+  --color-cal-default-on: var(--cal-default-on);
+  /* 직원 탭 휴가 칩·근무표 점·입지 지도 둘레 점 전용(옛 예약 색 값 그대로, UI_GUIDE '예약 색판' 직원·지도 전용 토큰 줄) */
+  --color-leave-annual: var(--leave-annual);
+  --color-leave-annual-soft: var(--leave-annual-soft);
+  --color-leave-half: var(--leave-half);
+  --color-leave-half-soft: var(--leave-half-soft);
+  --color-leave-family: var(--leave-family);
+  --color-leave-family-soft: var(--leave-family-soft);
+  --color-leave-sick: var(--leave-sick);
+  --color-leave-sick-soft: var(--leave-sick-soft);
+  --color-leave-maternity: var(--leave-maternity);
+  --color-leave-maternity-soft: var(--leave-maternity-soft);
+  --color-leave-unpaid: var(--leave-unpaid);
+  --color-leave-unpaid-soft: var(--leave-unpaid-soft);
+  --color-staff-dot: var(--staff-dot);
+  --color-map-other: var(--map-other);
+  --color-map-other-ring: var(--map-other-ring);
 }
 
 /* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
@@ -311,48 +311,49 @@
   --st-t-period: 300ms;
   --st-t-first: 450ms;
 
-  /* 예약 색판 20색 — 옛 아홉(clinic-calendar 시안 PALETTE) → 새 열(calendar-colors 시안) → 회색(맨 끝). 이름은 types/calendar.ts CAL_COLORS, UI_GUIDE '예약 색판'.
-     옅은 바탕(-soft)은 그 색을 흰 바탕에 13% 섞는다(시안 예약 칸 바탕). 섞기는 이 블록 안에서만 한다 */
-  --cal-blue: #2563EB;
-  --cal-teal: #0F766E;
-  --cal-purple: #7C3AED;
-  --cal-orange: #EA580C;
-  --cal-pink: #DB2777;
-  --cal-lime: #65A30D;
-  --cal-navy: #1E3A8A;
-  --cal-sky: #0284C7;
-  --cal-brown: #92400E;
-  --cal-red: #DC2626;
-  --cal-yellow: #CA8A04;
-  --cal-green: #22C55E;
-  --cal-mint: #2DD4BF;
-  --cal-magenta: #D946EF;
-  --cal-wine: #9F1239;
-  --cal-forest: #166534;
-  --cal-lavender: #A78BFA;
-  --cal-coral: #FB7185;
-  --cal-black: #1F2937;
-  --cal-gray: #6B7280;
-  --cal-blue-soft: color-mix(in srgb, var(--cal-blue) 13%, var(--surface));
-  --cal-teal-soft: color-mix(in srgb, var(--cal-teal) 13%, var(--surface));
-  --cal-purple-soft: color-mix(in srgb, var(--cal-purple) 13%, var(--surface));
-  --cal-orange-soft: color-mix(in srgb, var(--cal-orange) 13%, var(--surface));
-  --cal-pink-soft: color-mix(in srgb, var(--cal-pink) 13%, var(--surface));
-  --cal-lime-soft: color-mix(in srgb, var(--cal-lime) 13%, var(--surface));
-  --cal-navy-soft: color-mix(in srgb, var(--cal-navy) 13%, var(--surface));
-  --cal-sky-soft: color-mix(in srgb, var(--cal-sky) 13%, var(--surface));
-  --cal-brown-soft: color-mix(in srgb, var(--cal-brown) 13%, var(--surface));
-  --cal-red-soft: color-mix(in srgb, var(--cal-red) 13%, var(--surface));
-  --cal-yellow-soft: color-mix(in srgb, var(--cal-yellow) 13%, var(--surface));
-  --cal-green-soft: color-mix(in srgb, var(--cal-green) 13%, var(--surface));
-  --cal-mint-soft: color-mix(in srgb, var(--cal-mint) 13%, var(--surface));
-  --cal-magenta-soft: color-mix(in srgb, var(--cal-magenta) 13%, var(--surface));
-  --cal-wine-soft: color-mix(in srgb, var(--cal-wine) 13%, var(--surface));
-  --cal-forest-soft: color-mix(in srgb, var(--cal-forest) 13%, var(--surface));
-  --cal-lavender-soft: color-mix(in srgb, var(--cal-lavender) 13%, var(--surface));
-  --cal-coral-soft: color-mix(in srgb, var(--cal-coral) 13%, var(--surface));
-  --cal-black-soft: color-mix(in srgb, var(--cal-black) 13%, var(--surface));
-  --cal-gray-soft: color-mix(in srgb, var(--cal-gray) 13%, var(--surface));
+  /* 예약 색판 = 구글 일정 11색(차례 = 구글 colorId 1~11, 이름은 types/calendar.ts CAL_COLORS) + 캘린더 기본 색(--cal-default, 예약 탭 뿌리가
+     그 병원 값으로 덮어쓸 수 있다 — 없으면 구글 기본 파랑 = 66·133·244를 hsl로 적은 값. 16진수 글은 구글 상표 색이라 GoogleMark.tsx에만 둔다(AC-214.4), rgb(는 그림자 둘만(AC-202.4)). 칸은 꽉 채우고 글자색은 색마다 -on: 검정 = --ink, 흰 = #FFFFFF(시안 .ev.dk). google-link design.md 10-1 색 표 */
+  --cal-lavender: #7986CB;
+  --cal-sage: #33B679;
+  --cal-grape: #8E24AA;
+  --cal-flamingo: #E67C73;
+  --cal-banana: #F6BF26;
+  --cal-tangerine: #F4511E;
+  --cal-peacock: #039BE5;
+  --cal-graphite: #616161;
+  --cal-blueberry: #3F51B5;
+  --cal-basil: #0B8043;
+  --cal-tomato: #D50000;
+  --cal-lavender-on: var(--ink);
+  --cal-sage-on: var(--ink);
+  --cal-grape-on: #FFFFFF;
+  --cal-flamingo-on: var(--ink);
+  --cal-banana-on: var(--ink);
+  --cal-tangerine-on: var(--ink);
+  --cal-peacock-on: var(--ink);
+  --cal-graphite-on: #FFFFFF;
+  --cal-blueberry-on: #FFFFFF;
+  --cal-basil-on: #FFFFFF;
+  --cal-tomato-on: #FFFFFF;
+  --cal-default: hsl(217.4157 89% 60.7843%);
+  --cal-default-on: var(--ink);
+  /* 직원 탭 휴가 칩(연차·반차·경조사·병가·출산·육아휴직·무급)·근무표 바꾼 날 점·입지 지도 둘레 다른 과 점 — 옛 예약 색 값 그대로라 그 화면은 바뀌지 않는다.
+     옅은 바탕(-soft)은 그 색을 흰 바탕에 13% 섞는다. 섞기는 이 블록 안에서만 한다 */
+  --leave-annual: #2563EB;
+  --leave-half: #0F766E;
+  --leave-family: #7C3AED;
+  --leave-sick: #DB2777;
+  --leave-maternity: #166534;
+  --leave-unpaid: #6B7280;
+  --leave-annual-soft: color-mix(in srgb, var(--leave-annual) 13%, var(--surface));
+  --leave-half-soft: color-mix(in srgb, var(--leave-half) 13%, var(--surface));
+  --leave-family-soft: color-mix(in srgb, var(--leave-family) 13%, var(--surface));
+  --leave-sick-soft: color-mix(in srgb, var(--leave-sick) 13%, var(--surface));
+  --leave-maternity-soft: color-mix(in srgb, var(--leave-maternity) 13%, var(--surface));
+  --leave-unpaid-soft: color-mix(in srgb, var(--leave-unpaid) 13%, var(--surface));
+  --staff-dot: #EA580C;
+  --map-other: #A78BFA;
+  --map-other-ring: #7C3AED;
 }
 
 /* 통계 화면 휴대폰(768px 미만) 값: 카드 모서리와 큰 숫자만 줄인다. 다른 토큰은 바꾸지 않는다 */

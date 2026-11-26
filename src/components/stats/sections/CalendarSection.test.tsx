@@ -21,6 +21,7 @@ const row = (day: string, over: Partial<CalCountRow> = {}): CalCountRow => ({
   status: 'auto',
   auto: null,
   origDay: null,
+  gMoved: false,
   ...over,
 })
 // 10월: 10줄(취소 2·변경 1·안 옴 1), 9월: 4줄(취소 1), 11월(진행 중): 3줄, 2025-11(12달 밖): 5줄
@@ -179,10 +180,10 @@ describe('AC-5907.3: 빈 상태·읽는 중·실패', () => {
 })
 
 // ── stats-insights REQ-6104·REQ-6105: 시행자 표 두 칸 더함 · 예약 빈자리 (시안 docs/mockups/stats-insights ④⑤). 차트번호·시행자는 지어낸 것이다 ──
-const slot = (day: string, chart: string, staffId = 'ga', status: ApptStatus = 'came'): CalSlotRow => ({
+const slot = (day: string, chart: string, staffId: string | null = 'ga', status: ApptStatus = 'came'): CalSlotRow => ({
   day,
   staffId,
-  staffName: staffId === 'ga' ? '한○○' : '윤○○',
+  staffName: staffId === null ? null : staffId === 'ga' ? '한○○' : '윤○○',
   kindId: 'dosu',
   kindName: '도수',
   status,
@@ -207,8 +208,8 @@ const SLOTS: CalSlotRow[] = [
 const WITH_STAFF: CalSettings = {
   ...DEFAULT_CAL_SETTINGS,
   staff: [
-    { id: 'ga', name: '한○○', mark: '한', color: 'blue' },
-    { id: 'na', name: '윤○○', mark: '윤', color: 'teal' },
+    { id: 'ga', name: '한○○', mark: '한', color: 'blueberry' },
+    { id: 'na', name: '윤○○', mark: '윤', color: 'basil' },
   ],
 }
 const REBOOK_NOTE = '다시 예약 = 와서 치료받은 환자 가운데 14일 안에 같은 시행자 예약이 또 잡힌 비율(최근 12달)'
@@ -237,7 +238,7 @@ describe('AC-6104.3: 시행자 표 — 다시 예약 · 12달 예약 수', () =>
   })
 
   it('AC-6104.3: 설정이 있으면 줄 이름은 (표시) 이름이고 막대 이름은 시행자 이름이다. 예약 없는 시행자도 줄이 있다', () => {
-    const settings: CalSettings = { ...WITH_STAFF, staff: [...WITH_STAFF.staff, { id: 'da', name: '조○○', mark: '조', color: 'purple' }] }
+    const settings: CalSettings = { ...WITH_STAFF, staff: [...WITH_STAFF.staff, { id: 'da', name: '조○○', mark: '조', color: 'grape' }] }
     draw(ROWS, vi.fn(), { settings, slots: { rows: SLOTS, offs: [] } })
     const rows = within(staffTable()).getAllByRole('row').map(values)
     expect(rows.slice(1).map((r) => [r[0], r[1], r[8]])).toEqual([
@@ -247,6 +248,21 @@ describe('AC-6104.3: 시행자 표 — 다시 예약 · 12달 예약 수', () =>
       ['합계', '10', ''],
     ])
     expect(within(staffTable()).getByRole('img', { name: '조○○ 12달 예약 수' })).toBeTruthy()
+  })
+
+  it("AC-8503.3: 시행자 없는 예약(세 칸 null)은 시행자 표에 '시행자 없음' 한 줄로 묶이고, 12달 막대·다시 예약도 그 묶음이다(설정이 있어도 아래 줄)", () => {
+    const none = (day: string, over: Partial<CalCountRow> = {}) => row(day, { staffId: null, staffName: null, ...over })
+    const rows = [...ROWS, none('2026-10-03'), none('2026-10-04', { status: 'cancel' }), none('2026-09-20')]
+    const slots = [...SLOTS, ...['93001', '93002', '93003', '93004', '93005'].map((chart, i) => slot(`2026-10-1${i}`, chart, null)), slot('2026-10-19', '93001', null, 'auto')]
+    draw(rows, vi.fn(), { settings: WITH_STAFF, slots: { rows: slots, offs: [] } })
+    const lines = within(staffTable()).getAllByRole('row').map(values)
+    expect(lines.slice(1).map((r) => [r[0], r[1], r[2], r[8]])).toEqual([
+      ['(한) 한○○', '9', '1', '60%'],
+      ['(윤) 윤○○', '1', '1', '—'],
+      ['시행자 없음', '2', '1', '20%'],
+      ['합계', '12', '3', ''],
+    ])
+    expect(within(staffTable()).getByRole('img', { name: '시행자 없음 12달 예약 수' })).toBeTruthy()
   })
 
   it("AC-6104.3: 표 아래 '다시 예약 = … 비율(최근 12달)'이 보인다", () => {

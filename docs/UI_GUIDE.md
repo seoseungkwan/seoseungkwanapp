@@ -81,39 +81,30 @@
 | `chart-prev` | `#9CA3AF` | 지난 기간(비교 대상) |
 | `cat-1`~`cat-5` | `#2563EB` · `#0F766E` · `#B45309` · `#6D28D9` · `#6B7280` | 서로 다른 항목(선·계열)을 색으로 나눌 때 차례대로 쓴다. 이번 개편 부품에는 쓰는 곳이 없다(다음 대시보드 명세) |
 
-### 예약 색판 (`--cal-*`, clinic-calendar · calendar-colors)
-예약 탭(`components/calendar`)만 쓴다. 이름은 `types/calendar.ts`의 `CAL_COLORS`, 색 고르는 차례는 `components/calendar/colors.ts`(종류 색 → 종류가 '시행자 색 따름'이면 시행자 색 → 목록에 없는 종류·시행자는 회색). 클래스는 `colors.ts`의 `CAL_TONES`에서만 꺼낸다
+### 예약 색판 (`--cal-*`, clinic-calendar · google-link)
+예약 탭(`components/calendar`)만 쓴다. 이름은 `types/calendar.ts`의 `CAL_COLORS`(구글 일정 색 11가지, 차례 = 구글 colorId 1~11), 색 고르는 차례는 `components/calendar/colors.ts`(종류 색 → 종류가 '시행자 색 따름'이면 시행자 색 → 목록에 없는 종류·시행자는 캘린더 기본 색). 클래스는 `colors.ts`의 `CAL_TONES`에서만 꺼낸다(ADR-055)
 
-20색이고 아래 표 차례가 `CAL_COLORS`·설정 색판 차례다. 회색은 지운 종류·시행자의 색이라 맨 끝에 두어, 새 시행자 자동 색(안 쓴 색 가운데 첫 색)에서 가장 늦게 나온다
+11색 + 캘린더 기본 색이고 아래 표 차례가 `CAL_COLORS`·설정 색판 차례다. 새 시행자 자동 색은 안 쓴 색 가운데 첫 색이다. 글자색은 색마다 `cal-<이름>-on`(검정 = `ink`, 흰 = `#FFFFFF`)
 
-| 토큰 | 값 | 이름 |
-|------|------|------|
-| `cal-blue` | `#2563EB` | 파랑 |
-| `cal-teal` | `#0F766E` | 청록 |
-| `cal-purple` | `#7C3AED` | 보라 |
-| `cal-orange` | `#EA580C` | 주황 |
-| `cal-pink` | `#DB2777` | 분홍 |
-| `cal-lime` | `#65A30D` | 연두 |
-| `cal-navy` | `#1E3A8A` | 남색 |
-| `cal-sky` | `#0284C7` | 하늘 |
-| `cal-brown` | `#92400E` | 갈색 |
-| `cal-red` | `#DC2626` | 빨강 |
-| `cal-yellow` | `#CA8A04` | 노랑 |
-| `cal-green` | `#22C55E` | 초록 |
-| `cal-mint` | `#2DD4BF` | 민트 |
-| `cal-magenta` | `#D946EF` | 자주 |
-| `cal-wine` | `#9F1239` | 와인 |
-| `cal-forest` | `#166534` | 진초록 |
-| `cal-lavender` | `#A78BFA` | 연보라 |
-| `cal-coral` | `#FB7185` | 산호 |
-| `cal-black` | `#1F2937` | 검정 |
-| `cal-gray` | `#6B7280` | 회색 |
+| 토큰 | 값 | 이름 | 글자 |
+|------|------|------|------|
+| `cal-lavender` | `#7986CB` | 라벤더 | 검정 |
+| `cal-sage` | `#33B679` | 세이지 | 검정 |
+| `cal-grape` | `#8E24AA` | 포도 | 흰 |
+| `cal-flamingo` | `#E67C73` | 플라밍고 | 검정 |
+| `cal-banana` | `#F6BF26` | 바나나 | 검정 |
+| `cal-tangerine` | `#F4511E` | 귤 | 검정 |
+| `cal-peacock` | `#039BE5` | 공작 | 검정 |
+| `cal-graphite` | `#616161` | 흑연 | 흰 |
+| `cal-blueberry` | `#3F51B5` | 블루베리 | 흰 |
+| `cal-basil` | `#0B8043` | 바질 | 흰 |
+| `cal-tomato` | `#D50000` | 토마토 | 흰 |
+| `cal-default` | `#4285F4`(그 병원 캘린더 기본 색이 있으면 그 값. globals.css에는 같은 색을 `hsl(217.4157 89% 60.7843%)`로 적는다 — 16진수 글은 구글 상표 색이라 GoogleMark.tsx에만) | 캘린더 기본 색 | 검정 |
 
-- 진한 색(`bg-cal-*`·`border-cal-*`)은 예약 칸 왼쪽 3px 띠·폰 목록 띠·설정의 색 표시에, 옅은 바탕 `cal-*-soft`(그 색 13% + `surface`, `color-mix`는 `:root` 안에서만)는 예약 칸·휴무 칩 바탕에 쓴다. 칸 안쪽 1px 테두리는 진한 색 25%(`ring-cal-*/25`)
-- 칸 글은 색과 상관없이 `ink`·`ink-2`·`muted`다(옅은 바탕 위 4.5:1 이상). 색만으로 뜻을 주지 않는다: 시행자는 칸 글의 `(표시)`, 도착은 ✓·!·'취소' 표시가 함께 말한다
+- 예약 칸·휴무 칩·폰 목록 띠·설정의 색 표시는 색으로 꽉 채운다(`bg-cal-*`), 칸 글은 그 색의 글자색(`text-cal-*-on`)이다. 옅은 바탕(`-soft`)·왼쪽 띠·안쪽 테두리는 없다. 취소 칸은 흰 바탕(`surface`)이다
+- 색만으로 뜻을 주지 않는다: 시행자는 칸 글의 `(표시)`(시행자 없는 예약은 표시 없음), 도착은 ✓·!·'취소' 표시가 함께 말한다
 - 빗금(안 옴·비트 예약 칸)은 그라데이션이 아니라 SVG 45° 선이다(차트 빗금과 같은 방식)
-- 빌림 예외(직원 탭): 휴가 칩(`components/staff/labels.ts`)이 휴가 종류 색으로 `cal-blue`·`cal-teal`·`cal-purple`·`cal-pink`·`cal-forest`·`cal-gray`와 옅은 바탕을, 근무표 바꾼 날 점(`components/staff/schedule/WeekTable.tsx`)이 `cal-orange`를 빌린다(시안 leave.html '휴가 종류 색'). 클래스 이름은 그 파일에 통째로 적는다
-- 빌림 예외(입지 분석 지도): 둘레 다른 과 의원 점(`components/location/map/KakaoMap.tsx`)이 `cal-lavender` 바탕 + `cal-purple/50` 테두리를 빌린다 — 앱 토큰에 연보라는 이 둘뿐이다(spec location). 색은 시안 그대로 두고 빌림만 여기 적는다
+- 직원·지도 전용 토큰: 직원 탭 휴가 칩(`components/staff/labels.ts`)은 `leave-annual` `#2563EB`·`leave-half` `#0F766E`·`leave-family` `#7C3AED`·`leave-sick` `#DB2777`·`leave-maternity` `#166534`·`leave-unpaid` `#6B7280`과 옅은 바탕 `leave-*-soft`(13% + `surface`), 근무표 바꾼 날 점(`components/staff/schedule/WeekTable.tsx`)은 `staff-dot` `#EA580C`, 입지 분석 지도 둘레 다른 과 의원 점(`components/location/map/KakaoMap.tsx`)은 `map-other` `#A78BFA` 바탕 + `map-other-ring` `#7C3AED`/50 테두리를 쓴다 — 옛 예약 색 값 그대로라 그 화면은 바뀌지 않고, 예약 색판(`cal-*`)은 빌리지 않는다. 클래스 이름은 그 파일에 통째로 적는다
 
 ### 대비 (흰 바탕)
 - 글자 색 ink·ink-2·muted·accent·negative·warning은 4.5:1 이상이다. positive는 옅은 바탕 위에서 4.58:1로 겨우 넘는다 → 칩 글자는 500 이상

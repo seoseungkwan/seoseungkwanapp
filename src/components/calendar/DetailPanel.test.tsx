@@ -11,12 +11,12 @@ afterEach(cleanup)
 
 const SETTINGS: CalSettings = {
   kinds: [
-    { id: 'dosu', name: '도수', len: 30, color: null },
-    { id: 'inj', name: '주사', len: 10, color: 'pink' },
+    { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+    { id: 'inj', name: '주사', len: 10, color: 'flamingo', words: ['주사'] },
   ],
   staff: [
-    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
-    { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+    { id: 'ga', name: '한○○', mark: '가', color: 'blueberry' },
+    { id: 'won', name: '원장님', mark: '원', color: 'graphite' },
   ],
   openHour: 8,
   closeHour: 20,
@@ -41,6 +41,20 @@ const DETAIL: CalAppt = {
   auto: 'came',
   origDay: '2026-11-18',
   origStart: 900,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
 }
 
 function draw(appt: CalAppt = DETAIL, over: { copied?: boolean } = {}) {

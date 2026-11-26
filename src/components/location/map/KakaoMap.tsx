@@ -54,11 +54,11 @@ const TONE_TOKENS = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--char
 // 겹치면 위: 후보 → 역 → 경쟁 의원 → 한의원 → 둘레 다른 과 의원(작은 점이 가장 아래, 시안 miniMap 차례)
 const Z: Record<MarkKind, number> = { candidate: 5, station: 4, rival: 3, korean: 2, other: 1 }
 // Tailwind가 소스 글자에서 찾으므로 클래스는 통째로 적는다.
-// 둘레 다른 과 의원 = 연보라 작은 점: 앱에 연보라 토큰은 예약 색판 --cal-lavender(연보라)·--cal-purple(보라)뿐이라 그것을 빌린다(직원 탭 휴가 색과 같은 길)
+// 둘레 다른 과 의원 = 연보라 작은 점: 지도 전용 토큰 --map-other(연보라)·--map-other-ring(보라)(옛 예약 색 값 그대로, google-link design.md 10-1)
 const DOT: Record<'rival' | 'korean' | 'other', string> = {
   rival: 'block size-2.5 rounded-full border border-surface bg-negative',
   korean: 'block size-2.5 rounded-full border border-surface bg-muted',
-  other: 'block size-1.5 rounded-full bg-cal-lavender ring-1 ring-cal-purple/50',
+  other: 'block size-1.5 rounded-full bg-map-other ring-1 ring-map-other-ring/50',
 }
 const DIM = ' opacity-40'
 

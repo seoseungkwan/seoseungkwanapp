@@ -21,6 +21,20 @@ const appt = (over: Partial<CalAppt> = {}): CalAppt => ({
   auto: null,
   origDay: null,
   origStart: null,
+  gEventId: null,
+  gUpdated: null,
+  gTitle: null,
+  gColor: null,
+  colorFrom: 'app',
+  gKeepTitle: false,
+  gMoved: false,
+  gGone: false,
+  gWait: null,
+  gWaitAt: null,
+  gNote: null,
+  gFrom: null,
+  gHow: null,
+  createdAt: '2026-11-01T00:00:00+00:00',
   ...over,
 })
 const off = (day: string, staffId: string, id = `off-${day}-${staffId}`): CalAllDay => ({
@@ -224,6 +238,17 @@ describe('AC-5902.6 nextWeek: 7일 뒤 같은 시간에 복사', () => {
     expect(nextWeek(appt({ day: '2026-12-28', chart: null })).chart).toBeNull()
     expect(nextWeek(appt({ day: '2026-11-26', status: 'cancel' }))).toMatchObject({ day: '2026-12-03', status: 'auto' })
   })
+
+  it('AC-8503.3: 시행자 없는 예약(세 칸 null)도 7일 뒤로 복사하고 시행자 세 칸은 함께 null이다. 구글 칸(g_*)은 새 예약이라 옮기지 않는다', () => {
+    const source = appt({ staffId: null, staffName: null, staffMark: null, gEventId: 'abcdef12345', gTitle: '5521 최시안 (4000타)', gMoved: true, gFrom: 'import' })
+    const copy = nextWeek(source)
+    expect(copy).toMatchObject({ day: '2026-11-25', staffId: null, staffName: null, staffMark: null, status: 'auto' })
+    for (const key of ['gEventId', 'gTitle', 'gMoved', 'gFrom', 'gWait', 'gWaitAt', 'createdAt']) expect(copy).not.toHaveProperty(key)
+  })
+
+  it('AC-8503.6: 5분 단위 시작(09:15)도 그 시각 그대로 7일 뒤다', () => {
+    expect(nextWeek(appt({ start: at(9, 15) })).start).toBe(at(9, 15))
+  })
 })
 
 describe('AC-5902.7 visibleGhosts·ageOn', () => {
@@ -293,9 +318,18 @@ describe("AC-6002.1 parseStart: 쳐서 넣은 시작 시간 읽기 (spec calenda
     expect(read('830')).toBe(510)
   })
 
-  it("AC-6002.1: 1435 → 'step' (10분 단위가 아님)", () => {
-    expect(read('1435')).toBe('step')
-    expect(read('9:05')).toBe('step')
+  it('AC-8503.6: 5분 단위를 받는다 — 0915 · 9:15 → 555, 1435 → 875, 9:05 → 545', () => {
+    expect(read('0915')).toBe(555)
+    expect(read('9:15')).toBe(555)
+    expect(read('1435')).toBe(875)
+    expect(read('9:05')).toBe(545)
+    expect(read('14시45분')).toBe(885)
+  })
+
+  it("AC-8503.6: 5분 단위가 아니면 'step' — 1432 · 9:03 · 14:59", () => {
+    expect(read('1432')).toBe('step')
+    expect(read('9:03')).toBe('step')
+    expect(read('14:59')).toBe('step')
   })
 
   it("AC-6002.1: 25시 · 1460 · abc · 빈 글 → 'format'", () => {
@@ -324,8 +358,9 @@ describe("AC-6002.1 parseStart: 쳐서 넣은 시작 시간 읽기 (spec calenda
     expect(parseStart('730', 8, 20)).toBe(1170) // 19:30 < 20:00
   })
 
-  it('AC-6002.1: 돌려주는 분은 0~1430, 10분 단위', () => {
+  it('AC-8503.6: 돌려주는 분은 0~1435, 5분 단위', () => {
     expect(read('23:50')).toBe(1430)
+    expect(read('23:55')).toBe(1435)
     expect(read('11:50')).toBe(710)
     expect(parseStart('0', 0, 24)).toBe(0)
   })

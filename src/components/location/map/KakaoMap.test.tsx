@@ -202,11 +202,13 @@ describe('AC-7916.1 KakaoMap 그리기', () => {
     expect(at('r1')).toEqual(new FakeLatLng(37.501, 127.031))
   })
 
-  it('AC-7916.1 둘레 다른 과 의원(other): 연보라(cal-lavender 토큰) 작은 점 — 경쟁 의원 주황·한의원 회색보다 작고 그 아래에 깔린다', async () => {
+  it('AC-7916.1·AC-8503.1 둘레 다른 과 의원(other): 연보라(지도 전용 map-other 토큰) 작은 점 — 경쟁 의원 주황·한의원 회색보다 작고 그 아래에 깔린다', async () => {
     await ready(<KakaoMap label="후보 둘레 지도" center={CENTER} radiusM={1000} marks={MARKS} />)
     const other = markEl('o1')
     expect(other.dataset.kind).toBe('other')
-    expect(other.className).toContain('bg-cal-lavender')
+    expect(other.className).toContain('bg-map-other')
+    expect(other.className).toContain('ring-map-other-ring/50')
+    expect(other.className).not.toContain('cal-')
     expect(other.className).toContain('rounded-full')
     expect(other.className).not.toContain('bg-negative')
     expect(other.className).not.toContain('bg-muted')

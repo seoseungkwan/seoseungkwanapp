@@ -10,8 +10,8 @@ const TODAY = '2026-11-18' // 수요일. 기간 = 9월 23일(수) ~ 11월 17일(
 const SETTINGS: CalSettings = {
   ...DEFAULT_CAL_SETTINGS,
   staff: [
-    { id: 'ga', name: '한○○', mark: '한', color: 'blue' },
-    { id: 'na', name: '윤○○', mark: '윤', color: 'teal' },
+    { id: 'ga', name: '한○○', mark: '한', color: 'blueberry' },
+    { id: 'na', name: '윤○○', mark: '윤', color: 'basil' },
   ],
   openHour: 9,
   closeHour: 12,

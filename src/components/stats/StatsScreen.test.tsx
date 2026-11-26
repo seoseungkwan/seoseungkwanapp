@@ -3999,11 +3999,12 @@ describe('REQ-5907 clinic-calendar: 예약 카드', () => {
     status: 'auto',
     auto: null,
     origDay: null,
+    gMoved: false,
     ...over,
   })
   // 10월: 4줄(취소 1 · 변경 1 · 안 옴 1). 설정의 시행자 'ga'는 표시 '(가)'
   const OCTOBER = [calRow('2026-10-02', { status: 'cancel' }), calRow('2026-10-06', { origDay: '2026-10-01' }), calRow('2026-10-07', { auto: 'noshow' }), calRow('2026-10-08')]
-  const WITH_STAFF = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blue' as const }] }
+  const WITH_STAFF = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blueberry' as const }] }
   const calCard = () => within(card(CAL_CARD))
   const cellsOf = (tr: HTMLElement) => [...tr.querySelectorAll('th, td')].map((cell) => (cell.querySelector('[data-n]') ?? cell).textContent?.trim())
   const monthRow = (label: string) => {

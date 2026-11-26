@@ -10,10 +10,10 @@ import { ErrorCard } from '@/components/common/ErrorCard'
 import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { addMonths, monthOf } from '@/lib/analytics/dates'
-import { monthTrend, ratePct, rateSummary } from '@/lib/calendar/counts'
+import { monthTrend, NO_STAFF_ID, ratePct, rateSummary } from '@/lib/calendar/counts'
 import { rebookRates } from '@/lib/calendar/rebook'
 import type { MonthRate, RateCounts, RateRow } from '@/lib/calendar/shapes'
-import type { CalAllDay, CalColor, CalCountRow, CalSettings, CalSlotRow } from '@/types/calendar'
+import type { CalAllDay, CalCountRow, CalSettings, CalSlotRow, KindColor } from '@/types/calendar'
 import { OccupancySection } from './OccupancySection'
 import { CHART_NO_SIDE_SCROLL, Note, SECTION_HEAD, Section, dayNumber } from './parts'
 
@@ -192,7 +192,7 @@ const REBOOK_HEAD = '다시 예약'
 
 type Line = RateTableRow & { name: string } // name = 표시 없는 이름(막대 접근성 이름)
 type StaffLine = Line & { rebook: number | null; months: number[] }
-type Listed = { id: string; name: string; mark?: string; color: CalColor | null }
+type Listed = { id: string; name: string; mark?: string; color: KindColor }
 
 // 설정 차례로 줄을 세운다(예약 0도 보임). 설정에 없는(지운) 줄은 아래에 저장된 이름으로. 설정이 없으면 rateSummary 차례(RateBreakdown과 같다)
 function ordered(found: readonly RateRow[], listed: readonly Listed[] | undefined): Line[] {
@@ -389,7 +389,7 @@ export function CalendarSection({ rows, today, onReread, settings, slots }: Stat
     ...line,
     rebook: rebook.get(line.id) ?? null,
     months: monthTrend(
-      rows.filter((row) => row.staffId === line.id),
+      rows.filter((row) => (row.staffId ?? NO_STAFF_ID) === line.id), // 시행자 없는 예약은 '시행자 없음' 줄(NO_STAFF_ID)
       months,
     ).map((m) => m.total),
   }))

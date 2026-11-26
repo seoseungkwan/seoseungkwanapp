@@ -82,7 +82,7 @@ export function MonthGrid({ month, rows, allday, settings, today, onDay }: Month
               </span>
               {cell.allday.length ? <span aria-hidden="true" className="hidden size-1.5 rounded-full bg-muted max-md:block" /> : null}
               {cell.allday.map((it) => (
-                <span key={it.id} className={`block truncate rounded-control px-1.5 py-px text-caption font-semibold text-ink max-md:hidden ${allDayChipClass(it, settings.staff)}`}>
+                <span key={it.id} className={`block truncate rounded-control px-1.5 py-px text-caption font-semibold max-md:hidden ${allDayChipClass(it, settings.staff)}`}>
                   {allDayText(it, settings.staff)}
                 </span>
               ))}

@@ -34,7 +34,7 @@ type WeekTableProps = {
 // 머리 바탕은 칸마다 준다: 보통 canvas, 공휴일·휴진일 REST_SHADE
 const TH = 'h-10 whitespace-nowrap border-b border-l border-line px-2.5 text-left align-middle text-caption font-medium first:border-l-0'
 const TD = 'h-px border-b border-l border-line p-0 align-top'
-const DOT = 'size-1.5 shrink-0 rounded-full bg-cal-orange'
+const DOT = 'size-1.5 shrink-0 rounded-full bg-staff-dot' // 직원 전용 토큰(옛 예약 주황 값 그대로)
 
 const employedOn = (member: StaffMember, day: string) => member.hiredOn <= day && (member.leftOn === null || day <= member.leftOn)
 

@@ -102,10 +102,10 @@ const SATURDAY = { start: 540, end: 780, lunchFrom: null, lunchTo: null }
 const PLANS: WeekPlan[] = [{ id: 'p-lee', staffId: 'm-lee', from: '2023-07-17', week: [WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, SATURDAY, null], sat: '2-4' }]
 
 const CLINIC_STAFF: ClinicStaff[] = [
-  { id: 'c-won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: false },
-  { id: 'c-lee', name: '이도윤', role: 'staff', mark: '이', color: 'teal', calendar: true },
-  { id: 'c-park', name: '박서연', role: 'staff', mark: '박', color: 'purple', calendar: true },
-  { id: 'c-yoon', name: '윤가람', role: 'staff', mark: '윤', color: 'orange', calendar: true },
+  { id: 'c-won', name: '원장님', role: 'doctor', mark: '원', color: 'graphite', calendar: false },
+  { id: 'c-lee', name: '이도윤', role: 'staff', mark: '이', color: 'basil', calendar: true },
+  { id: 'c-park', name: '박서연', role: 'staff', mark: '박', color: 'grape', calendar: true },
+  { id: 'c-yoon', name: '윤가람', role: 'staff', mark: '윤', color: 'tangerine', calendar: true },
 ]
 const CLINIC: ClinicProfileView = {
   state: 'ready',

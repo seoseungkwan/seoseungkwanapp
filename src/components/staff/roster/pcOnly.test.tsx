@@ -85,7 +85,7 @@ const DOCS: StaffFile[] = [
 ]
 const CLINIC: ClinicProfileView = {
   state: 'ready',
-  profile: { ...defaultProfile(), staff: [{ id: 'c-lee', name: '이도윤', role: 'staff', mark: '이', color: 'teal', calendar: true }] },
+  profile: { ...defaultProfile(), staff: [{ id: 'c-lee', name: '이도윤', role: 'staff', mark: '이', color: 'basil', calendar: true }] },
   saved: true,
   signupName: '가짜의원',
   signupPhone: null,

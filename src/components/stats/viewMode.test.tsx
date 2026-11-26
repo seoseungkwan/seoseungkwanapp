@@ -83,6 +83,7 @@ const COUNT_ROWS: CalCountRow[] = DB_ROWS.map((r) => ({
   status: r.status as CalCountRow['status'],
   auto: r.auto as CalCountRow['auto'],
   origDay: r.orig_day,
+  gMoved: false, // admin_rows·DB_ROWS에 g_moved 칸이 없으면 거짓(google-link AC-8503.4)
 }))
 const adminAnswer = (rows: readonly Record<string, unknown>[] = DB_ROWS) => rows.map((row) => ({ hospitalId: VIEWING.hospitalId, row: { ...row } }))
 
