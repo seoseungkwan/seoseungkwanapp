@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>구글 캘린더 잇기 시안</title>
+<!--
+  예약 탭 ↔ 병원 구글 캘린더 양쪽 잇기(google-link) 클릭 시안. 결정·기본값·화면 글은 notes-calendar.md.
+  ?s=connect · import · colors · rules · week(기본) · detail · fix · err · staff
+  모양은 승인된 예약 탭 시안(docs/mockups/clinic-calendar)과 앱 토큰(src/app/globals.css :root) 그대로이고,
+  예약 색만 구글 캘린더 일정 색 11가지(+ 캘린더 기본 색)로 바꿨다. PC 화면만 그린다(폰 전용 모양 없음).
+  이름·차트번호·주소·비밀 글자는 모두 지어낸 값이다. 어디로도 보내지 않는다.
+-->
+<style>
+/* ───── 예약 탭 시안(clinic-calendar/index.html)에서 그대로 가져온 모양 ───── */
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --r: 4px; --r-float: 8px;
+  --elev: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --slot: 20px; /* 10분 한 칸 */
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.num, .ch { font-variant-numeric: tabular-nums; }
+.mut { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app b, .app strong { font-weight: 600; } /* 앱 글꼴 굵기는 400·500·600뿐 */
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mdesc { font-size: 13px; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.mnote { font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.mnote b { font-size: 12px; }
+
+/* 앱 */
+.app { position: relative; background: var(--canvas); }
+.framed .app { width: 390px; max-width: 100%; margin: 16px auto 32px; border: 1px solid var(--line-strong); border-radius: 12px; overflow: clip; box-shadow: var(--elev); min-height: 800px; }
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.tabsbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs { max-width: 1280px; margin: 0 auto; padding: 0 12px; display: flex; overflow-x: auto; scrollbar-width: none; }
+.tabs a { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; flex: none; }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+main { max-width: 1280px; margin: 0 auto; padding: 16px 24px 40px; display: grid; gap: 12px; }
+main > * { min-width: 0; }
+
+/* 단추 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--canvas); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.icon { width: 36px; padding: 0; }
+.btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
+.btn.accent { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.btn.accent:hover:not(:disabled) { background: var(--accent-soft); }
+.btn.danger { color: var(--negative); }
+.btn.dangerfill { border-color: transparent; background: var(--negative); color: #fff; font-weight: 600; }
+.btn.text { border: 0; background: none; padding: 0 4px; height: 28px; font-size: 13px; color: var(--accent); }
+.btn.text.danger { color: var(--negative); }
+.btn svg { flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip.gray { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip.ok { background: var(--positive-soft); color: var(--positive); font-weight: 600; }
+.chip.ng { background: var(--negative-soft); color: var(--negative); font-weight: 600; }
+
+/* 도구 줄 */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.tb1, .tb2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tb2 { gap: 8px; }
+.toolbar h1 { margin: 0 0 0 6px; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
+.vseg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: clip; background: var(--surface); flex: none; }
+.vseg button { border: 0; margin: 0; background: none; height: 34px; padding: 0 16px; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.vseg button + button { border-left: 1px solid var(--line-strong); }
+.vseg button:hover { background: var(--canvas); }
+.vseg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.vseg button:focus-visible { outline-offset: -2px; }
+.vseg.sm button { height: 30px; padding: 0 12px; font-size: 13px; }
+
+/* 표시 안내 */
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.lg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.lg > b { color: var(--ink-2); font-weight: 600; }
+.lg > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+i.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; }
+i.sw.follow { background: conic-gradient(#2563EB 0 25%, #0F766E 0 50%, #7C3AED 0 75%, #EA580C 0); border-radius: 50%; }
+i.gh { display: inline-block; width: 18px; height: 10px; border-radius: 2px; background: repeating-linear-gradient(135deg, #E5E7EB 0 3px, #F9FAFB 3px 6px); outline: 1px dashed var(--faint); outline-offset: -1px; }
+.bit { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--r); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.bit.on { background: var(--positive-soft); color: var(--positive); }
+.bit.on::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.bit.off { background: var(--surface); border: 1px solid var(--line-strong); color: var(--muted); font-weight: 500; }
+details.legend-d summary { font-size: 13px; color: var(--ink-2); cursor: pointer; padding: 2px 0; }
+details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+
+/* 도착 표시 */
+.mk { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; color: #fff; font-size: 10px; line-height: 1; font-weight: 600; vertical-align: -2px; margin-right: 3px; flex: none; }
+.mk.came { background: var(--positive); }
+.mk.noshow { background: var(--negative); }
+.mk.cancel { width: auto; height: 14px; padding: 0 4px; border-radius: 3px; background: #E5E7EB; color: var(--ink-2); font-size: 10px; font-weight: 600; }
+
+/* 예약표(주·일) */
+.cal { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; --gw: 52px; }
+.crow { display: grid; grid-template-columns: var(--gw) repeat(var(--days), minmax(0, 1fr)); }
+.chead { position: sticky; top: 0; z-index: 8; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dh { border: 0; margin: 0; background: none; text-align: left; padding: 6px 8px; border-left: 1px solid var(--line); display: flex; align-items: center; gap: 6px; min-width: 0; color: inherit; }
+.dh:hover { background: var(--canvas); }
+.dh .n { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dh .w { font-size: 13px; color: var(--muted); font-weight: 500; }
+.dh.today .n { color: #fff; background: var(--accent); border-radius: 50%; width: 30px; height: 30px; display: inline-grid; place-items: center; font-size: 16px; line-height: 1; }
+.dh.today .w { color: var(--accent-strong); font-weight: 600; }
+.dh .c { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.allday { border-bottom: 1px solid var(--line-strong); }
+.gh { min-width: 0; }
+.adlb { font-size: 11px; color: var(--muted); padding: 7px 8px 0 0; text-align: right; white-space: nowrap; }
+.ad { position: relative; border-left: 1px solid var(--line); padding: 4px; min-height: 34px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
+.ad:hover { background: var(--canvas); }
+.ad .adadd { font-size: 11px; color: var(--accent); opacity: 0; padding: 2px 4px; line-height: 16px; }
+.ad:hover .adadd { opacity: 1; }
+.ad.has .adadd { display: none; }
+.adc { border: 0; margin: 0; display: flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; border-radius: 3px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; min-width: 0; text-align: left; }
+.adc.memo { background: #EEF0F4; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.adc.off { background: color-mix(in srgb, var(--c) 12%, white); color: var(--ink); box-shadow: inset 3px 0 0 var(--c); }
+.adc span { overflow: hidden; text-overflow: ellipsis; }
+.gut { position: relative; height: var(--h); }
+.hl { position: absolute; right: 6px; transform: translateY(-50%); font-size: 11px; line-height: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hl.first { transform: none; top: 2px !important; }
+.col { position: relative; height: var(--h); border-left: 1px solid var(--line); min-width: 0;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(#F1F2F5 1px, transparent 1px);
+  background-size: 100% calc(var(--slot) * 6), 100% calc(var(--slot) * 3); }
+.col.today { background-color: #FBFCFF; }
+
+/* 예약 칸 */
+.ev { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; margin: 0; border: 0; padding: 1px 3px 1px 6px; border-radius: 4px; text-align: left; overflow: hidden;
+  background: var(--c); color: #fff;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%);
+  font-size: 11px; line-height: 13px; }
+.ev.day { font-size: 12.5px; line-height: 16px; padding: 2px 6px 2px 9px; }
+.ev:hover { z-index: 4; box-shadow: inset 0 0 0 2px rgb(0 0 0 / 24%), 0 2px 8px rgb(17 24 39 / 16%); }
+.ev.dk { color: var(--ink); }
+.ev .tk.ch, .ev .tk.len, .ev .tk.memo, .ev .tk.tm { color: inherit; opacity: .82; }
+.ev .mk.came, .ev .mk.noshow { box-shadow: 0 0 0 1.5px #fff; }
+.ev:focus-visible { z-index: 4; outline-offset: 1px; }
+.evt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); overflow: hidden; }
+.tk { white-space: nowrap; }
+.tk.ch { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tk.nm { font-weight: 600; }
+.tk.len, .tk.memo { color: var(--muted); }
+.tk.tm { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ev.st-cancel { opacity: .55; }
+.ev.st-cancel .tk { text-decoration: line-through; }
+.ev.st-noshow { background: repeating-linear-gradient(135deg, var(--c) 0 6px, color-mix(in srgb, var(--c) 70%, white) 6px 12px); }
+.ev.ghost { background: repeating-linear-gradient(135deg, #EEF0F3 0 5px, #F9FAFB 5px 10px); box-shadow: none; outline: 1px dashed var(--faint); outline-offset: -1px; color: var(--muted); cursor: help; }
+.ev.ghost .gl { font-weight: 600; color: var(--ink-2); }
+.now { position: absolute; left: -1px; right: 0; height: 0; border-top: 2px solid var(--negative); z-index: 6; pointer-events: none; }
+.now::before { content: ""; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--negative); }
+.hov { position: absolute; left: 2px; right: 2px; height: calc(var(--slot) * 3 - 2px); border: 1px dashed var(--accent); border-radius: 4px; background: rgb(37 99 235 / 6%); color: var(--accent-strong); font-size: 11px; line-height: 14px; padding: 2px 6px; pointer-events: none; z-index: 3; font-weight: 600; }
+.draft { position: absolute; left: 2px; right: 2px; z-index: 7; border: 2px dashed var(--accent); border-radius: 4px; background: rgb(234 241 254 / 92%); color: var(--accent-strong); font-size: 12px; line-height: 15px; font-weight: 600; padding: 2px 6px; pointer-events: none; overflow: hidden; }
+.draft.warn { border-color: var(--warning); background: rgb(253 244 227 / 94%); color: var(--warning); }
+.emptycard { position: absolute; left: 50%; top: 150px; transform: translateX(-50%); z-index: 7; width: min(420px, calc(100% - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); padding: 20px; display: grid; gap: 8px; justify-items: start; }
+.emptycard h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.emptycard p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.emptycard .btn { margin-top: 4px; }
+
+/* 월 보기 */
+.mon { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; }
+.mh { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.mh span { padding: 8px 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.mg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.mc { border: 0; margin: 0; background: none; text-align: left; color: inherit; min-height: 124px; padding: 6px 8px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.mc:nth-child(7n) { border-right: 0; }
+.mc:hover { background: var(--canvas); }
+.mtop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.mn { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 24px; height: 24px; display: inline-grid; place-items: center; }
+.mc.today .mn { background: var(--accent); color: #fff; border-radius: 50%; }
+.mc.out { background: #FBFBFC; }
+.mc.out .mn, .mc.out .cnt, .mc.out .kc, .mc.out .ns, .mc.out .chgn { color: var(--faint); }
+.mc.sun .mn { color: var(--muted); }
+.cnt { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.kc { font-size: 12px; line-height: 17px; color: var(--muted); }
+.ns { color: var(--negative); font-weight: 600; font-size: 12px; line-height: 17px; }
+.mchip { display: block; font-size: 11px; line-height: 18px; font-weight: 600; padding: 0 5px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mchip.memo { background: #EEF0F4; color: var(--ink); }
+.mchip.off { background: color-mix(in srgb, var(--c) 12%, white); box-shadow: inset 3px 0 0 var(--c); color: var(--ink); }
+.mdot { display: none; }
+
+/* 옆에서 나오는 판 */
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgb(17 24 39 / 18%); }
+.drawer { position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: 460px; max-width: 100%; background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: -8px 0 28px rgb(17 24 39 / 14%); display: flex; flex-direction: column; }
+.dwh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--line); }
+.dwh h3 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.dwb { flex: 1; overflow-y: auto; padding: 16px 20px 20px; display: grid; align-content: start; gap: 16px; }
+.dwf { padding: 12px 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.dwf .need { flex: 1 1 140px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.dwf .need.err { color: var(--negative); }
+.dwf .sp { flex: 1; }
+.narrow .drawer { width: 100%; border-left: 0; }
+.framed .scrim, .framed .drawer { position: absolute; }
+.framed .drawer { bottom: auto; min-height: 800px; }
+
+/* 예약 더하기 */
+.bithint { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 18px; color: #1E3A8A; background: var(--accent-soft); padding: 8px 10px; border-radius: var(--r); }
+.bithint svg, .phnote svg, .info svg, .wbox svg { flex: none; margin-top: 2px; }
+.phnote { display: flex; gap: 6px; align-items: flex-start; margin: -6px 0 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.fgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.field > label, .field > .lb { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.hint, .help { font-size: 12px; line-height: 18px; font-weight: 400; color: var(--muted); margin: 0; }
+.inp { height: 40px; width: 100%; min-width: 0; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 14px; color: var(--ink); }
+.inp::placeholder { color: var(--faint); }
+.inp:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.inp.filled { background: var(--positive-soft); border-color: #A7D7B5; }
+textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 20px; }
+.lk { grid-column: 1 / -1; display: grid; gap: 6px; }
+.lk:empty { display: none; }
+.lk .ok { margin: 0; font-size: 12px; line-height: 18px; color: var(--positive); font-weight: 600; }
+.lk .no { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.picks { border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); box-shadow: var(--elev); overflow: clip; }
+.picks .ph { padding: 7px 12px; background: var(--accent-soft); color: #1E3A8A; font-size: 12px; line-height: 18px; font-weight: 600; }
+.pr { border: 0; margin: 0; background: none; width: 100%; display: grid; grid-template-columns: 52px auto minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); text-align: left; color: var(--ink); font-size: 14px; }
+.pr:hover, .pr:focus-visible { background: var(--accent-soft); outline-offset: -2px; }
+.pr b { font-variant-numeric: tabular-nums; }
+.pr small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opts2 { display: flex; flex-wrap: wrap; gap: 6px; }
+.ob { margin: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); background: var(--surface); white-space: nowrap; }
+.ob:hover { background: var(--canvas); }
+.ob[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.ob i.sw { width: 10px; height: 10px; border-radius: 50%; }
+.ob small { font-size: 11px; color: var(--muted); font-weight: 400; }
+.ob .offt { font-size: 11px; color: var(--warning); font-weight: 600; background: var(--warning-soft); padding: 0 4px; border-radius: 3px; line-height: 16px; }
+.lenrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: clip; background: var(--surface); }
+.stepper button { border: 0; margin: 0; background: none; width: 36px; height: 36px; display: grid; place-items: center; font-size: 17px; color: var(--ink-2); }
+.stepper button:hover { background: var(--canvas); }
+.stepper output { min-width: 64px; height: 36px; display: grid; place-items: center; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lenrow .tr { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.wbox { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r); background: var(--warning-soft); border: 1px solid #F1D9A8; font-size: 13px; line-height: 20px; color: var(--ink); }
+.wbox b { color: var(--warning); }
+#warns { display: grid; gap: 8px; }
+#warns:empty { display: none; }
+
+/* 예약 자세히 */
+.dtop { display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 12px; }
+.dtop .bar { border-radius: 3px; background: var(--c); }
+.dname { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.dname .ch { font-weight: 600; color: var(--ink-2); margin-right: 8px; }
+.dsub { font-size: 14px; color: var(--ink-2); }
+.dl { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 14px; }
+.dl dt { color: var(--muted); }
+.dl dd { margin: 0; color: var(--ink); }
+.fs { display: grid; gap: 8px; }
+.fs > h4 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.fs > p { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.arr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.arr .mut { font-size: 12px; font-weight: 400; }
+.rep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.meta { margin: 0; font-size: 12px; color: var(--muted); }
+.hr { height: 1px; background: var(--line); }
+
+/* 설정 */
+.klist { display: grid; gap: 6px; }
+.krow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "ord name del" "ord opts opts" "pal pal pal"; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); align-items: center; }
+.krow .ord { grid-area: ord; display: grid; gap: 4px; align-self: start; }
+.krow .nm { grid-area: name; }
+.krow .del { grid-area: del; }
+.krow .opts { grid-area: opts; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.krow .opts label, .krow .opts .lbl { display: inline-flex; align-items: center; gap: 6px; }
+.krow .pal { grid-area: pal; }
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+.srow .pal { grid-column: 1 / -1; }
+.srow .mk1 { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.tin { height: 32px; width: 100%; min-width: 0; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink); }
+.tin.one { width: 40px; text-align: center; font-weight: 600; }
+.tin.bad { border-color: var(--negative); background: var(--negative-soft); }
+.tin:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.krow .nm.tin { font-weight: 600; }
+.sel { height: 32px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink); }
+.mini { margin: 0; width: 28px; height: 28px; border: 1px solid var(--line-strong); border-radius: var(--r); display: grid; place-items: center; font-size: 10px; color: var(--ink-2); background: var(--surface); padding: 0; }
+.mini:disabled { opacity: .35; cursor: default; }
+.del { border: 0; margin: 0; background: none; height: 28px; padding: 0 6px; font-size: 12px; color: var(--negative); border-radius: var(--r); }
+.del:hover:not(:disabled) { background: var(--negative-soft); }
+.del:disabled { color: var(--faint); cursor: default; }
+.cbtn { margin: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); background: var(--surface); white-space: nowrap; }
+.cbtn i.sw { width: 14px; height: 14px; border-radius: 3px; }
+.cbtn i.sw.follow { border-radius: 50%; }
+.cbtn .car { font-size: 10px; color: var(--muted); }
+.cbtn[aria-expanded="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.pal { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--canvas); border-radius: var(--r); align-items: center; }
+.pal .pc { margin: 0; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--surface); background: var(--c); box-shadow: 0 0 0 1px var(--line-strong); padding: 0; }
+.pal .pc[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.pal .pf { margin: 0; height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.pal .pf[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-weight: 600; }
+.addline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.rowx { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.info { padding: 10px 12px; border-radius: var(--r); background: var(--canvas); border: 1px solid var(--line); font-size: 12px; line-height: 18px; color: var(--ink-2); display: grid; gap: 6px; }
+.info p { margin: 0; display: flex; gap: 8px; align-items: flex-start; }
+
+/* 종일 떠 있는 판 */
+.popscrim { position: fixed; inset: 0; z-index: 30; }
+.pop { position: fixed; z-index: 31; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); padding: 14px; display: grid; gap: 10px; }
+.pop h4 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.pop ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.pop li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink); padding: 2px 0; }
+.pop .foot { display: flex; justify-content: flex-end; gap: 8px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 10px 16px; border-radius: var(--r-float); background: var(--ink); color: #fff; font-size: 13px; line-height: 20px; box-shadow: 0 8px 24px rgb(17 24 39 / 20%); max-width: calc(100vw - 32px); }
+.toast:empty { display: none; }
+
+/* 변경 표시(날짜·시작 시간을 옮긴 예약) */
+.mk.chg { width: auto; height: 14px; padding: 0 3px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-strong); font-size: 10px; font-weight: 600; box-shadow: inset 0 0 0 1px #B4CDFA; }
+.chgn { color: var(--accent-strong); font-weight: 600; font-size: 12px; line-height: 17px; }
+.mlast { display: flex; flex-wrap: wrap; gap: 0 10px; }
+
+.wide .top-in, .wide .tabs, .wide main { max-width: none; }
+
+/* ───── 구글 잇기 시안에서 더한 것 ───── */
+.mhead .ex.fake { background: #E0E7FF; color: #3730A3; }
+.tabs a .newb, .subnav .newb { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 11px; line-height: 16px; font-weight: 600; }
+
+/* 설정 쪽 */
+.ph1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.subnav { display: flex; border-bottom: 1px solid var(--line); }
+.subnav a { position: relative; height: 40px; padding: 0 12px; display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.subnav a:first-child { margin-left: -12px; }
+.subnav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.subnav a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
+.gtop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.gtop .vseg button { padding: 0 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); padding: 20px 24px; display: grid; gap: 14px; min-width: 0; }
+.card > h2, .card-h h2 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.card-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+.lead { margin: 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.lead b { color: var(--ink-2); }
+.cols2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.cols-main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.pv { display: grid; gap: 4px; }
+.privacy { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r); background: var(--warning-soft); border: 1px solid #F1D9A8; font-size: 13px; line-height: 20px; color: var(--ink); }
+.privacy svg { flex: none; margin-top: 3px; }
+
+/* 처음 잇기 차례 */
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+.flow span { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); white-space: nowrap; }
+.flow span.done { color: var(--positive); border-color: #BFE0C9; background: var(--positive-soft); font-weight: 600; }
+.flow span.cur { color: #fff; background: var(--accent); border-color: transparent; font-weight: 600; }
+.flow i { font-style: normal; color: var(--faint); }
+.step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; padding-top: 16px; border-top: 1px solid var(--line); }
+.step .no { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--canvas); border: 1px solid var(--line-strong); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.step.done .no { background: var(--positive); border-color: transparent; color: #fff; }
+.step.cur .no { background: var(--accent); border-color: transparent; color: #fff; }
+.step-b { display: grid; gap: 10px; min-width: 0; }
+.step-b h3 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.howto { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.howto b { color: var(--ink); }
+.kbd { display: inline-block; padding: 0 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); font-size: 12px; line-height: 17px; color: var(--ink); white-space: nowrap; }
+.ok-l { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; color: var(--positive); font-weight: 600; }
+.ok-l .mut { font-weight: 400; }
+.inrow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; }
+.inrow .field { flex: 1 1 260px; }
+.inrow .field.sm { flex: 0 1 260px; }
+.inp.code { font-variant-numeric: tabular-nums; letter-spacing: .01em; color: var(--ink-2); }
+.calpick { display: grid; gap: 6px; }
+.cp { display: grid; grid-template-columns: 18px 14px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); text-align: left; font-size: 14px; color: var(--ink); cursor: pointer; }
+.cp:hover { background: var(--canvas); }
+.cp[aria-checked="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.cp[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.cp .rd { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--surface); }
+.cp[aria-checked="true"] .rd { border: 5px solid var(--accent); }
+.cp small { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cp b { font-weight: 600; }
+.connected { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 14px; border: 1px solid #CFE3D6; background: #F3FAF5; border-radius: var(--r); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.connected b { color: var(--ink); }
+.connected .sp { flex: 1; }
+.dotok { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--positive); margin-right: 6px; vertical-align: 1px; }
+
+/* 구글 색 */
+i.gsw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; vertical-align: -1px; }
+i.gsw.sq { border-radius: 3px; }
+i.gsw.none { background: repeating-linear-gradient(135deg, var(--c) 0 3px, #fff 3px 5px); box-shadow: inset 0 0 0 1px var(--c); }
+i.gsw.follow { background: conic-gradient(#7986CB 0 33%, #F6BF26 0 66%, #E67C73 0); }
+.gpal { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; padding: 10px; background: var(--canvas); border-radius: var(--r); }
+.gpal button { margin: 0; border: 1px solid transparent; border-radius: var(--r); background: none; padding: 6px 2px 4px; display: grid; justify-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.gpal button:hover { background: var(--surface); border-color: var(--line); }
+.gpal button i { width: 26px; height: 26px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--line-strong); }
+.gpal button[aria-pressed="true"] { background: var(--surface); border-color: var(--ink); font-weight: 600; color: var(--ink); }
+.gpal button[aria-pressed="true"] i { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.gpal button i.follow { background: conic-gradient(#7986CB 0 33%, #F6BF26 0 66%, #E67C73 0); }
+.gpal button i.none { background: repeating-linear-gradient(135deg, var(--c) 0 4px, #fff 4px 7px); }
+.gpal button:disabled { opacity: .4; cursor: not-allowed; }
+.gpal .wide2 { grid-column: span 2; }
+
+/* 시행자·종류 줄 */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { height: 32px; padding: 0 8px; text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--ink); }
+.tbl th:first-child, .tbl td:first-child { padding-left: 0; }
+.tbl td.palrow { padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+.tbl tr.haspal td { border-bottom: 0; }
+.tbl .tin.w-nm { width: 120px; }
+.tbl .tin.w-words { width: 220px; }
+.tbl .ordb { display: inline-flex; gap: 4px; }
+.cbtn .gname { min-width: 64px; text-align: left; }
+.prevchip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.warnl { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 18px; color: var(--warning); }
+.warnl svg { flex: none; margin-top: 1px; }
+.optrow { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 8px 16px; align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
+.optrow:first-of-type { border-top: 0; padding-top: 0; }
+.card > .optrow + .optrow { margin-top: -14px; }
+.optrow > .k { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); padding-top: 6px; }
+.optrow > .k small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; line-height: 18px; margin-top: 2px; }
+.optrow > .v { display: grid; gap: 6px; min-width: 0; }
+.optrow .hint { margin: 0; }
+.chk { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink); cursor: pointer; }
+.chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.rad { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink); cursor: pointer; padding: 2px 0; }
+.rad input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.rad small { color: var(--muted); font-size: 12px; }
+.fixedv { margin: 0; padding-top: 6px; font-size: 13px; line-height: 20px; color: var(--ink); }
+.fixedv .mut { font-size: 12px; }
+.tok { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tok span { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border-radius: 4px; background: var(--canvas); border: 1px solid var(--line-strong); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.tok span.off { opacity: .4; text-decoration: line-through; }
+.tok i { font-style: normal; color: var(--faint); font-size: 12px; }
+
+/* 구글 캘린더처럼 보이는 미리 보기 */
+.gprev { border: 1px solid var(--line); border-radius: var(--r); background: #fff; overflow: clip; }
+.gprev-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #FAFBFC; font-size: 12px; color: var(--muted); }
+.gprev-b { display: grid; grid-template-columns: 52px minmax(0, 1fr); }
+.gprev .gl { font-size: 11px; color: var(--muted); text-align: right; padding: 4px 8px 0 0; }
+.gprev .gc { position: relative; border-left: 1px solid var(--line); padding: 4px 6px; display: grid; gap: 3px; }
+.gev { display: block; padding: 2px 8px; border-radius: 4px; background: var(--c); color: #fff; font-size: 12px; line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.gev.dark { color: #3C2A00; }
+.gev small { opacity: .85; font-size: 11px; margin-left: 6px; font-weight: 400; }
+.gev.gad { border-radius: 4px; font-weight: 600; }
+.gev.cancel { background: #fff; color: #616161; box-shadow: inset 0 0 0 1px #9AA0A6; text-decoration: line-through; }
+.gtitle { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font-variant-numeric: tabular-nums; }
+.gtitle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gquote { padding: 8px 10px; border-radius: var(--r); background: var(--canvas); border: 1px solid var(--line); font-size: 14px; line-height: 20px; color: var(--ink); display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* 가져오기 미리 보기 */
+.icards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.grpbox { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border: 1px solid #F5D06B; border-radius: var(--r); background: #FFFBEB; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.grpbox > svg { flex: none; }
+.grpbox .gb-t { flex: 1 1 520px; min-width: 0; }
+.grpbox b { color: var(--ink); }
+.grpbox.info { border-color: #B4CDFA; background: var(--accent-soft); }
+.grpbox.info > svg { color: var(--accent-strong); }
+.grpbox.done { border-color: #BFE0C9; background: var(--positive-soft); color: var(--positive); }
+.pastnote { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.pastnote svg { flex: none; margin-top: 3px; color: var(--accent-strong); }
+.pastnote b { color: #1E3A8A; }
+.ic { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); padding: 12px 16px; display: grid; gap: 2px; }
+.ic .k { font-size: 12px; color: var(--muted); font-weight: 600; }
+.ic .n { font-size: 24px; line-height: 32px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ic .s { font-size: 12px; line-height: 18px; color: var(--muted); }
+.ic.ok .n { color: var(--positive); }
+.ic.need { border-color: #F5D06B; background: #FFFBEB; }
+.ic.need .n { color: #92400E; }
+.filt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.filt button { margin: 0; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.filt button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.filt .sp { flex: 1; }
+.itw { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.it { width: 100%; border-collapse: collapse; font-size: 13px; }
+.it th { height: 34px; padding: 0 8px; text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); background: #F9FAFB; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.it td { height: 40px; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.it tr:last-child td { border-bottom: 0; }
+.it th.arrow, .it td.arrow { width: 16px; padding: 0; color: var(--faint); text-align: center; }
+.it td.gcell { max-width: 300px; white-space: normal; }
+.it td.gcell .gtitle span { white-space: nowrap; }
+.it tr.need > td { background: #FFFDF3; }
+.it tr.skip > td { color: var(--muted); }
+.it tr.skip .gtitle span { text-decoration: line-through; }
+.it td.nd { background: #FEF3C7 !important; box-shadow: inset 0 0 0 1px #F5D06B; }
+.it .why { display: block; margin: 2px 0 0 20px; font-size: 11px; line-height: 15px; color: #92400E; white-space: normal; }
+.it .span { white-space: normal; }
+.it .mut { font-size: 12px; }
+.it .daysep td { height: 28px; background: var(--canvas); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.tag { display: inline-block; margin-left: 4px; padding: 0 4px; border-radius: 3px; font-size: 10px; line-height: 15px; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
+.tag.c { color: var(--accent-strong); background: var(--accent-soft); box-shadow: inset 0 0 0 1px #B4CDFA; }
+.tag.s { color: #6D28D9; background: #F3EEFF; box-shadow: inset 0 0 0 1px #D8CCFA; }
+.tag.n { color: #4B5563; background: #F3F4F6; box-shadow: inset 0 0 0 1px #D1D5DB; margin-left: 2px; }
+.tag.x { color: #424242; background: #EEEEEE; box-shadow: inset 0 0 0 1px #BDBDBD; margin-left: 6px; }
+.tag.f { color: var(--positive); background: var(--positive-soft); box-shadow: inset 0 0 0 1px #BFE0C9; }
+.stt { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.stt.ok { background: var(--positive-soft); color: var(--positive); }
+.stt.need { background: #FEF3C7; color: #92400E; }
+.stt.fixed { background: var(--accent-soft); color: var(--accent-strong); }
+.stt.skip { background: var(--canvas); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.isel { height: 28px; max-width: 132px; padding: 0 4px; border: 1px solid #D9A93A; border-radius: 4px; background: #fff; font-size: 12px; color: var(--ink); }
+.isel.wide { max-width: 230px; }
+.allb { margin: 0 0 0 4px; border: 0; background: none; padding: 0; font-size: 11px; color: var(--accent); text-decoration: underline; cursor: pointer; white-space: nowrap; }
+.offp { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.offp .pp { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 4px; background: color-mix(in srgb, var(--c) 14%, white); box-shadow: inset 3px 0 0 var(--c); font-size: 12px; font-weight: 600; }
+.more { padding: 10px 12px; font-size: 13px; color: var(--muted); text-align: center; border-top: 1px solid var(--line); }
+.ibar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--elev); }
+.ibar p { margin: 0; flex: 1 1 520px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.ibar p b { color: var(--ink); }
+
+/* 예약 탭: 구글 띠 */
+.gband { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 44px; padding: 6px 8px 6px 14px; border: 1px solid #CFE3D6; background: #F3FAF5; border-radius: var(--r); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.gband b { color: var(--ink); font-weight: 600; }
+.gband .gi { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.gband .sp { flex: 1; }
+.gband .btn { height: 32px; font-size: 13px; padding: 0 12px; }
+.gband .fixb { margin: 0; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--r); background: #FEF3C7; color: #92400E; font-weight: 600; font-size: 13px; border: 1px solid #F5D06B; white-space: nowrap; }
+.gband .fixb:hover { background: #FDE9A8; }
+.gband.err { border-color: #F1C28E; background: #FFF6EC; }
+.gband.err .gi > b { color: var(--negative); }
+.gerr { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid #F1C28E; border-radius: var(--r); background: var(--surface); margin-top: -4px; }
+.gerr h3 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.gerr .code { font-size: 12px; color: var(--muted); }
+.pend { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; border: 1px solid var(--line); border-radius: var(--r); }
+.pend li { display: grid; grid-template-columns: 120px 90px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink); }
+.pend li:first-child { border-top: 0; }
+.pend .what { color: var(--ink-2); }
+.mk.gwait { width: 14px; height: 14px; background: #FFF1E0; box-shadow: inset 0 0 0 1px #F0A05A; }
+.mk.gwait svg { display: block; }
+.ev.gfix { background: repeating-linear-gradient(135deg, #FEF3C7 0 6px, #FFFBEB 6px 12px); box-shadow: inset 0 0 0 1px #E0B341; outline: 1px dashed #D9A93A; outline-offset: -1px; color: #7C4A03; }
+.ev.gfix .tk.nm { color: #7C4A03; }
+.adc.goff { background: var(--c); color: #fff; box-shadow: none; }
+.adc.gmemo { background: var(--c); color: var(--ink); box-shadow: none; }
+.adc.half { background: var(--surface); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); font-weight: 500; }
+i.halfsw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.legend .gl-c { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+/* 자세히 판: 구글 구역 */
+.gsec { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); background: #FAFBFC; }
+.gsec h4 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.gsec .from { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 12px; font-weight: 600; }
+.gsec .from.web { background: var(--positive-soft); color: var(--positive); }
+.gsec dl { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 13px; line-height: 20px; }
+.gsec dt { color: var(--muted); }
+.gsec dd { margin: 0; color: var(--ink); min-width: 0; }
+.gsec p { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.extl { color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: none; }
+
+/* 고쳐야 할 구글 예약 판 */
+.fxl { display: grid; gap: 10px; }
+.fxi { border: 1px solid #F1D9A8; background: #FFFBEB; border-radius: var(--r); padding: 12px; display: grid; gap: 10px; }
+.fxi.done { border-color: #BFE0C9; background: var(--positive-soft); }
+.fxi .fh { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.fxi .when { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.fxi .wy { margin: 0; font-size: 12px; line-height: 18px; color: #92400E; font-weight: 600; }
+.fxi .got { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.fxi .fa { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.fxi .opts2 .ob { height: 32px; }
+
+/* 직원 탭 */
+.sgrid { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.frm { display: grid; gap: 14px; }
+.frow { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: start; }
+.frow > label, .frow > .lb { font-size: 13px; line-height: 36px; font-weight: 600; color: var(--ink); }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pills button { margin: 0; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.pills button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.calc { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--r); background: var(--canvas); font-size: 13px; color: var(--ink-2); }
+.calc b { color: var(--ink); }
+.infob { display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--ink-2); font-size: 13px; line-height: 20px; }
+.infob b { color: #1E3A8A; }
+.infob .tiny { font-size: 12px; color: var(--muted); }
+.warnb { padding: 10px 12px; border-radius: var(--r); background: var(--warning-soft); color: var(--warning); font-size: 13px; line-height: 20px; }
+.beforeafter { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 6px 10px; align-items: center; font-size: 12px; color: var(--muted); }
+.beforeafter .gev { justify-self: start; max-width: 100%; }
+.res { display: grid; gap: 12px; }
+.res h3 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.minical { border: 1px solid var(--line); border-radius: var(--r); overflow: clip; background: var(--surface); }
+.minical .mh2 { display: grid; grid-template-columns: 52px repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.minical .mh2 span { padding: 6px 8px; font-size: 12px; font-weight: 600; color: var(--muted); border-left: 1px solid var(--line); white-space: nowrap; }
+.minical .mh2 span:first-child { border-left: 0; }
+.minical .mh2 span.today { color: var(--accent-strong); }
+.minical .mad { display: grid; grid-template-columns: 52px repeat(4, minmax(0, 1fr)); min-height: 40px; }
+.minical .mad > div { border-left: 1px solid var(--line); padding: 4px; display: grid; gap: 3px; align-content: start; min-width: 0; }
+.minical .mad > div:first-child { border-left: 0; font-size: 11px; color: var(--muted); text-align: right; padding: 8px 8px 0 0; }
+.minical .gev { font-size: 11px; line-height: 16px; padding: 1px 6px; }
+.minical .adc { height: auto; min-height: 22px; padding: 2px 6px; white-space: normal; line-height: 16px; }
+.minical .adc span { white-space: normal; }
+.newflash { box-shadow: 0 0 0 2px var(--accent) !important; }
+.ltable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ltable th { height: 32px; padding: 0 8px; text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+.ltable td { height: 36px; padding: 0 8px; border-bottom: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.ltable th:first-child, .ltable td:first-child { padding-left: 0; }
+.lv { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 12px; font-weight: 600; background: #E8F0FE; color: #1E3A8A; }
+.lv.half { background: #E6F4F1; color: #0F5E57; }
+.rsv { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--warning-soft); color: var(--warning); margin-left: 4px; }
+.gsync { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #F3E8FA; color: #6A1B9A; margin-left: 4px; }
+.tw { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>구글 캘린더 잇기 시안</b><span class="ex fake">시안 · 가상 자료</span> <span class="mdesc">예약 탭을 병원 구글 캘린더 '2026 양지바른정형외과'와 양쪽으로 잇는 모습이에요. 환자·직원 이름, 차트번호, 코드 주소, 비밀 글자는 모두 지어낸 값이에요. 잇는 날은 11월 23일 (월) 아침, ⑤~⑨는 사흘 뒤 11월 26일 (목) 14:37로 정해 두었어요.</span></div>
+  <div class="seg" id="seg"></div>
+  <div class="mnote" id="mnote"></div>
+</div></div>
+
+<div class="app" id="app">
+  <header class="top"><div class="top-in">
+    <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>양지바른정형외과</span></div>
+    <div class="top-r"><time id="clock"></time><span class="acct">원장 ▾</span></div>
+  </div></header>
+  <nav class="tabsbar" aria-label="메뉴"><div class="tabs" id="tabs"></div></nav>
+  <main id="main"></main>
+  <div id="layer"></div>
+</div>
+<div id="pop"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ───────── 상태 고르기 ───────── */
+const STATES = [
+  ['connect', '① 설정 · 구글 캘린더 잇기', '원장 계정의 설정 › 구글 캘린더 › 잇기예요. 병원 구글 계정에 작은 구글 코드를 붙이고, 나온 주소와 비밀 글자를 넣어 [연결 시험]을 누른 뒤 캘린더 목록에서 골라요. 캘린더를 눌러 바꿔 볼 수 있어요.'],
+  ['colors', '② 설정 · 시행자·종류 색', '시행자·종류마다 구글 캘린더 일정 색 11가지 가운데 하나를 골라요. 웹앱 예약 칸도 같은 색으로 그리고, 구글에서 온 예약은 제목 글과 이 색으로 시행자·종류를 알아봐요. 색 단추를 눌러 바꾸면 아래 미리 보기가 따라 바뀌어요.'],
+  ['import', '③ 처음 가져오기 미리 보기', "지난 1년과 앞으로의 구글 일정을 웹앱 칸으로 알아본 표예요. 위 카드에 '지난 1년 · 앞으로'를 나눠 보이고, 아래 단추로 나눠 볼 수 있어요. 노란 칸은 알아보지 못한 곳이라 그 자리에서 골라요. [가져오기]를 누르기 전에는 웹앱도 구글도 바뀌지 않아요."],
+  ['rules', '④ 설정 · 맞춤 방법', '웹앱과 구글을 어떻게 맞출지예요. 시안이 정한 기본값이 골라져 있고, 원장 계정이 바꿀 수 있어요.'],
+  ['week', '⑤ 예약 탭 주 보기 (이어짐)', "잇고 사흘 뒤 접수실 비트 PC 화면이에요. 위 띠에 이어진 캘린더와 마지막 맞춘 시각, 예약 칸은 구글과 같은 색, 하루 종일 줄의 보라 'off' 줄은 쉬는 직원이에요. 예약을 누르면 자세히가 열려요."],
+  ['detail', '⑥ 예약 자세히', '구글에서 온 예약은 구글 제목 원문과, 무엇을 어디서 알아봤는지(제목 글 · 구글 색 · 설정)를 보여요. 다른 칸을 누르면 웹앱에서 만든 예약도 볼 수 있어요.'],
+  ['fix', '⑦ 고쳐야 할 구글 예약', '누군가 구글 캘린더에 넣은 예약 가운데 웹앱이 알아보지 못한 것이 생겼을 때예요. 띠의 노란 단추로 목록을 열고, 고르면 웹앱 예약이 돼요. 예약표에는 노란 빗금 칸으로 보여요.'],
+  ['err', '⑧ 구글에 닿지 못함', '인터넷이 끊기거나 구글 코드가 멈춰 구글에 닿지 못할 때예요. 웹앱에는 저장되고, 구글로 보낼 것은 모아 두었다가 다시 닿으면 저절로 보내요. 칸의 주황 시계가 아직 못 보낸 예약이에요.'],
+  ['staff', '⑨ 직원 탭 · 휴가 넣기', "직원 탭 › 휴가에서 휴가를 넣으면 예약 달력 '휴무'와 함께 구글 캘린더 그날 off 줄에 이름이 더해져요. [저장]을 눌러 보세요."],
+]
+const Q = new URLSearchParams(location.search)
+let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'week'
+const SETTINGS_S = ['connect', 'colors', 'import', 'rules']
+const FIRST = ['connect', 'colors', 'import'].includes(S) // 처음 잇는 날 아침
+const CAL_S = ['week', 'detail', 'fix', 'err'].includes(S)
+const NOW = FIRST ? { date: '2026-11-23', min: { connect: 527, colors: 529, import: 532 }[S] } : { date: '2026-11-26', min: 877 }
+const SLOT = 20
+
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+const cur = STATES.find(x => x[0] === S)
+document.getElementById('mnote').innerHTML = `<b>${cur[1]}</b> — ${cur[2]} <span class="mut">(${FIRST ? '잇는 날 11/23 (월) 아침' : '11/26 (목) 14:37'} · PC)</span>`
+const TAB_NOW = SETTINGS_S.includes(S) ? '더보기 · 설정 ▾' : S === 'staff' ? '더보기 · 직원 ▾' : '예약'
+const TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', TAB_NOW === '예약' ? '더보기 ▾' : TAB_NOW]
+document.getElementById('tabs').innerHTML = TABS.map(t => `<a href="${t === '예약' ? '?s=week' : '#'}" ${t === TAB_NOW ? 'aria-current="page"' : ''}>${t}</a>`).join('')
+
+/* ───────── 도움 ───────── */
+const $ = s => document.querySelector(s)
+const $$ = s => [...document.querySelectorAll(s)]
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const pad = n => String(n).padStart(2, '0')
+const hm = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`
+const DOW = ['일', '월', '화', '수', '목', '금', '토']
+const toD = s => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
+const toS = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+const addDays = (s, n) => { const d = toD(s); d.setUTCDate(d.getUTCDate() + n); return toS(d) }
+const dowOf = s => toD(s).getUTCDay()
+const mdw = s => { const d = toD(s); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} (${DOW[d.getUTCDay()]})` }
+const mdwK = s => { const d = toD(s); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${DOW[d.getUTCDay()]})` }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const D26 = s => '2026-' + s
+document.getElementById('clock').textContent = `2026년 ${mdwK(NOW.date).replace(/ \(/, ' (')} ${hm(NOW.min)} (KST)`
+
+const ICON = {
+  left: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  right: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>',
+  gear: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg>',
+  close: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  warn: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 15 14H1z" fill="#B45309"/><path d="M8 6v3.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="#fff"/></svg>',
+  info: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.2"/></svg>',
+  lock: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>',
+  sync: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13 6.5A5 5 0 0 0 3.6 5M3 9.5A5 5 0 0 0 12.4 11"/><path d="M3.3 2.5v2.8h2.8M12.7 13.5v-2.8H9.9"/></svg>',
+  cal: '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="3" width="14" height="13" rx="2.5" fill="#fff" stroke="#15803D" stroke-width="1.5"/><path d="M2 7h14" stroke="#15803D" stroke-width="1.5"/><path d="M6 1.8v2.6M12 1.8v2.6" stroke="#15803D" stroke-width="1.5" stroke-linecap="round"/><path d="m6.2 11.3 1.8 1.7 3.8-3.8" fill="none" stroke="#15803D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  calerr: '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="3" width="14" height="13" rx="2.5" fill="#fff" stroke="#C2410C" stroke-width="1.5"/><path d="M2 7h14" stroke="#C2410C" stroke-width="1.5"/><path d="M6 1.8v2.6M12 1.8v2.6" stroke="#C2410C" stroke-width="1.5" stroke-linecap="round"/><path d="M9 9v3" stroke="#C2410C" stroke-width="1.7" stroke-linecap="round"/><circle cx="9" cy="14" r=".9" fill="#C2410C"/></svg>',
+  copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M10.5 5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5H5"/></svg>',
+  out: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>',
+  clock: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="#C2410C" stroke-width="1.2"/><path d="M5 3.1V5l1.3.9" fill="none" stroke="#C2410C" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3.5 8.4 3 2.9 6-6.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+}
+const MK = {
+  came: '<span class="mk came" title="왔음"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2.2 5.3 4.2 7.2 7.9 3" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>',
+  noshow: '<span class="mk noshow" title="안 옴">!</span>',
+  cancel: '<span class="mk cancel" title="취소">취소</span>',
+  chg: '<span class="mk chg" title="날짜나 시작 시간을 옮김">변경</span>',
+  gwait: `<span class="mk gwait" title="구글에 아직 못 보냄">${ICON.clock}</span>`,
+  wait: '',
+}
+
+/* ───────── 구글 캘린더 일정 색 11가지 (구글 화면 차례) ───────── */
+const GC = {
+  tomato: ['토마토', '#D50000'], flamingo: ['플라밍고', '#E67C73'], tangerine: ['귤', '#F4511E'], banana: ['바나나', '#F6BF26'],
+  sage: ['세이지', '#33B679'], basil: ['바질', '#0B8043'], peacock: ['공작', '#039BE5'], blueberry: ['블루베리', '#3F51B5'],
+  lavender: ['라벤더', '#7986CB'], grape: ['포도', '#8E24AA'], graphite: ['흑연', '#616161'],
+}
+const GC_KEYS = Object.keys(GC)
+const CAL_COLOR = '#4285F4' // 이 캘린더의 기본 색(지어낸 값). 일정에 색을 안 고르면 이 색
+const gHex = k => (!k || k === 'cal') ? CAL_COLOR : GC[k][1]
+const gName = k => (!k || k === 'cal') ? '캘린더 기본 색' : GC[k][0]
+const darkText = k => k === 'banana'
+const gsw = (k, extra = '') => `<i class="gsw ${(!k || k === 'cal') ? 'none' : ''} ${extra}" style="--c:${gHex(k)}"></i>`
+const gev = (k, text, cls = '') => `<span class="gev ${darkText(k) ? 'dark' : ''} ${cls}" style="--c:${gHex(k)}" title="${esc(text)}">${esc(text)}</span>`
+
+/* ───────── 설정(지어낸 값) ───────── */
+const SET = {
+  staff: [
+    { id: 'ho', name: '정호연', mark: '호', gc: 'lavender' },
+    { id: 'won', name: '박지원', mark: '원', gc: 'banana' },
+    { id: 'hyun', name: '이수현', mark: '현', gc: 'flamingo' },
+    { id: 'jang', name: '원장님', mark: '장', gc: 'blueberry' },
+  ],
+  kinds: [
+    { id: 'dosu', name: '도수', words: '도수', len: 30, gc: null },
+    { id: 'jabo', name: '자보도수', words: '자보도수, 자보', len: 30, gc: null },
+    { id: 'eswt', name: '충격파', words: '충격파, 타', len: 15, gc: 'sage' },
+    { id: 'inj', name: '주사', words: '주사', len: 10, gc: null },
+    { id: 'visit', name: '진료', words: '진료', len: 10, gc: null },
+  ],
+  noKind: 'dosu', byColor: true, offWord: 'off', offGc: 'grape', cancelGc: 'tomato', changeGc: 'graphite', noStaffKinds: ['eswt'], withLen: true, memoInTitle: true,
+  open: 540, close: 1140,
+}
+// 병원 정보 원장님·직원(지어낸 이름). staff = 예약 시행자 id (없으면 예약에 안 보이는 직원)
+const PEOPLE = [
+  { id: 'jang', name: '원장님', role: '원장님', staff: 'jang' },
+  { id: 'ho', name: '정호연', role: '물리치료사', staff: 'ho' },
+  { id: 'won', name: '박지원', role: '물리치료사', staff: 'won' },
+  { id: 'hyun', name: '이수현', role: '물리치료사', staff: 'hyun' },
+  { id: 'kim', name: '김예시', role: '데스크', staff: null },
+  { id: 'jung', name: '정예시', role: '데스크', staff: null },
+]
+const RULE = { every: 2, webCancel: 'color', gDelete: 'cancel', arrive: 'none', offAll: true }
+const kindOf = id => SET.kinds.find(k => k.id === id) || { id, name: '(지운 종류)', len: 30, gc: 'cal' }
+const staffOf = id => SET.staff.find(s => s.id === id) || { id, name: '(모름)', mark: '?', gc: 'cal' }
+const personOf = id => PEOPLE.find(p => p.id === id)
+const gcOf = a => kindOf(a.kind).gc || staffOf(a.staff).gc // 설정의 종류·시행자 색 (웹앱에서 만든 예약)
+// 예약 칸에 칠할 색: 취소 = 취소 색, 구글에서 온 일정 = 그 일정의 구글 색(설정보다 이김), 아니면 설정 색
+const drawGc = a => a.cancel ? SET.cancelGc : (a.orig || a.gchg) ? SET.changeGc : (a.g?.from === 'google' && a.g.gc) ? a.g.gc : gcOf(a)
+const darkChip = k => ['flamingo', 'tangerine', 'banana', 'sage', 'peacock', 'lavender', 'cal'].includes(k || 'cal')
+const staffIdx = id => { const i = SET.staff.findIndex(s => s.id === id); return i < 0 ? 99 : i }
+const staffLabel = id => { const s = staffOf(id); return `(${s.mark}) ${s.name}` }
+// 웹앱 → 구글 제목 꼴: 차트번호 이름 종류 길이분 (시행자) 메모
+function gTitle(a, o = SET) {
+  const k = kindOf(a.kind), s = staffOf(a.staff)
+  let t = [a.chart, a.name, k.name, o.withLen ? `${a.len}분` : ''].filter(Boolean).join(' ') + ` (${s.mark})`
+  if (o.memoInTitle && a.memo) t += ' ' + a.memo
+  return t
+}
+// 하루 종일 휴무 줄 꼴: 이름, 이름 off (하루 종일 쉬는 사람만. 반차는 넣지 않음)
+const offTitle = people => people.filter(p => !p.part).map(p => personOf(p.pid).name).join(', ') + ' ' + SET.offWord
+const halfText = p => `${personOf(p.pid).staff ? staffLabel(personOf(p.pid).staff) : personOf(p.pid).name} ${p.part === 'am' ? '오전' : '오후'} 반차`
+
+/* ───────── 처음 가져오기 자료 (11/23 (월) 08:52 기준) ─────────
+   앞으로: 시간 있는 일정 186 + 하루 종일 9 = 195. 지난 1년: 4,050 + 138 = 4,188(고른 캘린더 하나에서만).
+   표에는 앞으로 앞 26줄, 지난 1년 몇 줄, 고쳐야 할 것·하루 종일 일부만 둔다.
+   by: t = 제목 글, c = 구글 색, s = 설정('종류 글이 없는 예약의 종류') */
+let impSeq = 0
+function R(d, s, e, gc, title, p, fix) { return { id: 'i' + (++impSeq), d: D26(d), s, e, gc, title, p, fix: fix || null, pick: null } }
+function RP(d, s, e, gc, title, p, fix, extra) { return { id: 'i' + (++impSeq), past: true, d, s, e, gc, title, p, fix: fix || null, pick: null, ...(extra || {}) } }
+function A(d, d2, gc, title, p, fix) { return { id: 'i' + (++impSeq), allDay: true, d: D26(d), d2: d2 ? D26(d2) : null, gc, title, p, fix: fix || null, pick: null } }
+const IMP = [
+  R('11-23', 540, 570, 'lavender', '1234 홍길동 도수 30분 (호)', { c: '1234', n: '홍길동', k: 'dosu', st: 'ho' }),
+  R('11-23', 540, 570, 'banana', '2087 이보기 자보도수 30분 (원)', { c: '2087', n: '이보기', k: 'jabo', st: 'won' }),
+  R('11-23', 555, 570, 'sage', '5521 최시안 (4000타)', { c: '5521', n: '최시안', k: 'eswt', memo: '4000타' }, { need: 'staff', why: "시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요", group: 'eswt' }),
+  R('11-23', 570, 600, 'lavender', '3150 박가상 30분 도수 (호)', { c: '3150', n: '박가상', k: 'dosu', st: 'ho' }),
+  R('11-23', 570, 600, 'flamingo', '6230 정샘플', { c: '6230', n: '정샘플', k: 'dosu', st: 'hyun', by: { st: 'c', k: 's' } }),
+  R('11-23', 600, 650, 'lavender', '4012한예제 도수50분(호)', { c: '4012', n: '한예제', k: 'dosu', st: 'ho' }),
+  R('11-23', 600, 630, 'banana', '6871 송연습(1부위만 해 주세요', { c: '6871', n: '송연습', k: 'dosu', st: 'won', memo: '1부위만 해 주세요', by: { st: 'c', k: 's' } }),
+  R('11-23', 630, 660, 'flamingo', '홍길순 도수 30분 (현)', { c: '', n: '홍길순', k: 'dosu', st: 'hyun' }),
+  R('11-23', 660, 690, 'cal', '8456 윤모의 도수 30분', { c: '8456', n: '윤모의', k: 'dosu' }, { need: 'staff', why: '시행자 글이 없고, 색도 캘린더 기본 색이에요' }),
+  R('11-23', 660, 690, 'banana', '9567 장연습 자보 30분 (원)', { c: '9567', n: '장연습', k: 'jabo', st: 'won' }),
+  R('11-23', 780, 840, 'cal', '직원 회의', {}, { need: 'what', why: '차트번호·시행자·종류 글이 없어 예약 같지 않아요' }),
+  R('11-23', 840, 850, 'blueberry', '1102 오가짜 진료 (장)', { c: '1102', n: '오가짜', k: 'visit', st: 'jang' }),
+  R('11-23', 870, 900, 'lavender', '2214 서보기 도수 30분 (민)', { c: '2214', n: '서보기', k: 'dosu' }, { need: 'staff', why: "'민'은 시행자 표시에 없어요" }),
+  R('11-23', 900, 915, 'sage', '3348 문예시 충격파 (현)', { c: '3348', n: '문예시', k: 'eswt', st: 'hyun' }),
+  R('11-23', 930, 960, 'flamingo', '4471 배가상 체외 30분 (현)', { c: '4471', n: '배가상', st: 'hyun', memo: '체외' }, { need: 'kind', why: "'체외'를 종류로 알아보지 못했어요 (고르면 '체외'는 메모로 남아요)" }),
+  R('11-23', 960, 990, 'banana', '5590 신시안 도수 30분 (원)', { c: '5590', n: '신시안', k: 'dosu', st: 'won' }),
+  A('11-24', null, 'grape', '김예시, 박지원 off', { off: [{ pid: 'kim' }, { pid: 'won' }] }),
+  R('11-24', 540, 555, 'sage', '7712 황예제 (3000타)', { c: '7712', n: '황예제', k: 'eswt', memo: '3000타' }, { need: 'staff', why: "시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요", group: 'eswt' }),
+  R('11-24', 540, 1260, 'lavender', '8820 안모의 도수 (호)', { c: '8820', n: '안모의', k: 'dosu', st: 'ho' }, { need: 'len', why: '구글 시간이 09:00–21:00 (12시간)이에요. 예약 칸은 4시간까지예요' }),
+  R('11-24', 570, 600, 'lavender', '6603 권샘플 도수 30분 (호)', { c: '6603', n: '권샘플', k: 'dosu', st: 'ho' }),
+  R('11-24', 570, 600, 'flamingo', '9931 류가짜 도수 30분 (현)', { c: '9931', n: '류가짜', k: 'dosu', st: 'hyun' }),
+  R('11-24', 600, 630, 'lavender', '1043 전보기 자보도수 30분 (호)', { c: '1043', n: '전보기', k: 'jabo', st: 'ho' }),
+  R('11-24', 600, 615, 'sage', '2154 고예시 충격파 15분 (현)', { c: '2154', n: '고예시', k: 'eswt', st: 'hyun' }),
+  R('11-24', 630, 660, 'flamingo', '3265 남샘플 도수30분 (현)', { c: '3265', n: '남샘플', k: 'dosu', st: 'hyun' }),
+  R('11-24', 660, 680, 'blueberry', '4376 노가상 주사 (장)', { c: '4376', n: '노가상', k: 'inj', st: 'jang' }),
+  R('11-24', 660, 690, 'lavender', '5487 하예제 도수 (호)', { c: '5487', n: '하예제', k: 'dosu', st: 'ho' }),
+  // ↓ 앞 26줄 뒤(표의 '전체'에는 안 보이고, 고쳐야 함 · 하루 종일 거르기에 보임)
+  A('11-25', null, 'cal', '원장님 학회', { memo: '원장님 학회' }),
+  A('11-25', null, 'grape', '최호 off', { off: [{ pid: null, raw: '최호' }] }, { need: 'person', why: "'최호'를 원장님·직원 목록에서 찾지 못했어요" }),
+  R('11-26', 615, 630, 'sage', '1185 곽모의 (2000타)', { c: '1185', n: '곽모의', k: 'eswt', memo: '2000타' }, { need: 'staff', why: "시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요", group: 'eswt' }),
+  A('11-27', null, 'grape', '정예시 off', { off: [{ pid: 'jung' }] }),
+  A('11-28', null, 'cal', '물리치료실 소독', { memo: '물리치료실 소독' }),
+  A('11-30', '12-02', 'grape', '정호연 off', { off: [{ pid: 'ho' }] }),
+  R('11-30', 555, 570, 'sage', '2296 성연습 (4000타)', { c: '2296', n: '성연습', k: 'eswt', memo: '4000타' }, { need: 'staff', why: "시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요", group: 'eswt' }),
+  R('12-03', 855, 870, 'sage', '3307 차가짜 (3000타)', { c: '3307', n: '차가짜', k: 'eswt', memo: '3000타' }, { need: 'staff', why: "시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요", group: 'eswt' }),
+  A('12-05', null, 'grape', '박지원 off', { off: [{ pid: 'won' }] }),
+  A('12-24', null, 'grape', '김예시 off', { off: [{ pid: 'kim' }] }),
+  A('12-31', null, 'cal', '연말 대청소', { memo: '연말 대청소' }),
+  // ↓ 지난 1년(한 번만 옮겨 옴, 고른 캘린더에서만)
+  RP('2026-01-02', 600, 630, 'lavender', '0871 김가상 도수 30분 (호)', { c: '0871', n: '김가상', k: 'dosu', st: 'ho' }),
+  RP('2026-01-02', 615, 630, 'sage', '1532 이샘플 (3000타)', { c: '1532', n: '이샘플', k: 'eswt', memo: '3000타', nost: true }),
+  RP('2026-11-20', 540, 570, 'banana', '4417 박모의 자보도수 30분 (원)', { c: '4417', n: '박모의', k: 'jabo', st: 'won' }),
+  RP('2026-11-20', 540, 555, 'sage', '5528 정연습 충격파 (현)', { c: '5528', n: '정연습', k: 'eswt', st: 'hyun' }),
+  RP('2026-11-20', 570, 600, 'graphite', '6639 최가짜 도수 30분 (호)', { c: '6639', n: '최가짜', k: 'dosu', st: 'ho', chg: true }),
+  RP('2026-11-20', 600, 630, 'flamingo', '김보기 도수 30분 (현)', { c: '', n: '김보기', k: 'dosu', st: 'hyun', memo: '' }),
+  RP('2026-11-20', 630, 660, 'cal', '7740 한시안 도수 30분 (윤)', { c: '7740', n: '한시안', k: 'dosu', memo: '(윤)', nost: true }),
+  RP('2026-11-20', 840, 850, 'blueberry', '8851 오예제 진료 (장)', { c: '8851', n: '오예제', k: 'visit', st: 'jang' }),
+  { id: 'i' + (++impSeq), past: true, allDay: true, d: '2026-11-21', d2: null, gc: 'grape', title: '정예시 off', p: { off: [{ pid: 'jung' }] }, fix: null, pick: null },
+  RP('2026-11-21', 540, 570, 'tomato', '9962 서모의 도수30분(호)', { c: '9962', n: '서모의', k: 'dosu', st: 'ho', cancel: true }),
+  RP('2026-11-21', 570, 600, 'banana', '1073 문가상 도수 30분 (원)', { c: '1073', n: '문가상', k: 'dosu', st: 'won' }),
+  RP('2026-11-21', 600, 615, 'sage', '2184 배샘플 (4000타)', { c: '2184', n: '배샘플', k: 'eswt', memo: '4000타', nost: true }),
+  RP('2026-11-21', 630, 680, 'flamingo', '3295 신예시 도수 50분 (현)', { c: '3295', n: '신예시', k: 'dosu', st: 'hyun' }),
+]
+const FIRST_PAGE = 26
+const IMP_UI = { filter: 'fut', grp: {} }
+
+/* ───────── 예약 탭 자료 (11/23~28, 지어낸 값) ───────── */
+const WEEK = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28']
+const ALLDAY = {
+  '2026-11-24': [{ type: 'off', people: [{ pid: 'kim' }, { pid: 'won' }] }],
+  '2026-11-25': [{ type: 'memo', text: '원장님 학회' }, { type: 'off', people: [{ pid: 'ho' }] }],
+  '2026-11-27': [{ type: 'off', people: [{ pid: 'jung' }, { pid: 'hyun', part: 'pm' }] }],
+  '2026-11-28': [{ type: 'memo', text: '물리치료실 소독' }],
+}
+const offPeople = d => (ALLDAY[d] || []).filter(x => x.type === 'off').flatMap(x => x.people)
+function isOff(d, st, min) {
+  return offPeople(d).some(p => personOf(p.pid)?.staff === st && (!p.part || (p.part === 'am' ? min < 780 : min >= 780)))
+}
+function rng(str) {
+  let h = 2166136261
+  for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
+  let a = h >>> 0
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 }
+}
+const SUR = '김이박최정강조윤장임한오신권황안송류전홍고문양손배백허남심노하곽성차주우구민진나엄채원천방공현'
+const GIV = ['예시', '보기', '가상', '시안', '샘플', '예제', '모의', '연습', '가짜']
+const MEMOS = ['', '', '', '', '', '허리', '목·어깨', '무릎', '2회차', '첫 도수', '자보 서류 확인']
+let seq = 0
+const ended = a => a.date < NOW.date || (a.date === NOW.date && a.start + a.len <= NOW.min)
+const began = a => a.date < NOW.date || (a.date === NOW.date && a.start <= NOW.min)
+function mkAppt(o) { return { id: o.id || 'a' + (++seq), date: o.date, start: o.start, len: o.len, staff: o.staff, kind: o.kind, chart: o.chart ?? '', name: o.name, memo: o.memo || '', mode: 'auto', cancel: !!o.cancel, rcpt: o.rcpt ?? null, orig: o.orig || null, gchg: !!o.gchg, g: o.g || null, pend: o.pend || null, gfix: o.gfix || null } }
+// 구글에서 온 예약의 제목 원문(지금 의원에서 흔한 꼴들)
+function messyTitle(a, r) {
+  const k = kindOf(a.kind).name, m = staffOf(a.staff).mark, c = a.chart, n = a.name, L = a.len
+  if (a.kind === 'eswt') return r() < .5 ? `${c} ${n} 충격파 (${m})` : `${c} ${n} (${[2000, 3000, 4000][Math.floor(r() * 3)]}타)`
+  const f = Math.floor(r() * 5)
+  return [`${c} ${n} ${k} ${L}분 (${m})`, `${c} ${n} ${L}분 ${k} (${m})`, `${c}${n} ${k}${L}분(${m})`, `${c} ${n} ${k} (${m})`, `${c} ${n} ${k} ${L}분 (${m})`][f]
+}
+const DATA = {}
+function dayData(date) {
+  if (DATA[date]) return DATA[date]
+  const dd = { appts: [] }
+  DATA[date] = dd
+  const w = dowOf(date)
+  if (w === 0) return dd
+  const r = rng('ssk-glink-' + date)
+  const pick = arr => arr[Math.floor(r() * arr.length)]
+  const pt = () => ({ chart: String(1000 + Math.floor(r() * 8999)), name: pick(SUR) + pick(GIV) })
+  const sessions = w === 6 ? [[540, 780]] : [[540, 780], [840, 1110]]
+  const CFG = [
+    { st: 'ho', p: .55, kinds: ['dosu', 'dosu', 'dosu', 'jabo'] },
+    { st: 'won', p: .5, kinds: ['dosu', 'jabo', 'jabo', 'dosu'] },
+    { st: 'hyun', p: .45, kinds: ['dosu', 'eswt', 'eswt'] },
+    { st: 'jang', p: .07, kinds: ['inj', 'visit', 'visit'] },
+  ]
+  for (const c of CFG) {
+    for (const [s0, s1] of sessions) {
+      let t = s0
+      while (t < s1) {
+        const kind = pick(c.kinds)
+        let len = kindOf(kind).len
+        if (kind === 'dosu' && r() < .08) len = 50
+        if (t + len > s1) break
+        if (!isOff(date, c.st, t) && r() < c.p) {
+          const p = pt()
+          const a = mkAppt({ date, start: t, len, staff: c.st, kind, chart: p.chart, name: p.name, memo: kind === 'eswt' ? pick(['', '3000타', '4000타']) : pick(MEMOS) })
+          if (began(a)) a.rcpt = r() < .95 ? t - Math.floor(r() * 12) : null
+          if (r() < .04) { a.cancel = true; a.rcpt = null }
+          const fromG = r() < (date <= '2026-11-24' ? .95 : date <= '2026-11-26' ? .7 : .55)
+          const tt = fromG ? messyTitle(a, r) : ''
+          a.g = fromG ? { from: 'google', title: tt, at: '11/23 (월) 08:55 처음 가져오기', by: tt.includes(`(${staffOf(a.staff).mark})`) ? {} : { st: 'f' } } : { from: 'web', at: `${mdw(addDays(date, -1 - Math.floor(r() * 2)))} ${hm(600 + Math.floor(r() * 40) * 10)} 웹앱에서 넣음` }
+          dd.appts.push(a)
+          t = Math.ceil((t + len) / 10) * 10
+        } else t += pick([10, 20, 30])
+      }
+    }
+  }
+  // 손으로 둔 예약: 같은 시행자·시간의 만든 예약은 빼고 넣는다
+  const fx = fixedFor(date)
+  for (const f of fx) dd.appts = dd.appts.filter(a => !(a.staff === f.staff && a.start < f.start + f.len && f.start < a.start + a.len))
+  for (const f of fx) dd.appts.push(mkAppt({ ...f, date }))
+  return dd
+}
+// 가져오기 표의 11/23·24 줄(고친 값으로) + 상태마다 보이는 예약
+function fixedFor(date) {
+  const out = []
+  if (date === '2026-11-23' || date === '2026-11-24') {
+    const FIXV = { staff: { i3: 'hyun', i9: 'ho', i13: 'ho', i18: 'hyun' }, kind: { i15: 'dosu' } }
+    for (const x of IMP) {
+      if (x.allDay || x.d !== date || x.fix?.need === 'what') continue
+      const st = x.p.st || FIXV.staff[x.id], kind = x.p.k || FIXV.kind[x.id]
+      const len = x.fix?.need === 'len' ? 30 : x.e - x.s
+      const by = { ...(x.p.by || {}) }
+      if (FIXV.staff[x.id]) by.st = 'f'
+      if (FIXV.kind[x.id]) by.k = 'f'
+      if (x.fix?.need === 'len') by.len = 'f'
+      out.push({ start: x.s, len, staff: st, kind, chart: x.p.c, name: x.p.n, memo: x.p.memo || '', rcpt: x.s - 4, g: { from: 'google', title: x.title, gc: x.gc, at: '11/23 (월) 08:55 처음 가져오기', by } })
+    }
+    if (date === '2026-11-24') out.find(o => o.chart === '5487').rcpt = null // 안 옴 하나
+  }
+  if (date === '2026-11-26') {
+    out.push({ id: 'det', start: 630, len: 30, staff: 'won', kind: 'dosu', chart: '7345', name: '한예제', memo: '1부위만 해 주세요', rcpt: 626, g: { from: 'google', title: '7345 한예제(1부위만 해 주세요', gc: 'banana', at: '11/23 (월) 08:55 처음 가져오기', by: { st: 'c', k: 's', memo: 't' } } })
+    out.push({ id: 'gown', start: 900, len: 30, staff: 'ho', kind: 'dosu', chart: '2775', name: '정모의', memo: '', rcpt: null, g: { from: 'google', title: '2775 정모의 도수 30분 (호)', gc: 'tangerine', at: '11/25 (수) 18:02 구글에서 들어옴', by: {} } })
+    out.push({ id: 'gchg1', start: 990, len: 30, staff: 'won', kind: 'dosu', chart: '3907', name: '백모의', memo: '', rcpt: null, gchg: true, g: { from: 'google', title: '3907 백모의 도수 30분 (원)', gc: 'graphite', at: '11/23 (월) 08:55 처음 가져오기 · 11/26 (목) 13:10 구글에서 흑연으로 바뀜', by: {} } })
+    out.push({ id: 'webone', start: 690, len: 30, staff: 'hyun', kind: 'jabo', chart: '2618', name: '방예시', memo: '자보 서류 확인', rcpt: 684, g: { from: 'web', at: '11/24 (화) 17:12 웹앱에서 넣음' } })
+    if (S === 'err') {
+      out.push({ id: 'p1', start: 940, len: 30, staff: 'ho', kind: 'dosu', chart: '1290', name: '오가짜', pend: '새로 넣음', g: { from: 'web', at: '11/26 (목) 14:33 웹앱에서 넣음' } })
+      out.push({ id: 'p3', start: 990, len: 30, staff: 'hyun', kind: 'dosu', chart: '5590', name: '신시안', cancel: true, pend: '취소', g: { from: 'google', title: '5590 신시안 도수 30분 (현)', at: '11/23 (월) 08:55 처음 가져오기', by: {} } })
+    }
+    if (S === 'fix') out.push({ id: 'f1', start: 960, len: 15, staff: null, kind: null, chart: '6402', name: '윤모의', gfix: { title: '6402 윤모의 (4000타)', gc: 'sage' } })
+  }
+  if (date === '2026-11-27') {
+    if (S !== 'err') out.push({ id: 'chg1', start: 840, len: 30, staff: 'ho', kind: 'dosu', chart: '4825', name: '윤가상', memo: '', orig: { date: '2026-11-25', start: 900 }, g: { from: 'web', at: '11/24 (화) 09:10 웹앱에서 넣음 · 11/25 (수) 11:02 날짜 옮김' } })
+    if (S === 'err') out.push({ id: 'p2', start: 660, len: 30, staff: 'won', kind: 'jabo', chart: '3150', name: '박가상', pend: '시간 바꿈', orig: { date: '2026-11-27', start: 600 }, g: { from: 'web', at: '11/25 (수) 10:20 웹앱에서 넣음' } })
+    if (S === 'fix') out.push({ id: 'f2', start: 600, len: 15, staff: null, kind: null, chart: '1185', name: '곽모의', gfix: { title: '1185 곽모의 체외충격 (현)', gc: 'flamingo' } })
+  }
+  return out
+}
+function findAppt(id) { for (const d in DATA) { const a = DATA[d].appts.find(x => x.id === id); if (a) return a } return null }
+function status(a) {
+  if (a.cancel) return 'cancel'
+  if (a.mode !== 'auto') return a.mode
+  if (a.rcpt != null) return 'came'
+  if (ended(a)) return 'noshow'
+  return 'wait'
+}
+const UI = { layer: null, fixDone: {}, lastSync: '14:35', saved: false, errOpen: true }
+if (S === 'detail') { WEEK.forEach(dayData); UI.layer = { type: 'detail', id: 'det' } }
+if (S === 'fix') { WEEK.forEach(dayData); UI.layer = { type: 'fix' } }
+
+/* ───────── 그리기: 설정 › 구글 캘린더 ───────── */
+function settingsHead(sub) {
+  const subs = [['connect', '잇기'], ['colors', '시행자·종류'], ['rules', '맞춤 방법']]
+  return `<h1 class="ph1">설정</h1>
+    <nav class="subnav" aria-label="설정 안 메뉴"><a href="#">설정</a><a href="#">비트 PC 연결</a><a href="?s=connect" aria-current="page">구글 캘린더<span class="newb">새</span></a></nav>
+    <div class="gtop"><div class="vseg" role="group" aria-label="구글 캘린더 안 메뉴">${subs.map(([k, t]) => `<button data-act="go" data-s="${k}" aria-pressed="${sub === k || (sub === 'import' && k === 'connect')}">${t}</button>`).join('')}</div>
+      <span class="hint">원장 계정만 바꿀 수 있어요 · 데스크 계정은 보기만 해요</span></div>`
+}
+function flowBar(at) {
+  const st = [['connect', '① 잇기'], ['colors', '② 시행자·종류 확인'], ['import', '③ 가져오기 미리 보기']]
+  const i = st.findIndex(x => x[0] === at)
+  return `<div class="flow" aria-label="처음 잇기 차례">${st.map(([k, t], j) => `${j ? '<i>→</i>' : ''}<span class="${j < i ? 'done' : j === i ? 'cur' : ''}">${j < i ? ICON.check : ''}${t}</span>`).join('')}<span style="border:0;background:none;padding:0" class="mut">처음 한 번만 이 차례로 해요</span></div>`
+}
+const CONN = { tested: true, cal: 'c1', showKey: false }
+const CALS = [
+  { id: 'c1', name: '2026 양지바른정형외과', sub: '지난 1년 4,188개 · 앞으로 195개 · 고칠 수 있음', color: CAL_COLOR },
+  { id: 'c2', name: '2025 양지바른정형외과', sub: '지난 1년 624개 · 앞으로 0개 · 고칠 수 있음', color: '#9E69AF' },
+  { id: 'c3', name: '양지바른정형외과 (계정 기본 캘린더)', sub: '지난 1년 3개 · 앞으로 2개 · 고칠 수 있음', color: '#0B8043' },
+  { id: 'c4', name: '직원 생일', sub: '지난 1년 6개 · 앞으로 6개 · 고칠 수 있음', color: '#F4511E' },
+  { id: 'c5', name: '대한민국의 휴일', sub: '보기만 할 수 있어 고를 수 없어요', color: '#33B679', ro: true },
+]
+function connectHTML() {
+  const c = CALS.find(x => x.id === CONN.cal)
+  return `${settingsHead('connect')}${flowBar('connect')}
+  <section class="card" aria-labelledby="h-conn">
+    <div class="card-h"><h2 id="h-conn">구글 캘린더 잇기</h2><span class="hint">아직 이어지지 않았어요</span></div>
+    <p class="lead">병원 구글 계정의 캘린더와 예약 탭을 양쪽으로 이어요. 웹앱에서 넣거나 고친 예약은 바로 구글에 적히고, 구글에서 넣거나 고친 예약은 웹앱이 열려 있는 동안 <b>2분마다</b> 받아 와요. 처음 이을 때 <b>지난 1년과 앞으로</b>의 예약을 가져와요.</p>
+    <div class="privacy">${ICON.lock}<span>환자 이름과 차트번호가 병원 구글 캘린더 제목에도 그대로 적혀요. 병원 구글 계정의 비밀번호를 아는 사람만 볼 수 있으니 계정을 잘 지켜 주세요.</span></div>
+    <div class="step done"><span class="no">✓</span><div class="step-b">
+      <h3>1. 병원 구글 계정에 구글 코드 붙이기</h3>
+      <ol class="howto">
+        <li><b>병원 구글 계정</b>으로 로그인한 크롬에서 구글 코드 편집기(<span class="code">script.google.com</span>)를 열어요.</li>
+        <li><span class="kbd">새 프로젝트</span>를 누르고, 안에 있는 글을 모두 지운 뒤 아래 [구글 코드 복사]로 복사한 코드를 붙여 넣고 저장해요.</li>
+        <li>오른쪽 위 <span class="kbd">배포</span> → <span class="kbd">새 배포</span> → 유형 <span class="kbd">웹 앱</span>, 실행 <span class="kbd">나</span>, 액세스 권한 <span class="kbd">모든 사용자</span>를 고르고 <span class="kbd">배포</span>를 눌러요. 구글이 권한을 물으면 병원 계정을 고르고 <span class="kbd">허용</span>을 눌러요.</li>
+        <li>나온 '웹 앱 주소'를 복사해 아래 2번 칸에 붙여 넣어요.</li>
+      </ol>
+      <div class="inrow" style="align-items:center"><button class="btn" data-act="copycode">${ICON.copy}구글 코드 복사</button><p class="ok-l">${ICON.check}11/23 (월) 08:41에 복사했어요 <span class="mut">· 비밀 글자를 새로 만들어 코드 맨 위에 넣었어요</span></p></div>
+    </div></div>
+    <div class="step done"><span class="no">✓</span><div class="step-b">
+      <h3>2. 주소와 비밀 글자 넣기</h3>
+      <div class="inrow">
+        <div class="field"><label for="g-url">코드 주소 <span class="hint">구글이 준 '웹 앱 주소'</span></label><input class="inp code" id="g-url" value="https://script.google.com/macros/s/시안-가짜-주소-0000/exec" autocomplete="off"></div>
+        <div class="field sm"><label for="g-key">비밀 글자 <span class="hint">코드 맨 위 줄</span></label><input class="inp code" id="g-key" type="${CONN.showKey ? 'text' : 'password'}" value="시안가짜비밀글자1234" autocomplete="off"></div>
+        <button class="btn ghost" data-act="showkey">${CONN.showKey ? '숨기기' : '보기'}</button>
+        <button class="btn accent" data-act="test">연결 시험</button>
+      </div>
+      <p class="hint">비밀 글자는 이 의원 계정에만 저장되고, 저장한 뒤에는 화면에 다시 보이지 않아요. 바꾸려면 코드를 다시 복사해 붙여요.</p>
+      <div id="testres">${CONN.tested ? `<p class="ok-l">${ICON.check}연결됐어요 · 병원 구글 계정에서 캘린더 5개를 찾았어요 <span class="mut">(08:46)</span></p>` : ''}</div>
+    </div></div>
+    <div class="step cur"><span class="no">3</span><div class="step-b">
+      <h3>3. 이을 캘린더 고르기</h3>
+      <div class="calpick" role="radiogroup" aria-label="이을 캘린더">${CALS.map(x => `<div class="cp" role="radio" tabindex="0" data-act="${x.ro ? '' : 'pickcal'}" data-id="${x.id}" aria-checked="${CONN.cal === x.id}" ${x.ro ? 'aria-disabled="true"' : ''}><span class="rd"></span><i class="gsw sq" style="--c:${x.color}"></i><b>${esc(x.name)}</b><small>${x.sub}</small></div>`).join('')}</div>
+      <p class="hint">웹앱은 고른 캘린더 하나에만 적고 그 캘린더만 받아 와요. 처음 가져오기도 이 캘린더에서만 해요.</p>
+    </div></div>
+    <div class="inrow" style="justify-content:flex-end;align-items:center;border-top:1px solid var(--line);padding-top:14px">
+      <span class="hint" style="flex:1">아직 아무것도 가져오거나 바꾸지 않았어요. 다음 화면에서 시행자·종류 색을 맞춘 뒤, 가져오기 전에 한 번 더 보여 드려요.</span>
+      <button class="btn primary" data-act="go" data-s="colors">'${esc(c.name)}'로 잇고 다음 →</button>
+    </div>
+  </section>`
+}
+
+/* 시행자·종류 */
+const CED = { open: { t: 's', i: 0 } } // 색판을 연 줄
+function palHTML(val, forKind, extraCal) {
+  let h = '<div class="gpal" role="group" aria-label="구글 색 고르기">'
+  if (forKind) h += `<button class="wide2" data-act="gpal" data-c="" aria-pressed="${!val}"><i class="follow"></i>시행자 색 따름</button>`
+  h += GC_KEYS.map(k => `<button data-act="gpal" data-c="${k}" aria-pressed="${val === k}" title="${GC[k][0]} ${GC[k][1]}"><i style="--c:${GC[k][1]}"></i>${GC[k][0]}</button>`).join('')
+  if (extraCal) h += `<button class="wide2" data-act="gpal" data-c="cal" aria-pressed="${val === 'cal'}"><i class="none" style="--c:${CAL_COLOR}"></i>캘린더 기본 색</button>`
+  return h + '</div>'
+}
+function colorBtn(val, t, i, follow) {
+  const open = CED.open && CED.open.t === t && CED.open.i === i
+  const inner = val ? `${gsw(val)}<span class="gname">${gName(val)}</span>` : follow ? `<i class="gsw follow"></i><span class="gname">시행자 색 따름</span>` : ''
+  return `<button class="cbtn" data-act="copen" data-t="${t}" data-i="${i}" aria-expanded="${open}">${inner}<span class="car">▼</span></button>`
+}
+function dupColorWarn() {
+  const out = []
+  const sc = SET.staff.map(s => s.gc)
+  SET.staff.forEach((s, i) => { if (sc.indexOf(s.gc) !== i) out.push(`${staffLabel(s.id)}과 ${staffLabel(SET.staff[sc.indexOf(s.gc)].id)}이 같은 색(${gName(s.gc)})이에요. 시행자 글이 없는 구글 예약은 색으로 누구인지 알아볼 수 없어요.`) })
+  SET.kinds.filter(k => k.gc).forEach(k => { const s = SET.staff.find(x => x.gc === k.gc); if (s) out.push(`'${k.name}' 색(${gName(k.gc)})이 ${staffLabel(s.id)} 색과 같아요. 색만으로는 종류와 시행자를 가려낼 수 없어요.`) })
+  if (SET.kinds.some(k => k.gc === SET.offGc) || SET.staff.some(s => s.gc === SET.offGc)) out.push(`휴무 줄 색(${gName(SET.offGc)})을 시행자·종류도 쓰고 있어요.`)
+  for (const [key, nm] of [['cancelGc', '취소'], ['changeGc', '변경']]) {
+    const c = SET[key]
+    const who = [...SET.staff.filter(s => s.gc === c).map(s => staffLabel(s.id)), ...SET.kinds.filter(k => k.gc === c).map(k => `'${k.name}'`), ...(SET.offGc === c ? ['휴무 줄'] : [])]
+    if (who.length) out.push(`${nm} 색(${gName(c)})을 ${who.join('·')}도 쓰고 있어요. 구글에서 이 색 일정은 모두 '${nm}'으로 알아봐요. 다른 색을 골라 주세요.`)
+  }
+  if (SET.cancelGc === SET.changeGc) out.push(`취소 색과 변경 색이 같아요(${gName(SET.cancelGc)}). 구글에서 취소와 변경을 가려낼 수 없어요.`)
+  return out.map(w => `<p class="warnl">${ICON.warn}<span>${esc(w)}</span></p>`).join('')
+}
+function colorsHTML() {
+  const lens = v => { let s = ''; for (let m = 5; m <= 120; m += 5) s += `<option value="${m}" ${m === v ? 'selected' : ''}>${m}분</option>`; return s }
+  const staffRows = SET.staff.map((s, i) => {
+    const open = CED.open && CED.open.t === 's' && CED.open.i === i
+    return `<tr class="${open ? 'haspal' : ''}"><td><input class="tin w-nm" data-f="s-name" data-i="${i}" value="${esc(s.name)}" aria-label="시행자 이름" maxlength="10"></td>
+      <td><input class="tin one" data-f="s-mark" data-i="${i}" value="${esc(s.mark)}" maxlength="1" aria-label="표시 한 글자"></td>
+      <td>${colorBtn(s.gc, 's', i)}</td>
+      <td>${gev(s.gc, `1234 홍길동 도수 30분 (${s.mark})`)}</td>
+      <td class="mut" style="font-size:12px">제목 끝 (${esc(s.mark)}) · 색 ${gName(s.gc)}</td></tr>
+      ${open ? `<tr><td colspan="5" class="palrow">${palHTML(s.gc, false, false)}</td></tr>` : ''}`
+  }).join('')
+  const kindRows = SET.kinds.map((k, i) => {
+    const open = CED.open && CED.open.t === 'k' && CED.open.i === i
+    return `<tr class="${open ? 'haspal' : ''}"><td><span class="ordb"><button class="mini" data-act="k-up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="위로">▲</button><button class="mini" data-act="k-down" data-i="${i}" ${i === SET.kinds.length - 1 ? 'disabled' : ''} aria-label="아래로">▼</button></span></td>
+      <td><input class="tin w-nm" data-f="k-name" data-i="${i}" value="${esc(k.name)}" maxlength="10" aria-label="종류 이름" style="font-weight:600"></td>
+      <td><input class="tin w-words" data-f="k-words" data-i="${i}" value="${esc(k.words)}" aria-label="제목에서 알아볼 글" placeholder="예: 도수"></td>
+      <td><select class="sel" data-f="k-len" data-i="${i}">${lens(k.len)}</select></td>
+      <td>${colorBtn(k.gc, 'k', i, true)}</td>
+      <td><button class="del" data-act="k-del" data-i="${i}">지우기</button></td></tr>
+      ${open ? `<tr><td colspan="6" class="palrow">${palHTML(k.gc, true, true)}</td></tr>` : ''}`
+  }).join('')
+  const ex = [
+    { chart: '1234', name: '홍길동', kind: 'dosu', staff: 'ho', len: 30, memo: '', at: '09:00' },
+    { chart: '2087', name: '이보기', kind: 'jabo', staff: 'won', len: 30, memo: '', at: '09:30' },
+    { chart: '5521', name: '최시안', kind: 'eswt', staff: 'hyun', len: 15, memo: '4000타', at: '10:00' },
+    { chart: '', name: '홍길순', kind: 'dosu', staff: 'hyun', len: 30, memo: '', at: '10:30' },
+    { chart: '1102', name: '오가짜', kind: 'visit', staff: 'jang', len: 10, memo: '', at: '11:00' },
+    { chart: '6603', name: '권샘플', kind: 'dosu', staff: 'ho', len: 30, memo: '', at: '11:30', cancel: true },
+    { chart: '7781', name: '노예시', kind: 'jabo', staff: 'won', len: 30, memo: '', at: '12:00', changed: true },
+  ]
+  return `${settingsHead('colors')}${flowBar('colors')}
+  <div class="connected"><span><span class="dotok"></span><b>2026 양지바른정형외과</b>를 골랐어요 · 아직 가져오지 않았어요</span><span class="sp"></span><button class="btn text" data-act="go" data-s="connect">잇기로 돌아가기</button></div>
+  <section class="card" aria-labelledby="h-st">
+    <div class="card-h"><h2 id="h-st">시행자</h2><span class="hint">구글 제목 끝 괄호 한 글자와 일정 색으로 알아봐요</span></div>
+    <p class="lead">병원 정보의 원장님·직원 가운데 '예약에 보이기'를 켠 사람이에요. 이름·표시를 여기서 고치면 병원 정보에도 같이 바뀌어요.</p>
+    <div class="tw"><table class="tbl"><thead><tr><th>이름</th><th>표시</th><th>구글 색</th><th>구글에서는</th><th></th></tr></thead><tbody>${staffRows}</tbody></table></div>
+    <div id="dupw">${dupColorWarn()}</div>
+  </section>
+  <section class="card" aria-labelledby="h-kd">
+    <div class="card-h"><h2 id="h-kd">종류</h2><span class="hint">위에 있을수록 예약 더하기에서 앞에 보여요</span></div>
+    <p class="lead">구글 제목에서 이 글을 찾으면 그 종류로 봐요. 쉼표로 나눠 여러 개 적어요. 긴 글부터 맞춰 봐요(자보도수 → 도수). '타'는 <b>4000타</b>처럼 숫자 뒤에 붙은 글만 봐요. 색이 '시행자 색 따름'이면 그 시행자 색으로 칠해요.</p>
+    <div class="tw"><table class="tbl"><thead><tr><th>차례</th><th>이름</th><th>제목에서 알아볼 글</th><th>기본 길이</th><th>구글 색</th><th></th></tr></thead><tbody>${kindRows}</tbody></table></div>
+    <div class="addline"><button class="btn" data-act="k-add">${ICON.plus}종류 더하기</button><span class="hint">지운 종류의 지난 예약은 그 이름 그대로 남아요</span></div>
+  </section>
+  <section class="card" aria-labelledby="h-cx">
+    <div class="card-h"><h2 id="h-cx">취소·변경 색</h2><span class="hint">웹앱과 구글이 '취소'·'변경'을 서로 알아보는 색이에요</span></div>
+    <div class="optrow"><div class="k">취소한 예약<small>구글 일정을 지우지 않고 색만 바꿔요</small></div><div class="v">
+      <div class="rowx">색 ${colorBtn(SET.cancelGc, 'x', 0)}</div>
+      ${CED.open && CED.open.t === 'x' ? palHTML(SET.cancelGc, false, false) : ''}
+      <p class="hint">웹앱에서 [예약 취소]하면 구글 일정 색을 이 색으로 바꾸고, [취소 되돌리기]하면 원래 색으로 돌려요. 구글에서 일정 색을 이 색으로 바꾸면 웹앱에서도 취소예요. 처음 가져올 때도 이 색 일정은 '취소'로 가져와요.</p></div></div>
+    <div class="optrow"><div class="k">변경한 예약<small>날짜·시작 시간을 옮긴 예약</small></div><div class="v">
+      <div class="rowx">색 ${colorBtn(SET.changeGc, 'v', 0)}</div>
+      ${CED.open && CED.open.t === 'v' ? palHTML(SET.changeGc, false, false) : ''}
+      <p class="hint">지금 구글에서 흑연(짙은 회색)으로 쓰는 '예약 변경' 표시예요. 웹앱에서 날짜·시작을 옮겨 '변경'이 되면 구글 일정 색을 이 색으로 바꿔요. 구글에서 일정 색을 이 색으로 바꾸면 웹앱에 '변경' 표시가 붙어요. 처음 가져올 때도 이 색 일정은 '변경' 표시를 붙여 가져와요.</p></div></div>
+  </section>
+  <section class="card" aria-labelledby="h-no">
+    <h2 id="h-no">구글 제목에 글이 없을 때</h2>
+    <div class="optrow"><div class="k">종류 글이 없는 예약<small>예: <span class="num">6230 정샘플</span></small></div><div class="v">
+      <div class="rowx"><select class="sel" data-f="nokind" style="min-width:160px">${SET.kinds.map(k => `<option value="${k.id}" ${SET.noKind === k.id ? 'selected' : ''}>${esc(k.name)}로 봐요</option>`).join('')}<option value="" ${!SET.noKind ? 'selected' : ''}>고쳐야 함으로 두기</option></select></div>
+      <p class="hint">먼저 일정 색이 한 종류의 고정 색이면 그 종류로 보고(예: 초록 → 충격파), 아니면 여기서 고른 종류로 봐요.</p></div></div>
+    <div class="optrow"><div class="k">시행자 글이 없는 예약<small>예: <span class="num">8456 윤모의 도수 30분</span></small></div><div class="v">
+      <label class="chk"><input type="checkbox" data-f="bycolor" ${SET.byColor ? 'checked' : ''}>일정 색이 한 사람의 시행자 색이면 그 사람으로 봐요</label>
+      <p class="hint">색으로도 모르면 지난 1년 예약은 시행자 없이 가져오고, 앞으로의 예약은 '고쳐야 할 구글 예약'으로 남아요. 예: 분홍(플라밍고) <span class="num">6230 정샘플</span> → (현) 이수현.</p></div></div>
+    <div class="optrow"><div class="k">시행자 글이 없는 종류<small>예: <span class="num">5521 최시안 (4000타)</span></small></div><div class="v">
+      <div class="pills" role="group" aria-label="시행자 글이 없는 종류">${SET.kinds.map(k => `<button data-act="nsk" data-id="${k.id}" aria-pressed="${SET.noStaffKinds.includes(k.id)}">${esc(k.name)}</button>`).join('')}</div>
+      <p class="hint">구글 제목에 시행자 글을 안 적는 게 보통인 종류예요. 일정 색으로 시행자를 짐작하지 않아요(색이 종류 색이라서). 지난 1년 예약은 시행자 없이 가져오고, 앞으로의 예약(처음 가져오기·새로 들어온 것)은 하나씩 시행자를 골라요.</p></div></div>
+    <div class="optrow"><div class="k">하루 종일 휴무 줄<small>지금 구글 보라 'off' 줄</small></div><div class="v">
+      <div class="rowx">끝 글 <input class="tin" data-f="offword" value="${esc(SET.offWord)}" style="width:72px" aria-label="휴무 줄 끝 글"> 색 ${colorBtn(SET.offGc, 'o', 0)}</div>
+      ${CED.open && CED.open.t === 'o' ? palHTML(SET.offGc, false, false) : ''}
+      <p class="hint"><span class="num">김예시, 박지원 off</span> → 그날 김예시·박지원 하루 종일 휴무. 이름은 원장님·직원 목록과 맞춰 봐요. 반차는 off 줄에 넣지 않아요.</p></div></div>
+    <div class="optrow"><div class="k">그 밖의 하루 종일 일정</div><div class="v"><p class="fixedv">종일 메모로 가져와요(예: 원장님 학회). 웹앱에서 넣은 종일 메모는 캘린더 기본 색으로 적어요.</p></div></div>
+  </section>
+  <section class="card" aria-labelledby="h-tt">
+    <div class="card-h"><h2 id="h-tt">웹앱 → 구글 제목 꼴</h2><span class="hint">웹앱에서 넣거나 고친 예약을 구글에 이렇게 적어요</span></div>
+    <div class="cols2">
+      <div class="pv">
+        <div class="tok" aria-label="제목 차례"><span>차트번호</span><i>·</i><span>이름</span><i>·</i><span>종류</span><i>·</i><span class="${SET.withLen ? '' : 'off'}">길이 30분</span><i>·</i><span>(시행자)</span><i>·</i><span class="${SET.memoInTitle ? '' : 'off'}">메모</span></div>
+        <label class="chk" style="margin-top:8px"><input type="checkbox" data-f="withlen" ${SET.withLen ? 'checked' : ''}>길이를 넣어요 (30분)</label>
+        <label class="chk"><input type="checkbox" data-f="memotitle" ${SET.memoInTitle ? 'checked' : ''}>메모를 제목 끝에 붙여요 <span class="hint">끄면 구글 '설명' 칸에만 적어요</span></label>
+        <p class="hint" style="margin-top:6px">차트번호가 없으면(신환) 이름부터 적어요. 메모는 늘 구글 '설명' 칸에도 적어요. 가져온 예약의 구글 제목은 웹앱에서 그 예약을 고칠 때만 이 꼴로 다시 적어요.</p>
+      </div>
+      <div class="gprev" aria-label="구글 캘린더에서 보이는 모습"><div class="gprev-h">${ICON.info}구글 캘린더에서는 이렇게 보여요 (미리 보기)</div>
+        <div class="gprev-b"><div class="gl">종일</div><div class="gc">${gev(SET.offGc, offTitle([{ pid: 'kim' }, { pid: 'won' }]), 'gad')}</div></div>
+        ${ex.map(a => `<div class="gprev-b"><div class="gl num">${a.at}</div><div class="gc">${gev(a.cancel ? SET.cancelGc : a.changed ? SET.changeGc : gcOf(a), gTitle(a))}${a.cancel ? `<span class="hint" style="font-size:11px">↑ 취소한 예약 (${gName(SET.cancelGc)})</span>` : a.changed ? `<span class="hint" style="font-size:11px">↑ 날짜·시간을 옮긴 예약 (${gName(SET.changeGc)})</span>` : ''}</div></div>`).join('')}
+      </div>
+    </div>
+  </section>
+  <div class="ibar"><p>저장하면 웹앱 예약 칸 색이 바로 바뀌어요. 구글에서 따로 색을 고른 일정은 웹앱에서도 그 색 그대로예요. 나중에 색을 바꾸면 그 색이던 앞으로의 예약은 구글에서도 같이 바꿔요.</p><button class="btn" data-act="go" data-s="connect">← 잇기</button><button class="btn primary" data-act="go" data-s="import">저장하고 가져오기 미리 보기 →</button></div>`
+}
+
+/* 가져오기 미리 보기 */
+// 세는 수: 표에는 일부 줄만 그리고, 위 카드 숫자는 전체(지어낸 값)에서 여기서 고른 만큼 뺀다
+const IMP_N = { past: { timed: 4050, allday: 138, need: 14 }, fut: { timed: 186, allday: 9, need: 11 } }
+const GROUP_N = { eswt: { all: 5, past: 0, fut: 5 } }
+const NOST_PAST = { all: 114, eswt: 108 } // 지난 1년 시행자 글 없는 예약(시행자 없이 가져옴)
+const fmt = n => n.toLocaleString('ko-KR')
+function impState(x) {
+  if (!x.fix) return 'ok'
+  if (x.pick === 'skip') return 'skip'
+  if (x.pick) return 'fixed'
+  return 'need'
+}
+function impCounts() {
+  let fixed = 0, skip = 0
+  for (const x of IMP) {
+    if (!x.fix || !x.pick) continue
+    if (x.fix.group && IMP_UI.grp[x.fix.group]) continue
+    if (x.pick === 'skip') skip++; else fixed++
+  }
+  for (const g in IMP_UI.grp) if (IMP_UI.grp[g]) fixed += GROUP_N[g].all
+  const past = IMP_N.past.timed + IMP_N.past.allday, fut = IMP_N.fut.timed + IMP_N.fut.allday
+  const need = IMP_N.past.need + IMP_N.fut.need - fixed - skip
+  return { past, fut, total: past + fut, need, skip, ok: past + fut - need - skip }
+}
+const dayLabel = x => x.d2 ? `${mdw(x.d)} – ${mdw(x.d2)}` : mdw(x.d)
+const dayHead = d => d.slice(0, 4) === '2026' ? mdwK(d) : `${d.slice(0, 4)}년 ${mdwK(d)}`
+function tagBy(by, key) {
+  const v = by && by[key]
+  if (v === 'c') return '<span class="tag c">구글 색</span>'
+  if (v === 's') return '<span class="tag s">설정</span>'
+  if (v === 'f') return '<span class="tag f">고름</span>'
+  return ''
+}
+function fixSelect(x) {
+  const f = x.fix
+  if (f.group && IMP_UI.grp[f.group]) return `<span class="mut">${staffLabel(IMP_UI.grp[f.group])} · 위에서 한꺼번에 고름</span>`
+  const opts = {
+    staff: SET.staff.map(s => [s.id, staffLabel(s.id)]),
+    kind: SET.kinds.map(k => [k.id, k.name]),
+    what: [['memo', '종일 메모로 넣기']],
+    len: [['30', '30분으로'], ['50', '50분으로']],
+    person: PEOPLE.map(p => [p.id, p.staff ? staffLabel(p.staff) : `${p.name} (${p.role})`]).concat([['memo', "종일 메모로 ('최호 off')"]]),
+  }[f.need]
+  return `<select class="isel ${f.need === 'person' || f.need === 'what' ? 'wide' : ''}" data-f="imp" data-id="${x.id}" aria-label="고르기"><option value="">고르기</option>${opts.map(([v, t]) => `<option value="${v}" ${x.pick === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}<option value="skip" ${x.pick === 'skip' ? 'selected' : ''}>가져오지 않기 (구글에만 둠)</option></select>`
+}
+function impRowHTML(x) {
+  const st = impState(x)
+  const chip = { ok: '<span class="stt ok">✓ 알아봄</span>', fixed: '<span class="stt fixed">✓ 고름</span>', need: '<span class="stt need">! 고쳐야 함</span>', skip: '<span class="stt skip">가져오지 않음</span>' }[st]
+  const why = x.fix && st === 'need' ? `<span class="why">${esc(x.fix.why)}</span>` : ''
+  const src = x.p && x.p.cancel ? `<span class="tag x">${gName(SET.cancelGc)} = 취소</span>` : x.p && x.p.chg ? `<span class="tag x">${gName(SET.changeGc)} = 변경</span>` : ''
+  const g = `<td class="gcell"><span class="gtitle">${gsw(x.gc)}<span title="${esc(x.title)}">${esc(x.title)}</span>${src}</span>${why}</td><td class="arrow">→</td>`
+  const nd = need => x.fix && x.fix.need === need && st !== 'skip' ? 'nd' : ''
+  if (x.allDay) {
+    let body
+    if (x.p.memo) body = `<span class="mut">종일 메모</span> · <b>${esc(x.p.memo)}</b>`
+    else body = `<span class="mut">휴무</span> <span class="offp">${x.p.off.map(p => {
+      if (!p.pid) return x.fix && st !== 'skip' ? fixSelect(x) : `<span class="mut">${esc(p.raw)}</span>`
+      const pe = personOf(p.pid), stf = pe.staff ? staffOf(pe.staff) : null
+      return `<span class="pp" style="--c:${gHex(SET.offGc)}">${stf ? `(${esc(stf.mark)}) ` : ''}${esc(pe.name)}${p.part ? ` · ${p.part === 'am' ? '오전' : '오후'} 반차` : ''}${stf ? '' : ' <span class="mut">(직원)</span>'}</span>`
+    }).join('')}</span>${x.d2 ? ' <span class="mut">· 날마다 따로 넣어요</span>' : ''}`
+    return `<tr class="${st}"><td>${chip}</td>${g}<td>${dayLabel(x)}</td><td colspan="2" class="mut">하루 종일</td><td colspan="5" class="span ${nd('person')}">${body}</td></tr>`
+  }
+  const p = x.p
+  if (x.fix && x.fix.need === 'what') {
+    return `<tr class="${st}"><td>${chip}</td>${g}<td>${mdw(x.d)}</td><td>${hm(x.s)}</td><td>${x.e - x.s}분</td><td colspan="5" class="span ${nd('what')}">${st === 'skip' ? '<span class="mut">구글에만 두고 웹앱은 건드리지 않아요</span> ' : ''}${fixSelect(x)}</td></tr>`
+  }
+  const len = x.e - x.s
+  const lenCell = x.fix && x.fix.need === 'len' ? `<td class="${nd('len')}">${st === 'need' ? `<span class="mut">12시간</span><br>` : ''}${fixSelect(x)}</td>` : `<td>${len}분</td>`
+  const staffCell = x.fix && x.fix.need === 'staff' ? `<td class="${nd('staff')}">${fixSelect(x)}</td>` : `<td>${p.nost ? '<span class="mut">없음</span> <span class="tag n">지난 예약 · 시행자 없이</span>' : p.st ? staffLabel(p.st) : ''}${tagBy(p.by, 'st')}</td>`
+  const kindCell = x.fix && x.fix.need === 'kind' ? `<td class="${nd('kind')}">${fixSelect(x)}</td>` : `<td>${p.k ? esc(kindOf(p.k).name) : ''}${tagBy(p.by, 'k')}</td>`
+  return `<tr class="${st}"><td>${chip}</td>${g}<td>${mdw(x.d)}</td><td>${hm(x.s)}</td>${lenCell}<td>${p.c || '<span class="mut">없음</span>'}</td><td><b>${esc(p.n)}</b></td>${kindCell}${staffCell}<td>${p.memo ? esc(p.memo) : ''}</td></tr>`
+}
+function grpBox() {
+  const n = GROUP_N.eswt
+  return `<div class="grpbox info">${ICON.info}<div class="gb-t"><b>시행자 글이 없는 예약</b> · 지난 1년 <b>${fmt(NOST_PAST.all)}개</b>(충격파 ${NOST_PAST.eswt}개 등)는 <b>시행자 없이</b> 가져와요 — 고쳐야 할 것에 넣지 않아요. 앞으로의 예약 <b>${n.fut}개</b>(충격파)는 아래 표에서 하나씩 시행자를 골라요.<br><span class="mut">'시행자 글이 없는 종류'는 ② 시행자·종류에서 정해요(지금: ${SET.kinds.filter(k => SET.noStaffKinds.includes(k.id)).map(k => k.name).join(', ') || '없음'}).</span></div><button class="btn" data-act="ifilt" data-v="need">고쳐야 할 것만 보기</button></div>`
+}
+function importHTML() {
+  const c = impCounts()
+  const F = IMP_UI.filter
+  const byDate = (a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : (a.allDay ? -1 : b.allDay ? 1 : (a.s || 0) - (b.s || 0)))
+  const fut = IMP.filter(x => !x.past)
+  const rows = F === 'need' ? IMP.filter(x => x.fix).sort(byDate) : F === 'allday' ? IMP.filter(x => x.allDay).sort(byDate) : F === 'past' ? IMP.filter(x => x.past).sort(byDate) : fut.slice(0, FIRST_PAGE)
+  let lastD = '', body = ''
+  for (const x of rows) {
+    if (x.d !== lastD) { body += `<tr class="daysep"><td colspan="11">${dayHead(x.d)}${x.d === NOW.date ? ' · 오늘 (잇는 날)' : ''}${x.past ? ' · <span class="mut">지난 예약 · 한 번만 옮겨 와요</span>' : ''}</td></tr>`; lastD = x.d }
+    body += impRowHTML(x)
+  }
+  const shownNeed = IMP.filter(x => x.fix).length, shownAll = IMP.filter(x => x.allDay).length
+  const more = {
+    fut: `… 아래로 ${fmt(c.fut - FIRST_PAGE)}개 더 있어요 (시안에는 앞 ${FIRST_PAGE}줄만 그렸어요)`,
+    past: `지난 1년 ${fmt(c.past)}개 가운데 1/2 하루와 11/20·21 이틀만 그렸어요`,
+    need: `고쳐야 할 ${fmt(IMP_N.past.need + IMP_N.fut.need)}개 가운데 ${shownNeed}개만 그렸어요 (나머지는 지난 1년의 종류·길이를 모르는 것들이에요)`,
+    allday: `하루 종일 ${fmt(IMP_N.past.allday + IMP_N.fut.allday)}개 가운데 ${shownAll}개만 그렸어요`,
+  }[F]
+  const pastNote = F === 'past' ? `<div class="pastnote">${ICON.info}<span><b>지난 예약은 처음 한 번만 옮겨 와요.</b> 그 뒤로는 구글과 맞추지 않아요(웹앱에서 고쳐도 구글로 보내지 않고, 구글에서 고쳐도 받아 오지 않아요). <b>도착(왔음·안 옴)은 가져온 뒤 비트 PC가 그날 비트 접수를 보고 저절로 채워요</b> — 최근 날부터 조금씩 채우고, 다 채우면 예약 탭에 알려요. 차트번호가 없는 예약(신환)은 비트 접수와 맞출 수 없어 도착을 비워 둬요. <b>시행자 글이 없는 지난 예약 ${fmt(NOST_PAST.all)}개는 시행자 없이 가져와요</b>(고쳐야 할 것에 넣지 않아요).</span></div>` : ''
+  return `${settingsHead('import')}${flowBar('import')}
+  <section class="card" aria-labelledby="h-imp">
+    <div class="card-h"><h2 id="h-imp">처음 가져오기 미리 보기</h2><span class="hint">2026 양지바른정형외과 · 11/23 (월) 08:52에 읽음</span></div>
+    <p class="lead">고른 캘린더에 있는 <b>지난 1년</b>(2025-11-23부터 어제까지)과 <b>앞으로</b>(오늘 0시부터)의 구글 일정을 웹앱 칸으로 알아봤어요. 웹앱은 1년 지난 예약을 저절로 지우니 그보다 오래된 일정은 가져오지 않아요. <b>[가져오기]를 누르기 전에는 웹앱도 구글도 바뀌지 않아요.</b> 가져와도 구글 일정의 제목·색은 그대로 둬요.</p>
+    <div class="icards">
+      <div class="ic"><span class="k">지난 1년</span><span class="n">${fmt(c.past)}개</span><span class="s">예약 ${fmt(IMP_N.past.timed)} · 하루 종일 ${IMP_N.past.allday}<br>한 번만 옮겨 와요 · 도착은 비트 PC가 채움</span></div>
+      <div class="ic"><span class="k">앞으로</span><span class="n">${fmt(c.fut)}개</span><span class="s">예약 ${IMP_N.fut.timed} · 하루 종일 ${IMP_N.fut.allday}<br>가져온 뒤 양쪽으로 맞춰요</span></div>
+      <div class="ic ok"><span class="k">알아봄</span><span class="n">${fmt(c.ok)}개</span><span class="s">그대로 가져와요<br>구글 색·설정으로 알아본 612개 포함</span></div>
+      <div class="ic ${c.need ? 'need' : ''}"><span class="k">고쳐야 함</span><span class="n">${fmt(c.need)}개</span><span class="s">노란 칸에서 골라요<br>안 골라도 가져오기는 돼요</span></div>
+      <div class="ic"><span class="k">가져오지 않음</span><span class="n">${fmt(c.skip)}개</span><span class="s">구글에만 남아요</span></div>
+    </div>
+    ${grpBox()}
+    <div class="filt"><button data-act="ifilt" data-v="fut" aria-pressed="${F === 'fut'}">앞으로 ${fmt(c.fut)}</button><button data-act="ifilt" data-v="past" aria-pressed="${F === 'past'}">지난 1년 ${fmt(c.past)}</button><button data-act="ifilt" data-v="need" aria-pressed="${F === 'need'}">고쳐야 할 것 ${fmt(IMP_N.past.need + IMP_N.fut.need)}</button><button data-act="ifilt" data-v="allday" aria-pressed="${F === 'allday'}">하루 종일 ${fmt(IMP_N.past.allday + IMP_N.fut.allday)}</button><span class="sp"></span>
+      <span class="legend"><span class="lg"><b>어디서 알아봤나</b><span>표시 없음 = 제목 글</span><span><span class="tag c">구글 색</span> 일정 색</span><span><span class="tag s">설정</span> 종류 글이 없는 예약</span><span><span class="tag f">고름</span> 여기서 고름</span></span></span></div>
+    ${pastNote}
+    <div class="itw"><table class="it"><thead><tr><th>상태</th><th>구글 일정 (색 · 제목 원문)</th><th class="arrow"></th><th>날짜</th><th>시작</th><th>길이</th><th>차트번호</th><th>이름</th><th>종류</th><th>시행자</th><th>메모</th></tr></thead><tbody>${body}</tbody></table><div class="more">${more}</div></div>
+    <p class="hint">길이는 구글 일정의 시작·끝 시각으로 정해요(제목의 '50분' 같은 글은 보지 않아요). 시작은 5분 단위로 받아요(09:15처럼). 여러 날 하루 종일 일정은 날마다 따로 넣어요. 괄호 안 글은 메모로 넣어요. 취소 색(${gName(SET.cancelGc)}) 일정은 '취소'로, 변경 색(${gName(SET.changeGc)}) 일정은 '변경' 표시를 붙여 가져와요.</p>
+  </section>
+  <div class="ibar"><p id="ibar-t">${ibarText(c)}</p><button class="btn" data-act="go" data-s="colors">← 시행자·종류 고치기</button><button class="btn primary" data-act="doimport">가져오기</button></div>`
+}
+function ibarText(c) {
+  return `<b>가져오면</b> 알아본 ${fmt(c.ok)}개(지난 1년 + 앞으로)를 웹앱에 넣어요. 지난 1년은 한 번만 옮기고, 앞으로의 예약은 그때부터 2분마다 양쪽으로 맞춰요. 지난 예약의 도착은 비트 PC가 그날 비트 접수를 보고 최근 날부터 채워요. ${c.need ? `고쳐야 할 <b>${fmt(c.need)}개</b>는 가져오지 않고 예약 탭 '고쳐야 할 구글 예약'에 남겨요(나중에 골라도 돼요).` : '고쳐야 할 것이 없어요.'}${c.skip ? ` 가져오지 않기로 한 ${fmt(c.skip)}개는 구글에만 둬요.` : ''}`
+}
+
+/* 맞춤 방법 */
+function rulesHTML() {
+  const rad = (name, val, opts) => opts.map(([v, t, sub]) => `<label class="rad"><input type="radio" name="${name}" data-f="rule" data-k="${name}" value="${v}" ${String(RULE[name]) === String(v) ? 'checked' : ''}><span>${t}${sub ? `<br><small>${sub}</small>` : ''}</span></label>`).join('')
+  return `${settingsHead('rules')}
+  <div class="connected"><span><span class="dotok"></span>이어져 있어요 · <b>2026 양지바른정형외과</b> · 11/23 (월) 08:55부터 · 마지막 맞춤 ${UI.lastSync}</span><span class="sp"></span><button class="btn" data-act="syncnow">${ICON.sync}지금 맞추기</button><button class="btn" data-act="go" data-s="connect">연결 시험 · 캘린더 바꾸기</button><button class="btn danger" data-act="unlink">잇기 끊기</button></div>
+  <section class="card" aria-labelledby="h-rl">
+    <div class="card-h"><h2 id="h-rl">맞춤 방법</h2><span class="hint">골라져 있는 것이 기본값이에요</span></div>
+    <div class="optrow"><div class="k">구글에서 받아 오기</div><div class="v">
+      <div class="rowx">웹앱이 열려 있는 동안 <div class="vseg sm" role="group" aria-label="받아 오는 간격">${[1, 2, 5].map(n => `<button data-act="every" data-v="${n}" aria-pressed="${RULE.every === n}">${n}분</button>`).join('')}</div> 마다 받아 와요</div>
+      <p class="hint">다른 창을 보다 예약 탭으로 돌아오면 바로 한 번 받아 와요. 웹앱이 열린 PC가 하나도 없으면 받아 오지 않고, 다음에 열 때 그동안 바뀐 것을 한꺼번에 받아 와요.</p></div></div>
+    <div class="optrow"><div class="k">웹앱에서 넣고 고치기</div><div class="v"><p class="fixedv">저장하면 바로 구글에 적어요. 구글에 닿지 못하면 모아 두었다가 다시 닿을 때 보내요.</p></div></div>
+    <div class="optrow"><div class="k">웹앱에서 [예약 취소]하면</div><div class="v"><p class="fixedv">구글 일정은 지우지 않고 색을 취소 색(${gName(SET.cancelGc)})으로 바꿔요. <span class="mut">[취소 되돌리기]하면 원래 색으로 돌려요. 취소 색은 설정 › 구글 캘린더 › 시행자·종류에서 바꿔요.</span></p></div></div>
+    <div class="optrow"><div class="k">웹앱에서 [지우기]하면</div><div class="v"><p class="fixedv">구글에서도 지워요.</p></div></div>
+    <div class="optrow"><div class="k">구글에서 일정 색을 취소 색으로 바꾸면</div><div class="v"><p class="fixedv">웹앱에서도 '취소'로 바꿔요. <span class="mut">다른 색으로 되돌리면 웹앱 취소도 풀려요.</span></p></div></div>
+    <div class="optrow"><div class="k">구글에서 일정을 지우면</div><div class="v">${rad('gDelete', RULE.gDelete, [['cancel', "웹앱에서는 '취소'로 바꿔요", '흐린 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).'], ['delete', '웹앱에서도 지워요']])}</div></div>
+    <div class="optrow"><div class="k">같은 예약을 양쪽에서 고치면</div><div class="v"><p class="fixedv">나중에 고친 쪽으로 맞춰요. <span class="mut">덮인 쪽 내용은 예약 자세히에 한 줄 남겨요(예: '구글에서 14:20에 고친 내용을 웹앱 내용으로 덮었어요').</span></p></div></div>
+    <div class="optrow"><div class="k">웹앱에서 날짜·시작을 옮기면</div><div class="v"><p class="fixedv">'변경'으로 세고 구글 일정 색을 변경 색(${gName(SET.changeGc)})으로 바꿔요.</p></div></div>
+    <div class="optrow"><div class="k">구글에서 날짜·시작을 옮기면</div><div class="v"><p class="fixedv">웹앱에서 옮긴 것처럼 '변경'으로 세고 처음 시간을 남겨요. <span class="mut">구글 일정 색도 변경 색으로 바꿔요.</span></p></div></div>
+    <div class="optrow"><div class="k">구글에서 일정 색을 변경 색으로 바꾸면</div><div class="v"><p class="fixedv">웹앱에 '변경' 표시를 붙여요. <span class="mut">처음 시간은 몰라 비워 둬요. 다른 색으로 되돌리면 표시도 풀려요.</span></p></div></div>
+    <div class="optrow"><div class="k">도착 (왔음·안 옴)</div><div class="v">${rad('arrive', RULE.arrive, [['none', '구글에 보내지 않아요', '도착은 웹앱과 비트 PC에서만 봐요. 구글 제목이 자주 바뀌지 않아요.'], ['title', "구글 제목 앞에 '왔음'·'안 옴'을 붙여요"]])}</div></div>
+    <div class="optrow"><div class="k">맞추는 날짜</div><div class="v"><p class="fixedv">이은 날 11/23 (월) 0시부터의 예약을 양쪽으로 맞춰요(날이 지나도 계속). <span class="mut">그 전 1년(2025-11-23부터)은 처음 가져올 때 한 번만 옮겨 왔고, 그 뒤로는 구글과 맞추지 않아요. 지난 예약 도착은 비트 PC가 그날 비트 접수를 보고 채워요.</span></p></div></div>
+    <div class="optrow"><div class="k">같은 시행자 시간 겹침</div><div class="v"><p class="fixedv">지금처럼 웹앱에서 넣고 고칠 때만 알려요. <span class="mut">구글에서 겹쳐 넣은 예약은 예약표에 나란히 보여요.</span></p></div></div>
+    <div class="optrow"><div class="k">가져오지 않기로 한 일정</div><div class="v"><p class="fixedv">구글에만 두고 웹앱은 건드리지 않아요. <span class="mut">구글에서 제목을 고치면 다시 알아봐요.</span></p></div></div>
+    <div class="optrow"><div class="k">직원 탭 휴가</div><div class="v">
+      <p class="fixedv">하루 종일 쉬는 휴가만 그날 구글 off 줄에 이름을 더하고, 지우면 빼요. 아무도 안 남으면 그 줄을 지워요. <span class="mut">반차는 off 줄에 넣지 않고 예약 달력에만 보여요.</span></p>
+      <label class="chk"><input type="checkbox" data-f="offall" ${RULE.offAll ? 'checked' : ''}>예약 시행자가 아닌 직원(데스크 등)도 off 줄에 넣어요</label></div></div>
+    <div class="inrow" style="justify-content:flex-end;border-top:1px solid var(--line);padding-top:14px"><button class="btn primary" data-act="rulesave">저장</button></div>
+  </section>`
+}
+
+/* ───────── 그리기: 예약 탭 ───────── */
+function bandHTML() {
+  if (S === 'err') {
+    const pend = WEEK.flatMap(d => dayData(d).appts).filter(a => a.pend)
+    return `<div class="gband err" role="alert"><span class="gi">${ICON.calerr}<b>구글 캘린더에 닿지 못했어요</b><span>· 14:29부터 · 웹앱에는 저장돼요 · 구글로 보낼 것 <b>${pend.length}개</b> · 1분 뒤(14:38) 다시 해 볼게요</span></span><span class="sp"></span>
+      <button class="btn" data-act="errtoggle" aria-expanded="${UI.errOpen}">${UI.errOpen ? '접기' : '자세히'}</button><button class="btn accent" data-act="retry">${ICON.sync}다시 시도</button></div>
+      ${UI.errOpen ? `<div class="gerr"><h3>구글로 아직 못 보낸 것 ${pend.length}개</h3>
+        <ul class="pend">${pend.map(a => `<li><span class="num">${mdw(a.date)} ${hm(a.start)}</span><span class="what">${a.pend}</span><span class="gtitle">${gsw(gcOf(a))}<span>${esc(gTitle(a))}${a.orig ? ` <span class="mut">· 원래 ${hm(a.orig.start)} · 구글에서 ${gName(SET.changeGc)} 색으로</span>` : ''}${a.cancel ? ` <span class="mut">· 구글에서 ${gName(SET.cancelGc)} 색으로 바꿀 것</span>` : ''}</span></span><span class="chip gray">${ICON.clock} 기다림</span></li>`).join('')}</ul>
+        <p class="hint">다시 닿으면 넣은 차례대로 보내요. 그동안 구글에서 바뀐 것은 받아 오지 못해요 — 다시 닿으면 한꺼번에 받아 와요. 30분 넘게 이어지면 원장님께 알려 주세요.</p>
+        <div class="wbox">${ICON.warn}<div><b>구글 캘린더에 닿지 못했어요.</b> 인터넷이 되는지 확인해 주세요. 계속되면 설정 › 구글 캘린더에서 [연결 시험]을 눌러 보세요. <span class="mut">번호 E-GCAL-REACH</span></div></div></div>` : ''}`
+  }
+  const fixN = S === 'fix' ? Object.keys(UI.fixDone).length : 0
+  const fixLeft = S === 'fix' ? 2 - fixN : 0
+  return `<div class="gband"><span class="gi">${ICON.cal}<span>구글 캘린더 <b>2026 양지바른정형외과</b>와 이어짐 · 마지막 맞춤 <b id="lastsync">${UI.lastSync}</b> <span class="mut">· 2분마다 맞춰요</span></span></span>
+    ${fixLeft > 0 ? `<button class="fixb" data-act="openfix">${ICON.warn}고쳐야 할 구글 예약 ${fixLeft}개</button>` : ''}<span class="sp"></span>
+    <a class="extl" href="#" data-act="noop">구글 캘린더 열기 ${ICON.out}</a><button class="btn" data-act="syncnow">${ICON.sync}지금 맞추기</button></div>`
+}
+function toolbarHTML() {
+  return `<div class="toolbar">
+    <div class="tb1"><button class="btn" data-act="noop">오늘</button><button class="btn icon ghost" data-act="noop" aria-label="이전 주">${ICON.left}</button><button class="btn icon ghost" data-act="noop" aria-label="다음 주">${ICON.right}</button><h1>2026년 11월 23일 – 28일</h1></div>
+    <div class="tb2"><div class="vseg" role="group" aria-label="보기"><button data-act="noop" aria-pressed="false">일</button><button aria-pressed="true">주</button><button data-act="noop" aria-pressed="false">월</button></div>
+      <button class="btn icon" data-act="go" data-s="colors" aria-label="예약 설정" title="예약 설정 (설정 › 구글 캘린더 › 시행자·종류)">${ICON.gear}</button>
+      <button class="btn primary" data-act="add">${ICON.plus}예약 더하기</button></div>
+  </div>`
+}
+function legendHTML() {
+  const colors = SET.staff.map(s => `<span class="gl-c">${gsw(s.gc)}(${esc(s.mark)}) ${esc(s.name)}</span>`).join('')
+    + SET.kinds.filter(k => k.gc).map(k => `<span class="gl-c">${gsw(k.gc)}${esc(k.name)}</span>`).join('')
+    + `<span class="gl-c">${gsw(SET.offGc, 'sq')}휴무 (off)</span><span class="gl-c"><i class="halfsw"></i>반차 (웹앱에만)</span><span class="gl-c">${gsw(SET.cancelGc)}취소</span><span class="gl-c">${gsw(SET.changeGc)}변경</span><span class="gl-c"><i class="gsw" style="--c:${CAL_COLOR}"></i>캘린더 기본 색</span>`
+  return `<div class="legend"><span class="bit on">비트 연결됨</span>
+    <span class="lg"><b>색 (구글과 같음)</b>${colors}<span class="mut">도수·자보도수·주사·진료는 시행자 색 · 구글에서 온 예약은 그 일정 색 그대로</span></span>
+    <span class="lg"><b>도착</b><span>${MK.came}왔음</span><span>${MK.noshow}안 옴</span><span>${MK.cancel}</span></span>
+    <span class="lg"><b>변경</b><span>${MK.chg}</span></span>
+    ${S === 'err' ? `<span class="lg"><b>구글</b><span>${MK.gwait}아직 못 보냄</span></span>` : ''}${S === 'fix' ? '<span class="lg"><b>구글</b><span><i class="gh" style="background:repeating-linear-gradient(135deg,#FEF3C7 0 3px,#FFFBEB 3px 6px);outline-color:#D9A93A"></i>고쳐야 할 구글 예약</span></span>' : ''}
+  </div>`
+}
+function lay(items) {
+  const ev = items.map(x => ({ x, s: x.start, e: x.start + Math.max(x.len, 10) }))
+    .sort((a, b) => a.s - b.s || b.e - a.e || staffIdx(a.x.staff) - staffIdx(b.x.staff))
+  const clusters = []; let cl = null, end = -1
+  for (const v of ev) { if (!cl || v.s >= end) { cl = []; clusters.push(cl); end = v.e } else end = Math.max(end, v.e); cl.push(v) }
+  for (const c of clusters) {
+    const cols = []
+    for (const v of c) { let i = cols.findIndex(t => t <= v.s); if (i < 0) { i = cols.length; cols.push(0) } cols[i] = v.e; v.col = i }
+    const n = cols.length
+    for (const v of c) {
+      let span = 1
+      while (v.col + span < n && !c.some(o => o.col === v.col + span && o.s < v.e && v.s < o.e)) span++
+      v.left = v.col / n; v.width = span / n
+    }
+  }
+  return ev
+}
+const yOf = m => (m - SET.open) / 10 * SLOT
+function evHTML(v) {
+  const a = v.x, end = a.start + a.len
+  if (end <= SET.open || a.start >= SET.close) return ''
+  const top = Math.max(0, yOf(a.start)), bottom = Math.min(yOf(SET.close), yOf(end))
+  const h = Math.max(bottom - top - 1, 14)
+  const lines = Math.max(1, Math.floor((h - 2) / 13))
+  const pos = `top:${top}px;height:${h}px;left:calc((100% - 20px) * ${v.left.toFixed(4)} + 1px);width:calc((100% - 20px) * ${v.width.toFixed(4)} - 2px);--lines:${lines}`
+  if (a.gfix) return `<button class="ev gfix" data-act="openfix" style="${pos}" title="고쳐야 할 구글 예약 · ${esc(a.gfix.title)}"><span class="evt"><span class="tk nm">고쳐야 함</span> <span class="tk">${esc(a.gfix.title)}</span></span></button>`
+  const st = status(a), k = kindOf(a.kind), s = staffOf(a.staff)
+  const inner = `${MK[st]}${a.pend ? MK.gwait : ''}${(a.orig || a.gchg) ? MK.chg : ''}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${esc(k.name)}&nbsp;(${esc(s.mark)})</span> <span class="tk len">${a.len}분</span>`
+  const label = `${a.chart} ${a.name} ${k.name} (${s.mark}) ${hm(a.start)}–${hm(end)} ${a.len}분${a.g?.from === 'google' ? ' · 구글 제목 ' + a.g.title : ''}${a.pend ? ' · 구글에 아직 못 보냄' : ''}`
+  const dc = drawGc(a)
+  return `<button class="ev st-${st} ${darkChip(dc) ? 'dk' : ''}" data-act="appt" data-id="${a.id}" style="${pos};--c:${gHex(dc)}" title="${esc(label)}" aria-label="${esc(label)}"><span class="evt">${inner}</span></button>`
+}
+function adHTML(d) {
+  const items = ALLDAY[d] || []
+  const offs = items.filter(x => x.type === 'off').flatMap(x => x.people)
+  let h = items.filter(x => x.type === 'memo').map(x => `<button class="adc gmemo" data-act="noop" style="--c:${CAL_COLOR}" title="${esc(x.text)} · 캘린더 기본 색"><span>${esc(x.text)}</span></button>`).join('')
+  if (offs.some(p => !p.part)) h += `<button class="adc goff" data-act="noop" style="--c:${gHex(SET.offGc)}" title="${esc(offTitle(offs))} · 구글 하루 종일 줄과 같아요"><span>${esc(offTitle(offs))}</span></button>`
+  h += offs.filter(p => p.part).map(p => `<button class="adc half" data-act="noop" title="${esc(halfText(p))} · 웹앱에만 보여요(반차는 구글 off 줄에 넣지 않아요)"><span>${esc(halfText(p))}</span></button>`).join('')
+  return h
+}
+function gridHTML() {
+  const H = yOf(SET.close)
+  const head = WEEK.map(d => {
+    const n = dayData(d).appts.filter(a => !a.cancel && !a.gfix).length
+    return `<button class="dh ${d === NOW.date ? 'today' : ''}" data-act="noop"><span class="n">${toD(d).getUTCDate()}</span><span class="w">${DOW[dowOf(d)]}${d === NOW.date ? ' · 오늘' : ''}</span>${n ? `<span class="c">예약 ${n}</span>` : ''}</button>`
+  }).join('')
+  const ad = WEEK.map(d => `<div class="ad ${(ALLDAY[d] || []).length ? 'has' : ''}" data-act="noop">${adHTML(d)}<span class="adadd">+ 종일</span></div>`).join('')
+  let gut = ''
+  for (let m = SET.open; m < SET.close; m += 60) gut += `<span class="hl ${m === SET.open ? 'first' : ''}" style="top:${yOf(m)}px">${hm(m)}</span>`
+  const cols = WEEK.map(d => {
+    const dd = dayData(d)
+    let h = lay(dd.appts.filter(a => !(a.gfix && UI.fixDone[a.id]))).map(evHTML).join('')
+    if (d === NOW.date) h += `<div class="now" style="top:${yOf(NOW.min)}px" title="지금 ${hm(NOW.min)}"></div>`
+    return `<div class="col ${d === NOW.date ? 'today' : ''}" data-act="slot" data-date="${d}">${h}</div>`
+  }).join('')
+  return `<section class="cal week" style="--days:${WEEK.length};--h:${H}px" aria-label="예약표">
+    <div class="crow chead"><div class="gh"></div>${head}</div>
+    <div class="crow allday"><div class="gh adlb">종일</div>${ad}</div>
+    <div class="crow cbody"><div class="gut">${gut}</div>${cols}</div></section>`
+}
+
+/* 판 */
+function drawerHTML(title, body, foot) {
+  return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${title}"><div class="dwh"><h3>${title}</h3><button class="btn icon ghost" data-act="close" aria-label="닫기">${ICON.close}</button></div><div class="dwb">${body}</div><div class="dwf">${foot}</div></aside>`
+}
+function byText(by, key, a) {
+  const v = by?.[key]
+  if (key === 'st') return v === 'c' ? `<span class="tag c">구글 색 ${gName(staffOf(a.staff).gc)}</span>` : v === 'f' ? '<span class="tag f">가져올 때 고름</span>' : '<span class="mut">제목 끝 괄호</span>'
+  if (key === 'k') return v === 's' ? "<span class=\"tag s\">설정 '종류 글이 없는 예약'</span>" : v === 'c' ? '<span class="tag c">구글 색</span>' : v === 'f' ? '<span class="tag f">가져올 때 고름</span>' : '<span class="mut">제목 글</span>'
+  return ''
+}
+function detailDrawer(L) {
+  const a = findAppt(L.id); if (!a) return ''
+  const k = kindOf(a.kind), s = staffOf(a.staff), st = status(a), end = a.start + a.len
+  const now = { came: `${MK.came}왔음`, noshow: `${MK.noshow}안 옴`, cancel: `${MK.cancel} 취소한 예약`, wait: '아직 (예약 시간 전)' }[st]
+  const why = a.cancel ? '칸은 흐리게 남아요' : a.rcpt != null ? `비트 접수 ${hm(a.rcpt)} · 자동` : ended(a) ? '예약 시간이 끝나도 비트 접수가 없어요 · 자동' : '비트 접수가 생기면 저절로 왔음이 돼요'
+  const G = a.g || { from: 'web' }, fromG = G.from === 'google'
+  const gnow = gTitle(a)
+  const gsec = `<section class="gsec"><h4>구글 캘린더 <span class="from ${fromG ? '' : 'web'}">${fromG ? '구글에서 옴' : '웹앱에서 만듦 · 구글에 있음'}</span></h4>
+    <dl>
+      <dt>${fromG ? '구글 제목 원문' : '구글 제목'}</dt><dd><div class="gquote">${gsw(drawGc(a))}<span>${esc(fromG ? G.title : gnow)}</span></div></dd>
+      <dt>색</dt><dd>${gsw(drawGc(a))} ${gName(drawGc(a))} <span class="mut">${a.cancel ? '취소 색' : (a.orig || a.gchg) ? '변경 색' : fromG && G.gc ? '구글 일정 색 그대로' : '설정의 시행자·종류 색'}</span></dd>
+      ${fromG ? `<dt>알아본 것</dt><dd>시행자 ${staffLabel(a.staff)} ${byText(G.by, 'st', a)}<br>종류 ${esc(k.name)} ${byText(G.by, 'k', a)}${a.memo ? `<br>메모 '${esc(a.memo)}' <span class="mut">괄호 안 글</span>` : ''}<br>길이 ${a.len}분 <span class="mut">구글 시간 ${hm(a.start)}–${hm(end)}</span></dd>` : ''}
+      <dt>들어온 때</dt><dd>${esc(G.at || '')}</dd>
+      <dt>맞춤</dt><dd>${a.pend ? '<span style="color:var(--negative)">구글에 아직 못 보냈어요 · 다시 닿으면 보내요</span>' : `마지막 맞춤 ${UI.lastSync} · 구글과 같아요`}</dd>
+    </dl>
+    ${fromG ? `<p>[고치기]로 바꾸면 구글 제목이 <b style="color:var(--ink-2)">${esc(gnow)}</b>로 다시 적혀요. 시행자·종류를 바꾸면 색도 설정 색으로 바꿔요. 그 전에는 원문·색 그대로 둬요.</p>` : ''}
+    <p>[예약 취소]하면 구글 일정 색이 취소 색(${gName(SET.cancelGc)})으로 바뀌고, 웹앱에는 흐린 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${gName(SET.changeGc)})으로 바뀌어요. [지우기]는 둘 다에서 지워요.</p>
+    <a class="extl" href="#" data-act="noop">구글 캘린더에서 이 일정 열기 ${ICON.out}</a></section>`
+  const body = `
+    <div class="dtop" style="--c:${gHex(drawGc(a))}"><span class="bar"></span><div><div class="dname"><span class="ch">${a.chart || '차트번호 없음'}</span>${esc(a.name)}</div><div class="dsub">${esc(k.name)} · ${staffLabel(a.staff)}</div></div></div>
+    <dl class="dl"><dt>날짜</dt><dd>${mdwK(a.date)}</dd><dt>시간</dt><dd class="num">${hm(a.start)} – ${hm(end)} · ${a.len}분</dd><dt>메모</dt><dd>${a.memo ? esc(a.memo) : '<span class="mut">없음</span>'}</dd>${a.orig ? `<dt>변경</dt><dd class="num">원래 ${mdw(a.orig.date)} ${hm(a.orig.start)}</dd>` : ''}${a.gchg ? '<dt>변경</dt><dd>구글에서 변경 색으로 바뀜 <span class="mut">처음 시간은 몰라요</span></dd>' : ''}</dl>
+    <div class="hr"></div>
+    <section class="fs"><h4>도착</h4><div class="arr">${now}<span class="mut">${why}</span></div>
+      ${a.cancel ? '' : `<div><div class="vseg sm" role="group" aria-label="도착 바꾸기">${[['auto', '자동 (비트 따라)'], ['came', '왔음'], ['noshow', '안 옴']].map(([m, t]) => `<button data-act="noop" aria-pressed="${a.mode === m}">${t}</button>`).join('')}</div></div><p>도착은 구글에 보내지 않아요(설정 › 맞춤 방법).</p>`}</section>
+    ${gsec}`
+  const foot = `<button class="btn danger" data-act="noop">지우기</button><span class="sp"></span><button class="btn" data-act="noop">${a.cancel ? '취소 되돌리기' : '예약 취소'}</button><button class="btn primary" data-act="noop">고치기</button>`
+  return drawerHTML('예약', body, foot)
+}
+const FIXQ = [
+  { id: 'f1', d: '2026-11-26', s: 960, e: 975, gc: 'sage', title: '6402 윤모의 (4000타)', got: '차트번호 6402 · 이름 윤모의 · 종류 충격파 (초록 색) · 메모 4000타', why: '시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요', need: ['staff'], at: '14:31', sel: {} },
+  { id: 'f2', d: '2026-11-27', s: 600, e: 615, gc: 'flamingo', title: '1185 곽모의 체외충격 (현)', got: '차트번호 1185 · 이름 곽모의 · 시행자 (현) 이수현', why: "'체외충격'을 종류로 알아보지 못했어요 (고르면 '체외충격'은 메모로 남아요)", need: ['kind'], at: '14:33', sel: {} },
+]
+function fixDrawer() {
+  const items = FIXQ.map(f => {
+    const done = UI.fixDone[f.id]
+    if (done) return `<div class="fxi done"><div class="fh"><span class="gtitle">${gsw(f.gc)}<span>${esc(f.title)}</span></span><span class="stt ok">${done === 'skip' ? '가져오지 않음' : '✓ 넣었어요'}</span></div><p class="got">${done === 'skip' ? '구글에만 두고 웹앱은 건드리지 않아요.' : `${mdw(f.d)} ${hm(f.s)} 예약표에 넣었어요. 구글 제목은 그대로 둬요.`}</p></div>`
+    const ok = f.need.every(n => f.sel[n])
+    const pick = n => n === 'staff'
+      ? `<div class="field"><span class="lb">시행자</span><div class="opts2">${SET.staff.map(s => `<button class="ob" data-act="fxsel" data-id="${f.id}" data-n="staff" data-v="${s.id}" aria-pressed="${f.sel.staff === s.id}">${gsw(s.gc)}${staffLabel(s.id)}</button>`).join('')}</div></div>`
+      : `<div class="field"><span class="lb">종류</span><div class="opts2">${SET.kinds.map(k => `<button class="ob" data-act="fxsel" data-id="${f.id}" data-n="kind" data-v="${k.id}" aria-pressed="${f.sel.kind === k.id}">${esc(k.name)} <small>${k.len}분</small></button>`).join('')}</div></div>`
+    return `<div class="fxi"><div class="fh"><span class="gtitle">${gsw(f.gc)}<b>${esc(f.title)}</b></span><span class="when">${mdw(f.d)} ${hm(f.s)}–${hm(f.e)} · ${f.e - f.s}분</span></div>
+      <p class="wy">${esc(f.why)}</p><p class="got">알아본 것: ${esc(f.got)} · 구글에서 ${f.at}에 들어옴</p>
+      ${f.need.map(pick).join('')}
+      <div class="fa"><button class="btn" data-act="fxskip" data-id="${f.id}">가져오지 않기</button><button class="btn primary" data-act="fxok" data-id="${f.id}" ${ok ? '' : 'disabled'}>예약표에 넣기</button></div></div>`
+  }).join('')
+  const left = FIXQ.length - Object.keys(UI.fixDone).length
+  const body = `<p class="lead" style="margin:0">구글 캘린더에 새로 들어온 일정 가운데 웹앱이 알아보지 못한 거예요. 고르고 [예약표에 넣기]를 누르면 웹앱 예약이 돼요. 구글 일정은 그대로 둬요.</p>
+    <div class="fxl">${items}</div>
+    <div class="info"><p>${ICON.info}<span>고르지 않고 둬도 돼요. 예약표에 노란 빗금 칸으로 남고, 누가 구글에서 제목을 고치면 다시 알아봐요.</span></p><p>${ICON.info}<span>같은 꼴이 자주 나오면 설정 › 구글 캘린더 › 시행자·종류에서 '제목에서 알아볼 글'을 더해 주세요(예: 충격파에 '체외충격').</span></p></div>`
+  return drawerHTML(`고쳐야 할 구글 예약 ${left}개`, body, `<button class="btn" data-act="close">닫기</button>`)
+}
+
+/* ───────── 그리기: 직원 탭 휴가 ───────── */
+function staffHTML() {
+  const before = [{ pid: 'jung' }, { pid: 'hyun', part: 'pm' }], after = [{ pid: 'ho' }, { pid: 'jung' }, { pid: 'hyun', part: 'pm' }]
+  const mini = saved => {
+    const days = WEEK.slice(2)
+    const ad = d => {
+      const items = ALLDAY[d] || []
+      let offs = items.filter(x => x.type === 'off').flatMap(x => x.people)
+      if (d === '2026-11-27') offs = saved ? after : before
+      return items.filter(x => x.type === 'memo').map(x => `<span class="adc gmemo" style="--c:${CAL_COLOR}"><span>${esc(x.text)}</span></span>`).join('') + (offs.some(p => !p.part) ? `<span class="adc goff ${saved && d === '2026-11-27' ? 'newflash' : ''}" style="--c:${gHex(SET.offGc)}"><span>${esc(offTitle(offs))}</span></span>` : '') + offs.filter(p => p.part).map(p => `<span class="adc half"><span>${esc(halfText(p))}</span></span>`).join('')
+    }
+    const gad = d => {
+      const items = ALLDAY[d] || []
+      let offs = items.filter(x => x.type === 'off').flatMap(x => x.people)
+      if (d === '2026-11-27') offs = saved ? after : before
+      return items.filter(x => x.type === 'memo').map(x => gev('cal', x.text, 'gad')).join('') + (offs.some(p => !p.part) ? gev(SET.offGc, offTitle(offs), `gad ${saved && d === '2026-11-27' ? 'newflash' : ''}`) : '')
+    }
+    const head = `<div class="mh2"><span></span>${days.map(d => `<span class="${d === NOW.date ? 'today' : ''}">${mdw(d)}</span>`).join('')}</div>`
+    return `<div class="pv"><span class="hint"><b style="color:var(--ink-2)">예약 탭</b> 종일 줄</span><div class="minical">${head}<div class="mad"><div>종일</div>${days.map(d => `<div>${ad(d)}</div>`).join('')}</div></div></div>
+      <div class="pv"><span class="hint"><b style="color:var(--ink-2)">구글 캘린더</b> 2026 양지바른정형외과 · 하루 종일 줄</span><div class="minical">${head}<div class="mad"><div>종일</div>${days.map(d => `<div>${gad(d)}</div>`).join('')}</div></div></div>`
+  }
+  return `<h1 class="ph1">직원</h1>
+    <nav class="subnav" aria-label="직원 안 메뉴"><a href="#">명단</a><a href="#">근무표</a><a href="#" aria-current="page">휴가</a><a href="#">급여</a></nav>
+    <div class="sgrid">
+      <section class="card" aria-labelledby="h-lv">
+        <div class="card-h"><h2 id="h-lv">휴가 넣기</h2><button class="btn icon ghost" data-act="noop" aria-label="닫기">${ICON.close}</button></div>
+        <div class="frm">
+          <div class="frow"><label for="lv-p">사람</label><select class="inp" id="lv-p" data-act="noop">${PEOPLE.filter(p => p.role !== '원장님').map(p => `<option ${p.id === 'ho' ? 'selected' : ''}>${p.name} · ${p.role}</option>`).join('')}</select></div>
+          <div class="frow"><span class="lb">종류</span><div class="pills">${['연차', '반차', '경조사', '병가', '출산·육아휴직', '무급(결근)'].map((t, i) => `<button data-act="noop" aria-pressed="${i === 0}">${t}</button>`).join('')}</div></div>
+          <div class="frow"><span class="lb">날짜</span><div style="display:grid;gap:8px"><div class="pills"><button aria-pressed="true" data-act="noop">하루</button><button aria-pressed="false" data-act="noop">여러 날 (시작~끝)</button></div><input class="inp" type="date" value="2026-11-27" style="max-width:220px" aria-label="날짜"><span class="hint">11/27 (금)</span></div></div>
+          <div class="frow"><label for="lv-m">메모</label><input class="inp" id="lv-m" value="가족 행사"></div>
+        </div>
+        <div class="calc"><span>정호연 님 남은 연차</span><b>12일</b><span class="mut">→</span><b style="color:var(--accent-strong)">11일</b></div>
+        <div class="infob"><span><b>예약 달력에 '휴무'로 보이고, 구글 캘린더 그날 off 줄에 이름이 더해져요.</b> <span class="tiny">(예약 시행자 (호) 정호연과 이어져 있어요)</span></span>
+          <div class="beforeafter"><span>지금</span>${gev(SET.offGc, offTitle(before), 'gad')}<span>저장하면</span>${gev(SET.offGc, offTitle(after), 'gad')}</div>
+          <span class="tiny">구글 캘린더 2026 양지바른정형외과 · 11/27 (금) 하루 종일 줄</span></div>
+        <div class="warnb">11/27에 정호연 님 예약이 6건 있어요. 예약은 그대로 두고 휴무만 표시해요.</div>
+        <div class="inrow" style="justify-content:flex-start"><button class="btn primary" data-act="lvsave" ${UI.saved ? 'disabled' : ''}>${UI.saved ? '저장했어요 ✓' : '저장'}</button><button class="btn" data-act="noop">취소</button></div>
+      </section>
+      <section class="card res" aria-labelledby="h-res">
+        <div class="card-h"><h2 id="h-res">${UI.saved ? '저장한 뒤' : '저장하면 이렇게 바뀌어요'}</h2><span class="hint">11/25 – 28</span></div>
+        ${mini(UI.saved)}
+        ${UI.saved ? `<p class="ok-l">${ICON.check}구글 캘린더에도 적었어요 · 14:38</p>` : ''}
+        <div class="info">
+          <p>${ICON.info}<span>하루 종일 쉬는 휴가만 off 줄에 넣어요. 반차는 넣지 않고 예약 달력에만 오전·오후 휴무로 보여요(예: 11/27 이수현 오후 반차).</span></p>
+          <p>${ICON.info}<span>여러 날 휴가는 날마다 그날 off 줄에 하나씩 더해요. 휴가를 지우면 그 줄에서 이름을 빼고, 아무도 안 남으면 줄을 지워요.</span></p>
+          <p>${ICON.info}<span>예약 시행자가 아닌 직원(예: 데스크 김예시)도 off 줄에 들어가요. 예약 경고는 없어요.</span></p>
+          <p>${ICON.info}<span>구글에서 off 줄을 고치면 예약 탭 휴무는 바뀌지만, 직원 탭 휴가 기록은 바꾸지 않아요.</span></p>
+        </div>
+      </section>
+    </div>
+    <section class="card" aria-labelledby="h-lst"><div class="card-h"><h2 id="h-lst">11월 휴가</h2><span class="hint">이 시안에서는 줄였어요</span></div>
+      <div class="tw"><table class="ltable"><thead><tr><th>날짜</th><th>사람</th><th>종류</th><th>예약·구글</th><th>메모</th></tr></thead><tbody>
+        <tr><td>11/24 (화)</td><td>김예시</td><td><span class="lv">연차</span></td><td><span class="gsync">구글 off 줄</span></td><td></td></tr>
+        <tr><td>11/24 (화)</td><td>박지원</td><td><span class="lv">연차</span></td><td><span class="rsv">예약 휴무</span><span class="gsync">구글 off 줄</span></td><td></td></tr>
+        <tr><td>11/25 (수)</td><td>정호연</td><td><span class="lv">연차</span></td><td><span class="rsv">예약 휴무</span><span class="gsync">구글 off 줄</span></td><td></td></tr>
+        ${UI.saved ? '<tr class="newrow"><td>11/27 (금)</td><td>정호연</td><td><span class="lv">연차</span></td><td><span class="rsv">예약 휴무</span><span class="gsync">구글 off 줄</span></td><td>가족 행사</td></tr>' : ''}
+        <tr><td>11/27 (금)</td><td>이수현</td><td><span class="lv half">오후 반차</span></td><td><span class="rsv">예약 휴무 · 오후</span><span class="mut" style="font-size:12px">구글에는 안 넣음</span></td><td></td></tr>
+      </tbody></table></div></section>`
+}
+
+/* ───────── 전체 그리기 ───────── */
+function renderMain() {
+  let h
+  if (S === 'connect') h = connectHTML()
+  else if (S === 'colors') h = colorsHTML()
+  else if (S === 'import') h = importHTML()
+  else if (S === 'rules') h = rulesHTML()
+  else if (S === 'staff') h = staffHTML()
+  else h = bandHTML() + toolbarHTML() + legendHTML() + gridHTML()
+  $('#main').innerHTML = h
+  document.body.classList.toggle('wide', CAL_S)
+}
+function renderLayer() {
+  const L = UI.layer, el = $('#layer')
+  if (!L) { el.innerHTML = ''; return }
+  const keep = el.querySelector('.dwb')?.scrollTop || 0
+  el.innerHTML = L.type === 'detail' ? detailDrawer(L) : fixDrawer()
+  const db = el.querySelector('.dwb'); if (db) db.scrollTop = keep
+}
+function render() { renderMain(); renderLayer() }
+let toastT
+function toast(msg) { const t = $('#toast'); t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => { t.textContent = '' }, 3600) }
+
+/* ───────── 누르기 ───────── */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]'); if (!t) return
+  const act = t.dataset.act
+  if (t.tagName === 'A') e.preventDefault()
+  switch (act) {
+    case 'go': location.search = '?s=' + t.dataset.s; break
+    case 'noop': if (t.tagName === 'A') toast('시안: 구글 캘린더 웹 화면이 새 창으로 열려요.'); break
+    case 'copycode': toast('구글 코드를 복사했어요. 비밀 글자를 새로 만들어 코드 맨 위에 넣었어요.'); break
+    case 'showkey': CONN.showKey = !CONN.showKey; renderMain(); break
+    case 'test': CONN.tested = false; renderMain(); setTimeout(() => { CONN.tested = true; renderMain(); toast('연결됐어요. 캘린더 5개를 찾았어요.') }, 500); break
+    case 'pickcal': CONN.cal = t.dataset.id; renderMain(); break
+    case 'copen': { const o = { t: t.dataset.t, i: +t.dataset.i }; CED.open = CED.open && CED.open.t === o.t && CED.open.i === o.i ? null : o; renderMain(); break }
+    case 'gpal': {
+      const c = t.dataset.c || null, o = CED.open; if (!o) break
+      if (o.t === 's') SET.staff[o.i].gc = c
+      else if (o.t === 'k') SET.kinds[o.i].gc = c
+      else if (o.t === 'x') SET.cancelGc = c
+      else if (o.t === 'v') SET.changeGc = c
+      else SET.offGc = c
+      CED.open = null; renderMain(); break
+    }
+    case 'k-up': case 'k-down': { const i = +t.dataset.i, j = act === 'k-up' ? i - 1 : i + 1; [SET.kinds[i], SET.kinds[j]] = [SET.kinds[j], SET.kinds[i]]; CED.open = null; renderMain(); break }
+    case 'k-del': if (SET.kinds.length > 1) { SET.kinds.splice(+t.dataset.i, 1); CED.open = null; renderMain() } break
+    case 'nsk': { const id = t.dataset.id, L = SET.noStaffKinds; SET.noStaffKinds = L.includes(id) ? L.filter(x => x !== id) : [...L, id]; renderMain(); break }
+    case 'k-add': SET.kinds.push({ id: 'k' + Date.now(), name: '', words: '', len: 30, gc: null }); renderMain(); break
+    case 'ifilt': IMP_UI.filter = t.dataset.v; renderMain(); break
+    case 'grpundo': IMP_UI.grp.eswt = null; IMP.filter(y => y.fix?.group === 'eswt').forEach(y => { y.pick = null }); renderMain(); break
+    case 'doimport': { const c = impCounts(); toast(`가져왔어요. ${fmt(c.ok)}개를 넣었어요${c.need ? ` · 고쳐야 할 ${fmt(c.need)}개는 예약 탭에 남겼어요` : ''}. 이제 2분마다 맞추고, 지난 예약 도착은 비트 PC가 채워요.`); break }
+    case 'every': RULE.every = +t.dataset.v; renderMain(); break
+    case 'rulesave': toast('맞춤 방법을 저장했어요.'); break
+    case 'unlink': toast('시안: [잇기 끊기]를 누르면 한 번 더 물어요. 끊어도 웹앱 예약과 구글 일정은 그대로 남고, 그 뒤로는 서로 맞추지 않아요.'); break
+    case 'syncnow': UI.lastSync = hm(NOW.min); renderMain(); toast(`구글과 맞췄어요 · 바뀐 것 없음 (${UI.lastSync})`); break
+    case 'retry': toast('다시 해 봤지만 아직 닿지 않아요. 1분 뒤 다시 해 볼게요.'); break
+    case 'errtoggle': UI.errOpen = !UI.errOpen; renderMain(); break
+    case 'appt': UI.layer = { type: 'detail', id: t.dataset.id }; renderLayer(); break
+    case 'openfix': UI.layer = { type: 'fix' }; renderLayer(); break
+    case 'fxsel': { const f = FIXQ.find(x => x.id === t.dataset.id); f.sel[t.dataset.n] = t.dataset.v; renderLayer(); break }
+    case 'fxok': case 'fxskip': { UI.fixDone[t.dataset.id] = act === 'fxok' ? 'ok' : 'skip'; renderMain(); renderLayer(); toast(act === 'fxok' ? '예약표에 넣었어요. 구글 제목은 그대로 둬요.' : '가져오지 않아요. 구글에만 남아요.'); break }
+    case 'slot': if (!e.target.closest('.ev')) toast(S === 'err' ? '시안: 예약 더하기 판은 지금과 같아요. 저장하면 웹앱에 넣고, 구글에는 다시 닿으면 보내요.' : '시안: 예약 더하기 판은 지금과 같아요. 저장하면 바로 구글 캘린더에도 적혀요.'); break
+    case 'add': toast(S === 'err' ? '웹앱에 저장했어요. 구글에는 다시 닿으면 보내요.' : '시안: 예약 더하기 판은 지금과 같아요. 저장하면 바로 구글 캘린더에도 적혀요.'); break
+    case 'lvsave': UI.saved = true; renderMain(); toast('휴가를 넣었어요. 예약 달력과 구글 캘린더 11/27 (금) off 줄에도 더했어요.'); break
+    case 'close': UI.layer = null; renderLayer(); break
+  }
+})
+document.addEventListener('change', e => {
+  const t = e.target, f = t.dataset.f; if (!f) return
+  const i = +t.dataset.i
+  if (f === 'imp') { const x = IMP.find(y => y.id === t.dataset.id); x.pick = t.value || null; renderMain(); return }
+  if (f === 'grp') { IMP_UI.grp[t.dataset.g] = t.value || null; IMP.filter(y => y.fix?.group === t.dataset.g).forEach(y => { y.pick = t.value || null }); renderMain(); return }
+  if (f === 'k-len') SET.kinds[i].len = +t.value
+  if (f === 'nokind') SET.noKind = t.value
+  if (f === 'bycolor') SET.byColor = t.checked
+  if (f === 'withlen') { SET.withLen = t.checked; renderMain() }
+  if (f === 'memotitle') { SET.memoInTitle = t.checked; renderMain() }
+  if (f === 'rule') RULE[t.dataset.k] = t.value
+  if (f === 'offall') RULE.offAll = t.checked
+})
+document.addEventListener('input', e => {
+  const t = e.target, f = t.dataset.f; if (!f) return
+  const i = +t.dataset.i
+  if (f === 's-name') SET.staff[i].name = t.value
+  if (f === 's-mark') SET.staff[i].mark = t.value
+  if (f === 'k-name') SET.kinds[i].name = t.value
+  if (f === 'k-words') SET.kinds[i].words = t.value
+  if (f === 'offword') SET.offWord = t.value
+})
+document.addEventListener('focusout', e => { if (['s-name', 's-mark', 'k-name', 'offword'].includes(e.target.dataset?.f)) renderMain() })
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && UI.layer) { UI.layer = null; renderLayer() }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.cp[data-act="pickcal"]')) { e.preventDefault(); e.target.click() }
+})
+render()
+</script>
+</body>
+</html>

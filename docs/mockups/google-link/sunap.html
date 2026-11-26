@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수납일지 구글 시트 시안</title>
+<!--
+  비트시트(따로 된 윈도 프로그램, bitsheet/DESIGN.md 7판)를 웹앱 '수납일지' 탭 안으로 옮기는 시안. 글·기본값·물어볼 것은 notes-sunap.md.
+  ?s=none(구글 연결 전) · sheet(연결됨, 기본) · filling(넣는 중) · done(넣은 뒤 결과) · done-warn(넣은 뒤 · 확인 필요)
+     · newmonth(새 달 파일 만든 날) · pastmonth(지난 달 파일 보기) · nobit(비트 PC 아닌 PC) · err-google(구글 코드에 못 닿음) · err-frame(시트가 틀 안에서 안 열림)
+     · overwrite(덮어쓰기 창) · settings(설정) · webapp([웹앱 수납일지] 고름)
+  색은 앱 토큰(src/app/globals.css :root)만 쓴다. 틀 안 가짜 구글 시트만 구글 비슷한 회색을 쓴다.
+  이름·차트번호·금액·주소는 모두 지어낸 것이다(홍길동·김예시 …). 어디로도 보내지 않는다. PC 화면만 그린다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --cat-2: #0F766E; --r: 4px; --r-float: 8px;
+  --elev-float: 0 8px 28px rgb(17 24 39 / 18%);
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--surface); color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button, input, select { font: inherit; color: inherit; }
+a { color: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { padding: 10px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+
+/* 앱 틀: 위쪽 띠 · 탭 줄 · 본문. 시트 상태는 본문이 남은 높이를 다 쓴다 */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+.app.fill { height: 100vh; }
+.top { background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.top-in { height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.wrap1280 .top-in, .wrap1280 .tabs, .wrap1280 main { max-width: 1280px; margin-left: auto; margin-right: auto; }
+.wrap1280 main { width: 100%; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; }
+nav { background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.tabs { padding: 0 12px; display: flex; overflow-x: auto; scrollbar-width: thin; }
+.tabs a { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); display: inline-block; }
+
+main { flex: 1; min-height: 0; padding: 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+main > * { min-width: 0; }
+main.flow { padding: 16px 24px 48px; }
+
+/* 공통 부품(sunap-ilji 시안과 같은 모양) */
+.sp { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; text-decoration: none; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.icon { width: 32px; padding: 0; }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.btn.text { border: 0; background: none; padding: 0; height: auto; color: var(--accent); font-size: 13px; }
+.btn[disabled] { opacity: .45; cursor: default; }
+.btn svg { flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.gray { background: var(--canvas); border-color: var(--line-strong); color: var(--ink-2); }
+.chip.ok { background: var(--positive-soft); color: var(--positive); }
+.chip.warn { background: var(--warning-soft); color: var(--warning); }
+.chip.bad { background: var(--negative-soft); color: var(--negative); }
+.chip.acc { background: var(--accent-soft); color: var(--accent-strong); }
+.meta { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.banner { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-radius: var(--r); font-size: 13px; line-height: 20px; }
+.banner > div { flex: 1; min-width: 0; }
+.banner.ok { background: var(--positive-soft); color: #14532D; }
+.banner.warn { background: var(--warning-soft); color: #78350F; }
+.banner.info { background: var(--accent-soft); color: #1E3A8A; }
+.banner b { font-weight: 600; }
+.banner .btn { flex: none; }
+.mockmark { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--r); background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.spin { width: 14px; height: 14px; border: 2px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; display: inline-block; animation: sp 0.9s linear infinite; flex: none; }
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* 탭 머리: [구글 시트] [웹앱 수납일지] */
+.tabhead { display: flex; align-items: center; gap: 12px; flex: none; }
+.pseg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; }
+.pseg a { padding: 5px 14px; font-size: 13px; line-height: 20px; color: var(--ink-2); background: var(--surface); text-decoration: none; font-weight: 500; }
+.pseg a + a { border-left: 1px solid var(--line-strong); }
+.pseg a.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+
+/* 한 줄 띠 */
+.band { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 50px; padding: 8px 8px 8px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.band .file { display: inline-flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.band .file small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.msel { height: 30px; padding: 0 28px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 8px center / 14px; font-size: 14px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.msel.past { border-color: var(--warning); background-color: var(--warning-soft); color: #78350F; }
+.band .bar { width: 1px; height: 20px; background: var(--line); flex: none; }
+.band .st { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); min-width: 0; }
+.band .st b { color: var(--ink-2); font-weight: 600; }
+.band .acts { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* 넣은 뒤 결과 줄 */
+.result { flex: none; display: grid; gap: 2px; padding: 9px 8px 9px 14px; border: 1px solid var(--line); border-left: 3px solid var(--positive); border-radius: var(--r); background: var(--surface); font-size: 13px; line-height: 20px; }
+.result.warn { border-left-color: var(--warning); background: #FFFCF5; }
+.result .r1 { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; color: var(--ink-2); }
+.result .okc { color: var(--positive); font-weight: 700; }
+.result .wc { color: var(--warning); font-weight: 700; }
+.result .n { color: var(--ink-2); }
+.result .n b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.result .r2 { color: var(--muted); padding-right: 40px; }
+.result .r2.w { color: #78350F; font-weight: 500; }
+
+/* 구글 시트 틀(시안에서는 구글 시트처럼 보이는 가짜 표) */
+.frame { flex: 1; min-height: 520px; display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; background: #fff; }
+.g-fx { flex: none; height: 28px; display: flex; align-items: center; border-bottom: 1px solid #E1E3E6; font: 12px/28px Arial, "Malgun Gothic", sans-serif; color: #202124; background: #fff; }
+.g-fx .ref { width: 76px; padding: 0 10px; border-right: 1px solid #E1E3E6; }
+.g-fx .fx { padding: 0 10px; color: #80868B; font-style: italic; border-right: 1px solid #E1E3E6; }
+.g-fx .val { padding: 0 10px; }
+.g-grid { flex: 1; min-height: 0; overflow: hidden; background: #fff; }
+table.g { table-layout: fixed; width: 1390px; border-collapse: collapse; font: 12px/19px Arial, "Malgun Gothic", sans-serif; color: #202124; }
+table.g th, table.g td { height: 20px; padding: 0 4px; border: 1px solid #E2E3E3; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+table.g thead th { height: 22px; background: #F8F9FA; color: #5F6368; font-weight: 400; font-size: 11px; text-align: center; border-color: #D7D9DC; }
+table.g th.rn { background: #F8F9FA; color: #5F6368; font-weight: 400; font-size: 11px; text-align: center; border-color: #D7D9DC; }
+table.g td.ov { overflow: visible; position: relative; z-index: 1; }
+table.g td.c { text-align: center; }
+table.g td.r { text-align: right; }
+table.g td.b { font-weight: 700; }
+table.g td.ttl { font-size: 15px; font-weight: 700; }
+table.g td.mu { color: #5F6368; }
+table.g td.hd { background: #F1F3F4; font-weight: 700; text-align: center; }
+table.g td.hd2 { background: #E6F0E8; font-weight: 700; text-align: center; }
+table.g td.gsel { outline: 2px solid #1A73E8; outline-offset: -2px; }
+.g-tabs { flex: none; height: 34px; display: flex; align-items: stretch; background: #F8F9FA; border-top: 1px solid #E1E3E6; padding: 0 6px; overflow: hidden; white-space: nowrap; font: 12px/34px Arial, "Malgun Gothic", sans-serif; color: #3C4043; }
+.g-tabs span { padding: 0 8px; flex: none; }
+.g-tabs span.k { color: #5F6368; padding: 0 9px; font-size: 14px; }
+.g-tabs span.on { background: #fff; color: #188038; font-weight: 700; box-shadow: inset 0 -3px 0 #188038; }
+.under { flex: none; display: flex; align-items: center; gap: 12px; font-size: 12px; line-height: 18px; color: var(--muted); }
+
+/* 틀이 안 열릴 때 */
+.frame.empty { align-items: center; justify-content: center; background: var(--canvas); }
+.fe { width: 560px; max-width: calc(100% - 32px); display: grid; gap: 12px; justify-items: start; padding: 24px 28px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); }
+.fe h2 { margin: 0; font-size: 17px; line-height: 26px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.fe p { margin: 0; font-size: 13px; line-height: 21px; color: var(--ink-2); }
+.fe ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 22px; color: var(--ink-2); }
+.fe .acts { display: flex; gap: 8px; }
+.fe .tip { font-size: 12px; line-height: 18px; color: var(--muted); }
+
+/* 구글 연결 전 */
+.intro { max-width: 880px; display: grid; gap: 18px; padding: 24px 28px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.intro h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.intro > p { margin: -10px 0 0; font-size: 14px; color: var(--ink-2); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--canvas); }
+.steps .no { width: 28px; height: 28px; border-radius: var(--r); background: var(--accent); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 13px; }
+.steps b { display: block; color: var(--ink); font-weight: 600; }
+.steps span { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.intro .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.intro .tip { font-size: 12px; line-height: 18px; color: var(--muted); }
+
+/* 웹앱 수납일지 자리 */
+.place { display: grid; justify-items: center; gap: 10px; padding: 64px 24px; border: 1px dashed var(--line-strong); border-radius: var(--r); background: var(--canvas); text-align: center; }
+.place b { font-size: 16px; color: var(--ink); }
+.place p { margin: 0; font-size: 13px; color: var(--muted); max-width: 60ch; }
+.pending { padding: 8px 12px; border: 1px dashed var(--warning); border-radius: var(--r); background: var(--warning-soft); font-size: 12px; line-height: 18px; color: #78350F; }
+
+/* 설정 */
+.shead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.shead h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.shead .hint { font-size: 13px; color: var(--muted); }
+.set { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 24px; align-items: start; }
+.snav { position: sticky; top: 12px; display: grid; gap: 2px; }
+.snav a { padding: 8px 12px; border-radius: var(--r); color: var(--ink-2); font-weight: 500; text-decoration: none; font-size: 14px; }
+.snav a.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.snav small { padding: 10px 12px 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.sbody { display: grid; gap: 16px; min-width: 0; max-width: 1000px; }
+.sec { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.sec > h3 { margin: 0; padding: 14px 20px; border-bottom: 1px solid var(--line); font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.sec > h3 small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.sec .in { padding: 6px 20px 14px; }
+.frow { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 6px 16px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--canvas); }
+.frow:last-child { border-bottom: 0; }
+.frow > .k { padding-top: 7px; font-weight: 500; color: var(--ink-2); font-size: 14px; }
+.frow > .v { display: grid; gap: 6px; min-width: 0; }
+.line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 13px; }
+.field { height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 14px; color: var(--ink); width: 100%; min-width: 0; }
+.field.ph { color: var(--faint); }
+.field.s { width: 64px; text-align: center; }
+.field.m { width: 96px; text-align: center; }
+.field.w { flex: 1; min-width: 240px; width: auto; }
+.sel { height: 32px; padding: 0 26px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 6px center / 14px; display: inline-flex; align-items: center; font-size: 13px; color: var(--ink); min-width: 76px; }
+.hint { font-size: 12px; line-height: 18px; color: var(--muted); }
+.hint b { color: var(--ink-2); font-weight: 600; }
+.ok-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.box { width: 18px; height: 18px; border: 1.5px solid var(--line-strong); border-radius: 3px; display: inline-grid; place-items: center; background: var(--surface); vertical-align: middle; flex: none; }
+.box.on { background: var(--accent); border-color: var(--accent); }
+.box.on::after { content: ""; width: 9px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateY(-1px) rotate(-45deg); }
+.rd { width: 18px; height: 18px; border: 1.5px solid var(--line-strong); border-radius: 50%; display: inline-block; flex: none; background: var(--surface); }
+.rd.on { border: 5px solid var(--accent); }
+.opt { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; color: var(--ink); line-height: 20px; }
+.opt small { display: block; font-size: 12px; line-height: 18px; color: var(--muted); }
+.opts { display: grid; gap: 8px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.sub { border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
+.sub > b { font-size: 14px; color: var(--ink); font-weight: 600; }
+table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.t th, table.t td { height: 36px; padding: 0 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+table.t thead th { height: 32px; background: var(--canvas); font-size: 12px; font-weight: 600; color: var(--muted); }
+table.t td.c, table.t th.c { text-align: center; }
+table.t td.r, table.t th.r { text-align: right; font-variant-numeric: tabular-nums; }
+table.t td.mu { color: var(--muted); }
+table.t.grid th, table.t.grid td { border: 1px solid var(--line); }
+.letter { display: inline-grid; place-items: center; width: 40px; height: 30px; border: 1px solid var(--line-strong); border-radius: var(--r); font-weight: 600; color: var(--ink); background: var(--surface); }
+.pick { border: 1px solid var(--line); border-radius: var(--r); max-height: 232px; overflow: auto; }
+.pick table.t th:first-child, .pick table.t td:first-child { width: 40px; text-align: center; }
+.rule { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: var(--r); background: var(--canvas); border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.ex { color: var(--warning); font-size: 12px; font-weight: 500; }
+.savebar { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 0; background: var(--surface); border-top: 1px solid var(--line); }
+.savebar .hint { margin-right: auto; }
+.log { font-size: 13px; color: var(--muted); line-height: 22px; }
+.log .w { color: var(--warning); font-weight: 500; }
+
+/* 덮어쓰기 창 */
+.scrim { position: fixed; inset: 0; background: rgb(17 24 39 / 18%); z-index: 20; }
+.dlg { position: fixed; z-index: 21; left: 50%; top: 190px; transform: translateX(-50%); width: 500px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-float); box-shadow: var(--elev-float); padding: 20px; display: grid; gap: 14px; }
+.dlg h4 { margin: 0; font-size: 17px; line-height: 26px; font-weight: 600; color: var(--ink); }
+.dlg p { margin: 0; font-size: 13px; line-height: 21px; color: var(--ink-2); }
+.dlg p.mu { color: var(--muted); font-size: 12px; line-height: 18px; }
+.dlg .date { display: inline-flex; align-items: center; gap: 4px; }
+.dlg .date .d { min-width: 180px; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; color: var(--ink); }
+.dlg .foot { display: flex; justify-content: flex-end; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>수납일지 · 구글 시트 시안</b><span class="ex">시안 · 가상 자료</span> <span style="font-size:13px;color:var(--muted)">비트시트 프로그램이 하던 일을 수납일지 탭 안으로. 이름·차트번호·금액·주소는 모두 지어낸 것이에요.</span></div>
+  <div class="seg" id="seg"></div>
+</div></div>
+
+<div class="app" id="appframe">
+  <header class="top"><div class="top-in">
+    <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+    <div class="top-r"><time id="clock"></time><span class="acct">계정 ▾</span></div>
+  </div></header>
+  <nav><div class="tabs" id="tabs"></div></nav>
+  <main id="app"></main>
+</div>
+<div id="layer"></div>
+
+<script>
+const S = new URLSearchParams(location.search).get('s') || 'sheet'
+const STATES = [
+  ['none', '구글 연결 전'], ['sheet', '연결됨 (기본)'], ['filling', '넣는 중'], ['done', '넣은 뒤 결과'], ['done-warn', '넣은 뒤 · 확인 필요'],
+  ['newmonth', '새 달 파일 만든 날'], ['pastmonth', '지난 달 파일 보기'], ['nobit', '비트 PC 아닌 PC'], ['err-google', '구글 코드에 못 닿음'], ['err-frame', '시트가 틀 안에서 안 열림'],
+  ['overwrite', '덮어쓰기 창'], ['settings', '설정'], ['webapp', '[웹앱 수납일지] 고름'],
+]
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+
+/* 탭 줄: 지금 앱의 주요 메뉴(menu.ts PRIMARY) + 더보기 */
+const TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약', '더보기 ▾']
+document.getElementById('tabs').innerHTML = TABS.map(t => `<a href="#" ${t === '수납일지' ? 'aria-current="page"' : ''}>${t}${t === '수납일지' && S === 'err-google' ? '<span class="tdot" title="넣기가 멈췄어요"></span>' : ''}</a>`).join('')
+
+const NEWMONTH = S === 'newmonth'
+const CLOCK = {
+  none: '14:37', sheet: '14:37', filling: '14:40', done: '14:41', 'done-warn': '14:42', nobit: '14:37',
+  'err-google': '14:42', 'err-frame': '14:37', pastmonth: '14:37', overwrite: '14:37', settings: '14:37', webapp: '14:37',
+}
+document.getElementById('clock').textContent = NEWMONTH ? '2026년 12월 1일 (화) 09:07 (KST)' : `2026년 11월 26일 (목) ${CLOCK[S] || '14:37'} (KST)`
+
+const SHEET_STATES = ['sheet', 'filling', 'done', 'done-warn', 'newmonth', 'pastmonth', 'nobit', 'err-google', 'err-frame', 'overwrite']
+const frameEl = document.getElementById('appframe')
+if (SHEET_STATES.includes(S)) frameEl.classList.add('fill')
+else frameEl.classList.add('wrap1280')
+
+const won = n => n.toLocaleString('ko-KR')
+const EXT = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 3h4v4M13 3 7.5 8.5M12 9.5V13H3V4h3.5"/></svg>'
+const FILEICON = '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="1.5" width="13" height="15" rx="2" fill="#ECF7EF" stroke="#15803D" stroke-width="1.2"/><path d="M5 6.5h8M5 9.5h8M5 12.5h8M9 6.5v6" stroke="#15803D" stroke-width="1.1"/></svg>'
+const WARNICON = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#B45309" stroke-width="1.5" aria-hidden="true"><path d="M9 2.5 16 15H2z"/><path d="M9 7v4M9 12.8v.4"/></svg>'
+
+/* ───── 가짜 구글 시트 ───── */
+const SIGN = { 1: '현금', 2: '카드', 3: '미수현금', 4: '미수카드', 5: '계좌이체', 6: 'FREE' }
+const RSV = { 1: '예약 안하고 가심', 2: '주사치료', 3: '진료(경과)', 4: '기타' }
+const SPEND = { 1: '현금', 2: '카드', 3: '기타', 4: '현금(주차지원)' }
+/* 환자 줄(17줄부터). b 차트번호 · c 이름 · d 기호 · f 금액 · g 비고 · i 진료실 · j·k·l·m 표시(0) · o 예약 기호 · r 지출 기호 · t 지출 금액 */
+const DAY26 = [
+  { b: '10231', c: '홍길동', d: 1, f: 15000, i: 1, j: 0, m: 0, o: 2, r: 1, t: 12000 },
+  { b: '23110', c: '김예시', d: 2, f: 8500, i: 1, m: 0, o: 3, r: 4, t: 3000 },
+  { b: '8452', c: '이시안', d: 1, f: 10000, i: 2, k: 0, l: 0, o: 1 },
+  { c: '이시안', d: 2, f: 25000 },
+  { b: '31207', c: '박가상', d: 6, f: 0, g: '직원 가족', i: 1, m: 0 },
+  { b: '772', c: '최샘플', d: 2, f: 4800, g: '자동차보험', i: 2, m: 0, o: 2 },
+  { b: '19990', c: '정연습', d: 4, f: 30000, g: '지난달 미수', i: 1 },
+  { c: '강보기', d: 3, f: 20000 },
+  { b: '40518', c: '조견본', d: 1, f: 1500, g: '건강생활잔액', i: 2, j: 0, m: 0, o: 2 },
+  { b: '21006', c: '윤예제', d: 2, f: 18200, i: 1, k: 0, l: 0, m: 0, o: 2 },
+  { b: '15220', c: '장모형', d: 5, f: 12000, i: 2, m: 0, o: 1 },
+  { b: '10498', c: '임본보기', d: 2, f: 42800, i: 1, l: 0, o: 3 },
+]
+const DAY1 = [
+  { b: '10877', c: '홍길동', d: 2, f: 9800, i: 1, m: 0, o: 2 },
+  { b: '21011', c: '김예시', d: 1, f: 15000, i: 2, j: 0, m: 0, o: 3 },
+  { b: '5520', c: '이시안', d: 2, f: 4700, i: 1, l: 0 },
+]
+const DAY_OCT1 = [
+  { b: '10552', c: '김예시', d: 2, f: 9800, i: 1, m: 0, o: 2 },
+  { b: '21004', c: '홍길동', d: 1, f: 23400, i: 2, j: 0, l: 0, m: 0, o: 3, r: 1, t: 5000 },
+  { b: '19870', c: '박가상', d: 2, f: 18200, i: 1, k: 0, l: 0, o: 2 },
+  { b: '10013', c: '최샘플', d: 6, f: 0, g: '직원 가족', i: 2, m: 0 },
+  { b: '15220', c: '장모형', d: 1, f: 5000, i: 1, m: 0, o: 1 },
+  { c: '장모형', d: 2, f: 26500 },
+  { b: '12740', c: '정연습', d: 2, f: 3900, g: '자동차보험', i: 2, m: 0, o: 2 },
+  { b: '18603', c: '강보기', d: 5, f: 14600, i: 1, j: 0, m: 0, o: 3 },
+  { b: '10344', c: '조견본', d: 2, f: 42800, i: 1, l: 0, o: 2 },
+]
+const COLS = [['A', 34], ['B', 62], ['C', 62], ['D', 38], ['E', 62], ['F', 66], ['G', 84], ['H', 12], ['I', 44], ['J', 40], ['K', 54], ['L', 46], ['M', 54], ['N', 12],
+  ['O', 40], ['P', 96], ['Q', 12], ['R', 40], ['S', 86], ['T', 58], ['U', 12], ['V', 44], ['W', 40], ['X', 40], ['Y', 52], ['Z', 46], ['AA', 54], ['AB', 64]]
+
+function sheetCells(rows, title) {
+  const C = {}
+  const put = (ref, v, cls = '') => { C[ref] = { v, cls } }
+  const visits = rows.filter(r => r.b)
+  const pct = n => visits.length ? (Math.round(n / visits.length * 1000) / 10).toFixed(1) + '%' : '0.0%'
+  const cnt = k => visits.filter(r => r[k] === 0).length
+
+  put('A1', '일일 수납일지', 'ttl ov'); put('I1', title, 'b ov')
+  put('B3', '수납', 'b ov'); put('J3', '내원', 'b ov'); put('O3', '예약관리 · 지출', 'b ov')
+  ;[['B4', '기호'], ['C4', '구분'], ['D4', '건수'], ['E4', ''], ['F4', '금액']].forEach(([r, v]) => put(r, v, 'hd'))
+  let tc = 0, ts = 0
+  for (let s = 1; s <= 6; s++) {
+    const m = rows.filter(r => r.d === s), sum = m.reduce((a, r) => a + r.f, 0)
+    tc += m.length; ts += sum
+    put('B' + (4 + s), s, 'c'); put('C' + (4 + s), SIGN[s]); put('D' + (4 + s), m.length, 'r'); put('F' + (4 + s), won(sum), 'r')
+  }
+  put('C11', '합계', 'b'); put('D11', tc, 'r b'); put('F11', won(ts), 'r b')
+  put('J7', '비율 (총내원 중)', 'mu ov')
+  ;[['J', '초진', 'j'], ['K', '90일초진', 'k'], ['L', 'Block', 'l'], ['M', '물리치료', 'm']].forEach(([col, h, k]) => {
+    put(col + '8', h, 'hd'); put(col + '9', pct(cnt(k)), 'c b'); put(col + '10', cnt(k) + '명', 'c mu')
+  })
+  put('K12', '총내원', 'r'); put('L12', visits.length, 'c b'); put('M12', '명', 'mu')
+  put('O7', '기호', 'hd'); put('P7', '예약관리', 'hd')
+  for (let s = 1; s <= 4; s++) { put('O' + (7 + s), s, 'c'); put('P' + (7 + s), RSV[s]) }
+  put('R7', '기호', 'hd'); put('S7', '지출내용', 'hd'); put('T7', '금액', 'hd')
+  let sp = 0
+  for (let s = 1; s <= 4; s++) {
+    const sum = rows.filter(r => r.r === s).reduce((a, r) => a + r.t, 0); sp += sum
+    put('R' + (7 + s), s, 'c'); put('S' + (7 + s), SPEND[s]); put('T' + (7 + s), won(sum), 'r')
+  }
+  put('S12', '지출 합계', 'b'); put('T12', won(sp), 'r b')
+
+  const H = { A: 'NO', B: '차트번호', C: '이름', D: '기호', E: '구분', F: '금액', G: '비고', I: '진료실', J: '초진', K: '90일초진', L: 'Block', M: '물리치료', O: '기호', P: '예약관리', R: '기호', S: '지출내용', T: '금액' }
+  Object.entries(H).forEach(([col, v]) => put(col + '16', v, 'hd2'))
+  ;[['V', '진료실'], ['W', '내원'], ['X', '초진'], ['Y', '90일'], ['Z', 'Block'], ['AA', '물리치료'], ['AB', '수납']].forEach(([col, v]) => put(col + '16', v, 'hd2'))
+
+  /* 진료실별(옆 표 V~AB): 이어지는 돈 줄은 위 환자 진료실로 셈 */
+  const room = { 1: [0, 0, 0, 0, 0, 0], 2: [0, 0, 0, 0, 0, 0], 3: [0, 0, 0, 0, 0, 0], 4: [0, 0, 0, 0, 0, 0] }
+  let owner = null, ownerName = ''
+  rows.forEach((r, n) => {
+    const row = 17 + n
+    if (r.b) { owner = r.i; ownerName = r.c; const x = room[r.i]; x[0]++; if (r.j === 0) x[1]++; if (r.k === 0) x[2]++; if (r.l === 0) x[3]++; if (r.m === 0) x[4]++; x[5] += r.f }
+    else if (r.c === ownerName && owner) room[owner][5] += r.f
+    else owner = null
+    if (r.b) put('B' + row, r.b, 'r')
+    put('C' + row, r.c)
+    if (r.d) { put('D' + row, r.d, 'c'); put('E' + row, SIGN[r.d]) }
+    if (r.f !== undefined) put('F' + row, won(r.f), 'r')
+    if (r.g) put('G' + row, r.g)
+    if (r.i) put('I' + row, r.i, 'c')
+    ;['j', 'k', 'l', 'm'].forEach((k, q) => { if (r[k] === 0) put('JKLM'[q] + row, 0, 'c') })
+    if (r.o) { put('O' + row, r.o, 'c'); put('P' + row, RSV[r.o]) }
+    if (r.r) { put('R' + row, r.r, 'c'); put('S' + row, SPEND[r.r]); put('T' + row, won(r.t), 'r') }
+  })
+  const tot = [0, 0, 0, 0, 0, 0]
+  for (let q = 1; q <= 4; q++) {
+    const x = room[q], row = 16 + q
+    put('V' + row, q, 'c'); ['W', 'X', 'Y', 'Z', 'AA'].forEach((col, z) => put(col + row, x[z], 'c')); put('AB' + row, won(x[5]), 'r')
+    x.forEach((v, z) => tot[z] += v)
+  }
+  put('V21', '합계', 'c b'); ['W', 'X', 'Y', 'Z', 'AA'].forEach((col, z) => put(col + '21', tot[z], 'c b')); put('AB21', won(tot[5]), 'r b')
+  for (let row = 17; row <= 60; row++) put('A' + row, row - 16, 'c mu')
+  return C
+}
+
+function sheetFrame(rows, title, today, file) {
+  const C = sheetCells(rows, title)
+  const first = rows[0]
+  const head = `<tr><th class="rn"></th>${COLS.map(([L]) => `<th>${L}</th>`).join('')}</tr>`
+  let body = ''
+  for (let r = 1; r <= 44; r++) {
+    body += `<tr><th class="rn">${r}</th>${COLS.map(([L]) => {
+      const c = C[L + r]; const sel = L === 'B' && r === 17 ? ' gsel' : ''
+      return c ? `<td class="${c.cls}${sel}">${c.v}</td>` : `<td class="${sel.trim()}"></td>`
+    }).join('')}</tr>`
+  }
+  const days = Array.from({ length: 31 }, (_, i) => i + 1)
+  const tabs = `<span class="k">＋</span><span class="k">≡</span><span>관리자</span><span>월말통계</span><span>일일 수납일지(원본)</span>${days.map(d => `<span class="${d === today ? 'on' : ''}">${d}</span>`).join('')}`
+  return `<div class="frame" aria-label="${file} (구글 시트)">
+    <div class="g-fx"><span class="ref">B17</span><span class="fx">fx</span><span class="val">${first.b}</span></div>
+    <div class="g-grid"><table class="g"><colgroup><col style="width:36px">${COLS.map(([, w]) => `<col style="width:${w}px">`).join('')}</colgroup>
+      <thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <div class="g-tabs">${tabs}</div>
+  </div>`
+}
+
+const UNDER = `<div class="under"><span>시트가 비어 보이거나 구글 로그인 화면이 나오면 [새 창으로 열기]로 열어 주세요. 여기서 고친 칸은 구글 시트에 바로 저장돼요.</span><span class="sp"></span><span class="mockmark">시안 · 가상 자료 — 실제로는 이 틀에 구글 시트가 그대로 떠요</span></div>`
+
+const UNDER_MOCK = `<div class="under"><span class="sp"></span><span class="mockmark">시안 · 가상 자료</span></div>`
+
+/* ───── 탭 머리 · 띠 ───── */
+function tabHead(on) {
+  return `<div class="tabhead"><h1 class="sr">수납일지</h1>
+    <div class="pseg" role="tablist" aria-label="수납일지 보기"><a href="?s=sheet" role="tab" class="${on === 'sheet' ? 'on' : ''}" aria-selected="${on === 'sheet'}">구글 시트</a><a href="?s=webapp" role="tab" class="${on === 'webapp' ? 'on' : ''}" aria-selected="${on === 'webapp'}">웹앱 수납일지</a></div>
+    <span class="sp"></span><span class="mockmark">시안 · 가상 자료</span></div>`
+}
+const FILE_NOV = '샘플정형외과의원 일일수납일지 2026년 11월'
+const FILE_DEC = '샘플정형외과의원 일일수납일지 2026년 12월'
+const FILE_OCT = '샘플정형외과의원 일일수납일지 2026년 10월'
+const B_NOW = (dis = false, busy = false) => `<button class="btn sm primary" ${dis ? 'disabled' : ''} ${busy ? 'aria-busy="true"' : ''}>지금 넣기</button>`
+const B_OVER = (dis = false) => `<button class="btn sm" ${dis ? 'disabled' : ''}>덮어쓰기…</button>`
+const B_OPEN = `<button class="btn sm">새 창으로 열기 ${EXT}</button>`
+const B_SET = `<button class="btn sm">설정</button>`
+
+function band(file, day, status, acts, extra = '') {
+  const m = file.match(/^(.*) (\d{4}년 \d{1,2}월)$/)
+  const past = S === 'pastmonth'
+  return `<div class="band">
+    <span class="file">${FILEICON}<span>${m[1]}</span><button class="msel${past ? ' past' : ''}" aria-label="달 고르기 — 지금 ${m[2]}" title="다른 달 파일 열기">${m[2]}</button><small>· ${day}일 시트</small>${extra}</span>
+    <span class="bar"></span>
+    <span class="st">${status}</span>
+    <span class="acts">${acts}</span></div>`
+}
+const ON = (last, n) => `<span class="chip ok">저절로 넣기 켜짐</span><span>웹앱이 열려 있는 동안 5분마다 · 마지막 ${last} (${n}줄)</span>`
+
+function page() {
+  const PAST = S === 'pastmonth'
+  const rows = NEWMONTH ? DAY1 : PAST ? DAY_OCT1 : DAY26
+  const title = NEWMONTH ? '2026년 12월 1일 (화)' : PAST ? '2026년 10월 1일 (목)' : '2026년 11월 26일 (목)'
+  const file = NEWMONTH ? FILE_DEC : PAST ? FILE_OCT : FILE_NOV
+  const day = NEWMONTH || PAST ? 1 : 26
+  const full = B_NOW() + B_OVER() + B_OPEN + B_SET
+  let top = '', after = '', frame = sheetFrame(rows, title, day, file)
+
+  if (S === 'sheet' || S === 'overwrite' || S === 'err-frame') top = band(file, day, ON('14:35', 12), full)
+  if (PAST) {
+    top = band(file, day, ON('14:35', 12), full)
+    after = `<div class="banner warn"><div><b>지난 달 파일을 보고 있어요</b> · 저절로 넣기는 이번 달 파일에만 해요. 여기서 고친 칸은 10월 파일에 바로 저장돼요.</div><button class="btn sm primary">이번 달로</button></div>`
+  }
+  if (S === 'filling') top = band(file, day, `<span class="spin" aria-hidden="true"></span><b style="color:var(--accent-strong)">넣는 중…</b><span>26일 시트 · 빈 칸만 채우기 · 비트에서 읽어 구글 시트에 넣고 있어요</span>`,
+    B_NOW(true, true) + B_OVER(true) + B_OPEN + B_SET)
+  if (S === 'done') {
+    top = band(file, day, ON('14:41', 12), full)
+    after = `<div class="result" role="status">
+      <div class="r1"><span class="okc">✔ 넣었어요</span><span>— 11월 26일 시트 · 빈 칸만 채우기 · 14:41</span><span class="bar" style="width:1px;height:14px;background:var(--line)"></span>
+        <span class="n">오늘 환자 <b>10</b>명 · 새로 넣은 줄 <b>2</b> · 채운 줄 <b>1</b> · 건너뛴 줄 <b>0</b></span><span class="sp"></span><button class="btn icon sm ghost" aria-label="결과 닫기">✕</button></div>
+      <div class="r2">나눠 낸 돈 1명(두 줄로) · FREE 1명 · 늦게 낸 돈 끼워 넣은 줄 1 · FREE로 고침 1명 · 취소된 접수 지움 1명 · 미수만 낸 환자 1명(이름 줄) · 비고 넣음 2칸 · 새 달 파일: 이번 달 파일 그대로 씀</div>
+      <div class="r2">넣지 않음: 차트번호 없는 내원 1건</div></div>`
+  }
+  if (S === 'done-warn') {
+    top = band(file, day, `<span class="chip warn">저절로 넣기 켜짐 · 확인 필요</span><span>웹앱이 열려 있는 동안 5분마다 · 마지막 14:40 (12줄)</span>`, full)
+    after = `<div class="result warn" role="status">
+      <div class="r1"><span class="wc">⚠ 넣었어요 · 확인 필요</span><span>— 11월 26일 시트 · 저절로 넣기 · 14:40</span><span class="bar" style="width:1px;height:14px;background:var(--line)"></span>
+        <span class="n">오늘 환자 <b>10</b>명 · 새로 넣은 줄 <b>1</b> · 채운 줄 <b>0</b> · 건너뛴 줄 <b>1</b></span><span class="sp"></span><button class="btn icon sm ghost" aria-label="결과 닫기">✕</button></div>
+      <div class="r2 w">취소된 접수 1명 · 건너뛴 줄 1개 — 시트에서 확인해 주세요</div>
+      <div class="r2">취소된 접수: 비고나 예약관리 칸에 직원 글이 있어서 그 줄을 지우지 않았어요. 건너뛴 줄: 늦게 낸 돈을 붙일 바로 아래 줄이 차 있고 맨 아래 줄도 차 있어서 넣지 못했어요.</div></div>`
+  }
+  if (S === 'newmonth') {
+    top = band(file, day, ON('09:05', 3), full)
+    after = `<div class="banner info"><div><b>12월 파일을 새로 만들었어요.</b> 원본 시트를 복사해 '${FILE_DEC}'을 원본과 같은 폴더에 만들었어요.
+      새 파일 날짜 시트에 남아 있던 글자 9칸을 지웠어요(원본은 그대로) · 비율 식(초진·90일초진·Block·물리치료 %) 128칸을 차트번호로 세게 고쳤어요 · 함께 쓸 직원 메일 2개에 편집 권한을 줬어요.
+      11월 파일은 그대로 있어요.</div><button class="btn sm">11월 파일 열기 ${EXT}</button><button class="btn sm">확인</button></div>`
+  }
+  if (S === 'nobit') {
+    top = band(file, day, `<span class="chip gray">보기만</span><span><b>이 PC에서는 넣기를 못 해요.</b> 비트 PC에서 웹앱이 열려 있으면 저절로 넣어요. · 비트 PC 마지막 넣기 14:35 (12줄)</span>`, B_OPEN)
+  }
+  if (S === 'err-google') {
+    top = band(file, day, `<span class="chip warn">넣기 멈춤</span><span><b>구글 코드에 닿지 못했어요</b> · 14:40 · 5분 뒤 다시 해요</span>`,
+      `<button class="btn sm primary">다시 해 보기</button>` + B_OVER(true) + B_OPEN + B_SET)
+    after = `<div class="banner warn">${WARNICON}<div><b>구글 연결 안 됨: 인터넷 연결을 확인해 주세요.</b> 14:35까지 넣은 줄은 시트에 그대로 있어요. 인터넷이 되는데도 계속 이러면 [설정] › 구글 연결에서 [연결 시험]을 눌러 보세요.</div></div>`
+  }
+  if (S === 'err-frame') {
+    frame = `<div class="frame empty"><div class="fe">
+      <h2>${WARNICON}시트를 이 화면 안에서 열지 못했어요</h2>
+      <p>이 인터넷 창이 병원 구글 계정에 로그인되어 있지 않거나, 로그인한 계정에 이 시트를 볼 권한이 없을 때 그래요. <b>비트에서 넣기는 그대로 돌아요.</b></p>
+      <ol><li>[새 창으로 열기]를 눌러 병원 구글 계정으로 로그인해요.</li><li>시트가 열리면 이 화면으로 돌아와 [다시 열기]를 눌러요.</li></ol>
+      <div class="acts"><button class="btn primary">새 창으로 열기 ${EXT}</button><button class="btn">다시 열기</button></div>
+      <p class="tip">그래도 안 열리면 새 창에서 그대로 쓰셔도 돼요. 이 탭(또는 웹앱 아무 탭)이 열려 있으면 넣기는 계속돼요.</p>
+    </div></div>`
+  }
+  return tabHead('sheet') + top + after + frame + (S === 'err-frame' ? UNDER_MOCK : UNDER)
+}
+
+/* ───── 구글 연결 전 ───── */
+function nonePage() {
+  return tabHead('sheet') + `<section class="intro">
+    <h2>수납일지 시트를 아직 연결하지 않았어요</h2>
+    <p>병원 구글 계정의 '일일 수납일지' 시트를 이 탭 안에 띄우고, 비트에서 그날 수납을 5분마다 저절로 넣어요. 처음 한 번만 하면 돼요(20분쯤).</p>
+    <ol class="steps">
+      <li><span class="no">1</span><div><b>병원 구글 계정에 원본 시트 두기</b><span>원장님 개인 계정이 아니라 병원 구글 계정의 드라이브에 '일일 수납일지' 원본 시트가 있어야 해요. 달마다 이 원본을 복사해 새 달 파일을 만들어요.</span></div></li>
+      <li><span class="no">2</span><div><b>구글에 코드 붙이기</b><span>비트 PC에서 [설정] › 구글 연결 › [구글에 붙일 코드 복사]를 누르고, 병원 구글 계정의 구글 자동 실행 도구(script.google.com)에 붙여 넣은 뒤 배포해요. 순서는 안내문에 그림과 함께 있어요.</span></div></li>
+      <li><span class="no">3</span><div><b>주소 두 개 넣기</b><span>구글이 준 주소와 원본 시트 주소를 설정에 넣고 [연결 시험]을 눌러요.</span></div></li>
+      <li><span class="no">4</span><div><b>끝</b><span>이 탭에 시트가 바로 떠요. 비트 PC에서 웹앱이 열려 있는 동안 5분마다 저절로 넣어요. 다른 PC에서는 시트를 보고 고치기만 해요.</span></div></li>
+    </ol>
+    <div class="acts"><button class="btn primary">설정 열기</button><button class="btn">안내문 보기</button></div>
+    <p class="tip">비트시트 프로그램을 쓰고 있었다면 설정 화면 맨 위 [그대로 가져오기]로 그 설정을 옮길 수 있어요. 설정은 비트 PC에서 해요(비트 진료과·처방 목록을 그 PC에서 읽어요).</p>
+  </section>`
+}
+
+/* ───── 웹앱 수납일지 자리 ───── */
+function webappPage() {
+  return tabHead('webapp') + `<div class="place">
+    <b>지금 있는 웹앱 수납일지 화면이 여기에 그대로 나와요</b>
+    <p>비트에서 읽어 웹앱이 그리는 장부 · 요약 네 칸 · 원장님별 · 미수 입금 · 지출 · 마감하기. 모양은 지금 그대로예요.</p>
+    <a class="btn sm" href="../sunap-ilji/index.html">그 화면 시안 보기</a>
+    <p>수납일지 탭은 [구글 시트]가 기본이고, 탭 머리에서 [웹앱 수납일지]를 누르면 이 화면으로 바뀌어요.</p>
+  </div>`
+}
+
+/* ───── 설정 ───── */
+const box = on => `<span class="box ${on ? 'on' : ''}"></span>`
+const rd = on => `<span class="rd ${on ? 'on' : ''}"></span>`
+const frow = (k, v) => `<div class="frow"><div class="k">${k}</div><div class="v">${v}</div></div>`
+function settingsPage() {
+  const colHeads = ['차트번호', '이름', '기호', '금액', '진료실', '초진', '90일초진', 'Block(주사)', '물리치료', '비고']
+  const colLetters = ['B', 'C', 'D', 'F', 'I', 'J', 'K', 'L', 'M', 'G']
+  const signs = [['현금', 1], ['카드', 2], ['미수현금', 3], ['미수카드', 4], ['계좌이체', 5], ['FREE', 6]]
+  const depts = [['OS', '정형외과 1진료실', '1', '최근 90일 환자 1,912'], ['OS2', '정형외과 2진료실', '2', '최근 90일 환자 1,204'], ['PM', '재활의학과', '3', '최근 90일 환자 388'], ['OS3', '정형외과 3진료실', '빈칸', '쓰지 않음']]
+  const codes = [['KK010', '관절강내 주사', '주사료', '412'], ['LA222', '신경차단술 — 요추 경막외', '마취료', '348'], ['LA221', '신경차단술 — 경추 경막외', '마취료', '212'], ['KK020', '근육 주사', '주사료', '96'], ['KK030', '정맥 주사', '주사료', '41'], ['MM070', '표층열 치료', '이학요법료', '1,830']]
+  const free = [
+    ["비트 할인 기록이 '사용자할인(FREE)'일 때", "기본. 수납할 때 할인 종류를 '사용자할인(FREE)'로 고른 환자는 받은 돈과 상관없이 FREE 한 줄(기호 6, 0원)로 넣어요. 그날 낸 미수 돈은 따로 넣어요. 할인 기록이 늦게 붙으면 먼저 넣은 현금·카드 줄을 FREE로 바꿔요.", true],
+    ['받은 돈 0원이고 미수도 없을 때', '본인부담이 있는데 수납에서 0원을 받고, 미수 발생·건강생활유지비도 없는 환자.', false],
+    ['건강보험 환자인데 본인부담이 0원일 때', '보험 코드 31(국민건강보험) 환자의 본인부담이 0원이고 총진료비는 있을 때.', false],
+    ['본인부담이 0원일 때 (자보·의료급여 포함)', '', false],
+    ['총진료비가 0원일 때', '', false],
+    ['FREE 안 씀', '', false],
+  ]
+  return tabHead('sheet') + `
+  <div class="banner info"><div><b>이 PC에 비트시트 프로그램 설정이 있어요.</b> 원본 시트 주소·구글 주소·비밀 글자·진료실·처방 고르기를 그대로 가져올 수 있어요. 가져온 뒤에는 비트시트 프로그램을 꺼 주세요(둘이 같이 넣으면 같은 일을 두 번 해요).</div><button class="btn sm primary">그대로 가져오기</button><button class="btn sm ghost">안 가져와요</button></div>
+  <div class="shead"><button class="btn sm ghost">‹ 시트로 돌아가기</button><h2>수납일지 시트 설정</h2><span class="hint">이 병원 하나의 설정이에요 · 비트 목록은 이 PC(비트 PC)에서 읽어요</span></div>
+  <div class="set">
+    <div class="snav"><a href="#g" class="on">구글 연결</a><a href="#s">시트</a><a href="#b">비트 맞춤</a><a href="#a">저절로 넣기</a>
+      <small>바꾼 것은 아래 [저장]을 눌러야 들어가요. 저장한 뒤 다음 넣기부터 새 설정으로 넣어요.</small></div>
+    <div class="sbody">
+
+    <section class="sec" id="g"><h3>구글 연결 <small>병원마다 한 번</small></h3><div class="in">
+      ${frow('1. 구글에 붙일 코드', `<div class="hint" style="font-size:13px;color:var(--ink-2)">병원 구글 계정으로 로그인한 뒤, 이 코드를 구글 자동 실행 도구(script.google.com)에 붙여 넣고 배포해요. 순서는 안내문에 있어요.</div>
+        <div class="line"><button class="btn sm primary">구글에 붙일 코드 복사</button><button class="btn sm">안내문 열기</button></div>
+        <div class="hint">코드 안에 이 PC만 아는 비밀 글자가 들어 있어요. 다른 사람에게 보내지 마세요.</div>`)}
+      ${frow('2. 구글에서 받은 주소', `<div class="line"><input class="field w" value="https://script.google.com/macros/s/예시…/exec" readonly><button class="btn sm">연결 시험</button></div>
+        <div class="ok-line"><span class="chip ok">연결됨</span><span>원본 시트 '샘플정형외과의원 일일수납일지 (원본)'을 읽을 수 있어요.</span></div>`)}
+      ${frow('넣는 PC', `<div class="ok-line"><span class="chip acc">이 PC</span><span>비트 도우미 연결됨 · 비밀 글자가 이 PC에 있어요</span></div>
+        <div class="hint">넣기는 비밀 글자가 있는 이 PC에서만 해요. 다른 PC에서 [구글에 붙일 코드 복사]를 하면 그 PC가 넣는 PC가 되고, 이 PC는 더 넣지 못해요.</div>`)}
+    </div></section>
+
+    <section class="sec" id="s"><h3>시트 <small>어느 파일, 어느 칸</small></h3><div class="in">
+      ${frow('원본 시트 주소', `<input class="field" value="https://docs.google.com/spreadsheets/d/예시…/edit" readonly>`)}
+      ${frow('새 달 파일 이름', `<input class="field" value="{병원} 일일수납일지 {yyyy}년 {m}월" readonly>
+        <div class="hint">예: 샘플정형외과의원 일일수납일지 2026년 12월 — 달이 바뀌면 원본을 복사해 저절로 만들어요. 그 달 파일이 이미 있으면 그것을 써요.</div>`)}
+      ${frow('병원 이름', `<input class="field ph" value="비우면 비트의 병원 이름(샘플정형외과의원)" readonly><div class="hint">파일 이름의 {병원} 자리에 들어가요.</div>`)}
+      ${frow('넣을 폴더', `<input class="field ph" value="비우면 원본과 같은 폴더" readonly>`)}
+      ${frow('함께 쓸 직원 메일', `<input class="field" value="staff1@example.com, staff2@example.com" readonly><div class="hint">쉼표로 나눠 적어요. 새 달 파일을 만들 때 이 메일에 편집 권한을 줘요.</div>`)}
+      ${frow('환자 줄', `<div class="line"><input class="field s" value="17" readonly> 줄부터 <input class="field s" value="302" readonly> 줄까지</div>`)}
+      ${frow('칸 글자', `<table class="t grid"><thead><tr><th>칸 이름</th>${colHeads.map(h => `<th class="c">${h}</th>`).join('')}</tr></thead>
+        <tbody><tr><td class="mu">시트 칸 글자</td>${colLetters.map(l => `<td class="c"><span class="letter">${l}</span></td>`).join('')}</tr></tbody></table>
+        <div class="hint">비고 칸은 비우면 비고 글을 넣지 않아요. 같은 칸 글자를 두 번 쓸 수 없어요.</div>`)}
+      ${frow('표시 값', `<div class="line"><input class="field s" value="0" readonly><span class="hint">초진·90일초진·Block(주사)·물리치료면 넣는 값(시트 식은 0을 셈)</span></div>`)}
+      ${frow('기호 번호', `<table class="t grid" style="max-width:560px"><thead><tr>${signs.map(s => `<th class="c">${s[0]}</th>`).join('')}</tr></thead><tbody><tr>${signs.map(s => `<td class="c"><span class="letter">${s[1]}</span></td>`).join('')}</tr></tbody></table>
+        <div class="hint">현금과 카드를 나눠 냈으면 두 줄로 넣어요. 둘째 줄에는 이름·기호·금액만 들어가요(차트번호는 첫 줄만).</div>`)}
+      ${frow('밀어 내릴 칸', `<div class="line"><input class="field m" value="A:P" readonly><span class="chip gray">고급</span><span class="hint">늦게 낸 돈을 환자 바로 아래에 끼울 때 이 칸들만 아래로 밀어요(지출 칸은 그대로). 비우면 끼우지 않아요.</span></div>`)}
+    </div></section>
+
+    <section class="sec" id="b"><h3>비트 맞춤 <small>병원마다 다르게 · 목록은 이 PC 비트에서 읽어요</small></h3><div class="in">
+      ${frow('비트 병원', `<div class="line"><button class="btn sm">고르기…</button><span>저절로 정함 (병원이 여럿이면 최근 환자가 있는 병원)</span></div><div class="hint">비트에 병원이 여럿일 때만 필요해요.</div>`)}
+      <div class="two" style="padding:10px 0">
+        <div class="sub"><b>진료실 (1~10)</b>
+          <table class="t"><thead><tr><th>비트 진료과</th><th>시트 진료실</th></tr></thead><tbody>
+          ${depts.map(d => `<tr><td><b style="color:var(--ink);font-weight:600">${d[0]}</b> ${d[1]}<div class="hint">${d[3]}</div></td><td><span class="sel">${d[2]}</span></td></tr>`).join('')}
+          </tbody></table>
+          <div class="hint">진료과 4개 · 번호는 시트 진료실(1~10). 처음에는 최근 90일 환자가 있는 과부터 1, 2, …를 저절로 붙여요. 맞춤이 없는 과는 빈칸으로 넣어요.</div></div>
+        <div class="sub"><b>초진 · 90일초진</b><div class="hint">비트 진찰구분 기준</div>
+          <div style="font-weight:600;color:var(--ink-2);font-size:13px;margin-top:4px">초진 칸</div>
+          <label class="opt">${box(true)} 1 신환</label><label class="opt">${box(false)} 2 과초진</label>
+          <div style="font-weight:600;color:var(--ink-2);font-size:13px;margin-top:4px">90일초진 칸</div>
+          <label class="opt">${box(true)} 3 90일초진</label></div>
+      </div>
+      ${frow('Block(주사)로 셀 처방', `<div class="line"><span class="rule">고른 처방 없음 → 주사 처방 전부 셈</span><span class="hint">고른 처방이 없으면 비트 처방 분류가 '주사료'·'마취료'인 처방(붕대 같은 재료는 빼고)이 있는 환자를 세요.</span></div>
+        <div class="line"><input class="field w ph" value="찾기: 코드나 이름" readonly><span class="hint">최근 90일에 쓴 처방만 보여요 · 그 분류 처방이 위에 있어요</span><span class="ex">(코드 이름은 예시)</span></div>
+        <div class="pick"><table class="t"><thead><tr><th></th><th>코드</th><th>이름</th><th>분류</th><th class="r">90일 건수</th></tr></thead><tbody>
+          ${codes.map(c => `<tr><td>${box(false)}</td><td>${c[0]}</td><td style="color:var(--ink)">${c[1]}</td><td class="mu">${c[2]}</td><td class="r">${c[3]}</td></tr>`).join('')}
+        </tbody></table></div>`)}
+      ${frow('물리치료로 셀 처방', `<div class="line"><span class="rule">고른 처방 없음 → 물리치료 처방 전부 셈</span><span class="hint">위와 같은 고르기 창</span><button class="btn sm">고르기…</button></div>`)}
+      ${frow('FREE(기호 6)로 볼 때', `<div class="opts">${free.map(f => `<label class="opt">${rd(f[2])}<span>${f[0]}${f[1] ? `<small>${f[1]}</small>` : ''}</span></label>`).join('')}</div>`)}
+      ${frow('비고에 저절로 넣는 글', `<div class="opts">
+          <label class="opt">${box(true)}<span>자동차보험<small>그날 보험이 21 자보-청구분 · 22 자보-100%일 때</small></span></label>
+          <label class="opt">${box(true)}<span>건강생활잔액<small>의료급여(51 보호1종 · 52 보호2종) 환자가 그날 건강생활유지비를 썼을 때</small></span></label></div>
+        <div class="hint">비고 칸이 비어 있을 때만 넣어요. 직원이 적은 글은 안 바꿔요. 비고 칸 글자는 위 '시트 › 칸 글자'에서 정해요(비우면 둘 다 꺼요).</div>`)}
+    </div></section>
+
+    <section class="sec" id="a"><h3>저절로 넣기 <small>거의 실시간</small></h3><div class="in">
+      ${frow('저절로 넣기', `<label class="opt">${box(true)}<span>켜기<small>웹앱이 열려 있는 동안(어느 탭이든) 이 PC에서 넣어요. 창을 줄여 두는 것은 괜찮지만, 창을 닫으면 멈춰요.</small></span></label>`)}
+      ${frow('몇 분마다', `<div class="line"><input class="field s" value="5" readonly> 분마다 · <input class="field m" value="08:00" readonly> ~ <input class="field m" value="20:00" readonly><span class="hint">바뀐 게 있을 때만 구글에 보내요</span></div>`)}
+      ${frow('저녁 마지막 넣기', `<div class="line">${box(true)}<input class="field m" value="19:30" readonly><span class="hint">빠진 것이 없게 한 번 더 넣어요(그때 웹앱이 열려 있어야 해요)</span></div>`)}
+      ${frow('지난 날 다시 넣기', `<div class="hint" style="font-size:13px;padding-top:7px">저녁 마지막 넣기를 못 한 날은 다음에 웹앱을 열 때 그날을 한 번 더 넣어요(7일 안, 빈 칸만 채우기).</div>`)}
+      ${frow('넣는 방식', `<div style="padding-top:7px">빈 칸만 채우기 <span class="hint">(저절로 넣을 때는 늘 이 방식 — 직원이 적은 값은 안 지워요)</span></div>`)}
+      ${frow('최근 기록', `<div class="log" style="padding-top:7px">14:35 ✔ 새 줄 2 · 14:30 바뀐 것 없음 · 14:25 ✔ 채운 줄 1 · 11:10 <span class="w">구글 연결 안 됨</span> → 11:15 다시 넣음 ✔</div>`)}
+    </div></section>
+
+    <div class="savebar"><span class="hint">시안이라 칸을 눌러도 바뀌지 않아요.</span><button class="btn">취소</button><button class="btn primary">저장</button></div>
+    </div>
+  </div>`
+}
+
+const app = document.getElementById('app')
+if (S === 'none') { app.className = 'flow'; app.innerHTML = nonePage() }
+else if (S === 'webapp') { app.className = 'flow'; app.innerHTML = webappPage() }
+else if (S === 'settings') { app.className = 'flow'; app.innerHTML = settingsPage() }
+else app.innerHTML = page()
+
+if (S === 'overwrite') {
+  document.getElementById('layer').innerHTML = `<div class="scrim"></div><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="ow">
+    <h4 id="ow">덮어쓰기</h4>
+    <div class="date"><button class="btn icon" aria-label="전날">‹</button><span class="d">2026년 11월 26일 (목)</span><button class="btn icon" aria-label="다음 날">›</button><button class="btn sm ghost">오늘</button></div>
+    <p>덮어쓰기는 비트가 채우는 칸(차트번호·이름·기호·금액·진료실·초진·90일초진·Block·물리치료)을 비트 값으로 다시 써요. <b>직원이 적은 비고·예약관리·지출은 안 건드려요.</b></p>
+    <p class="mu">지난 날 빈 칸만 다시 채우려면 날짜를 고르고 [빈 칸만 채우기]를 누르세요. 직원이 고친 금액·이름도 비트 값으로 바뀌니, 고친 칸이 있으면 [빈 칸만 채우기]를 쓰세요.</p>
+    <div class="foot"><button class="btn">취소</button><button class="btn">빈 칸만 채우기</button><button class="btn primary">덮어쓰기</button></div></div>`
+}
+</script>
+</body>
+</html>
