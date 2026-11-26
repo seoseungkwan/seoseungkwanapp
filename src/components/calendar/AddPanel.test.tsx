@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CalAllDay } from '@/lib/calendar/shapes'
 import type { CalAppt, CalSettings } from '@/types/calendar'
-import { AddPanel, draftOf, newDraft, type AddDraft } from './AddPanel'
+import { AddPanel, Drawer, draftOf, newDraft, type AddDraft } from './AddPanel'
 
 // 예약 더하기·고치기 판 (spec clinic-calendar AC-5905.2·AC-5905.6, 시안 ?s=new·phone-new·overlap-warn·off-warn).
 // 판은 draft를 받아 onDraft로 돌려주고(화면이 쥔다), [저장]은 onSave로 칸만 넘긴다(저장은 화면이 한다).
@@ -566,5 +566,31 @@ describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④
     expect(startInput().value).toBe('1430')
     fireEvent.click(screen.getByRole('button', { name: '빈 칸 11:00' }))
     expect(startInput().value).toBe('11:00')
+  })
+})
+
+// 판 틀 Drawer의 제목 옆 작은 글(spec google-link AC-8550.2 — 고쳐야 할 판 제목 `· 전체 {N}개`, design.md 21-8 titleNote)
+describe('AC-8550.2: Drawer 제목 옆 작은 글(titleNote)', () => {
+  it('AC-8550.2: titleNote를 주면 제목 옆 작은 글로 보이고 판 이름에도 든다', () => {
+    render(
+      <Drawer title="고쳐야 할 구글 예약 12개" titleNote="· 전체 323개" onClose={vi.fn()} foot={null}>
+        <p>몸</p>
+      </Drawer>,
+    )
+    const panel = screen.getByRole('dialog', { name: '고쳐야 할 구글 예약 12개 · 전체 323개' })
+    const note = within(panel).getByText('· 전체 323개')
+    expect(within(panel).getByRole('heading', { level: 2 }).contains(note)).toBe(true)
+    expect(note.tagName).toBe('SMALL')
+  })
+
+  it('AC-8550.2: titleNote를 안 주면 지금 그대로 제목만이다', () => {
+    render(
+      <Drawer title="예약 더하기" onClose={vi.fn()} foot={null}>
+        <p>몸</p>
+      </Drawer>,
+    )
+    const heading = within(screen.getByRole('dialog', { name: '예약 더하기' })).getByRole('heading', { level: 2 })
+    expect(heading.textContent).toBe('예약 더하기')
+    expect(heading.querySelector('small')).toBeNull()
   })
 })
