@@ -1,6 +1,6 @@
 import { addDays, compareYmd, todayInKorea } from '@/lib/analytics/dates'
 import { offScope } from '@/lib/calendar/goff'
-import type { FixGuess as ParsedGuess, GApptPatch, GEvent, GNewRow, GParsedFix, OffPerson, SyncCtx } from '@/lib/calendar/gshapes'
+import { colorFromId, type FixGuess as ParsedGuess, type GApptPatch, type GColor, type GEvent, type GNewRow, type GParsedFix, type OffPerson, type SyncCtx } from '@/lib/calendar/gshapes'
 import { decideEvent } from '@/lib/calendar/gsync'
 import type { ApptDraft, CalAllDay, CalAppt } from '@/types/calendar'
 import type { FixGuess, GcalFix, GcalFixInput, GcalLink, GcalOffDay } from '@/types/gcal'
@@ -9,7 +9,8 @@ import { clip, dayStartIso, maskText, toMs, yearsAhead, type GcalDeps, type Gcal
 
 // 구글 → 웹앱 받기(spec google-link REQ-8525, design.md 12-1). 판단은 lib/calendar/gsync decideEvent, 적기는 저장 함수(조건 고치기·유일 제약)만.
 // 두 PC가 함께 받아도 같은 결과: 넣기는 (병원, g_event_id) 겹치면 건너뛰고, 고치기는 g_updated가 더 이를 때·g_wait_at이 읽은 글자 그대로일 때만.
-// 구글 글(제목·메모·고쳐야 할 것·off 줄 제목)은 적기 전에 maskText(AC-8505.3)
+// 구글 글(제목·메모·고쳐야 할 것·off 줄 제목)은 적기 전에 maskText(AC-8505.3).
+// 휴무 줄 색(REQ-8547, design.md 21-5): off로 알아본 일정 가운데 updated가 가장 나중인 것의 색이 지금 휴무 줄 색과 다르면 받기 끝에 그 색으로(실패는 삼킴)
 
 const OVERLAP_MS = 60_000
 const MAX_PAGES = 200
@@ -48,6 +49,7 @@ export async function pullOnce(deps: GcalDeps): Promise<PullResult> {
     if (at) await store.advancePulled(at)
     const okAt = deps.now().toISOString()
     await store.markOk(okAt)
+    await followOffColor(deps, run.offEvents, link.look.offColor)
     return { ok: true, changed: run.changed, at: at ?? okAt, full }
   } catch (err) {
     if (err instanceof GcalCallError) {
@@ -55,6 +57,27 @@ export async function pullOnce(deps: GcalDeps): Promise<PullResult> {
       return { ok: false, code: err.code, off: false }
     }
     return { ok: false, code: null, off: false }
+  }
+}
+
+/** 휴무 줄 색으로 따를 색: off 일정 가운데 updated가 가장 나중인 것의 색. 그 색이 없거나(캘린더 기본 색) 지금 색과 같으면 null */
+export function offColorToFollow(events: readonly Pick<GEvent, 'updated' | 'colorId'>[], current: GColor): GColor | null {
+  let last: Pick<GEvent, 'updated' | 'colorId'> | null = null
+  for (const ev of events) {
+    if (last === null || (toMs(ev.updated) ?? -Infinity) > (toMs(last.updated) ?? -Infinity)) last = ev
+  }
+  const color = last === null ? null : colorFromId(last.colorId)
+  return color !== null && color !== current ? color : null
+}
+
+/** 휴무 줄 색 맞추기(받기·처음 가져오기 끝). 저장이 던지거나 거짓이어도 삼킨다 — 받기 결과 그대로, 다음에 off 일정이 바뀌면 또 맞춘다 */
+export async function followOffColor(deps: GcalDeps, events: readonly Pick<GEvent, 'updated' | 'colorId'>[], current: GColor): Promise<void> {
+  const color = offColorToFollow(events, current)
+  if (color === null) return
+  try {
+    await deps.store.setOffColor(color)
+  } catch {
+    // 함수가 아직 없거나(SQL 전) 저장 실패 — 휴무 줄 색만 그대로 둔다
   }
 }
 
@@ -141,6 +164,8 @@ function apptPatch(patch: GApptPatch, mapped: CalAppt): Partial<ApptDraft> {
 /** 받기 한 번의 일: 쪽마다 짝을 찾아 판단하고 적는다. 종일 줄·off 날·고쳐야 할 것은 한 번 읽어 두고 고친 대로 고쳐 둔다 */
 export class PullRun {
   changed = 0
+  /** 이 받기가 off 줄로 알아본 하루 종일 일정(휴무 줄 색 따라가기) */
+  readonly offEvents: GEvent[] = []
   private readonly ctx: SyncCtx
   private readonly scope: OffPerson[]
   private allday: CalAllDay[] | null = null
@@ -371,6 +396,7 @@ export class PullRun {
       await this.dropFixes(ev.id)
       await this.syncMemo(ev, d.days, p.memo)
     } else if (p.type === 'off') {
+      this.offEvents.push(ev)
       await this.dropMemos(ev)
       await this.dropFixes(ev.id)
       await this.syncOff(ev, d.days, p.people)

@@ -24,6 +24,7 @@ import {
   markApptSent,
   markMemoSent,
   newGoogleEventId,
+  rereadAppt,
   saveCalendarSettings,
   setApptAuto,
   updateAppt,
@@ -1485,6 +1486,98 @@ describe('AC-8503.3 markApptSent: 보낸 뒤 g_wait 비우기', () => {
   })
 })
 
+// 다시 알아보기 쓰기(google-link REQ-8544 AC-8544.5, design.md 21-2): 종류 둘·시행자 셋·g_how만, 읽은 구글 제목·g_updated 글자 그대로일 때만
+const DB_UPDATED = '2026-11-18T01:00:00.123456+00:00' // DB가 준 g_updated 글자(마이크로초) — Date를 거치지 않는다
+const READ_TITLE = '1500 가짜환자 자보 30분 (나)'
+const REREAD_EXPECT = { gTitle: READ_TITLE, gUpdated: DB_UPDATED }
+const REREAD_PATCH = { kindId: 'jabo', kindName: '자보도수', staffId: 'st-na', staffName: '나', staffMark: '나', gHow: { ...G_HOW, kind: 'title' as const } }
+const REREAD_BODY = { kind_id: 'jabo', kind_name: '자보도수', staff_id: 'st-na', staff_name: '나', staff_mark: '나', g_how: { ...G_HOW, kind: 'title' } }
+
+describe('AC-8544.5 rereadAppt: 다시 알아본 종류·시행자를 조건 고치기로 적기', () => {
+  it('AC-8544.5: 여섯 칸만 보내고 id·g_wait is null·g_title = 읽은 글·g_updated = 읽은 DB 글자 그대로를 조건으로 한다 → 1줄이면 참', async () => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    await expect(rereadAppt(client, ID2, REREAD_PATCH, REREAD_EXPECT)).resolves.toBe(true)
+    expect(calls).toEqual([
+      ['from', 'calendar_appts'],
+      ['update', REREAD_BODY],
+      ['eq', 'id', ID2],
+      ['is', 'g_wait', null],
+      ['eq', 'g_title', READ_TITLE],
+      ['eq', 'g_updated', DB_UPDATED],
+      ['select', 'id'],
+    ])
+  })
+
+  it('AC-8544.5: 읽은 g_updated가 없었으면 g_updated is null을 조건으로 한다', async () => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    await rereadAppt(client, ID2, { kindId: 'jabo', kindName: '자보도수' }, { gTitle: READ_TITLE, gUpdated: null })
+    expect(calls[1]).toEqual(['update', { kind_id: 'jabo', kind_name: '자보도수' }])
+    expect(calls[5]).toEqual(['is', 'g_updated', null])
+  })
+
+  it('AC-8544.5: 그사이 다른 PC가 고쳐 0줄이면 거짓이다(적지 않음)', async () => {
+    const { client } = fakeClient(okWith([]))
+    await expect(rereadAppt(client, ID2, REREAD_PATCH, REREAD_EXPECT)).resolves.toBe(false)
+  })
+
+  it.each<[string, unknown]>([
+    ['메모', { memo: '고침' }],
+    ['이름', { name: '가짜환자' }],
+    ['날짜', { day: DAY2 }],
+    ['시작', { start: 600 }],
+    ['상태', { status: 'cancel' }],
+    ['구글 제목', { gTitle: '새 제목' }],
+    ['구글 색', { gColor: 'tomato' }],
+    ['보낼 것', { gWait: 'edit' }],
+    ['구글 고친 때', { gUpdated: G_UPDATED }],
+    ['변경 표시', { gMoved: true }],
+    ['모르는 열쇠', { hospital_id: 'x' }],
+  ])('AC-8544.5: 여섯 칸 밖 열쇠(%s)가 있으면 보내지 않고 failed다', async (_name, extra) => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    const patch = { kindId: 'jabo', kindName: '자보도수', ...(extra as object) } as Parameters<typeof rereadAppt>[2]
+    expect((await caught(() => rereadAppt(client, ID2, patch, REREAD_EXPECT))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it.each<[string, string, unknown, unknown]>([
+    ['빈 patch', ID2, {}, REREAD_EXPECT],
+    ['undefined만 든 patch', ID2, { kindId: undefined }, REREAD_EXPECT],
+    ['시행자 세 칸 가운데 하나만', ID2, { staffId: 'st-na' }, REREAD_EXPECT],
+    ['종류 이름 11자', ID2, { kindId: 'jabo', kindName: '가'.repeat(11) }, REREAD_EXPECT],
+    ['종류 id 빈 글자', ID2, { kindId: '', kindName: '자보도수' }, REREAD_EXPECT],
+    ['g_how 모양 틀림', ID2, { gHow: { staff: 'x' } }, REREAD_EXPECT],
+    ['id 빈 글자', '', REREAD_PATCH, REREAD_EXPECT],
+    ['조건 없음', ID2, REREAD_PATCH, undefined],
+    ['읽은 제목이 글자가 아님', ID2, REREAD_PATCH, { gTitle: null, gUpdated: DB_UPDATED }],
+    ['읽은 제목 201자', ID2, REREAD_PATCH, { gTitle: '가'.repeat(201), gUpdated: DB_UPDATED }],
+    ['읽은 g_updated 글 틀림', ID2, REREAD_PATCH, { gTitle: READ_TITLE, gUpdated: '어제' }],
+    ['읽은 g_updated에 따옴표', ID2, REREAD_PATCH, { gTitle: READ_TITLE, gUpdated: '2026-11-18T01:00:00"Z' }],
+  ])('AC-8544.5: %s이면 보내지 않고 failed다', async (_name, id, patch, expectRead) => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    const run = () => rereadAppt(client, id, patch as Parameters<typeof rereadAppt>[2], expectRead as Parameters<typeof rereadAppt>[3])
+    expect((await caught(run)).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8544.5: 답이 목록이 아니면 failed다', async () => {
+    const { client } = fakeClient(okWith({ id: ID2 }))
+    expect((await caught(() => rereadAppt(client, ID2, REREAD_PATCH, REREAD_EXPECT))).kind).toBe('failed')
+  })
+
+  it('AC-8544.5: 진짜 클라이언트로도 PATCH ?id=eq·g_wait=is.null·g_title=eq.<읽은 글>·g_updated=eq.<DB 글 그대로>로 한 번 보낸다', async () => {
+    const fakeFetch = fetchReturning([{ id: ID2 }])
+    await expect(rereadAppt(realClient(fakeFetch), ID2, REREAD_PATCH, REREAD_EXPECT)).resolves.toBe(true)
+    const request = requestOf(fakeFetch)
+    expect(request.method).toBe('PATCH')
+    expect(request.url.searchParams.get('id')).toBe(`eq.${ID2}`)
+    expect(request.url.searchParams.get('g_wait')).toBe('is.null')
+    expect(request.url.searchParams.get('g_title')).toBe(`eq.${READ_TITLE}`)
+    expect(request.url.searchParams.get('g_updated')).toBe(`eq.${DB_UPDATED}`)
+    expect(request.url.searchParams.get('select')).toBe('id')
+    expect(request.body).toEqual(REREAD_BODY)
+  })
+})
+
 describe('AC-8503.3 insertGoogleAppts: 처음 가져오기·받기 넣기', () => {
   it('AC-8503.3: 500줄씩 on conflict (hospital_id, g_event_id) do nothing으로 넣는다. 줄마다 스물네 칸이 같은 차례다', async () => {
     const rows = many(501, (i) => ({ ...DRAFT, ...G_PART, gEventId: `event${String(i).padStart(4, '0')}` }))
@@ -1694,6 +1787,7 @@ const ALL: [string, Run][] = [
   ['findApptsByEvents', (c) => findApptsByEvents(c, [EVENT])],
   ['applyGoogleAppt', (c) => applyGoogleAppt(c, ID, { status: 'cancel' }, G_UPDATED, WAIT_AT)],
   ['markApptSent', (c) => markApptSent(c, ID, { gUpdated: G_UPDATED }, WAIT_AT)],
+  ['rereadAppt', (c) => rereadAppt(c, ID, { kindId: 'jabo', kindName: '자보도수' }, { gTitle: '1500 가짜환자 자보', gUpdated: G_UPDATED })],
   ['insertGoogleAppts', (c) => insertGoogleAppts(c, [{ ...DRAFT, ...G_PART }])],
   ['listWaitingMemos', (c) => listWaitingMemos(c, DAY)],
   ['markMemoSent', (c) => markMemoSent(c, ID, WAIT_AT)],

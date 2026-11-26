@@ -17,7 +17,10 @@ import {
   loadCalendarSettings,
   markApptSent,
   markMemoSent,
+  rereadAppt,
   updateAppt,
+  type ApptReread,
+  type ApptRereadExpect,
   type ApptSent,
 } from '@/lib/storage/calendar'
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
@@ -35,13 +38,14 @@ import {
   markGcalFail,
   markGcalOk,
   saveOffDay,
+  setGcalOffColor,
   setLinkedOn,
   upsertGcalFixes,
 } from '@/lib/storage/gcal'
 import { maskPrivate } from '@/lib/storage/maskPrivate'
 import { privacyProblem } from '@/lib/worklog/notes'
 import type { ApptDraft, CalAllDay, CalAppt } from '@/types/calendar'
-import type { FixGuess, GcalDelete, GcalFix, GcalFixInput, GcalLink, GcalOffDay, GcalOffDayInput, GcalState } from '@/types/gcal'
+import { G_COLORS, type FixGuess, type GcalDelete, type GcalFix, type GcalFixInput, type GcalLink, type GcalOffDay, type GcalOffDayInput, type GcalState, type GColor } from '@/types/gcal'
 import type { GcalAction, GcalCallLink, GcalReply } from './client'
 
 // 맞춤 엔진이 받는 것(spec google-link design.md 10-5): 구글 부르기(call) · 저장(store) · 지금 시각(now) · 병원 id.
@@ -84,6 +88,10 @@ export interface GcalStore {
   listOffDays(from: string, to: string): Promise<GcalOffDay[]>
   listWaitingOffDays(): Promise<GcalOffDay[]>
   saveOffDay(off: GcalOffDayInput, expectWaitAt?: string | null): Promise<boolean>
+  /** 다시 알아보기(design.md 21-2): 종류·시행자·출처만, g_wait 없음·구글 제목·g_updated가 읽은 글자 그대로일 때만. 0줄이면 거짓 */
+  rereadAppt(id: string, patch: ApptReread, expect: ApptRereadExpect): Promise<boolean>
+  /** 휴무 줄 색만 구글 off 일정 색으로(design.md 21-5, 원장·데스크 모두). 바뀌었으면 참 */
+  setOffColor(color: GColor): Promise<boolean>
 }
 
 export type GcalDeps = {
@@ -177,13 +185,15 @@ export function makeGcalDeps({ client, hospitalId, call, now = () => new Date() 
     listOffDays: (from, to) => listOffDays(client, from, to),
     listWaitingOffDays: () => listWaitingOffDays(client),
     saveOffDay: (off, expectWaitAt) => saveOffDay(client, off, expectWaitAt),
+    rereadAppt: (id, patch, expect) => rereadAppt(client, id, patch, expect),
+    setOffColor: (color) => setGcalOffColor(client, color),
   }
   return { hospitalId, call, store, now }
 }
 
 // ── 시험·화면 시안용 메모리 저장(DB 흉내) ─────────────────────
 // DB가 하는 일을 흉내 낸다: 조건 고치기(g_wait_at·wait_at은 글자 그대로 같을 때만, g_updated는 더 이를 때만) · 유일(병원·g_event_id,
-// (일정, 날) 메모, (날, 사람) off) · 트리거(g_wait_at = DB 지금 시각(마이크로초 글자), 옮기면 처음 자리·도착 비움, 지우면 지움 줄(한국 오늘 − 1년부터),
+// (일정, 날) 메모, (날, 사람) off) · 다시 알아보기(g_wait 없음·구글 제목·g_updated 글자가 같을 때만) · 휴무 줄 색(look.offColor 한 칸) · 트리거(g_wait_at = DB 지금 시각(마이크로초 글자), 옮기면 처음 자리·도착 비움, 지우면 지움 줄(한국 오늘 − 1년부터),
 // 하루 종일 off 줄을 넣거나 지우면 그날 off 날 wait) · pulled_until 앞으로만 · 개인정보 모양 이름·메모는 'blocked'. 부른 함수는 calls에 남는다
 
 export type MemoryDelete = GcalDelete & { at: string }
@@ -225,6 +235,7 @@ const APPT_KEYS = [
   'gFrom',
   'gHow',
 ] as const
+const REREAD_KEYS: readonly string[] = ['kindId', 'kindName', 'staffId', 'staffName', 'staffMark', 'gHow']
 const EMPTY_GUESS: FixGuess = { chart: null, name: null, kindId: null, kindHow: null, staffId: null, staffHow: null, memo: null, word: null }
 
 const copy = <T>(v: T): T => (v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T))
@@ -545,6 +556,22 @@ export function createMemoryStore({ now, link, parts, state }: { now: () => Date
       }
       if (!found || found.waitAt !== expectWaitAt) return false
       Object.assign(found, body)
+      return true
+    },
+    rereadAppt: async (id, patch, expect) => {
+      const keys = Object.keys(patch)
+      if (!keys.length || keys.some((k) => !REREAD_KEYS.includes(k))) throw new MemoryDbError('다시 알아보기 칸')
+      staffTrio(patch)
+      const at = findAppt(id)
+      if (at < 0) return false
+      const row = db.appts[at]
+      if (row.gWait !== null || row.gTitle !== expect.gTitle || row.gUpdated !== expect.gUpdated) return false
+      db.appts[at] = apptUpdate(row, patch as Partial<CalAppt>)
+      return true
+    },
+    setOffColor: async (color) => {
+      if (!(G_COLORS as readonly unknown[]).includes(color)) throw new MemoryDbError('구글 11색 아님')
+      db.link.look = { ...db.link.look, offColor: color }
       return true
     },
   }

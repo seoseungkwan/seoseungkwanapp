@@ -464,3 +464,65 @@ describe('AC-8525.5 too_old: [이은 날 0시, 오늘 + 2년 0시)를 처음부�
     expect(removes(app)).toEqual([])
   })
 })
+
+describe('AC-8547.1·AC-8547.3 받기: 휴무 줄 색은 구글 off 일정 색을 따른다', () => {
+  const BANANA_LOOK = { ...DEFAULT_GCAL_LOOK, noStaffKinds: ['shock'], offColor: 'banana' as const }
+  const offColorCalls = (mem: ReturnType<typeof createMemoryStore>) => mem.calls.filter((c) => c.fn === 'setOffColor')
+
+  it('AC-8547.1: off 일정 색(포도)이 휴무 줄 색(바나나)과 다르면 받기 끝에 setOffColor(포도)를 한 번 부르고 offColor만 바뀐다', async () => {
+    const { app, mem, deps } = rig({ look: BANANA_LOOK })
+    app.store.allDay('evoff0001', '2026-11-28', '2026-11-29', { summary: '정호연 off', colorId: '3' })
+    const r = await pullOnce(deps)
+    expect(r).toMatchObject({ ok: true })
+    expect(offColorCalls(mem).map((c) => c.args)).toEqual([['grape']])
+    expect(mem.db.link.look).toEqual({ ...BANANA_LOOK, offColor: 'grape' })
+    expect(mem.db.link.rules).toEqual(DEFAULT_GCAL_RULES)
+    // 다음 받기는 새 색과 같아 다시 부르지 않는다
+    app.env.nowMs += 2 * 60_000
+    await pullOnce(deps)
+    expect(offColorCalls(mem)).toHaveLength(1)
+  })
+
+  it('AC-8547.1: 그 받기에 off 일정이 여럿이면 updated가 가장 나중인 것의 색이다', async () => {
+    const { app, mem, deps } = rig({ look: BANANA_LOOK })
+    app.store.allDay('evoff0001', '2026-11-28', '2026-11-29', { summary: '정호연 off', colorId: '7', updated: '2026-11-26T00:50:00.000Z' })
+    app.store.allDay('evoff0002', '2026-11-30', '2026-12-01', { summary: '박지원 off', colorId: '3', updated: '2026-11-26T00:40:00.000Z' })
+    await pullOnce(deps)
+    expect(offColorCalls(mem).map((c) => c.args)).toEqual([['peacock']])
+    expect(mem.db.link.look.offColor).toBe('peacock')
+  })
+
+  it('AC-8547.3: off 일정 색이 없거나(캘린더 기본 색) 이미 같은 색이면 저장하지 않고, off가 아닌 일정 색은 보지 않는다', async () => {
+    const plain = rig({ look: BANANA_LOOK })
+    plain.app.store.allDay('evoff0001', '2026-11-28', '2026-11-29', { summary: '정호연 off' })
+    plain.app.store.allDay('evmemo001', '2026-11-29', '2026-11-30', { summary: '원장님 학회', colorId: '3' })
+    plain.app.store.timed('evappt001', '2026-11-27T10:00', '2026-11-27T10:30', { summary: '1234 홍길동 도수 30분 (호)', colorId: '3' })
+    expect(await pullOnce(plain.deps)).toMatchObject({ ok: true })
+    expect(offColorCalls(plain.mem)).toEqual([])
+    expect(plain.mem.db.link.look.offColor).toBe('banana')
+
+    const same = rig({ look: BANANA_LOOK })
+    same.app.store.allDay('evoff0001', '2026-11-28', '2026-11-29', { summary: '정호연 off', colorId: '5' })
+    await pullOnce(same.deps)
+    expect(offColorCalls(same.mem)).toEqual([])
+  })
+
+  it.each([
+    ['던짐', async () => Promise.reject(new Error('함수 없음'))],
+    ['거짓', async () => false],
+  ])('AC-8547.3: 색 저장이 실패(%s)해도 받기 결과는 그대로다', async (_name, fail) => {
+    const ok = rig({ look: BANANA_LOOK })
+    const bad = rig({ look: BANANA_LOOK })
+    for (const r of [ok, bad]) {
+      r.app.store.allDay('evoff0001', '2026-11-28', '2026-11-29', { summary: '정호연 off', colorId: '3' })
+      r.app.store.timed('evappt001', '2026-11-27T10:00', '2026-11-27T10:30', { summary: '1234 홍길동 도수 30분 (호)' })
+    }
+    const want = await pullOnce(ok.deps)
+    const got = await pullOnce({ ...bad.deps, store: { ...bad.mem.store, setOffColor: fail } })
+    expect(got).toEqual(want)
+    expect(bad.mem.db.link.look.offColor).toBe('banana')
+    expect(bad.mem.db.state.failCode).toBeNull()
+    expect(bad.mem.db.offDays).toEqual(ok.mem.db.offDays)
+    expect(bad.mem.db.appts.map((a) => a.gEventId)).toEqual(['evappt001'])
+  })
+})
