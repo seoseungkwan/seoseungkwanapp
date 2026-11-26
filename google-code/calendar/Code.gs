@@ -1,0 +1,658 @@
+/**
+ * 예약 구글 코드(판 1) - 병원 구글 계정에 붙이는 웹 앱
+ *
+ * 웹앱 예약 탭이 병원 구글 캘린더 하나와 예약을 양쪽으로 맞출 때 부른다(웹앱 specs/google-link design.md 8-2).
+ * 캘린더 고급 서비스(Calendar API v3)를 쓴다 — 편집기 왼쪽 [서비스] 옆 [+]에서 'Google Calendar API'를 추가해야 한다.
+ * 그래야 바뀐 것만·지운 것까지 받고(updatedMin·showDeleted), 웹앱이 정한 id로 일정을 만들고, 지운 일정을 되살릴 수 있다.
+ *
+ * 이 코드는 웹앱 설정 › 구글 캘린더 › 잇기의 [구글 코드 복사] 단추로 복사해서 붙인다(웹앱이 비밀 글자를 넣어 복사한다).
+ * 손으로 고치지 않는다. 일정 제목·환자 이름은 기록(로그)이나 오류 글에 내지 않는다.
+ * 시각은 모두 한국 시각이다: 답의 일정 시각은 'YYYY-MM-DDTHH:mm', 하루 종일은 'YYYY-MM-DD'(끝은 다음 날, 구글과 같음).
+ */
+
+// 아래 줄의 비밀 글자 자리는 웹앱이 복사할 때 바꿔 넣는다.
+// 그 자리 글자는 이 파일 안에서 아래 한 번만 나와야 한다(웹앱이 그대로 바꿔 끼우므로).
+const KEY = '__KEY__';
+
+const CAL_VERSION = '1';
+const KEY_PLACEHOLDER_ = '__' + 'KEY' + '__';
+const KEY_MIN_LENGTH_ = 16;
+const TZ_ = 'Asia/Seoul';
+const TZ_OFFSET_ = '+09:00';
+const KST_MS_ = 9 * 3600 * 1000; // 한국은 서머타임이 없다
+const DAY_MS_ = 24 * 3600 * 1000;
+const LOCK_WAIT_MS_ = 30000;
+const PAGE_MAX_ = 2500; // Events.list 한 쪽(구글 최대)
+const CAL_PAGE_MAX_ = 250; // CalendarList.list 한 쪽
+const COUNT_MAX_ = 10000; // ping의 지난 1년·앞으로 수는 여기서 멈춘다
+const DESCRIPTION_MAX_ = 500;
+const TEXT_MAX_ = 8192;
+const TOKEN_MAX_ = 4096;
+const OFF_WORD_MAX_ = 50;
+const COLOR_RE_ = /^(?:[1-9]|1[01])$/;
+const DAY_RE_ = /^(\d{4})-(\d{2})-(\d{2})$/;
+const LOCAL_RE_ = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
+const ID_RE_ = /^[A-Za-z0-9_@.-]{1,1024}$/; // 읽고 고칠 일정 id(반복 일정 하나는 '<id>_20261126T010000Z' 꼴)
+const NEW_ID_RE_ = /^[a-v0-9]{5,1024}$/; // 새로 만드는 일정 id(구글 규칙: base32hex 소문자·숫자)
+const OFF_ID_RE_ = /^sskoff[a-v0-9]{32}(\d{8})$/; // off 줄 id = sskoff + 병원 id 32자 + YYYYMMDD
+const FIELD_KEYS_ = ['summary', 'description', 'start', 'end', 'allDay', 'colorId'];
+const COUNTED_ACCESS_ = ['owner', 'writer'];
+const LIMIT_REASONS_ = ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded'];
+
+/** 주소를 브라우저로 열면 짧은 글만 보여 준다. 자료는 내지 않는다. */
+function doGet() {
+  return ContentService.createTextOutput('Seoseungkwan calendar ok').setMimeType(ContentService.MimeType.TEXT);
+}
+
+/** 웹앱이 JSON {key, action, …}을 보낸다. 답도 JSON이다(모든 답에 판 version). */
+function doPost(e) {
+  let result;
+  try {
+    const body = e && e.postData && typeof e.postData.contents === 'string' ? e.postData.contents : '';
+    let req = null;
+    try {
+      req = JSON.parse(body);
+    } catch (ignored) {
+      req = null;
+    }
+    result = isObj_(req) ? route_(req) : fail_('bad_request', '요청 모양이 잘못되었습니다(JSON이 아님).');
+  } catch (err) {
+    result = errorResult_(err);
+  }
+  return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function route_(req) {
+  const keyProblem = checkKey_(req.key);
+  if (keyProblem) return keyProblem;
+  if (typeof Calendar === 'undefined') {
+    return fail_('no_service',
+      "구글 코드에서 캘린더 서비스가 켜져 있지 않습니다. 편집기 왼쪽 [서비스] 옆 [+]에서 'Google Calendar API'를 추가하고 새 버전으로 배포하세요.");
+  }
+  switch (req.action) {
+    case 'ping': return ping_();
+    case 'list': return list_(req);
+    case 'changes': return changes_(req);
+    case 'put': return put_(req);
+    case 'remove': return remove_(req);
+    case 'dropDay': return dropDay_(req);
+    case 'off': return off_(req);
+    default:
+      return fail_('bad_request', "action은 'ping'·'list'·'changes'·'put'·'remove'·'dropDay'·'off' 가운데 하나여야 합니다.");
+  }
+}
+
+/** 비밀 글자 자리를 아직 안 바꿨거나 너무 짧으면 token_not_set, 보낸 열쇠가 틀리면 bad_token(수납 코드와 같은 이름). */
+function checkKey_(given) {
+  if (typeof KEY !== 'string' || KEY === KEY_PLACEHOLDER_ || KEY.length < KEY_MIN_LENGTH_) {
+    return fail_('token_not_set',
+      '구글 코드에 비밀 글자가 아직 들어가지 않았습니다. 웹앱 설정 › 구글 캘린더 › 잇기의 [구글 코드 복사]로 다시 붙이고 새 버전으로 배포하세요.');
+  }
+  if (typeof given !== 'string' || !sameText_(given, KEY)) {
+    return fail_('bad_token', '비밀 글자가 맞지 않습니다. 웹앱 설정에서 코드를 다시 복사해 붙이고 새 버전으로 배포하세요.');
+  }
+  return null;
+}
+
+/** 길이가 같으면 끝까지 다 비교한다(맞는 앞부분 길이를 시간으로 알아채지 못하게). */
+function sameText_(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** 쓰기는 스크립트 Lock 안에서 한 번에 하나(두 PC가 같은 일정을 함께 보내도 하나). 30초 안에 못 잡으면 busy. */
+function withLock_(work) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS_)) return fail_('busy', '다른 쓰기가 아직 끝나지 않았습니다. 잠시 뒤 다시 보내 주세요.');
+  try {
+    return work();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------------------------------------------------------------- ping
+
+/**
+ * ping: 캘린더 목록. 고칠 수 있는 캘린더(owner·writer)만 지난 1년·앞으로 일정 수(각 10,000에서 멈춤)를 센다.
+ * 지난 1년 = [오늘 − 1년 0시, 오늘 0시), 앞으로 = [오늘 0시, 오늘 + 2년 0시) — 웹앱 처음 가져오기와 같은 범위.
+ */
+function ping_() {
+  const nowMs = Date.now();
+  const today = fmtDay_(nowMs + KST_MS_);
+  const pastFrom = dayStart_(addYears_(today, -1));
+  const todayStart = dayStart_(today);
+  const futureTo = dayStart_(addYears_(today, 2));
+  const calendars = [];
+  let token = null;
+  do {
+    const opts = { maxResults: CAL_PAGE_MAX_ };
+    if (token) opts.pageToken = token;
+    const page = Calendar.CalendarList.list(opts);
+    (page.items || []).forEach(function (c) {
+      const counted = COUNTED_ACCESS_.indexOf(c.accessRole) >= 0;
+      calendars.push({
+        id: String(c.id),
+        name: String(c.summaryOverride || c.summary || ''),
+        access: String(c.accessRole || ''),
+        hex: hex_(c.backgroundColor),
+        past: counted ? countEvents_(c.id, pastFrom, todayStart) : null,
+        future: counted ? countEvents_(c.id, todayStart, futureTo) : null,
+      });
+    });
+    token = page.nextPageToken || null;
+  } while (token);
+  return ok_({ now: new Date(nowMs).toISOString(), calendars: calendars });
+}
+
+function countEvents_(calendarId, timeMin, timeMax) {
+  let n = 0;
+  let token = null;
+  do {
+    const opts = {
+      timeMin: timeMin, timeMax: timeMax, singleEvents: true, showDeleted: false,
+      maxResults: PAGE_MAX_, fields: 'items(id),nextPageToken',
+    };
+    if (token) opts.pageToken = token;
+    const page = Calendar.Events.list(calendarId, opts);
+    n += (page.items || []).length;
+    token = page.nextPageToken || null;
+  } while (token && n < COUNT_MAX_);
+  return Math.min(n, COUNT_MAX_);
+}
+
+function hex_(v) {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toUpperCase() : null;
+}
+
+// ---------------------------------------------------------------- list · changes
+
+/** list {calendarId, from, to, pageToken?}: [from 0시, to 0시) 일정(지운 것 빼고, 반복은 하나씩), 쪽마다 2,500개까지. */
+function list_(req) {
+  const calendarId = calendarIdArg_(req);
+  const from = dayArg_(req.from, 'from');
+  const to = dayArg_(req.to, 'to');
+  if (!(from < to)) throw badRequest_('to는 from보다 뒤 날이어야 합니다.');
+  const token = pageTokenArg_(req.pageToken);
+  const nowIso = nowIso_();
+  const opts = { timeMin: dayStart_(from), timeMax: dayStart_(to), singleEvents: true, showDeleted: false, maxResults: PAGE_MAX_ };
+  if (token) opts.pageToken = token;
+  return pageResult_(Calendar.Events.list(calendarId, opts), nowIso);
+}
+
+/**
+ * changes {calendarId, since(RFC3339), from(날짜), pageToken?}: since 뒤에 바뀐 일정(지운 것 포함), from 0시부터 끝 없이.
+ * 구글이 since가 너무 오래됐다고(410) 하면 too_old — 웹앱이 처음부터 다시 받는다.
+ */
+function changes_(req) {
+  const calendarId = calendarIdArg_(req);
+  const since = instantArg_(req.since);
+  const from = dayArg_(req.from, 'from');
+  const token = pageTokenArg_(req.pageToken);
+  const nowIso = nowIso_();
+  const opts = { updatedMin: since, showDeleted: true, singleEvents: true, timeMin: dayStart_(from), maxResults: PAGE_MAX_ };
+  if (token) opts.pageToken = token;
+  let page;
+  try {
+    page = Calendar.Events.list(calendarId, opts);
+  } catch (err) {
+    if (!isLimit_(err) && httpStatus_(err) === 410) {
+      return fail_('too_old', '바뀐 것을 받을 수 있는 때가 지났습니다. 처음부터 다시 받아 주세요.');
+    }
+    throw err;
+  }
+  return pageResult_(page, nowIso);
+}
+
+function pageResult_(page, nowIso) {
+  const events = (page.items || []).map(function (ev) { return shape_(ev, nowIso); });
+  return ok_({ now: nowIso, events: events, next: page.nextPageToken || null });
+}
+
+/** 답의 일정 모양. 지운 일정은 칸이 비어 올 수 있다(시각 null, updated가 없으면 답의 now). */
+function shape_(ev, nowIso) {
+  return {
+    id: String(ev.id),
+    status: ev.status === 'cancelled' ? 'cancelled' : 'confirmed',
+    summary: typeof ev.summary === 'string' ? ev.summary : '',
+    description: typeof ev.description === 'string' ? ev.description.slice(0, DESCRIPTION_MAX_) : '',
+    allDay: isAllDay_(ev),
+    start: when_(ev.start),
+    end: when_(ev.end),
+    colorId: ev.colorId !== undefined && ev.colorId !== null && COLOR_RE_.test(String(ev.colorId)) ? String(ev.colorId) : null,
+    updated: typeof ev.updated === 'string' && ev.updated ? ev.updated : nowIso,
+    recurring: !!(ev.recurringEventId || (Array.isArray(ev.recurrence) && ev.recurrence.length)),
+  };
+}
+
+function when_(t) {
+  if (!isObj_(t)) return null;
+  if (typeof t.date === 'string') return t.date;
+  if (typeof t.dateTime === 'string') return toSeoul_(t.dateTime);
+  return null;
+}
+
+// ---------------------------------------------------------------- put · remove
+
+/**
+ * put {calendarId, id, fields{summary?, description?, start?, end?, allDay?, colorId?}}:
+ * 그 id 일정이 있으면(지운 것이면 되살림) 준 칸만 고치고, 없으면 그 id로 만든다. 같은 put을 두 번 보내도 일정은 하나.
+ */
+function put_(req) {
+  const calendarId = calendarIdArg_(req);
+  const id = eventIdArg_(req.id);
+  const fields = fieldsArg_(req.fields);
+  return withLock_(function () {
+    return ok_({ event: shape_(upsert_(calendarId, id, fields), nowIso_()) });
+  });
+}
+
+function upsert_(calendarId, id, fields) {
+  const cur = getOrNull_(calendarId, id);
+  if (cur) {
+    const patch = resource_(fields, false);
+    if (cur.status === 'cancelled') patch.status = 'confirmed';
+    return Calendar.Events.patch(patch, calendarId, id);
+  }
+  if (!has_(fields, 'start')) throw badRequest_('새 일정에는 fields.start·end가 있어야 합니다.');
+  if (!NEW_ID_RE_.test(id)) throw badRequest_('새 일정 id는 구글 규칙(숫자·a~v 소문자 5자 이상)이어야 합니다.');
+  const res = resource_(fields, true);
+  res.id = id;
+  return Calendar.Events.insert(res, calendarId);
+}
+
+/** remove {calendarId, id}: 지운다. 없거나(404) 이미 지운(410) 일정도 성공. */
+function remove_(req) {
+  const calendarId = calendarIdArg_(req);
+  const id = eventIdArg_(req.id);
+  return withLock_(function () {
+    removeQuiet_(calendarId, id);
+    return ok_({});
+  });
+}
+
+function removeQuiet_(calendarId, id) {
+  try {
+    Calendar.Events.remove(calendarId, id);
+  } catch (err) {
+    if (isLimit_(err) || !isMissing_(err)) throw err;
+  }
+}
+
+function getOrNull_(calendarId, id) {
+  try {
+    return Calendar.Events.get(calendarId, id);
+  } catch (err) {
+    if (!isLimit_(err) && isMissing_(err)) return null;
+    throw err;
+  }
+}
+
+/** 웹앱 칸 → 구글 일정 칸. 고칠 때(patch)는 종일 ↔ 시각을 바꿀 수 있게 다른 쪽 칸을 null로 지운다. */
+function resource_(fields, forInsert) {
+  const r = {};
+  if (has_(fields, 'summary')) r.summary = fields.summary;
+  if (has_(fields, 'description')) r.description = fields.description;
+  if (has_(fields, 'colorId') && (fields.colorId !== null || !forInsert)) r.colorId = fields.colorId;
+  if (has_(fields, 'start')) {
+    r.start = googleTime_(fields.start, fields.allDay, forInsert);
+    r.end = googleTime_(fields.end, fields.allDay, forInsert);
+  }
+  return r;
+}
+
+function googleTime_(v, allDay, forInsert) {
+  if (allDay) return forInsert ? { date: v } : { date: v, dateTime: null, timeZone: null };
+  const t = { dateTime: v + ':00' + TZ_OFFSET_, timeZone: TZ_ };
+  if (!forInsert) t.date = null;
+  return t;
+}
+
+// ---------------------------------------------------------------- dropDay
+
+/** dropDay {calendarId, id, day}: 여러 날 종일 일정에서 그날을 뗀다. 없거나 지운 일정이면 할 일 없음(events []). */
+function dropDay_(req) {
+  const calendarId = calendarIdArg_(req);
+  const id = eventIdArg_(req.id);
+  const day = dayArg_(req.day, 'day');
+  return withLock_(function () {
+    const ev = getOrNull_(calendarId, id);
+    if (!ev || ev.status === 'cancelled') return ok_({ events: [] });
+    if (!isAllDay_(ev)) throw badRequest_('dropDay는 하루 종일 일정에만 씁니다.');
+    const nowIso = nowIso_();
+    return ok_({ events: cutDay_(calendarId, ev, day).map(function (x) { return shape_(x, nowIso); }) });
+  });
+}
+
+/**
+ * 종일 일정 ev에서 day를 떼고 남은 일정들을 돌려준다.
+ * 하루짜리면 지우고, 첫날·끝날이면 그 일정을 줄이고, 가운데면 앞쪽은 그 일정을 줄이고 뒤쪽은 같은 제목·설명·색으로 새 일정 하나.
+ * 뒤쪽은 정해진 id(원래 id + 'd' + 뒤쪽 첫날)로 먼저 만들어, 앞쪽 고치기가 실패해 다시 보내도 뒤쪽이 둘이 되지 않게 한다.
+ */
+function cutDay_(calendarId, ev, day) {
+  const s = ev.start.date;
+  const e = ev.end.date;
+  const next = addDays_(day, 1);
+  if (!(s <= day && day < e)) return [ev];
+  if (s === day && next === e) {
+    removeQuiet_(calendarId, ev.id);
+    return [];
+  }
+  if (s === day) return [Calendar.Events.patch({ start: { date: next } }, calendarId, ev.id)];
+  if (next === e) return [Calendar.Events.patch({ end: { date: day } }, calendarId, ev.id)];
+  const back = { summary: ev.summary || '', description: ev.description || '', allDay: true, start: next, end: e };
+  if (ev.colorId !== undefined && ev.colorId !== null && COLOR_RE_.test(String(ev.colorId))) back.colorId = String(ev.colorId);
+  const backId = splitId_(ev.id, next);
+  const backEv = backId ? upsert_(calendarId, backId, back) : Calendar.Events.insert(resource_(back, true), calendarId);
+  const front = Calendar.Events.patch({ end: { date: day } }, calendarId, ev.id);
+  return [front, backEv];
+}
+
+function splitId_(id, day) {
+  const out = String(id) + 'd' + day.replace(/-/g, '');
+  return NEW_ID_RE_.test(out) ? out : null;
+}
+
+// ---------------------------------------------------------------- off
+
+/**
+ * off {calendarId, day, id?, newId, offWord, title, colorId}: 그날 off 줄(하루 종일 일정 하나)을 title로 고친다.
+ * 고칠 일정 찾는 차례: ① id 일정(지우지 않았고 그날을 덮는 종일) ② 그날 종일 일정 가운데 제목이 offWord이거나
+ * ' {offWord}'로 끝나는 것(먼저 만든 것) ③ newId 일정(지운 것이면 되살림).
+ * 찾으면 title이 비면 지우고(여러 날이면 그날만 뗌), 하루짜리면 고치고, 여러 날이면 그날을 뗀 뒤 newId로 하루 일정.
+ * 못 찾으면 title이 있을 때만 newId로 만든다. newId는 병원·날짜로 정해져 두 PC가 같은 날을 함께 보내도 하나다.
+ */
+function off_(req) {
+  const calendarId = calendarIdArg_(req);
+  const day = dayArg_(req.day, 'day');
+  const id = req.id === undefined || req.id === null || req.id === '' ? null : eventIdArg_(req.id);
+  const newId = offIdArg_(req.newId, day);
+  const word = offWordArg_(req.offWord);
+  const title = textArg_(req.title, 'title').trim();
+  const colorId = colorArg_(req.colorId);
+  return withLock_(function () {
+    const found = findOff_(calendarId, day, id, newId, word);
+    const done = writeOff_(calendarId, day, found, newId, title, colorId);
+    return ok_({ event: done ? shape_(done, nowIso_()) : null });
+  });
+}
+
+function findOff_(calendarId, day, id, newId, word) {
+  if (id) {
+    const given = getOrNull_(calendarId, id);
+    if (given && given.status !== 'cancelled' && covers_(given, day)) return given;
+  }
+  const page = Calendar.Events.list(calendarId, {
+    timeMin: dayStart_(day), timeMax: dayStart_(addDays_(day, 1)), singleEvents: true, showDeleted: false, maxResults: PAGE_MAX_,
+  });
+  const hits = (page.items || []).filter(function (ev) {
+    if (ev.status === 'cancelled' || !covers_(ev, day)) return false;
+    const t = typeof ev.summary === 'string' ? ev.summary.trim() : '';
+    return t === word || t.endsWith(' ' + word);
+  });
+  hits.sort(function (a, b) {
+    return createdMs_(a) - createdMs_(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+  if (hits.length) return hits[0];
+  return getOrNull_(calendarId, newId);
+}
+
+function writeOff_(calendarId, day, found, newId, title, colorId) {
+  const one = { summary: title, colorId: colorId, allDay: true, start: day, end: addDays_(day, 1) };
+  if (!found) {
+    if (!title) return null;
+    const res = resource_(one, true);
+    res.id = newId;
+    return Calendar.Events.insert(res, calendarId);
+  }
+  const live = found.status !== 'cancelled';
+  if (live && covers_(found, day) && !isOneDay_(found, day)) {
+    cutDay_(calendarId, found, day);
+    if (!title) return null;
+    // 정해진 id 일정이 구글에서 여러 날로 늘어난 드문 경우에는 그 id를 쓸 수 없어 구글이 정한 id로 만든다
+    if (found.id === newId) return Calendar.Events.insert(resource_(one, true), calendarId);
+    return upsert_(calendarId, newId, one);
+  }
+  if (!title) {
+    if (live) removeQuiet_(calendarId, found.id);
+    return null;
+  }
+  const patch = live && isOneDay_(found, day) ? resource_({ summary: title, colorId: colorId }, false) : resource_(one, false);
+  if (!live) patch.status = 'confirmed';
+  return Calendar.Events.patch(patch, calendarId, found.id);
+}
+
+function isAllDay_(ev) {
+  return !!(ev && isObj_(ev.start) && typeof ev.start.date === 'string' && isObj_(ev.end) && typeof ev.end.date === 'string');
+}
+
+function covers_(ev, day) {
+  return isAllDay_(ev) && ev.start.date <= day && day < ev.end.date;
+}
+
+function isOneDay_(ev, day) {
+  return isAllDay_(ev) && ev.start.date === day && ev.end.date === addDays_(day, 1);
+}
+
+function createdMs_(ev) {
+  const t = typeof ev.created === 'string' ? Date.parse(ev.created) : NaN;
+  return isNaN(t) ? Number.MAX_VALUE : t;
+}
+
+// ---------------------------------------------------------------- 받은 칸 검사(오류 글에 받은 값을 싣지 않는다)
+
+function calendarIdArg_(req) {
+  const v = req.calendarId;
+  if (typeof v !== 'string' || v.length < 1 || v.length > 1024 || /\s/.test(v)) {
+    throw badRequest_('calendarId(고른 캘린더)가 비었거나 모양이 틀렸습니다.');
+  }
+  return v;
+}
+
+function eventIdArg_(v) {
+  if (typeof v !== 'string' || !ID_RE_.test(v)) throw badRequest_('일정 id가 비었거나 모양이 틀렸습니다.');
+  return v;
+}
+
+function dayArg_(v, name) {
+  if (!isDay_(v)) throw badRequest_(name + '는 YYYY-MM-DD 꼴의 날짜여야 합니다.');
+  return v;
+}
+
+function instantArg_(v) {
+  const t = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) ? Date.parse(v) : NaN;
+  if (isNaN(t)) throw badRequest_('since는 RFC3339 시각이어야 합니다.');
+  return new Date(t).toISOString();
+}
+
+function pageTokenArg_(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string' || v.length > TOKEN_MAX_) throw badRequest_('pageToken 모양이 틀렸습니다.');
+  return v;
+}
+
+function textArg_(v, name) {
+  if (typeof v !== 'string' || v.length > TEXT_MAX_) throw badRequest_(name + '는 글이어야 합니다.');
+  return v;
+}
+
+function colorArg_(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string' || !COLOR_RE_.test(v)) throw badRequest_('colorId는 1~11 글자이거나 null이어야 합니다.');
+  return v;
+}
+
+function offIdArg_(v, day) {
+  const m = typeof v === 'string' ? OFF_ID_RE_.exec(v) : null;
+  if (!m || m[1] !== day.replace(/-/g, '')) throw badRequest_('newId는 sskoff + 병원 id 32자 + 그날 YYYYMMDD여야 합니다.');
+  return v;
+}
+
+function offWordArg_(v) {
+  const w = typeof v === 'string' ? v.trim() : '';
+  if (!w || w.length > OFF_WORD_MAX_ || /\s/.test(w)) throw badRequest_('offWord는 빈칸 없는 짧은 글이어야 합니다.');
+  return w;
+}
+
+/** fields 검사. start·end는 함께, allDay가 없으면 start 꼴(날짜/시각)로 본다. 끝은 시작보다 뒤. */
+function fieldsArg_(f) {
+  if (!isObj_(f)) throw badRequest_('fields는 객체여야 합니다.');
+  Object.keys(f).forEach(function (k) {
+    if (FIELD_KEYS_.indexOf(k) < 0) throw badRequest_('fields에 모르는 칸이 있습니다.');
+  });
+  const out = {};
+  if (has_(f, 'summary')) out.summary = textArg_(f.summary, 'fields.summary');
+  if (has_(f, 'description')) out.description = textArg_(f.description, 'fields.description');
+  if (has_(f, 'colorId')) {
+    if (f.colorId !== null && !(typeof f.colorId === 'string' && COLOR_RE_.test(f.colorId))) {
+      throw badRequest_('fields.colorId는 1~11 글자이거나 null이어야 합니다.');
+    }
+    out.colorId = f.colorId;
+  }
+  if (has_(f, 'allDay') && typeof f.allDay !== 'boolean') throw badRequest_('fields.allDay는 참거짓이어야 합니다.');
+  if (has_(f, 'start') !== has_(f, 'end')) throw badRequest_('fields.start·end는 함께 보내야 합니다.');
+  if (has_(f, 'start')) {
+    const allDay = has_(f, 'allDay') ? f.allDay : isDay_(f.start);
+    const shapeOk = allDay ? isDay_(f.start) && isDay_(f.end) : isLocal_(f.start) && isLocal_(f.end);
+    if (!shapeOk) throw badRequest_('fields.start·end는 하루 종일이면 YYYY-MM-DD, 아니면 YYYY-MM-DDTHH:mm(한국 시각)이어야 합니다.');
+    if (!(f.start < f.end)) throw badRequest_('fields.end는 start보다 뒤여야 합니다.');
+    out.allDay = allDay;
+    out.start = f.start;
+    out.end = f.end;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 날짜·시각(한국)
+
+function isDay_(v) {
+  const m = typeof v === 'string' ? DAY_RE_.exec(v) : null;
+  return !!m && fmtDay_(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) === v;
+}
+
+function isLocal_(v) {
+  const m = typeof v === 'string' ? LOCAL_RE_.exec(v) : null;
+  return !!m && isDay_(m[1]) && Number(m[2]) < 24 && Number(m[3]) < 60;
+}
+
+/** 숫자 시각(UTC 기준) → 'YYYY-MM-DD'. 한국 날짜는 + 9시간 한 숫자를 넣는다. */
+function fmtDay_(ms) {
+  const d = new Date(ms);
+  return d.getUTCFullYear() + '-' + pad2_(d.getUTCMonth() + 1) + '-' + pad2_(d.getUTCDate());
+}
+
+function pad2_(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function dayMs_(day) {
+  const m = DAY_RE_.exec(day);
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function addDays_(day, n) {
+  return fmtDay_(dayMs_(day) + n * DAY_MS_);
+}
+
+/** n년 뒤(앞) 같은 날. 그 달에 없는 날(2월 29일)은 그 달 끝날. */
+function addYears_(day, n) {
+  const m = DAY_RE_.exec(day);
+  const y = Number(m[1]) + n;
+  const mo = Number(m[2]) - 1;
+  const last = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+  return fmtDay_(Date.UTC(y, mo, Math.min(Number(m[3]), last)));
+}
+
+/** 그날 한국 0시(RFC3339). */
+function dayStart_(day) {
+  return day + 'T00:00:00' + TZ_OFFSET_;
+}
+
+/** 구글 시각(RFC3339, 어느 시간대든) → 한국 'YYYY-MM-DDTHH:mm'. */
+function toSeoul_(dateTime) {
+  const t = Date.parse(dateTime);
+  if (isNaN(t)) return null;
+  const d = new Date(t + KST_MS_);
+  return fmtDay_(t + KST_MS_) + 'T' + pad2_(d.getUTCHours()) + ':' + pad2_(d.getUTCMinutes());
+}
+
+function nowIso_() {
+  return new Date(Date.now()).toISOString();
+}
+
+// ---------------------------------------------------------------- 답·오류
+
+function ok_(more) {
+  const out = { ok: true, version: CAL_VERSION };
+  Object.keys(more).forEach(function (k) { out[k] = more[k]; });
+  return out;
+}
+
+/** 오류 답. error·code 둘 다 같은 이름(웹앱이 어느 칸을 읽어도 같게), message는 정해 둔 글만(받은 값·구글 글을 싣지 않음). */
+function fail_(code, message) {
+  return { ok: false, version: CAL_VERSION, error: code, code: code, message: message };
+}
+
+function calError_(code, message) {
+  const e = new Error(message);
+  e.calCode = code;
+  return e;
+}
+
+function badRequest_(message) {
+  return calError_('bad_request', message);
+}
+
+/** 구글 오류 → 이름. 구글 오류 글은 답에 싣지 않는다(제목·이름이 섞일 수 있어서). */
+function errorResult_(err) {
+  if (err && err.calCode) return fail_(err.calCode, String(err.message));
+  if (isLimit_(err)) return fail_('limit', '구글이 정한 부르기 횟수를 넘었습니다. 나중에 다시 보내 주세요.');
+  const status = httpStatus_(err);
+  if (status === 404 || status === 403) return fail_('gone', '고른 캘린더를 찾을 수 없거나 고칠 권한이 없습니다.');
+  if (status === 400) return fail_('bad_request', '구글이 요청 모양을 받지 않았습니다(번호 400).');
+  return fail_('failed', '구글 캘린더 쪽 오류입니다' + (status ? '(번호 ' + status + ')' : '') + '. 잠시 뒤 다시 보내 주세요.');
+}
+
+/** 고급 서비스 오류의 HTTP 번호. details.code가 없으면 오류 글로 짐작한다. */
+function httpStatus_(err) {
+  const d = err && err.details;
+  if (d && typeof d.code === 'number') return d.code;
+  const text = errText_(err);
+  if (/\bnot found\b/i.test(text)) return 404;
+  if (/has been deleted|too far in the past|updatedMinTooLongAgo|\bgone\b/i.test(text)) return 410;
+  if (/forbidden|insufficient permission|writer access|access denied|not have permission/i.test(text)) return 403;
+  if (/already exists|duplicate/i.test(text)) return 409;
+  if (/too many requests/i.test(text)) return 429;
+  return 0;
+}
+
+function errReason_(err) {
+  const d = err && err.details;
+  const list = d && Array.isArray(d.errors) ? d.errors : [];
+  return list.length && list[0] && typeof list[0].reason === 'string' ? list[0].reason : '';
+}
+
+function errText_(err) {
+  return err && err.message ? String(err.message) : String(err);
+}
+
+function isLimit_(err) {
+  if (httpStatus_(err) === 429) return true;
+  if (LIMIT_REASONS_.indexOf(errReason_(err)) >= 0) return true;
+  return /rate limit|quota|too many times|usage limit|limit exceeded/i.test(errText_(err));
+}
+
+function isMissing_(err) {
+  const s = httpStatus_(err);
+  return s === 404 || s === 410;
+}
+
+function isObj_(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function has_(obj, k) {
+  return Object.prototype.hasOwnProperty.call(obj, k);
+}
