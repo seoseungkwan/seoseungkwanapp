@@ -467,7 +467,7 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
         </p>
         <p className={LEAD}>{KIND.lead2}</p>
         {examples.length > 0 && (
-          <ul aria-label={KIND_EX.label} className="grid gap-0.5 rounded-control border border-line bg-canvas px-3 py-2 text-caption text-ink-2">
+          <ul aria-label={KIND_EX.label} className="grid list-none gap-0.5 rounded-control border border-line bg-canvas px-3 py-2 text-caption text-ink-2">
             {examples.map((ex) => (
               <li key={ex.title}>
                 <span className="tabular-nums">{ex.title}</span>

@@ -765,6 +765,11 @@ describe('AC-8552.2: 보기 상자 — 그 병원 종류 이름으로(결과 = �
     expect(within(box).getByText('제목에 길이가 없으면 구글 일정 길이로 봐요')).toBeTruthy()
   })
 
+  it('AC-8553.3: 보기 상자 줄 앞에 목록 점이 없다(ul list-none, 시안 colors-reread)', () => {
+    drawClinic()
+    expect(examples()!.className).toContain('list-none')
+  })
+
   it('AC-8552.2: 이름에 길이·표시·타수가 하나도 없는 병원(기본 종류)은 상자가 없고, 저장 전 고친 종류 이름으로 바로 만든다', () => {
     draw({ link: LINKED })
     expect(examples()).toBeNull()

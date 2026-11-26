@@ -99,12 +99,17 @@ function baseWord(word: string): string | null {
   return chars(b) >= 2 ? b : null
 }
 
+const SHOCK_TAIL = '충격파'
+
 /** 알아볼 글(종류 words + 종류 이름 + 그 바탕 낱말) 긴 것부터. 같은 길이는 종류 차례. 같은 글을 가진 종류는 한 덩이(종류 차례) */
 function kindWords(kinds: readonly GKind[]): KindWord[] {
   const byWord = new Map<string, KindWord & { i: number }>()
   for (const kind of kinds) {
     const own = unique([...kind.words, kind.name])
-    for (const w of unique([...own, ...own.map(baseWord).filter((b): b is string => b !== null)])) {
+    const bases = own.map(baseWord).filter((b): b is string => b !== null)
+    // design.md 21-12: '체외충격파'처럼 '충격파'로 끝나는 더 긴 바탕 낱말이면 '충격파'도 그 종류 글
+    const shockTail = bases.some((b) => b.endsWith(SHOCK_TAIL) && chars(b) > chars(SHOCK_TAIL)) ? [SHOCK_TAIL] : []
+    for (const w of unique([...own, ...bases, ...shockTail])) {
       const hit = byWord.get(w)
       if (!hit) byWord.set(w, { word: w, kinds: [kind], i: byWord.size })
       else if (!hit.kinds.includes(kind)) hit.kinds.push(kind)
@@ -514,7 +519,7 @@ function hoursText(minutes: number): string {
 }
 
 /** notes-calendar '고쳐야 할 까닭' 글. { } 낱말 뒤 조사는 낱말 끝에 맞춘다(design.md 2절 표 7) */
-export function fixReasonText(fix: Pick<GParsedFix, 'reason' | 'guess'>): string {
+export function fixReasonText(fix: Pick<GParsedFix, 'reason' | 'guess' | 'gColor'>): string {
   const g = fix.guess
   const b = g.bad ?? ''
   switch (fix.reason) {
@@ -523,7 +528,7 @@ export function fixReasonText(fix: Pick<GParsedFix, 'reason' | 'guess'>): string
       return `시행자 글이 없어요. ${k}${josa(k, '은/는')} 그때그때 하는 사람이 달라 색으로는 몰라요`
     }
     case 'no-staff-color':
-      return '시행자 글이 없고, 색도 캘린더 기본 색이에요'
+      return fix.gColor === null ? '시행자 글이 없고, 색도 캘린더 기본 색이에요' : '시행자 글이 없고, 이 색으로는 시행자 한 사람을 고를 수 없어요'
     case 'bad-mark':
       return `'${b}'${josa(b, '은/는')} 시행자 표시에 없어요`
     case 'bad-kind':

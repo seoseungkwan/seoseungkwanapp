@@ -672,3 +672,31 @@ describe('AC-8548.3 formatGoogleTitle — 기본 종류는 지금과 한 글자�
     expect(formatGoogleTitle({ ...a, kindId: 'shock', kindName: '충격파', len: 15, memo: '4000타' }, LOOK, KINDS, STAFF)).toBe('1234 홍길동 충격파 15분 (호) 4000타')
   })
 })
+// ── 사진 확인 고침 (design.md 21-12, REQ-8553) ─────────────
+describe("AC-8553.1 parseGoogleEvent — '충격파'만 있는 제목도 '체외충격파' 종류로", () => {
+  it("AC-8553.1: '이 병원 꼴' 3307 차가짜 충격파 → 체외충격파 2000(종류 차례)·메모 없음", () => {
+    expect(hView(hParse('3307 차가짜 충격파', { color: 'banana' }))).toEqual({ kind: '체외충격파 2000', kindBy: 'title', staff: '박지원', staffBy: 'color', memo: '', result: 'appt' })
+  })
+
+  it("AC-8553.1: '이 병원 꼴' 1234 홍길동 충격파 3천 → 체외충격파 3000·메모 없음", () => {
+    expect(hView(hParse('1234 홍길동 충격파 3천', { color: 'banana' }))).toEqual({ kind: '체외충격파 3000', kindBy: 'title', staff: '박지원', staffBy: 'color', memo: '', result: 'appt' })
+  })
+
+  it('AC-8553.1: 기본 종류(충격파)는 그대로 — 1234 홍길동 충격파 (호)', () => {
+    expect(view(parse('1234 홍길동 충격파 (호)'))).toMatchObject({ kind: 'shock', kindBy: 'title', staff: 'ho', result: 'appt' })
+  })
+})
+
+describe('AC-8553.2 fixReasonText — no-staff-color는 일정 색이 있으면 다른 글', () => {
+  it('AC-8553.2: 색 없음(캘린더 기본 색) → 지금 글 그대로', () => {
+    const p = parse('8456 윤모의 도수 30분')
+    expect(p.type === 'fix' && fixReasonText(p.fix)).toBe('시행자 글이 없고, 색도 캘린더 기본 색이에요')
+  })
+
+  it('AC-8553.2: 색 있음(두 사람이 같은 색) → 이 색으로는 시행자 한 사람을 고를 수 없어요', () => {
+    const twins: ParseCtx = { ...CTX, staff: STAFF.map((s) => (s.id === 'won' ? { ...s, color: 'flamingo' as const } : s)) }
+    const p = parse('6230 정샘플 도수', { color: 'flamingo' }, twins)
+    expect(p.type === 'fix' && p.fix.reason).toBe('no-staff-color')
+    expect(p.type === 'fix' && fixReasonText(p.fix)).toBe('시행자 글이 없고, 이 색으로는 시행자 한 사람을 고를 수 없어요')
+  })
+})
