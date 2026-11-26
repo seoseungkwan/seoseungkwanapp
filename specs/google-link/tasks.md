@@ -308,3 +308,16 @@
 - Tests: src/components/gcalSettings/colors/StaffKinds.test.tsx, src/components/gcalSettings/colors/kindExamples.test.ts, src/components/gcalSettings/GcalSettingsScreen.test.tsx
 - TDD: required — RED 먼저: `kindExamples.test.ts`('이 병원 꼴' → 세 줄 `1234 홍길동 30분 도수 (원)` → `도수 30분(원)` / `1234 홍길동 도수 (호)` · 50분 → `도수 50분(호)` / `1234 홍길동(3천` → `체외충격파 3000`, 기본 종류 → 빈 목록, 그 꼴 종류가 하나뿐이면 그것), `StaffKinds.test.tsx`(notes `colors-reread` 글 그대로 — 종류 설명 둘째 줄(처음 잇기·이은 뒤), 보기 상자 있음·없음, 맨 아래 '이미 들어온 예약' 칸은 이은 뒤 원장만(데스크·보는 중·처음 잇기·잇지 않음은 없음), 단추 → `deps.reread()` 한 번·도는 동안 `다시 알아보는 중…`(못 누름)·결과 줄 `예약 4,358개를 다시 알아봤어요 · 종류가 바뀐 것 1,962개 · 못 알아본 것 31개` + `(14:38)` + 작은 글·실패 때 빌린 저장 실패 글, 조사 `도수 30분(호)로 봐요`·`체외충격파 2000으로 봐요`, 미리 보기 `1234 홍길동 도수 30분 (호)`), `GcalSettingsScreen.test.tsx`(시행자·종류에 넘긴 `reread`가 그 화면 `makeGcalDeps` 묶음으로 `runReread`를 부름 — 가짜 저장소, 구글 부르기 0번). 그다음 design.md 21-9대로 만든다. 알아보기·다시 알아보기 셈은 TASK-25·26 것을 그대로 쓰고 새 셈을 두지 않는다. 지금 시험(기본 종류)은 고치지 않고 지나야 한다. PC 화면만
 - 의존: Phase 5 전부(TASK-25 `parseGoogleEvent`·`formatGoogleTitle`, TASK-26 `runReread`, TASK-27이 고친 `StaffKinds.tsx` 미리 보기)
+
+## 2차 사진 확인 고침 (2026-11-26 밤) — Phase 7
+
+> - Phase 7 — TASK-31 하나(Phase 5·6을 모두 합친 뒤 작업 폴더에서 차례로). 끝나면 고친 파일 시험·tsc·lint만 다시 돌리고, 독립 검토는 사용자에게 물어 한다.
+
+## TASK-31: 사진 확인에서 찾은 것 — '충격파' 글 · 까닭 글 색 · 보기 상자 점
+- Phase: 7
+- AC: AC-8553.1, AC-8553.2, AC-8553.3
+- REQ: REQ-8553
+- Files: src/lib/calendar/gtitle.ts, src/lib/calendar/gtitle.test.ts, src/components/gcalSettings/colors/StaffKinds.tsx, src/components/gcalSettings/colors/StaffKinds.test.tsx
+- Tests: src/lib/calendar/gtitle.test.ts, src/components/gcalSettings/colors/StaffKinds.test.tsx
+- TDD: required — RED 먼저: `gtitle.test.ts`(AC-8553.1 두 제목 + 기본 종류 `1234 홍길동 충격파` 그대로, AC-8553.2 색 없음·있음 두 글), `StaffKinds.test.tsx`(AC-8553.3 보기 상자 `ul` className에 `list-none`). 그다음 design.md 21-12대로. 지금 시험 기대는 고치지 않는다. PC 화면만
+- 의존: Phase 5·6 전부
