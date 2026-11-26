@@ -77,3 +77,24 @@ describe('AC-5902.1 layoutDay: 겹치는 묶음마다 col·cols·span', () => {
     expect(layoutDay([]).size).toBe(0)
   })
 })
+
+describe('AC-8532.4 layoutDay: 시작 5분 단위(spec google-link)', () => {
+  it('AC-8532.4: 09:15–09:45와 09:40–10:10은 두 열, 09:45 시작 칸은 09:15 칸과 겹치지 않아 그 열을 이어 쓴다', () => {
+    const result = places([block('A', at(9, 15), at(9, 45)), block('B', at(9, 40), at(10, 10)), block('C', at(9, 45), at(10, 15))])
+    expect(result).toEqual({
+      A: { col: 0, cols: 2, span: 1 },
+      B: { col: 1, cols: 2, span: 1 },
+      C: { col: 0, cols: 2, span: 1 },
+    })
+  })
+
+  it('AC-8532.4: 5분 칸(09:05–09:10)도 그리면 10분 높이라 09:10 시작 칸과 나란히, 09:15 시작 칸과는 겹치지 않는다', () => {
+    const result = places([block('S', at(9, 5), at(9, 10)), block('T', at(9, 10), at(9, 40)), block('U', at(13, 5), at(13, 10)), block('V', at(13, 15), at(13, 45))])
+    expect(result).toEqual({
+      S: { col: 0, cols: 2, span: 1 },
+      T: { col: 1, cols: 2, span: 1 },
+      U: { col: 0, cols: 1, span: 1 },
+      V: { col: 0, cols: 1, span: 1 },
+    })
+  })
+})

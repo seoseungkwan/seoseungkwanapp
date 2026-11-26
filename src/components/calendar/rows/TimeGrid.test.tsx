@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { FixCell, RowsGoogle } from '@/lib/calendar/gshapes'
 import type { CalAllDay } from '@/lib/calendar/shapes'
 import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalKind, type CalStaff } from '@/types/calendar'
 import type { DayHours } from '@/types/clinicProfile'
@@ -329,10 +330,12 @@ describe('AC-5905.1: 일 보기(하루, 칸마다 시간·길이·메모)', () =
 })
 
 describe('AC-5905.1: 빈 화면(이번 주 예약 없음, 시안 ?s=empty)', () => {
-  it('AC-5905.1: 주 보기에 예약이 하나도 없으면 안내 카드와 [예약 더하기](onAdd)가 보인다', () => {
+  it('AC-5905.1·AC-8532.4: 주 보기에 예약이 하나도 없으면 안내 카드와 [예약 더하기](onAdd)가 보인다(안내 글의 구글 문장은 뺐다)', () => {
     const { props } = renderGrid({ appts: [], allday: [] })
     expect(screen.getByRole('heading', { name: '이번 주 예약이 아직 없어요' })).toBeTruthy()
-    expect(screen.getByText('빈 칸을 누르면 그 시간으로 예약을 넣어요. 구글 캘린더에 있던 예약은 옮겨 오지 않아요.')).toBeTruthy()
+    // google-link AC-8532.4: '구글 캘린더에 있던 예약은 옮겨 오지 않아요.'는 빠진다
+    expect(screen.getByText('빈 칸을 누르면 그 시간으로 예약을 넣어요.')).toBeTruthy()
+    expect(screen.queryByText(/구글 캘린더에 있던 예약은 옮겨 오지 않아요/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '예약 더하기' }))
     expect(props.onAdd).toHaveBeenCalledTimes(1)
   })
@@ -639,5 +642,266 @@ describe('AC-7616.1: 일·주 보기 종일 줄의 반차 휴무 칩', () => {
     expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' })).toBeTruthy()
     fireEvent.click(am)
     expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-17')
+  })
+})
+
+// ---------- google-link REQ-8532: 구글과 이은 병원의 예약표(prop google: RowsGoogle, gshapes — TASK-7이 둠) ----------
+// 칸 색은 lib/calendar/gpaint apptPaint 차례(취소 > 변경 > 구글 일정 색 > 설정 색), 시안 ?s=week·fix·err, notes-calendar '색 규칙'·week
+
+const CTX: RowsGoogle['ctx'] = {
+  look: { cancel: 'tomato', change: 'graphite', offColor: 'grape' },
+  kinds: KINDS.map(({ id, color }) => ({ id, color })),
+  staff: STAFF.map(({ id, color }) => ({ id, color })),
+}
+const linked = (over: Partial<RowsGoogle> = {}): RowsGoogle => ({ ctx: CTX, fixes: [], waiting: new Set<string>(), ...over })
+
+const G_APPTS: CalAppt[] = [
+  ...APPTS,
+  // 구글에서 귤로 칠한 일정((가) 블루베리가 아니라 귤), 색을 안 고른 일정(캘린더 기본 색), 구글에서 흑연(변경 색)으로 바꾼 일정
+  appt({ id: 'g-orange', day: '2026-11-19', start: 900, chart: '27750', name: '정모○', colorFrom: 'google', gColor: 'tangerine', gEventId: 'ev-1' }),
+  appt({ id: 'g-plain', day: '2026-11-19', start: 660, chart: '84560', name: '윤모○', colorFrom: 'google', gColor: null, gEventId: 'ev-2' }),
+  appt({ id: 'g-moved', day: '2026-11-20', start: 990, chart: '39070', name: '백모○', colorFrom: 'google', gColor: 'graphite', gMoved: true, gEventId: 'ev-3' }),
+]
+
+describe('AC-8532.2: 칸 색은 구글 색 차례로 꽉 채우고 글자색은 색 표대로, 칸 글은 지금 그대로', () => {
+  it('AC-8532.2: 웹앱에서 만든 예약은 설정 색(종류 고정 색, 없으면 시행자 색)이고 칸 글·이름표는 지금 그대로다', () => {
+    renderGrid({ appts: G_APPTS, google: linked() })
+    const plain = block(/^27741 홍○○/)
+    expect(plain.className).toContain('bg-cal-blueberry')
+    expect(plain.className).toContain('text-cal-blueberry-on')
+    expect(text(plain)).toBe('27741 홍○○ 도수 (가) 30분')
+    expect(plain.getAttribute('aria-label')).toBe('27741 홍○○ 도수 (가) 15:00–15:30 30분')
+    expect(block(/^30117 송○○/).className).toContain('bg-cal-flamingo')
+  })
+
+  it('AC-8532.2: 구글에서 온 예약은 그 일정 색 그대로(시행자 색보다 이김), 일정에 색이 없으면 캘린더 기본 색이다', () => {
+    renderGrid({ appts: G_APPTS, google: linked() })
+    const orange = block(/^27750 정모○/)
+    expect(orange.className).toContain('bg-cal-tangerine')
+    expect(orange.className).toContain('text-cal-tangerine-on')
+    expect(orange.className).not.toContain('bg-cal-blueberry')
+    expect(text(orange)).toBe('27750 정모○ 도수 (가) 30분')
+    expect(block(/^84560 윤모○/).className).toContain('bg-cal-default')
+    expect(block(/^84560 윤모○/).className).toContain('text-cal-default-on')
+  })
+
+  it('AC-8532.2: 취소한 예약은 취소 색(토마토)으로 꽉 채우고 흐림·가운데 줄·"취소" 표시다(흰 바탕이 아니다)', () => {
+    renderGrid({ appts: G_APPTS, google: linked() })
+    const cancel = block(/^18842 문○○/)
+    expect(cancel.className).toContain('bg-cal-tomato')
+    expect(cancel.className).toContain('text-cal-tomato-on')
+    expect(cancel.className).toContain('opacity-55')
+    expect(cancel.className).not.toContain('bg-surface')
+    expect(within(cancel).getByText('문○○').className).toContain('line-through')
+    expect(within(cancel).getByTitle('취소').textContent).toBe('취소')
+    expect(cancel.getAttribute('aria-label')).toBe('18842 문○○ 도수 (다) 10:00–10:30 30분 · 취소')
+  })
+
+  it('AC-8532.2: 취소는 변경·구글 일정 색보다 먼저다(옮긴 뒤 취소한 구글 예약도 토마토)', () => {
+    renderGrid({
+      appts: [appt({ id: 'g-x', start: 700, chart: '55120', name: '서모○', status: 'cancel', origDay: TODAY, origStart: 660, colorFrom: 'google', gColor: 'peacock' })],
+      google: linked(),
+    })
+    expect(block(/^55120 서모○/).className).toContain('bg-cal-tomato')
+  })
+
+  it("AC-8532.2: 변경한 예약(웹앱에서 옮김·구글에서 변경 색)은 변경 색(흑연) + '변경' 꼬리표이고, 구글 변경 색만 받은 예약은 이름표 끝에 '· 변경'", () => {
+    renderGrid({ appts: G_APPTS, google: linked() })
+    const moved = block(/^10231 김○○/)
+    expect(moved.className).toContain('bg-cal-graphite')
+    expect(moved.className).toContain('text-cal-graphite-on')
+    expect(within(moved).getByTitle('날짜나 시작 시간을 옮김').textContent).toBe('변경')
+    const gMoved = block(/^39070 백모○/)
+    expect(gMoved.className).toContain('bg-cal-graphite')
+    expect(within(gMoved).getByTitle('날짜나 시작 시간을 옮김').textContent).toBe('변경')
+    expect(gMoved.getAttribute('aria-label')).toBe('39070 백모○ 도수 (가) 16:30–17:00 30분 · 변경')
+    expect(within(block(/^27741 홍○○/)).queryByText('변경')).toBeNull()
+  })
+
+  it('AC-8532.2: 구글에 아직 못 보낸 예약(waiting)은 주황 시계 표시이고 이름표 끝에 "· 구글에 아직 못 보냄", 칸 글은 그대로다', () => {
+    renderGrid({ appts: G_APPTS, google: linked({ waiting: new Set(['a-16', 'a-cancel']) }) })
+    const wait = block(/^27741 홍○○/)
+    const clock = within(wait).getByTitle('구글에 아직 못 보냄')
+    expect(clock.querySelector('svg')).not.toBeNull()
+    expect(clock.className).toContain('text-negative')
+    expect(wait.getAttribute('aria-label')).toBe('27741 홍○○ 도수 (가) 15:00–15:30 30분 · 구글에 아직 못 보냄')
+    expect(text(wait)).toBe('27741 홍○○ 도수 (가) 30분')
+    expect(block(/^18842 문○○/).getAttribute('aria-label')).toBe('18842 문○○ 도수 (다) 10:00–10:30 30분 · 취소 · 구글에 아직 못 보냄')
+    expect(within(block(/^10231 김○○/)).queryByTitle('구글에 아직 못 보냄')).toBeNull()
+  })
+
+  it('AC-8532.2: RowsGoogle을 받지 않으면(잇지 않은 병원) 지금 모양 그대로 — 취소는 흰 바탕, 구글 색·변경 색 표시·시계 없음', () => {
+    renderGrid({ appts: G_APPTS })
+    expect(block(/^18842 문○○/).className).toContain('bg-surface')
+    expect(block(/^27750 정모○/).className).toContain('bg-cal-blueberry')
+    expect(block(/^39070 백모○/).className).toContain('bg-cal-blueberry')
+    expect(within(block(/^39070 백모○/)).queryByText('변경')).toBeNull()
+    expect(screen.queryByTitle('구글에 아직 못 보냄')).toBeNull()
+  })
+})
+
+const FIXES: FixCell[] = [
+  { id: 'fx-1', day: '2026-11-19', start: 960, len: 15, allDay: false, gTitle: '6402 윤모○ (4000타)', gColor: 'sage' },
+  { id: 'fx-2', day: '2026-11-20', start: 0, len: 1440, allDay: true, gTitle: '곽모○ 외근', gColor: null },
+]
+
+describe("AC-8532.2: 고쳐야 할 구글 일정(fixes)은 노란 빗금 칸 '고쳐야 함 {구글 제목}'(구글 색 아님)", () => {
+  it('AC-8532.2: 시간 있는 고쳐야 할 것은 그 자리(16:00 → 960px, 15분 → 29px)에 노란 빗금·점선 칸이고 누르면 onFix(id)만 부른다', () => {
+    const onFix = vi.fn()
+    const { props } = renderGrid({ google: linked({ fixes: FIXES }), onFix })
+    const fix = screen.getByRole('button', { name: '고쳐야 할 구글 예약 · 6402 윤모○ (4000타)' })
+    expect(text(fix)).toBe('고쳐야 함 6402 윤모○ (4000타)')
+    expect(fix.getAttribute('title')).toBe('고쳐야 할 구글 예약 · 6402 윤모○ (4000타)')
+    expect([fix.style.top, fix.style.height]).toEqual(['960px', '29px'])
+    expect(fix.dataset.block).toBe('fix')
+    for (const c of ['bg-warning-soft', 'border-dashed', 'border-warning', 'text-warning']) expect(fix.className).toContain(c)
+    expect(fix.className).not.toContain('bg-cal-')
+    expect(fix.querySelector('svg[data-hatch="fix"]')).not.toBeNull()
+    expect(fix.closest('[data-slot-day]')?.getAttribute('data-slot-day')).toBe('2026-11-19')
+    fireEvent.click(fix)
+    expect(onFix).toHaveBeenCalledWith('fx-1')
+    expect(props.onSlot).not.toHaveBeenCalled()
+    expect(props.onAppt).not.toHaveBeenCalled()
+  })
+
+  it('AC-8532.2: 고쳐야 할 칸도 예약 칸과 같이 layoutDay로 나란히 놓이고, 날짜 머리 예약 수에는 들지 않는다', () => {
+    renderGrid({ appts: [...APPTS, appt({ id: 'a-1600', day: '2026-11-19', start: 960, chart: '11220', name: '고○○' })], google: linked({ fixes: FIXES }) })
+    const fix = screen.getByRole('button', { name: /^고쳐야 할 구글 예약 · 6402/ })
+    const appt1600 = block(/^11220 고○○/)
+    expect([appt1600.dataset.col, appt1600.dataset.cols]).toEqual(['0', '2'])
+    expect([fix.dataset.col, fix.dataset.cols]).toEqual(['1', '2'])
+    expect(box(fix)).toEqual(HALF_R)
+    expect(screen.getByRole('button', { name: '11월 19일 (목) 예약 2' })).toBeTruthy()
+  })
+
+  it('AC-8532.2: 하루 종일 고쳐야 할 것은 그날 종일 줄의 노란 빗금 칩이고 누르면 onFix(id)만(onAllDay 아님)', () => {
+    const onFix = vi.fn()
+    const { container, props } = renderGrid({ google: linked({ fixes: FIXES }), onFix })
+    const cell = container.querySelector<HTMLElement>('[data-allday-day="2026-11-20"]')!
+    const chip = within(cell).getByRole('button', { name: '고쳐야 할 구글 예약 · 곽모○ 외근' })
+    expect(text(chip)).toBe('고쳐야 함 곽모○ 외근')
+    expect(chip.className).toContain('bg-warning-soft')
+    expect(chip.querySelector('svg[data-hatch="fix"]')).not.toBeNull()
+    fireEvent.click(chip)
+    expect(onFix).toHaveBeenCalledWith('fx-2')
+    expect(props.onAllDay).not.toHaveBeenCalled()
+    expect(screen.getAllByRole('button', { name: /^고쳐야 할 구글 예약 · 곽모○/ })).toHaveLength(1)
+  })
+
+  it('AC-8532.2: RowsGoogle이 없으면 고쳐야 할 칸이 없고, 이번 주에 예약이 없어도 고쳐야 할 칸이 있으면 빈 화면 카드를 띄우지 않는다', () => {
+    renderGrid()
+    expect(screen.queryByRole('button', { name: /^고쳐야 할 구글 예약/ })).toBeNull()
+    cleanup()
+    renderGrid({ appts: [], allday: [], google: linked({ fixes: FIXES }) })
+    expect(screen.queryByText('이번 주 예약이 아직 없어요')).toBeNull()
+    cleanup()
+    renderGrid({ appts: [], allday: [], google: linked() })
+    expect(screen.getByText('이번 주 예약이 아직 없어요')).toBeTruthy()
+  })
+})
+
+// 종일 줄: 이어지지 않은 직원(데스크, id 'm-')도 휴무 줄에 든다(design.md 3절 5)
+const G_ALLDAY: CalAllDay[] = [
+  { id: 'o-1', day: TODAY, type: 'off', memo: null, staffId: 'na', staffName: '윤○○' },
+  { id: 'h-1', day: TODAY, type: 'off', memo: null, staffId: 'da', staffName: '조○○', part: 'pm' },
+  { id: 'm-1', day: TODAY, type: 'memo', memo: '주간 회의 13:00', staffId: null, staffName: null },
+  { id: 'o-2', day: TODAY, type: 'off', memo: null, staffId: 'm-desk1', staffName: '김예○' },
+  { id: 'h-2', day: '2026-11-18', type: 'off', memo: null, staffId: 'm-desk1', staffName: '김예○', part: 'am' },
+]
+const chipTexts = (container: HTMLElement, day: string) =>
+  within(container.querySelector<HTMLElement>(`[data-allday-day="${day}"]`)!)
+    .getAllByRole('button')
+    .map(text)
+
+describe('AC-8532.3: 종일 줄 — 하루 종일 휴무는 한 칩 `… off`, 반차는 흰 칩, 메모는 캘린더 기본 색', () => {
+  it('AC-8532.3: 그날 하루 종일 휴무는 한 칩 `윤○○, 김예○ off`(휴무 줄 색 포도로 꽉 채움, 말풍선 "… · 구글 하루 종일 줄과 같아요")', () => {
+    const { container, props } = renderGrid({ allday: G_ALLDAY, google: linked() })
+    const off = screen.getByRole('button', { name: '윤○○, 김예○ off' })
+    expect(off.className).toContain('bg-cal-grape')
+    expect(off.className).toContain('text-cal-grape-on')
+    expect(off.getAttribute('title')).toBe('윤○○, 김예○ off · 구글 하루 종일 줄과 같아요')
+    expect(chipTexts(container, TODAY)).toEqual(['주간 회의 13:00', '윤○○, 김예○ off', '(다) 조○○ 오후 반차'])
+    fireEvent.click(off)
+    expect(props.onAllDay).toHaveBeenLastCalledWith(TODAY)
+  })
+
+  it('AC-8532.3: 반차는 흰 칩 `({표시}) {이름} {오전|오후} 반차`(시행자가 아니면 이름만), 말풍선 "… · 웹앱에만 보여요(반차는 구글 off 줄에 넣지 않아요)"', () => {
+    const { container } = renderGrid({ allday: G_ALLDAY, google: linked() })
+    const half = screen.getByRole('button', { name: '(다) 조○○ 오후 반차' })
+    for (const c of ['bg-surface', 'text-ink-2', 'ring-line-strong']) expect(half.className).toContain(c)
+    expect(half.className).not.toContain('bg-cal-')
+    expect(half.getAttribute('title')).toBe('(다) 조○○ 오후 반차 · 웹앱에만 보여요(반차는 구글 off 줄에 넣지 않아요)')
+    expect(chipTexts(container, '2026-11-18')).toEqual(['김예○ 오전 반차'])
+  })
+
+  it('AC-8532.3: 종일 메모는 캘린더 기본 색 칩(말풍선 "… · 캘린더 기본 색")이다', () => {
+    renderGrid({ allday: G_ALLDAY, google: linked() })
+    const memo = screen.getByRole('button', { name: '주간 회의 13:00' })
+    expect(memo.className).toContain('bg-cal-default')
+    expect(memo.className).toContain('text-cal-default-on')
+    expect(memo.getAttribute('title')).toBe('주간 회의 13:00 · 캘린더 기본 색')
+  })
+
+  it('AC-8532.3: 휴무 줄 색·끝 글(offWord)은 받은 값대로이고, RowsGoogle이 없으면 지금 칩(사람마다 시행자 색) 그대로다', () => {
+    renderGrid({ allday: G_ALLDAY, google: linked({ ctx: { ...CTX, look: { ...CTX.look, offColor: 'basil' } } }), offWord: '휴무' })
+    expect(screen.getByRole('button', { name: '윤○○, 김예○ 휴무' }).className).toContain('bg-cal-basil')
+    cleanup()
+    renderGrid({ allday: G_ALLDAY })
+    expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' }).className).toContain('bg-cal-basil')
+    expect(screen.getByRole('button', { name: '(다) 조○○ 오후 휴무' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /반차$/ })).toBeNull()
+  })
+})
+
+describe('AC-8532.4: 시작 5분 단위(09:15) 칸 자리, 시간 표 칸은 10분 그대로', () => {
+  it('AC-8532.4: 09:15 칸은 위 150px(= (555 − 480) ÷ 10 × 20)·30분 → 59px, 09:05 15분은 130px·29px에 놓인다', () => {
+    renderGrid({
+      appts: [
+        appt({ id: 'q', start: 555, chart: '61500', name: '오○○' }),
+        appt({ id: 'r', day: '2026-11-18', start: 545, len: 15, chart: '61505', name: '하○○', kindId: 'shock', kindName: '충격파' }),
+      ],
+      google: linked(),
+    })
+    expect([block(/^61500 오○○/).style.top, block(/^61500 오○○/).style.height]).toEqual(['150px', '59px'])
+    expect([block(/^61505 하○○/).style.top, block(/^61505 하○○/).style.height]).toEqual(['130px', '29px'])
+  })
+
+  it('AC-8532.4: 09:15–09:45와 09:40–10:10은 나란히, 09:45 시작 칸은 09:15 칸과 겹치지 않는다', () => {
+    renderGrid({
+      appts: [
+        appt({ id: 'a', start: 555, chart: '70001', name: '가○○' }),
+        appt({ id: 'b', start: 580, chart: '70002', name: '나○○', staffId: 'na', staffName: '윤○○', staffMark: '나' }),
+        appt({ id: 'c', day: '2026-11-18', start: 555, chart: '70003', name: '다○○' }),
+        appt({ id: 'd', day: '2026-11-18', start: 585, chart: '70004', name: '라○○' }),
+      ],
+    })
+    expect([block(/^70001/).dataset.col, block(/^70001/).dataset.cols]).toEqual(['0', '2'])
+    expect([block(/^70002/).dataset.col, block(/^70002/).dataset.cols]).toEqual(['1', '2'])
+    expect(block(/^70003/).dataset.cols).toBe('1')
+    expect(block(/^70004/).dataset.cols).toBe('1')
+  })
+
+  it('AC-8532.4: 빈 칸 누름·마우스 올림 시각은 10분 칸 그대로다(09:15 높이 → 09:10)', () => {
+    const { container, props } = renderGrid({ google: linked() })
+    fireEvent.click(column(container, '2026-11-18'), { clientY: 150 })
+    expect(props.onSlot).toHaveBeenLastCalledWith('2026-11-18', 550)
+    fireEvent.mouseMove(placed(column(container, '2026-11-19')), { clientX: 50, clientY: 150 })
+    expect(text(hoverBox(container, 'full')!)).toBe('+ 09:10')
+  })
+})
+
+describe('AC-8532.5: 시행자 없는 지난 예약', () => {
+  it('AC-8532.5: 시행자 없이 가져온 지난 구글 예약은 (표시) 없이 그리고 색은 그 일정 색이다', () => {
+    renderGrid({
+      appts: [
+        appt({ id: 'p', day: '2026-11-16', start: 600, chart: '73450', name: '한예○', staffId: null, staffName: null, staffMark: null, colorFrom: 'google', gColor: 'banana', gFrom: 'import' }),
+      ],
+      google: linked(),
+    })
+    const past = block(/^73450 한예○/)
+    expect(text(past)).toBe('73450 한예○ 도수 30분')
+    expect(past.getAttribute('aria-label')).toBe('73450 한예○ 도수 10:00–10:30 30분')
+    expect(past.className).toContain('bg-cal-banana')
+    expect(past.className).toContain('text-cal-banana-on')
   })
 })

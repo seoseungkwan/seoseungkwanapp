@@ -4,12 +4,14 @@ import { shownStatus } from '@/lib/calendar/rules'
 import type { BlockPlace } from '@/lib/calendar/shapes'
 import type { CalAppt } from '@/types/calendar'
 import { CAL_TONES, type CalPaint } from '../colors'
-import { apptLabel, Hatch, hm, MovedMark, StatusMark } from './parts'
+import { apptLabel, Hatch, hm, isMoved, linkedApptLabel, MovedMark, StatusMark, WaitMark } from './parts'
 
 // 예약 칸 하나(spec clinic-calendar AC-5905.1·AC-5906.2 · google-link AC-8503.2, 시안 .ev·evHTML). 색으로 꽉 채운 칸(종류 색 또는 시행자 색)에
 // 그 색의 글자색(--cal-<이름>-on), 차트번호·시간·길이·메모는 같은 글자색을 조금 흐리게(시안 .tk opacity .82).
 // 글은 `차트번호 이름 종류 (표시)` + 길이(일 보기는 둘째 줄에 시간·길이·메모). 시행자 없는 예약은 (표시) 없이. 칸이 좁으면 낱말 사이에서 줄을 바꾸고,
-// 다 안 들어가면 끝을 자른다(전체 글은 마우스 올림·화면 읽기). 취소 = 흰 바탕·흐린 글·가운데 줄, 안 옴 = 옅은 빗금
+// 다 안 들어가면 끝을 자른다(전체 글은 마우스 올림·화면 읽기). 취소 = 흰 바탕·흐린 글·가운데 줄, 안 옴 = 옅은 빗금.
+// 구글과 이은 병원(google 있음, spec google-link AC-8532.2, 시안 evHTML): 색은 부르는 쪽이 apptPaint로 고른 색(취소 > 변경 > 구글 일정 색 > 설정 색),
+// 취소 = 취소 색 + 흐림 + 가운데 줄, '변경' 꼬리표는 구글에서 변경 색이 된 것(gMoved)에도, 못 보냄 = 주황 시계. 칸 글은 그대로
 
 export type BlockMode = 'week' | 'day'
 
@@ -40,6 +42,7 @@ export function ApptBlock({
   height,
   mode,
   color,
+  google = null,
   onOpen,
 }: {
   appt: CalAppt
@@ -48,15 +51,17 @@ export function ApptBlock({
   height: number
   mode: BlockMode
   color: CalPaint
+  /** 구글과 이은 병원만. waiting = 구글에 아직 못 보낸 예약 */
+  google?: { waiting: boolean } | null
   onOpen: (id: string) => void
 }) {
   const shown = shownStatus(appt)
   const cancel = shown === 'cancel'
   const tone = CAL_TONES[color]
   const lines = linesFor(height, mode)
-  const label = apptLabel(appt, shown)
-  const look = cancel ? 'bg-surface text-muted ring-1 ring-line-strong ring-inset' : `${tone.fill} ${tone.on}`
-  const tk = (extra = '') => `whitespace-nowrap ${cancel ? 'text-muted line-through' : extra}`
+  const label = google ? linkedApptLabel(appt, shown, google.waiting) : apptLabel(appt, shown)
+  const look = !cancel ? `${tone.fill} ${tone.on}` : google ? `${tone.fill} ${tone.on} opacity-55` : 'bg-surface text-muted ring-1 ring-line-strong ring-inset'
+  const tk = (extra = '') => `whitespace-nowrap ${!cancel ? extra : google ? `line-through ${extra}` : 'text-muted line-through'}`
   const end = appt.start + appt.len
   const tail: ReactNode =
     mode === 'week' ? (
@@ -95,7 +100,8 @@ export function ApptBlock({
       {shown === 'noshow' ? <Hatch kind="noshow" className="text-surface opacity-60" /> : null}
       <span className="relative line-clamp-1" style={{ WebkitLineClamp: lines }}>
         <StatusMark status={shown} />
-        {appt.origDay ? <MovedMark /> : null}
+        {google?.waiting ? <WaitMark /> : null}
+        {isMoved(appt, google !== null) ? <MovedMark /> : null}
         {appt.chart ? (
           <>
             <span className={tk('opacity-82 tabular-nums')}>{appt.chart}</span>{' '}
