@@ -252,6 +252,7 @@ describe('AC-034.5: 합친 뒤 설정 파일', () => {
         'helper/tests/*.test.ts',
         'extension/**/*.test.ts',
         'scripts/**/*.test.ts',
+        'google-code/test/**/*.test.ts', // google-link TASK-5: 병원 구글 코드 시험
       ].sort(),
     )
     const caught = (file: string) => include.some((pattern) => matchesGlob(file, pattern))

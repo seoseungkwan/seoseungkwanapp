@@ -250,7 +250,8 @@ describe('AC-8011.3: viewing={null}이면 지금과 같다', () => {
   it('AC-8011.3·AC-8109.1: [비트 PC 연결] 길(안쪽 메뉴)·설치 파일 칸 [자료실 열기]·쓰기 단추·열린 칸·관리자만 보는 탭 칸이 그대로 있다', async () => {
     await open(null)
     const nav = screen.getByRole('navigation', { name: '설정 안 메뉴' })
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결'])
+    // google-link AC-8528.1: 보지 않는 모드에는 [구글 캘린더](꼬리표 '새')도 있다
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결', '구글 캘린더새'])
     expect(screen.getByRole('link', { name: '자료실 열기' }).getAttribute('href')).toBe('/library')
     // 옛 설치 파일 칸 아래 링크는 없어졌다(설정 안 메뉴에 [비트 PC 연결]이 있음)
     expect(screen.queryByRole('link', { name: '비트 PC 연결 확인하러 가기 →' })).toBeNull()
