@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "google-link",
-  "approved_at": "2026-11-26T12:48:31Z",
+  "approved_at": "2026-11-26T22:37:51Z",
   "approved_via": "auto",
-  "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "78a7dd8cc14f4030d2ad9ae4dba765ea0e537eec8eb98d3b79661b57f733d294",
+  "session_id": "564f910f-c538-4591-ad30-a3552610b06c",
+  "spec_sha256": "6788d992c526ee02fbf18bdafb70daa597b00a1a33ef8be37d72abd3ad9d9d70",
   "scope": [
     ".github/workflows/helper.yml",
     "CLAUDE.md",
@@ -94,6 +94,8 @@
     "src/components/calendar/gcal/FixPanel.tsx",
     "src/components/calendar/gcal/GcalBand.test.tsx",
     "src/components/calendar/gcal/GcalBand.tsx",
+    "src/components/calendar/gcal/fixApply.test.ts",
+    "src/components/calendar/gcal/fixApply.ts",
     "src/components/calendar/gcal/fixRange.test.ts",
     "src/components/calendar/gcal/fixRange.ts",
     "src/components/calendar/gcal/labels.ts",
@@ -101,6 +103,7 @@
     "src/components/calendar/rows/**",
     "src/components/calendar/rows/PhoneWeekList.test.tsx",
     "src/components/calendar/rows/TimeGrid.test.tsx",
+    "src/components/calendar/rows/parts.tsx",
     "src/components/calendar/useCalendarData.test.ts",
     "src/components/calendar/useCalendarData.ts",
     "src/components/calendar/useCalendarWorker.test.ts",
@@ -277,9 +280,11 @@
     "supabase/clinicEmr.rls.test.ts",
     "supabase/clinicProfile.rls.test.ts",
     "supabase/googleLink.rls.test.ts",
+    "supabase/googleLinkAlldayColor.rls.test.ts",
     "supabase/googleLinkOffColor.rls.test.ts",
     "supabase/migrations/20261126000000_google_link.sql",
     "supabase/migrations/20261127000000_google_link_offcolor.sql",
+    "supabase/migrations/20261127100000_google_link_allday_color.sql",
     "supabase/staff.rls.test.ts",
     "vitest.config.ts"
   ]

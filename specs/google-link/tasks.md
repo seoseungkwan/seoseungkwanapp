@@ -321,3 +321,34 @@
 - Tests: src/lib/calendar/gtitle.test.ts, src/components/gcalSettings/colors/StaffKinds.test.tsx
 - TDD: required — RED 먼저: `gtitle.test.ts`(AC-8553.1 두 제목 + 기본 종류 `1234 홍길동 충격파` 그대로, AC-8553.2 색 없음·있음 두 글), `StaffKinds.test.tsx`(AC-8553.3 보기 상자 `ul` className에 `list-none`). 그다음 design.md 21-12대로. 지금 시험 기대는 고치지 않는다. PC 화면만
 - 의존: Phase 5·6 전부
+
+## 3차 사진 고침 (2026-11-27 아침) — Phase 8·9
+
+> - Phase 8 — TASK-32(DB·형·저장 함수). Phase 9 — TASK-33(`src/lib/gcal/{deps,pull,importRead,push}*`·`src/components/calendar/gcal/fixApply*`)·TASK-34(`src/components/calendar/rows/{parts.tsx,TimeGrid.test.tsx}`) → 겹침 없음, Phase 8을 합친 뒤 나란히. 끝나면 전체 검사와 독립 검토 한 번. 사용자 단계: 새 SQL 붙이기 → '배포해'.
+
+## TASK-32: 종일 메모 구글 색 — DB 칸 · 형 · 저장 함수
+- Phase: 8
+- AC: AC-8554.2, AC-8554.3
+- REQ: REQ-8554
+- Files: supabase/migrations/20261127100000_google_link_allday_color.sql, supabase/googleLinkAlldayColor.rls.test.ts, src/types/calendar.ts, src/lib/storage/calendar.ts, src/lib/storage/calendar.test.ts
+- Tests: supabase/googleLinkAlldayColor.rls.test.ts, src/lib/storage/calendar.test.ts
+- TDD: required — RED 먼저: `googleLinkAlldayColor.rls.test.ts`(design.md 21-13 시험 줄 그대로), `calendar.test.ts`(읽기 `gColor` 있음·null·틀리면 줄 뺌, 메모 넣기·`applyGoogleMemo`가 `g_color`를 같은 쓰기에 보냄·틀린 색은 보내지 않고 실패, `fillMemoColor`가 `is('g_color', null)` 조건·0줄 거짓, `hasMemoColorGap` 조건·`limit(1)`·기간 틀리면 실패). 그다음 design.md 21-13대로. 지금 시험 기대는 고치지 않는다(읽은 줄 모양을 통째로 견주는 시험은 `gColor: null`이 더해진 것만 맞춘다 — 그 줄에 `google-link AC-8554.3` 주석, select 칸 글자 `ALLDAY_COLUMNS`에 `g_color`가 더해진 것도 같음)
+- 의존: Phase 7
+
+## TASK-33: 종일 메모 구글 색 — 받기·처음 가져오기·[예약표에 넣기]·보내기·채우기
+- Phase: 9
+- AC: AC-8554.4, AC-8554.5
+- REQ: REQ-8554
+- Files: src/lib/gcal/deps.ts, src/lib/gcal/pull.ts, src/lib/gcal/pull.test.ts, src/lib/gcal/importRead.ts, src/lib/gcal/importRead.test.ts, src/lib/gcal/push.ts, src/lib/gcal/push.test.ts, src/components/calendar/gcal/fixApply.ts, src/components/calendar/gcal/fixApply.test.ts
+- Tests: src/lib/gcal/pull.test.ts, src/lib/gcal/importRead.test.ts, src/lib/gcal/push.test.ts, src/components/calendar/gcal/fixApply.test.ts
+- TDD: required — RED 먼저: `pull.test.ts`(새 하루 종일 메모 포도 → 줄 색 grape, 색 없음 → `default`, 색만 바뀐 일정 → 줄 색 고침·바뀐 수 +1, `fillMemoColors` — 빈 색 없으면 list 0번, 빈 색 메모 줄 둘(목록에 색 있음·목록에 없음) → grape·`default`, list 기간 = [가장 이른 빈 색 날, 가장 늦은 날 + 1일), `gWait` 참·웹앱에만 있는 메모·이미 색 있는 줄은 그대로, 받기 성공 뒤 한 번 부름·채우기가 던져도 받기 결과 그대로, 던진 뒤·빈 색이 남은 뒤 1시간 안 두 번째 받기는 list 0번·1시간 뒤에는 다시 읽음), `importRead.test.ts`(하루 종일 일정 메모는 그 색, 시간 일정 '종일 메모로'는 null), `fixApply.test.ts`(하루 종일 → `fix.gColor ?? 'default'`, 시간 일정 → null), `push.test.ts`(보낸 뒤 빈 색 → `default`, 이미 색 → 그대로). 메모리 저장소는 같은 조건을 흉내. 그다음 design.md 21-13대로
+- 의존: TASK-32
+
+## TASK-34: 종일 메모 구글 색 — 칩 칠하기
+- Phase: 9
+- AC: AC-8554.1
+- REQ: REQ-8554
+- Files: src/components/calendar/rows/parts.tsx, src/components/calendar/rows/TimeGrid.test.tsx
+- Tests: src/components/calendar/rows/TimeGrid.test.tsx
+- TDD: required — RED 먼저: `TimeGrid.test.tsx`(이은 병원 메모 `gColor: 'grape'` → `bg-cal-grape`·`text-cal-grape-on`·말풍선 `{글} · 구글 일정 색 그대로`·글 그대로·칩 차례 그대로·누르면 `onAllDay(그날)`, `default`·null → 캘린더 기본 색·`… · 캘린더 기본 색`, 잇지 않은 병원은 지금 그대로). 그다음 design.md 21-13대로. 지금 시험 기대는 고치지 않는다. PC 화면만
+- 의존: TASK-32

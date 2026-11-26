@@ -636,8 +636,33 @@ export function dayWithYear(day: string, today: string): string // 올해가 아
 - 까닭 글: `fixReasonText`가 `gColor`도 받는다(`Pick<GParsedFix, 'reason' | 'guess' | 'gColor'>`, 부르는 곳 FixPanel·ImportRows는 이미 `GParsedFix`를 넘김). no-staff-color만 `gColor`가 있으면 새 글.
 - 보기 상자: `StaffKinds.tsx` 보기 `ul`에 `list-none`(앱에 목록 점 초기화가 없음 — 다른 부품도 모두 붙여 씀).
 
+### 21-13. 종일 메모 구글 색 (REQ-8554 — TASK-32 Phase 8, TASK-33·34 Phase 9)
+- **새 migration `supabase/migrations/20261127100000_google_link_allday_color.sql`**(앞 migration은 고치지 않음, `20261127000000_google_link_offcolor.sql`과 같은 머리 주석 꼴 — 무엇·실행·먼저·두 번·관문·명세 번호, LF):
+```sql
+alter table public.calendar_allday add column if not exists g_color text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.calendar_allday'::regclass and conname = 'calendar_allday_g_color') then
+    alter table public.calendar_allday add constraint calendar_allday_g_color check (g_color is null or (type = 'memo' and g_color in ('lavender', 'sage', 'grape', 'flamingo', 'banana', 'tangerine', 'peacock', 'graphite', 'blueberry', 'basil', 'tomato', 'default')));
+  end if;
+end
+$$;
+grant insert (g_color), update (g_color) on table public.calendar_allday to authenticated;
+```
+  정책·트리거는 그대로(고치기 정책 '내 병원 종일 줄 고치기'·'데스크 종일 줄 고치기'가 줄을 정함, `calendar_allday_gwait`는 day·memo만 보므로 색만 고치면 `g_wait_at` 그대로). 관문: SQL 먼저, 사이트 다음(새 사이트는 `g_color`를 읽으므로 칸이 없으면 예약 탭 종일 줄 읽기가 실패한다).
+- 시험: 새 `supabase/googleLinkAlldayColor.rls.test.ts` — `googleLinkOffColor.rls.test.ts`와 같은 PGlite + Supabase 흉내·계정, 사슬 = 이 파일보다 앞 migration 모두(파일 이름 차례) → 이 파일 → 이 파일(파일이 없으면 시험마다 실패). 원장·데스크 자기 병원 메모 넣기(색 있음)·색 고치기 성공(`g_wait_at` 그대로), 다른 병원 사용자 고치기 0줄, anon 권한 없음, 11색·`default` 밖 글 거절, off 줄 색 거절, 칸 권한 표(넣기·고치기 authenticated), 머리 주석·LF.
+- `types/calendar.ts` `CalAllDay.gColor?: CalColor | 'default' | null`(메모 줄만, null = 웹앱에만 있음·아직 못 읽음).
+- `lib/storage/calendar.ts`: `ALLDAY_COLUMNS`에 `g_color`, `toAllDay` 메모 줄 `gColor`(null·11색·`default`, 그 밖이면 그 줄을 뺌 — 다른 구글 칸과 같게), `memoGoogle`이 `gColor`를 받으면 `g_color`로(검사), `applyGoogleMemo` patch에 `gColor?`. 새 `fillMemoColor(client, id, color: CalColor | 'default'): Promise<boolean>` = `update({ g_color }).eq('id').is('g_color', null).select('id')` → 1줄이면 참. 새 `hasMemoColorGap(client, from, to): Promise<boolean>` = `select('id').eq('type', 'memo').not('g_event_id', 'is', null).eq('g_wait', false).is('g_color', null).gte('day').lte('day').limit(1)`.
+- `lib/gcal/deps.ts` `GcalStore`: `applyMemo` patch에 `gColor?`, 새 `memoColorGap(from, to)`·`fillMemoColor(id, color)` — 진짜는 위 저장 함수, `createMemoryStore`는 같은 조건을 흉내(off 줄 색·틀린 색은 `MemoryDbError`).
+- 받기(`pull.ts`): `syncMemo`에 `color = colorFromId(ev.colorId) ?? 'default'` — 새 줄 `addAllDay`에 `gColor`, 남는 날·옮긴 날 `applyMemo` patch에 `gColor`(그 줄 색과 다르면 바뀐 수 +1). `pullOnce` 성공 갈래 끝(`followOffColor` 뒤)에 `fillMemoColors(deps, link)`(받기가 이미 읽은 연결)를 부르고 던짐은 삼킨다. 새 `export async function fillMemoColors(deps, link): Promise<number>`: 모듈 안 `lastFillTry`(ms, 처음 null)가 있고 지금과 1시간이 안 지났으면 0(아무것도 안 읽음) → `today = todayInKorea(now)`, `from = yearsAhead(today, −1)`, 끝 날 = `addDays(yearsAhead(today, 3), −1)` → `memoColorGap(from, 끝 날)`이 거짓이면 0(구글 부르지 않음, `lastFillTry` 비움) → 참이면 `listAllDay(from, 끝 날)`에서 메모·`gEventId` 있음·`gWait` 거짓·`gColor` null 줄을 모음(없으면 — DB에는 있지만 읽기에서 빠진 줄 — `lastFillTry = 지금`, 0) → `call(link, 'list', { calendarId, from: 가장 이른 날, to: addDays(가장 늦은 날, 1), pageToken })`를 `MAX_PAGES`까지 읽어 일정 id → 색(없으면 `default`) 지도 → 모은 줄마다 `fillMemoColor(id, 지도 값 ?? 'default')`를 10줄씩 동시에(줄 실패는 삼킴) → 끝에 빈 색 줄이 남았으면(못 채운 줄이 있으면) `lastFillTry = 지금`, 다 채웠으면 비움 → 채운 수. 목록 읽기가 던지면 `lastFillTry = 지금` 하고 다시 던진다(받기가 삼킴). 시험용으로 `resetFillMemoColors()`를 내보낸다. 연결에 캘린더 id가 없으면 0.
+- 처음 가져오기(`importRead.ts` `applyImport`): 메모 `addAllDay`에 `gColor: own ? (colorFromId(ev.colorId) ?? 'default') : null`.
+- [예약표에 넣기](`components/calendar/gcal/fixApply.ts` 메모 갈래): `gColor: own ? (fix.gColor ?? 'default') : null`.
+- 보내기(`push.ts`): 메모를 보낸 뒤 `markMemoSent`가 참이면 `fillMemoColor(row.id, 'default')`(이미 색이 있으면 0줄 — 구글에서 온 메모 색은 그대로). 실패는 삼킨다.
+- 칠하기(`rows/parts.tsx` `dayChips` 이은 병원 메모 갈래): `gColor`가 11색이면 `CAL_TONES[gColor]`·말풍선 `{글} · 구글 일정 색 그대로`, 아니면 지금 그대로. 주 보기·폰 목록 모두 `dayChips`를 쓴다.
+- 휴무 한 칩은 지금처럼 `look.offColor`(21-5). 메모를 off 줄로 옮기지는 않는다(그 일정이 구글에서 바뀌면 지금 받기가 off로 읽어 옮긴다).
+
 ### 21-11. 위험 / 확인할 것 (2차)
-- 2차 전에 이은 병원에서 웹앱으로 옮긴 예약(`orig_day` 있음·`g_moved` 거짓)은 웹앱 '변경'이 빠진다(구글은 흑연 그대로). 다음에 그 예약을 옮기거나 구글에서 고치면 맞춰진다. 처음 가져오기의 흑연 일정은 `g_moved` 참이라 그대로. 표·칸을 바꾸지 않기로 해서(이번 migration은 휴무 줄 색 함수 하나) 한꺼번에 되살리지 않는다.
+- 2차 전에 이은 병원에서 웹앱으로 옮긴 예약(`orig_day` 있음·`g_moved` 거짓)은 웹앱 '변경'이 빠진다(구글은 흑연 그대로). 다음에 그 예약을 옮기거나 구글에서 고치면 맞춰진다. 처음 가져오기의 흑연 일정은 `g_moved` 참이라 그대로. 2차에는 표·칸을 바꾸지 않기로 해서(2차 migration은 휴무 줄 색 함수 하나 — 3차 21-13은 종일 줄 색 칸만 더함) 한꺼번에 되살리지 않는다.
 - 이미 이은 병원의 휴무 줄 색은 구글 off 일정이 바뀌어야 따라간다(21-5) → 설정에서 한 번 고르기 안내.
 - 다시 알아보기는 수천 줄을 브라우저가 적어 몇 분 걸릴 수 있고, 그사이 다른 PC가 고친 줄은 쓰지 않는다(missed — 화면에 수는 안 보임, 다시 누르면 됨).
 - 종류 이름의 표시와 다른 시행자를 고른 예약은 구글 제목 끝이 실제 시행자 표시라, 다음 받기·다시 알아보기 때 그 표시의 종류로 바뀔 수 있다(시안 '확인할 것' 3 — 시안대로).
