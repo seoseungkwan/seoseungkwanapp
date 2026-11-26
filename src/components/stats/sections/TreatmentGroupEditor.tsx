@@ -46,8 +46,8 @@ export type TreatmentGroupEditorProps = {
   groups: readonly StatsRxGroup[]
   /** 찾기 목록 줄(rxCatalog: 넓은 범위 + 화면의 일 숫자 + 묶음에 든 넣는 처방·빼는 처방·조건 처방, 코드 대소문자 합침). 묶음 안 처방 이름도 여기서 찾는다 */
   lines: readonly RxLine[]
-  /** 대문자 코드 → 이 기간 건수(rxPeriodCounts, 표의 건수와 같은 셈) */
-  counts: ReadonlyMap<string, number>
+  /** 대문자 코드 → 이 기간 건수(rxPeriodCounts, 표의 건수와 같은 셈). null = 건수 글자를 그리지 않는다(의사랑 처방량은 환자 건수가 아니다, uisarang-upload AC-8812.7) */
+  counts: ReadonlyMap<string, number> | null
   /** PERIOD_NAME[기간], 예: '최근 30일' */
   periodName: string
   catalogState: CatalogState
@@ -101,6 +101,8 @@ const PART_HINT = 'font-normal text-muted'
 const CODE_ROW = 'flex min-h-9 flex-wrap items-center gap-x-2 border-t border-dashed border-line text-small first:border-t-0'
 const EMPTY_LINE = 'flex min-h-9 items-center text-small text-muted'
 const COUNT = 'ml-auto text-caption tabular-nums text-muted'
+// 건수를 그리지 않을 때(counts null) 처방 줄 뒤 단추를 오른쪽으로 미는 빈 자리
+const COUNT_GAP = 'ml-auto'
 // 조건 칸: 그 처방 줄 아래 한 줄 전체, 왼쪽 2px warning 선 + warning-soft 바탕(테두리 상자가 아니라 상자 안 상자가 되지 않는다). 휴대폰은 들여 쓰지 않는다
 const COND_BOX = 'mb-2 ml-4 min-w-0 basis-full border-l-2 border-warning bg-warning-soft px-3 py-2 max-md:ml-0'
 const COND_ROW = 'flex min-h-8 flex-wrap items-center gap-x-1.5 text-small'
@@ -219,7 +221,9 @@ export function TreatmentGroupEditor({
   const bad = useMemo(() => (tried ? badFields(rows) : new Set<number>()), [tried, rows])
 
   const shownName = (code: string) => nameByKey.get(codeKey(code))?.trim() || code
-  const countOf = (code: string) => formatCount(counts.get(codeKey(code)) ?? 0)
+  const countOf = (code: string) => formatCount(counts?.get(codeKey(code)) ?? 0)
+  // 처방 줄의 기간 건수 칸. 건수가 없으면(counts null) 글자 없는 빈 자리만
+  const periodCount = (code: string) => (counts === null ? <span className={COUNT_GAP} /> : <span className={COUNT}>{`${periodName} ${countOf(code)}건`}</span>)
 
   const change = (next: Draft, focus?: string[]) => {
     focusNext.current = focus ?? null
@@ -378,7 +382,7 @@ export function TreatmentGroupEditor({
           {tag ? (
             <span className={tag.here ? TAG_HERE : TAG_ELSEWHERE}>{tag.text}</span>
           ) : (
-            <span className="shrink-0 text-caption tabular-nums text-muted">{`${countOf(line.code)}건`}</span>
+            counts !== null && <span className="shrink-0 text-caption tabular-nums text-muted">{`${countOf(line.code)}건`}</span>
           )}
           {note && <span className={note.warn ? 'basis-full text-caption text-warning' : 'basis-full text-caption text-muted'}>{note.text}</span>}
         </button>
@@ -538,7 +542,7 @@ export function TreatmentGroupEditor({
                     return (
                       <li key={code} className={CODE_ROW}>
                         {nameAndCode(code)}
-                        <span className={COUNT}>{`${periodName} ${countOf(code)}건`}</span>
+                        {periodCount(code)}
                         {!showCond && (
                           <button type="button" id={condAddId(key, at)} onClick={() => openPicker({ key, kind: 'cond', code })} className={ADD_CODE_BUTTON}>
                             조건 더하기
@@ -578,7 +582,7 @@ export function TreatmentGroupEditor({
                   {out.map((code, at) => (
                     <li key={code} className={CODE_ROW}>
                       {nameAndCode(code)}
-                      <span className={COUNT}>{`${periodName} ${countOf(code)}건`}</span>
+                      {periodCount(code)}
                       <button type="button" id={outRemoveId(key, at)} onClick={() => dropOut(index, code, at)} className={PLAIN_BUTTON}>
                         지우기
                       </button>

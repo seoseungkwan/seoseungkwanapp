@@ -8,6 +8,11 @@ import { treatmentRows } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import type { WideDays } from '@/components/stats/useWideDays'
 import { sunapSpan, workedDays } from '@/components/stats/sunapView'
+import { UIS_REPORT_DESC, UIS_RX_DESC, UIS_WHY } from '@/components/stats/uisarang/texts'
+import { UisAgeSection } from '@/components/stats/uisarang/UisAgeSection'
+import { UisNoteSection } from '@/components/stats/uisarang/UisNote'
+import { UisRxSection } from '@/components/stats/uisarang/UisRxSection'
+import { useUisPeriods, type UisPeriodsView } from '@/components/stats/uisarang/useUisPeriods'
 import { summaryCells, summaryDesc, type StatsInput, type StatsRange } from '@/components/stats/view'
 import type { ViewSums } from '@/components/stats/viewSums'
 import { buildAlerts } from '@/lib/analytics/alerts'
@@ -60,6 +65,9 @@ import { WeekdaySection } from './WeekdaySection'
 // 병원 정보(clinic-profile REQ-6606, design.md 8절): 여기서 useClinicProfile을 한 번 불러 칸마다 값으로 넘긴다 — 호칭은 보고 카드·보고 칸 제목과
 // 매출 칸 [어떻게 세나요?] 글(AC-6606.3), 저장된 진료시간은 시간대별 접수(AC-6606.1), 휴진일은 휴일에 따라(AC-6606.2).
 // 읽는 중·실패·줄 없음이면 호칭은 기본값 '원장님'이고 진료시간은 넘기지 않아(null) 지금처럼 그린다
+// 의사랑 의원(uisarang-upload REQ-8812, design.md §10-3): 병원 정보를 읽었고 emr가 uisarang이면 uis다(읽는 중·실패는 비트 그대로).
+//   비트 칸(bit)은 그리지 않고, 셀 수 없는 칸은 자리를 둔 채 셀 수 없음 안내(UisNoteSection)다. 환자 구성은 UisAgeSection, 처방 카드는 UisRxSection,
+//   처방·나이대 줄은 useUisPeriods(지금 기간, revision)로 한 번 읽어 두 칸에 넘긴다. 진료 운영 윗줄은 요일별 · 시간대별 · 원장님별 세 칸 한 줄(시안 .opsrow)
 
 const REPORT_RX = 2
 // 바로가기 띠 바로 아래 첫 자리(환자 요약)의 위 여백: 칸 위 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (stats-pc-ux 기본값 14)
@@ -85,6 +93,10 @@ const REPORT_DESC = '비트 PC에서 불러온 숫자로 만든 보고 글 · �
 const STACK = `flex flex-col gap-4 ${FIRST_GAP}`
 // 진료 운영 카드 윗줄(요일별 30% · 시간대별 70%, 시안 .s-row-ops). 칸은 min-w-0이라 줄어든다
 const OPS_ROW = 'flex min-w-0 flex-col gap-6 min-[1200px]:flex-row min-[1200px]:gap-8'
+// 의사랑 진료 운영 윗줄: 세 칸이 늘 한 줄로 같은 폭(시안 .opsrow, PC 화면만)
+const UIS_OPS_ROW = 'flex min-w-0 gap-8'
+const UIS_OPS_CELL = 'flex-1'
+const UIS_READING: UisPeriodsView = { state: 'reading' }
 
 /** 매출 칸에 넘기는 값: 통계 매출 훅(useStatsRevenue)의 읽은 숫자·상태 + 마지막 끝난 날 + [다시 읽기](저장된 매출만) */
 export type StatsRevenueShown = {
@@ -148,6 +160,10 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
   const honorific = clinic.profile.honorific
   const clinicHours = clinic.saved ? clinic.profile.hours : null
   const closedDates = clinic.profile.closedDates
+  const uis = clinic.state === 'ready' && clinic.profile.emr === 'uisarang'
+  // 비트 전용 칸 값: 의사랑 의원이면 주지 않은 것과 같다(칸·탭이 없다)
+  const bitShown = uis ? undefined : bit
+  const periods = useUisPeriods(uis ? input.range.current : null, revision) ?? UIS_READING
   // 예약·전환의 '진료한 날': 마감한 날을 읽는 기간과 같은 기간의 저장된 날 숫자에서 센다
   const worked = useMemo(() => workedDays(input.days, sunapSpan(input.range)), [input.days, input.range])
   const name = input.range.period === null ? input.range.name : null
@@ -184,7 +200,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
     () => wideState !== undefined && wideDays !== undefined && alertsShown(today, { state: wideState, days: wideDays }, cal),
     [today, wideState, wideDays, cal],
   )
-  const summary = <PeriodSummary input={input} saved={saved} />
+  const summary = <PeriodSummary input={input} saved={saved} uis={uis} />
   return (
     <div className={STACK}>
       {wide !== undefined && alertsFirst && (
@@ -208,8 +224,12 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       )}
       <StatsCard id={PATIENTS_ID} title={PATIENTS} desc={cardRangeText(input.range, lastDayOf(input.range, revenue))}>
         <PatientTrendSection input={input} saved={saved} />
-        <RevisitSection input={input} saved={saved} />
-        {bit !== undefined && <PatientMixSection view={bit} range={input.range} hospitalName={hospitalName} />}
+        {uis ? <UisNoteSection title="신환 재방문율" why={UIS_WHY.revisit} /> : <RevisitSection input={input} saved={saved} />}
+        {uis ? (
+          <UisAgeSection periods={periods} input={input} />
+        ) : (
+          bitShown !== undefined && <PatientMixSection view={bitShown} range={input.range} hospitalName={hospitalName} />
+        )}
       </StatsCard>
       {revenue !== undefined && tabs !== null && (
         <StatsCard id={REVENUE_ID} title={REVENUE}>
@@ -217,14 +237,15 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             tabs={tabs}
             noDayCodes={noDayCodes}
             onReread={revenue.onReread}
-            bit={bit === undefined ? undefined : { view: bit, range: input.range }}
+            bit={bitShown === undefined ? undefined : { view: bitShown, range: input.range }}
             groups={groups.groups}
+            uis={uis}
           />
         </StatsCard>
       )}
       {sunap !== undefined && (
         <StatsCard id={SUNAP_ID} title={SUNAP}>
-          <SunapSection closed={sunap.closed} groups={sunap.groups} onReread={sunap.onReread} bit={bit ?? null} worked={worked} saved={sums?.sunap ?? undefined} />
+          <SunapSection closed={sunap.closed} groups={sunap.groups} onReread={sunap.onReread} bit={bitShown ?? null} worked={worked} saved={sums?.sunap ?? undefined} uis={uis} />
         </StatsCard>
       )}
       {calendar !== undefined && (
@@ -232,30 +253,40 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
           <CalendarSection {...calendar} />
         </StatsCard>
       )}
-      <StatsCard id={RX_ID} title={RX} desc={RX_DESC}>
-        <RxSection
-          tabs={[
-            { name: '묶음별 추세', panel: <TreatmentTrendSection input={input} saved={saved} groups={groups} revision={revision} /> },
-            { name: '처방별 신환·재진', panel: <RxSplitSection view={split} hospitalName={hospitalName} saved={saved} name={name} /> },
-            { name: '처방 골라 보기', panel: <RxPickerSection input={input} saved={saved} hospitalName={hospitalName} revision={revision} /> },
-            ...(bit === undefined ? [] : [{ name: '몇 번까지 받나', panel: <DropoffSection view={bit} groups={groups.groups} saved={sums?.dropoff ?? undefined} /> }]),
-          ]}
-        />
+      <StatsCard id={RX_ID} title={RX} desc={uis ? UIS_RX_DESC : RX_DESC}>
+        {uis ? (
+          <UisRxSection periods={periods} input={input} groups={groups} />
+        ) : (
+          <RxSection
+            tabs={[
+              { name: '묶음별 추세', panel: <TreatmentTrendSection input={input} saved={saved} groups={groups} revision={revision} /> },
+              { name: '처방별 신환·재진', panel: <RxSplitSection view={split} hospitalName={hospitalName} saved={saved} name={name} /> },
+              { name: '처방 골라 보기', panel: <RxPickerSection input={input} saved={saved} hospitalName={hospitalName} revision={revision} /> },
+              ...(bitShown === undefined ? [] : [{ name: '몇 번까지 받나', panel: <DropoffSection view={bitShown} groups={groups.groups} saved={sums?.dropoff ?? undefined} /> }]),
+            ]}
+          />
+        )}
       </StatsCard>
       <StatsCard id={OPS_ID} title={OPS} desc={OPS_DESC}>
-        {bit === undefined ? (
+        {uis ? (
+          <div className={UIS_OPS_ROW}>
+            <WeekdaySection days={input.days} range={input.range} saved={saved} className={UIS_OPS_CELL} />
+            <UisNoteSection title="시간대별 접수" why={UIS_WHY.hours} className={UIS_OPS_CELL} />
+            <UisNoteSection title="원장님별" why={UIS_WHY.doctors} className={UIS_OPS_CELL} />
+          </div>
+        ) : bitShown === undefined ? (
           <WeekdaySection days={input.days} range={input.range} saved={saved} />
         ) : (
           <div className={OPS_ROW}>
             <WeekdaySection days={input.days} range={input.range} saved={saved} className="min-[1200px]:basis-3/10" />
-            <VisitHoursSection view={bit} range={input.range} className="min-[1200px]:basis-7/10" hours={clinicHours} />
+            <VisitHoursSection view={bitShown} range={input.range} className="min-[1200px]:basis-7/10" hours={clinicHours} />
           </div>
         )}
-        {bit !== undefined && <DoctorsSection view={bit} range={input.range} hospitalName={hospitalName} />}
+        {bitShown !== undefined && <DoctorsSection view={bitShown} range={input.range} hospitalName={hospitalName} />}
         {wide !== undefined && <HolidaySection today={today} wide={wide} closedDates={closedDates} />}
       </StatsCard>
       {/* 고르기에 들어오고 나갈 때 다시 그린다: [고른 기간 보고]가 처음 눌리고, 나가면 [오늘 일일보고]다 */}
-      <StatsCard id={REPORT_ID} title={reportTitle(honorific)} desc={REPORT_DESC}>
+      <StatsCard id={REPORT_ID} title={reportTitle(honorific)} desc={uis ? UIS_REPORT_DESC : REPORT_DESC}>
         <ReportSection
           key={pick === null ? 'quick' : 'pick'}
           report={report}
@@ -264,6 +295,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
           saved={saved}
           pick={pick}
           honorific={honorific}
+          uis={uis}
         />
         {wide !== undefined && (
           <MonthlyReportSection
@@ -272,9 +304,10 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             wide={wide}
             groups={groups.groups}
             calendar={calendar}
-            bit={bit}
+            bit={bitShown}
             goal={goals?.goal}
             revision={salesRevision}
+            uis={uis}
           />
         )}
       </StatsCard>

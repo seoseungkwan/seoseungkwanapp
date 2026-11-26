@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { formatCount } from '@/components/charts/format'
 import type { BarBucket } from '@/components/charts/StackedBarChart'
 import { missingDays, patientTrend, summaryCells, summaryDesc, type StatsInput, type SummaryCell } from '@/components/stats/view'
+import { UIS_NA } from '@/components/stats/uisarang/texts'
 import { ds } from '@/components/ui/classes'
 import { addMonths, monthOf } from '@/lib/analytics/dates'
 import { EmptyNote, monthNumber, NO_RANGE_DATA, StatsCard, todayOf, useSectionAnchor } from './parts'
@@ -11,7 +12,8 @@ import { deltaLine, SummaryCell as CellView, type SummaryLine } from './SummaryC
 // 큰 카드(StatsCard) 하나: h2 "환자 요약" + 옆 글(증감은 {비교 이름}과/와 비교) → 칸 넷(하루 평균 내원 · 신환 · 90일초진 · 재진, PC 한 줄 · 768px 미만 2칸 × 2줄).
 // 증감은 칸 안 숫자 아래 줄이다(넷째 '비교 기간보다' 칸은 없다). 고른 기간은 평균 칸에만 증감이 있고 작년 비교는 둘째 줄이다.
 // 바로가기 자리(SectionAnchor stats-summary) 안이면 이 카드가 그 id를 갖는다. 매출 요약은 StatsSections가 이 카드 바로 뒤에 따로 놓는다(AC-4408.2).
-// 90일초진을 셀 수 없으면(first90 없는 날) 칸은 '확인 불가'이고 아래에 새 도우미 안내 글을 둔다(AC-4403.3)
+// 90일초진을 셀 수 없으면(first90 없는 날) 칸은 '확인 불가'이고 아래에 새 도우미 안내 글을 둔다(AC-4403.3).
+// 의사랑 의원(uis, uisarang-upload AC-8812.2)은 90일초진 칸이 늘 '–' + '의사랑 엑셀로는 셀 수 없어요'이고 도우미 안내 글이 없다
 
 const TITLE = '환자 요약'
 const EMPTY = '숫자를 불러오면 이 기간의 평균 환자 수와 신환·재진이 보여요.'
@@ -32,7 +34,8 @@ const NOTE = 'mt-3 text-small text-st-muted'
 const HELPER_BOX = 'mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-st-sm bg-warning-soft px-4 py-3 text-body text-st-warn-ink'
 
 // 칸 하나. 값이 없으면 증감 줄 없이 '–' + 까닭 글이다. 90일초진·재진의 늘고 줆은 좋고 나쁨이 아니라 증감 줄을 ink-2로 그린다
-function PatientCell({ cell, className }: { cell: SummaryCell; className: string }) {
+function PatientCell({ cell, className, uis }: { cell: SummaryCell; className: string; uis: boolean }) {
+  if (uis && cell.key === 'first90') return <CellView label={cell.label} value={null} notes={[UIS_NA]} className={className} />
   if (cell.unknown) return <CellView label={cell.label} value={UNKNOWN_VALUE} tone="na" notes={[cell.note]} className={className} />
   const lines: SummaryLine[] =
     cell.value === null
@@ -65,7 +68,7 @@ function monthNote(input: StatsInput, trend: readonly BarBucket[], hasAverage: b
   return `끝난 달 숫자가 아직 없어요. ${month}월은 끝나지 않은 달이라 평균에 넣지 않아요. ${next}월 1일이 지나면 평균이 보여요.`
 }
 
-export function PeriodSummary({ input, saved }: { input: StatsInput; saved: boolean }) {
+export function PeriodSummary({ input, saved, uis = false }: { input: StatsInput; saved: boolean; uis?: boolean }) {
   const id = useSectionAnchor() ?? undefined
   const trend = patientTrend(input)
   if (trend === null) {
@@ -79,14 +82,14 @@ export function PeriodSummary({ input, saved }: { input: StatsInput; saved: bool
   const hasAverage = cells.some((cell) => cell.key === 'average' && cell.value !== null)
   const note = monthNote(input, trend, hasAverage)
   const missing = missingDays(input)
-  const unknown = cells.some((cell) => cell.unknown)
+  const unknown = !uis && cells.some((cell) => cell.unknown)
   return (
     <StatsCard id={id} title={TITLE} desc={summaryDesc(input.range)}>
       {/* 카드 몸 칸 사이에 선이 그어지므로 칸 넷과 아래 글을 한 칸에 담는다 */}
       <div>
         <div className={GRID}>
           {cells.map((cell, i) => (
-            <PatientCell key={cell.key} cell={cell} className={CELLS[i] ?? CELLS[3]} />
+            <PatientCell key={cell.key} cell={cell} className={CELLS[i] ?? CELLS[3]} uis={uis} />
           ))}
         </div>
         {missing > 0 && <p className={NOTE}>{`자료 없는 날 ${formatCount(missing)}일은 빼고 셌어요`}</p>}

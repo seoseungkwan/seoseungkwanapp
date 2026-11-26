@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { useViewing, WriteOnly } from '@/components/shell/viewing'
@@ -24,6 +25,7 @@ import { StatsToc } from './StatsToc'
 import { useStatsRevenue, type RevenueFailure } from './useStatsRevenue'
 import { useStatsRxGroups } from './useStatsRxGroups'
 import { useStatsSunap } from './useStatsSunap'
+import { UIS_EMPTY_BODY, UIS_EMPTY_TITLE } from './uisarang/texts'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 import { useWideDays } from './useWideDays'
 import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
@@ -225,9 +227,18 @@ function SourceSummary({ data, today, notSaved }: { data: StatsData; today: stri
   )
 }
 
+// 의사랑 의원(uisarang-upload AC-8812.1, design.md §10-3)의 올리기 칸 모양: 저장된 숫자가 있으면 접은 모양, 없으면 펼친 모양
+type UisUploadLook = 'open' | 'folded'
+type UisUploadSlot = (look: UisUploadLook) => ReactNode
+
 export function StatsScreen({ hospitalName: myName, today }: { hospitalName: string; today: string }) {
   // 다른 의원을 보는 중(admin-view AC-8008.1)이면 칸 복사 글·보고 문장의 이름은 보는 의원 이름이다
   const hospitalName = useViewing()?.name ?? myName
+  // 의사랑 의원(병원 정보를 읽었고 emr가 uisarang)이면 비트·파일 고르기 칸 대신 올리기 칸 자리이고 빈 글이 의사랑 글이다. 읽는 중·실패는 비트 그대로
+  const clinic = useClinicProfile()
+  const uis = clinic.state === 'ready' && clinic.profile.emr === 'uisarang'
+  // 올리기 칸 자리(TASK-7이 채운다: UisUpload + useUisUpload({ onSaved: data.reread() + revenue.reread() })). 지금은 아무것도 그리지 않는다
+  const uisUploadSlot: UisUploadSlot = () => null
   const [choice, setChoice] = useState<StatsChoice>(DEFAULT_STATS_PERIOD)
   const data = useStatsData(choice, today)
   const { todayDone } = data
@@ -448,6 +459,7 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
   const revenueLine = revenue.progress === null ? null : revenueProgressText(revenue.progress.done, revenue.progress.total)
   const partLine = partAt === null ? null : progressText(partAt.plan, partAt.at)
   const revenueFailure = revenue.failure !== null && revenue.failure !== revenueHidden ? revenue.failure : null
+  const summary = showSections && (!readFailed || unsaved !== null) ? <SourceSummary data={data} today={today} notSaved={incomplete !== null} /> : null
 
   // 통계 바탕(first90 AC-4411.1, design.md 5-5 '화면 바탕'): 맨 바깥 표시 하나만 둔다. 회색은 globals.css의 #main:has(이 표시)가
   // 앱 본문 전체(넓은 화면 양옆까지)에 칠하고 인쇄는 흰 바탕이다. 음수 여백으로 덮지 않고 앱 틀(AppShell)은 고치지 않는다
@@ -457,22 +469,30 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
       {/* 다른 의원을 보는 중(admin-view AC-8008.1)이면 불러오기 상자 전체·[이어서 불러오기]·[매출만 다시 읽기]·[다시 저장]이 없다(읽기만) */}
       {/* 끊김 카드는 끊겨 있는 동안만 참이라 [다시 확인]을 누를 때 지운다(AC-514.12) */}
       <WriteOnly>
-        <SourcePicker
-          state={state}
-          helloError={helloError}
-          today={today}
-          range={range}
-          job={job}
-          progress={job === 'bit' ? (revenueLine ?? partLine) : null}
-          onRetry={() => {
-            setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
-            retry()
-          }}
-          onLoad={loadFromBit}
-          onFiles={takeFiles}
-          canFold={canFold}
-          summary={showSections && (!readFailed || unsaved !== null) ? <SourceSummary data={data} today={today} notSaved={incomplete !== null} /> : null}
-        />
+        {uis ? (
+          // 의사랑 의원: 자료 줄(출처 이름 '의사랑 엑셀') 다음 올리기 칸 자리. 비트 '불러오기' 길은 그리지 않는다
+          <>
+            {summary !== null && <div className="mt-3">{summary}</div>}
+            {uisUploadSlot(canFold ? 'folded' : 'open')}
+          </>
+        ) : (
+          <SourcePicker
+            state={state}
+            helloError={helloError}
+            today={today}
+            range={range}
+            job={job}
+            progress={job === 'bit' ? (revenueLine ?? partLine) : null}
+            onRetry={() => {
+              setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
+              retry()
+            }}
+            onLoad={loadFromBit}
+            onFiles={takeFiles}
+            canFold={canFold}
+            summary={summary}
+          />
+        )}
         {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10). 개인정보 줄은 불러오기 상자 펼칠 칸 안이다(AC-4001.1) */}
         {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null || state !== 'ready'} onResume={resumeLoad} />}
         {/* 매출만 실패 상자(stats-revenue AC-4108.5): 나눠 읽기 상자 다음. [매출만 다시 읽기]도 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다 */}
@@ -522,8 +542,10 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
       {incomplete !== null && <IncompleteCard note={incomplete} latest={unsaved === null ? data.latest : null} />}
       {showSections && !readFailed && !saved && (
         <div className="mt-6">
-          <p className="text-title font-semibold text-ink">아직 저장된 통계가 없어요</p>
-          <p className="mt-1 max-w-160 text-body text-ink-2">비트 PC에서 [비트에서 불러오기]를 누르거나, 비트에서 내보낸 파일을 넣으면 숫자가 채워져요. 한 번 저장하면 휴대폰에서도 볼 수 있어요.</p>
+          <p className="text-title font-semibold text-ink">{uis ? UIS_EMPTY_TITLE : '아직 저장된 통계가 없어요'}</p>
+          <p className="mt-1 max-w-160 text-body text-ink-2">
+            {uis ? UIS_EMPTY_BODY : '비트 PC에서 [비트에서 불러오기]를 누르거나, 비트에서 내보낸 파일을 넣으면 숫자가 채워져요. 한 번 저장하면 휴대폰에서도 볼 수 있어요.'}
+          </p>
         </div>
       )}
 

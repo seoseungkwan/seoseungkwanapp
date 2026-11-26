@@ -5,6 +5,8 @@ import { formatCount } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { DoctorTable } from '@/components/sunap/DoctorTable'
 import { sunapPct } from '@/components/stats/sunapView'
+import { UIS_WHY } from '@/components/stats/uisarang/texts'
+import { UisNote } from '@/components/stats/uisarang/UisNote'
 import { ds } from '@/components/ui/classes'
 import type { SunapRates, SunapTotals } from '@/types/sunap'
 import { HowCounted } from './HowCounted'
@@ -33,6 +35,8 @@ type Props = StatsSunapShown & {
   // 보는 중 저장 합계(admin-view AC-8025.1, viewSums): 고른 기간 날 줄 sunap 아홉 칸의 합. 주면 Block 전환 칸은 bit 대신 이것으로 그린다
   // (원장님별 표는 저장하지 않아 없다). 주지 않으면 지금과 같다
   saved?: SunapRates
+  // 의사랑 의원(uisarang-upload AC-8812.2): Block 전환 칸은 셀 수 없음 안내(옆 글 없음)이고 원장님별 표가 없다. 두 예약률 칸은 그대로
+  uis?: boolean
 }
 
 const RSV_FIRST = '신환 예약률'
@@ -194,7 +198,7 @@ function DoctorBody({ groups, bit }: { groups: SunapGroupsState; bit: BitSection
   )
 }
 
-export function SunapSection({ closed, groups, bit, worked, onReread, saved }: Props) {
+export function SunapSection({ closed, groups, bit, worked, onReread, saved, uis = false }: Props) {
   const sums = closed === 'reading' || closed === 'failed' ? 'blank' : closed.length === 0 ? 'empty' : sumClosed(closed)
   const failed = closed === 'failed' || groups === 'failed'
   return (
@@ -206,11 +210,11 @@ export function SunapSection({ closed, groups, bit, worked, onReread, saved }: P
         <Section title={RSV_D90} desc={RSV_DESC} className={CELL_NEXT}>
           <RateBody sums={sums} kind="d90" worked={worked} />
         </Section>
-        <Section title={BLOCK} desc={BLOCK_DESC} className={CELL_LAST}>
-          <BlockBody groups={groups} bit={bit} saved={saved} />
+        <Section title={BLOCK} desc={uis ? undefined : BLOCK_DESC} className={CELL_LAST}>
+          {uis ? <UisNote>{UIS_WHY.block}</UisNote> : <BlockBody groups={groups} bit={bit} saved={saved} />}
         </Section>
       </div>
-      <DoctorBody groups={groups} bit={bit} />
+      {!uis && <DoctorBody groups={groups} bit={bit} />}
       {failed && (
         // 오류 카드 + 카드 밖 [다시 읽기](매출 칸 읽기 실패와 같은 모양)
         <div className="mt-4">
