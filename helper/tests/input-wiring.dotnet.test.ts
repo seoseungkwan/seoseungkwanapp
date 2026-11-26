@@ -115,12 +115,13 @@ describe('REQ-035 도우미 배선 (글자·빌드)', () => {
   // 0.13.0 = 0.12.0 + 환불·변경수납·예치금·연결 중복이 있는 날·달도 금액을 다 읽음(revenue.days·stats.rows 보고, bit-total TASK-9). 새 명령·새 칸 없음, MIN은 그대로 0.3.0
   // 0.13.1 = 0.13.0 + 다른 의원 비트에서도 처음 등록·요양기관번호 없어도 청구(precheck TASK-43). 새 명령·새 칸 없음, MIN은 그대로 0.3.0
   // 0.13.2 = 0.13.1 + 비트 설치 위치(드라이브·폴더 이름) 상관없이 찾기(precheck TASK-45). 새 명령·새 칸 없음, MIN은 그대로 0.3.0
-  it('AC-005.16·AC-035.7·AC-3402.2·AC-4101.5·AC-4405.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.1·AC-6912.6 릴리스: 도우미 Version과 웹 LATEST_HELPER가 같은 판 0.13.2이고 MIN_HELPER는 0.3.0이다', () => {
+  // 0.14.0 = 0.13.2 + 수납 구글 시트 명령 여덟(sheet.*)·지난 도착 calday 400일(google-link TASK-10). MIN은 그대로 0.3.0
+  it('AC-005.16·AC-035.7·AC-3402.2·AC-4101.5·AC-4405.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.1·AC-6912.6·AC-8511.1 릴리스: 도우미 Version과 웹 LATEST_HELPER가 같은 판 0.14.0이고 MIN_HELPER는 0.3.0이다', () => {
     const props = readFileSync(path.join(ROOT, 'helper', 'Directory.Build.props'), 'utf8')
-    expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe('0.13.2')
+    expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe('0.14.0')
     const versions = readFileSync(path.join(ROOT, 'src', 'lib', 'bridge', 'versions.ts'), 'utf8')
     expect(versions).toContain("MIN_HELPER = '0.3.0'")
-    expect(versions).toContain("LATEST_HELPER = '0.13.2'")
+    expect(versions).toContain("LATEST_HELPER = '0.14.0'")
   })
 
   it('AC-035.7 배선까지 넣은 도우미가 x86 net48로 빌드된다(Program.cs·InputParts.cs는 이 빌드로만 컴파일된다)', () => {

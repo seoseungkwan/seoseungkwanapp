@@ -62,6 +62,11 @@ describe('REQ-001 도우미 메시지 틀 (C# Precheck.Core.Tests.Protocol)', ()
   it('AC-2801.5 contact.targets kind는 followup·injection·lapsed·reservation(1,100일 한도 그대로), 그 밖은 E-HELPER-BAD-MESSAGE', () => {
     expectAc('AC-2801.5')
   })
+
+  // spec google-link: 수납 명령 여덟(sheet.*)을 명령 표에 더한다(모두 환자 자료 아님, confirm은 sheet.link만)
+  it('AC-8511.1 명령 표의 sheet.* 여덟은 patient:false·send 아님·confirm은 sheet.link만이고, 도우미가 칸 모양을 처리기 전에 거른다', () => {
+    expectAc('AC-8511.1')
+  })
 })
 
 // 감싸개 공용 잠금 폴더(runDotnet.ts): 잡은 프로세스가 죽었거나, pid 파일 없이 오래 남은 폴더는 버린다.

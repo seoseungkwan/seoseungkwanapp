@@ -84,9 +84,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.13.0 = 0.12.0 + 환불·변경수납·예치금·연결 중복이 있는 날·달도 금액을 다 읽음(spec bit-total). 새 명령·새 칸 없음, MIN·SUNAP·LIST·CAL·VALUE·APPEND는 그대로
   // 도우미 0.13.2 = 0.13.1 + 비트 설치 위치 상관없이 찾기(precheck TASK-45)
   // 도우미 0.13.1 = 0.13.0 + 다른 의원 비트에서도 처음 등록·요양기관번호 없어도 청구(precheck TASK-43). 새 명령·새 칸 없음, 다른 최소 판은 그대로
-  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.13.2, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.14.0 = 0.13.2 + 수납 구글 시트 명령 여덟(sheet.*)·지난 도착 calday 400일(google-link TASK-10). MIN·MIN_EXTENSION·다른 최소 판은 그대로
+  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.14.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.13.2')
+    expect(LATEST_HELPER).toBe('0.14.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -147,9 +148,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
   })
 
-  it('AC-012.2·AC-038.3·AC-6401.2 확장 manifest의 version은 새 판 0.4.0이다(새 주소 n-medi, 옛 0.3.0보다 높다)', () => {
+  // 확장 0.5.0 = 0.4.0 + 수납 명령 여덟(sheet.*)을 다시 묶은 명령표(google-link TASK-10, 확장 코드는 그대로)
+  it('AC-012.2·AC-038.3·AC-6401.2·AC-8511.1 확장 manifest의 version은 새 판 0.5.0이다(옛 0.4.0보다 높다)', () => {
     const manifest = JSON.parse(readFileSync(new URL('../../../extension/manifest.json', import.meta.url), 'utf8'))
-    expect(manifest.version).toBe('0.4.0')
+    expect(manifest.version).toBe('0.5.0')
   })
 
   it('AC-004.4 지금 확장(manifest)·도우미는 웹 기준으로 ok다', () => {

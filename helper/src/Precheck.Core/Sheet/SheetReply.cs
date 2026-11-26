@@ -68,6 +68,7 @@ public static class SheetReply
                 Version = Shaped(root, "version", VersionShape),
                 ShareFailed = Int(root, "shareFailed"),
                 SheetGid = Long(root, "sheetGid"),
+                HasSheetGid = root.TryGetProperty("sheetGid", out var gid) && gid.ValueKind == JsonValueKind.Number && gid.TryGetInt64(out var g) && g >= 0,
                 Mac = Shaped(root, "mac", MacShape),
             };
             if (root.TryGetProperty("ratioFormulas", out var ratio) && ratio.ValueKind == JsonValueKind.Object)
@@ -121,6 +122,9 @@ public static class SheetReply
             default: return SheetErrors.Failed; // clean·google·모름
         }
     }
+
+    /// <summary>판 글자가 hello·months를 아는 8판 이상인가(옛 7판·판 없음이면 거짓 — sheet.fill 답의 oldCode).</summary>
+    public static bool IsCurrent(string? version) => KnowsHello(version ?? "");
 
     private static bool KnowsHello(string version) =>
         int.TryParse(version, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= HelloVersion;

@@ -3,6 +3,7 @@ import type { BridgeState, ChromeRuntimeLike, ChunkSink, PortLike, ResultOf } fr
 import { connectBridge } from './client'
 import { EXTENSION_ID } from './extensionId'
 import { BridgeError } from './protocol'
+import { LATEST_HELPER } from './versions'
 
 // 가짜 Port: 웹이 보낸 것을 모으고, 시험이 확장의 답·끊김을 흉내 낸다
 class FakePort implements PortLike {
@@ -67,7 +68,7 @@ function fakeSink() {
 
 const SHA = 'a'.repeat(64)
 // 도우미는 웹이 아는 최신(LATEST_HELPER)과 같은 판: "새 도우미가 있어요"가 뜨지 않는다
-const HELLO_DATA = { helperVersion: '0.13.2', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO_DATA = { helperVersion: LATEST_HELPER, protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const PATIENT_JSON_PART1 = '{"visits":[{"chart":"000123","name":"가상'
 const PATIENT_JSON_PART2 = '환자01","memo":"가짜 메모"}]}'
 
@@ -153,14 +154,14 @@ describe('AC-004.3 연결과 상태', () => {
     expect(await rejectCode(t.bridge.call('bit.check', {}))).toBe('E-BRIDGE-BUSY')
   })
 
-  it('AC-005.16·AC-004.3·AC-012.1·AC-3402.2·AC-4101.5·AC-4405.3·AC-4902.6·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.1·AC-6912.6 hello가 맞으면 ready이고 버전을 돌려준다(도우미가 새 판 0.13.2이면 새 도우미 알림 없음)', async () => {
+  it('AC-005.16·AC-004.3·AC-012.1·AC-3402.2·AC-4101.5·AC-4405.3·AC-4902.6·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.1·AC-6912.6 hello가 맞으면 ready이고 버전을 돌려준다(도우미가 새 판 LATEST_HELPER이면 새 도우미 알림 없음)', async () => {
     const t = setup()
     const hello = t.bridge.hello()
     expect(t.port.last()).toEqual({ v: 1, id: 'req-1', cmd: 'hello', args: {} })
     t.port.reply({ v: 1, id: 'req-1', type: 'result', data: HELLO_DATA })
     await expect(hello).resolves.toEqual({
       state: 'ready',
-      helperVersion: '0.13.2',
+      helperVersion: LATEST_HELPER,
       extensionVersion: '0.1.0',
       helperUpdateAvailable: false,
     })
@@ -168,7 +169,7 @@ describe('AC-004.3 연결과 상태', () => {
     expect(t.states).toEqual(['ready'])
   })
 
-  it('AC-4405.3·AC-6912.6 예전 판 0.6.0 도우미는 막지 않고 ready이지만 새 도우미 알림이 뜬다(MIN 0.3.0 그대로, LATEST 0.13.2)', async () => {
+  it('AC-4405.3·AC-6912.6 예전 판 0.6.0 도우미는 막지 않고 ready이지만 새 도우미 알림이 뜬다(MIN 0.3.0 그대로, LATEST는 LATEST_HELPER)', async () => {
     const t = setup()
     const hello = t.bridge.hello()
     t.port.reply({ v: 1, id: 'req-1', type: 'result', data: { ...HELLO_DATA, helperVersion: '0.6.0' } })

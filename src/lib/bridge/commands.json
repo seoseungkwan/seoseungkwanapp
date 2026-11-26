@@ -128,6 +128,59 @@
         "from": { "type": "date" },
         "to": { "type": "date" }
       }
+    },
+    "sheet.status": {
+      "patient": false,
+      "args": {}
+    },
+    "sheet.code": {
+      "patient": false,
+      "args": {}
+    },
+    "sheet.link": {
+      "patient": false,
+      "confirm": true,
+      "args": {
+        "url": { "type": "string", "min": 1, "max": 600 },
+        "shareWith": {
+          "type": "array",
+          "min": 0,
+          "max": 10,
+          "items": { "type": "string", "min": 6, "max": 254, "pattern": "^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(\\.[A-Za-z0-9-]{1,63}){0,8}\\.[A-Za-z]{2,63}$" }
+        }
+      }
+    },
+    "sheet.import": {
+      "patient": false,
+      "args": {}
+    },
+    "sheet.ping": {
+      "patient": false,
+      "args": {
+        "settings": { "type": "json", "of": "object" }
+      }
+    },
+    "sheet.catalog": {
+      "patient": false,
+      "args": {
+        "hospital": { "type": "string", "min": 1, "max": 32, "optional": true }
+      }
+    },
+    "sheet.months": {
+      "patient": false,
+      "args": {
+        "settings": { "type": "json", "of": "object" },
+        "months": { "type": "array", "min": 1, "max": 13, "items": { "type": "month" } }
+      }
+    },
+    "sheet.fill": {
+      "patient": false,
+      "args": {
+        "day": { "type": "date" },
+        "mode": { "type": "enum", "values": ["fillEmpty", "overwrite"] },
+        "auto": { "type": "bool" },
+        "settings": { "type": "json", "of": "object" }
+      }
     }
   }
 }

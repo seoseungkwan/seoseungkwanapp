@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import commands from './commands.json'
 import { EXTENSION_ID } from './extensionId'
+import type { ArgsOf, CommandName, SheetCommand } from '@/types/bridge'
 import {
   BridgeError,
   COMMANDS,
@@ -12,6 +13,7 @@ import {
   isErrorCode,
   isPatient,
 } from './protocol'
+import { CAL_HELPER, CAL_PAST_HELPER, LATEST_HELPER, MIN_EXTENSION, MIN_HELPER, SHEET_EXTENSION, SHEET_HELPER } from './versions'
 
 describe('AC-004.1 확장 ID는 commands.json 한 곳에서', () => {
   it('AC-004.1 EXTENSION_ID는 commands.json의 extensionId 그대로다', () => {
@@ -139,5 +141,99 @@ describe('AC-004.6 오류 번호 모양', () => {
     expect(e).toBeInstanceOf(Error)
     expect(e.code).toBe('E-BRIDGE-BAD-REPLY')
     expect(e.message).toBe('E-BRIDGE-BAD-REPLY')
+  })
+})
+
+// spec google-link TASK-10(REQ-8511·REQ-8541): 도우미 0.14.0 수납 명령 여덟 + 크롬 확장 0.5.0(새 명령표로 다시 묶음)
+describe('AC-8511.1 수납 명령 여덟(sheet.*) — commands.json 모양', () => {
+  const SHEET = ['sheet.status', 'sheet.code', 'sheet.link', 'sheet.import', 'sheet.ping', 'sheet.catalog', 'sheet.months', 'sheet.fill'] as const
+  type Spec = { patient: boolean; send?: boolean; confirm?: boolean; maxDays?: number; args: Record<string, unknown> }
+  const table = commands.commands as Record<string, Spec>
+  const SETTINGS = { type: 'json', of: 'object' }
+
+  it('AC-8511.1 commands.json에 sheet.* 여덟이 그 차례로 revenue.days 뒤에 있고 모두 patient:false·send 아님이다', () => {
+    const names = Object.keys(table)
+    expect(names.filter((c) => c.startsWith('sheet.'))).toEqual([...SHEET])
+    expect(names.indexOf('sheet.status')).toBe(names.indexOf('revenue.days') + 1)
+    for (const name of SHEET) {
+      expect(table[name].patient, name).toBe(false)
+      expect(table[name].send, name).toBeUndefined()
+      expect(table[name].maxDays, name).toBeUndefined()
+      expect(COMMANDS).toContain(name)
+      expect(PATIENT_COMMANDS).not.toContain(name)
+      expect(SEND_COMMANDS).not.toContain(name)
+    }
+  })
+
+  it('AC-8511.1 confirm:true는 sheet.link 하나이고(확인 창은 도우미가 띄움), 주소·메일 칸(url·shareWith)도 sheet.link에만 있다', () => {
+    expect(SHEET.filter((c) => table[c].confirm === true)).toEqual(['sheet.link'])
+    for (const name of SHEET) {
+      if (name === 'sheet.link') continue
+      expect(table[name], name).not.toHaveProperty('confirm')
+      const keys = Object.keys(table[name].args)
+      for (const forbidden of ['url', 'shareWith', 'scriptUrl', 'webAppUrl', 'token', 'secret']) expect(keys, name).not.toContain(forbidden)
+    }
+  })
+
+  it('AC-8511.1 args 모양: status·code·import {} · link {url 1~600자, shareWith 메일 0~10개} · ping {settings} · catalog {hospital?} · months {settings, months 1~13개} · fill {day, mode, auto, settings}', () => {
+    expect(table['sheet.status'].args).toEqual({})
+    expect(table['sheet.code'].args).toEqual({})
+    expect(table['sheet.import'].args).toEqual({})
+    const link = table['sheet.link'].args as Record<string, Record<string, unknown>>
+    expect(Object.keys(link)).toEqual(['url', 'shareWith'])
+    expect(link.url).toEqual({ type: 'string', min: 1, max: 600 })
+    expect(link.shareWith).toMatchObject({ type: 'array', min: 0, max: 10, items: { type: 'string', min: 6, max: 254 } })
+    const mail = new RegExp(String((link.shareWith.items as { pattern: string }).pattern))
+    expect(mail.test('desk@fake.test')).toBe(true)
+    for (const bad of ['not-a-mail', 'a@b', 'desk@fake.test' + String.fromCharCode(10), 'des k@fake.test', '가상@fake.test', 'desk@@fake.test']) expect(mail.test(bad), bad).toBe(false)
+    expect(table['sheet.ping'].args).toEqual({ settings: SETTINGS })
+    expect(table['sheet.catalog'].args).toEqual({ hospital: { type: 'string', min: 1, max: 32, optional: true } })
+    expect(table['sheet.months'].args).toEqual({ settings: SETTINGS, months: { type: 'array', min: 1, max: 13, items: { type: 'month' } } })
+    expect(table['sheet.fill'].args).toEqual({
+      day: { type: 'date' },
+      mode: { type: 'enum', values: ['fillEmpty', 'overwrite'] },
+      auto: { type: 'bool' },
+      settings: SETTINGS,
+    })
+  })
+
+  it('AC-8511.1 types/bridge.ts의 SheetCommand·ArgsOf가 명령 표와 같은 모양이다', () => {
+    const names: readonly SheetCommand[] = SHEET
+    const asCommand: readonly CommandName[] = names
+    expect(asCommand).toHaveLength(8)
+    const fill: ArgsOf<'sheet.fill'> = { day: '2026-10-30', mode: 'fillEmpty', auto: true, settings: {} }
+    const link: ArgsOf<'sheet.link'> = { url: 'https://script.google.com/macros/s/AKfycbFAKE0123456789/exec', shareWith: [] }
+    const months: ArgsOf<'sheet.months'> = { settings: {}, months: ['2026-10'] }
+    const catalog: ArgsOf<'sheet.catalog'> = {}
+    expect(Object.keys(fill)).toEqual(Object.keys(table['sheet.fill'].args))
+    expect(Object.keys(link)).toEqual(Object.keys(table['sheet.link'].args))
+    expect(Object.keys(months)).toEqual(Object.keys(table['sheet.months'].args))
+    expect(catalog).toEqual({})
+  })
+})
+
+describe('AC-8511.1·AC-8541.2 판 글자 — 도우미 0.14.0 · 크롬 확장 0.5.0', () => {
+  const root = new URL('../../../', import.meta.url)
+
+  it('AC-8511.1 LATEST_HELPER·SHEET_HELPER·CAL_PAST_HELPER는 0.14.0이고 helper/Directory.Build.props와 같다', () => {
+    expect(LATEST_HELPER).toBe('0.14.0')
+    expect(SHEET_HELPER).toBe('0.14.0')
+    expect(CAL_PAST_HELPER).toBe('0.14.0')
+    const props = readFileSync(new URL('helper/Directory.Build.props', root), 'utf8')
+    expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
+  })
+
+  it('AC-8511.1 SHEET_EXTENSION은 0.5.0이고 extension/manifest.json version과 같다', () => {
+    expect(SHEET_EXTENSION).toBe('0.5.0')
+    const manifest = JSON.parse(readFileSync(new URL('extension/manifest.json', root), 'utf8')) as { version: string }
+    expect(manifest.version).toBe(SHEET_EXTENSION)
+  })
+
+  it('AC-8541.2 MIN_HELPER·MIN_EXTENSION은 그대로(0.3.0·0.1.0) — 옛 도우미·확장 PC도 다른 도구는 막지 않는다, 예약 탭 비트 읽기 판(CAL_HELPER 0.10.0)도 그대로', () => {
+    expect(MIN_HELPER).toBe('0.3.0')
+    expect(MIN_EXTENSION).toBe('0.1.0')
+    expect(CAL_HELPER).toBe('0.10.0')
+    expect(SHEET_HELPER.localeCompare('0.13.2', undefined, { numeric: true })).toBeGreaterThan(0)
+    expect(SHEET_EXTENSION.localeCompare('0.4.0', undefined, { numeric: true })).toBeGreaterThan(0)
   })
 })
