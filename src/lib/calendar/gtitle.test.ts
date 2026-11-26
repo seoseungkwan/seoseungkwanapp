@@ -436,3 +436,239 @@ describe('AC-8521.1 formatGoogleTitle — 웹앱 → 구글 제목 꼴', () => {
     expect(formatGoogleTitle(a({}), LOOK, KINDS, STAFF, 'noshow')).toBe('안 옴 1234 홍길동 도수 30분 (호)')
   })
 })
+
+// ── 2차 고침 (design.md 21-1·21-6, REQ-8543·REQ-8548) ─────────────
+// '이 병원 꼴'(design.md 21-1): 시행자 셋, 종류 아홉(알아볼 글 = 이름, 고정 색 없음),
+// noKind 'fix' · noStaffKinds [] · staffByColor 켬. 이름·차트번호는 지어낸 값이다
+const H_STAFF: GStaff[] = STAFF.filter((s) => s.id !== 'jang')
+const hKind = (id: string, name: string, len: number): GKind => ({ id, name, len, color: null, words: [name] })
+const H_KINDS: GKind[] = [
+  hKind('d30ho', '도수 30분(호)', 30),
+  hKind('d30won', '도수 30분(원)', 30),
+  hKind('d30hyun', '도수 30분(현)', 30),
+  hKind('d50ho', '도수 50분(호)', 50),
+  hKind('d50won', '도수 50분(원)', 50),
+  hKind('d50hyun', '도수 50분(현)', 50),
+  hKind('s2000', '체외충격파 2000', 15),
+  hKind('s3000', '체외충격파 3000', 15),
+  hKind('s4000', '체외충격파 4000', 15),
+]
+const H_LOOK: GLook = { ...LOOK, noKind: 'fix', noStaffKinds: [], staffByColor: true }
+const H_CTX: ParseCtx = { ...CTX, staff: H_STAFF, kinds: H_KINDS, look: H_LOOK, people: PEOPLE.filter((p) => p.id !== 'jang') }
+const hParse = (title: string, o: Opt = {}) => parseGoogleEvent(event(title, o), H_CTX)
+
+/** 표 칸으로 보기(이름으로): 종류 이름·어디서·시행자 이름·어디서·메모·결과 */
+function hView(p: GParsed) {
+  if (p.type === 'appt') {
+    const a = p.appt
+    return { kind: a.kindName, kindBy: a.gHow.kind, staff: a.staffName, staffBy: a.gHow.staff, memo: a.memo, result: a.status === 'cancel' ? 'appt+cancel' : 'appt' }
+  }
+  if (p.type === 'fix') {
+    const g = p.fix.guess
+    return { kind: g.kindName, kindBy: g.kindBy, staff: g.staffName, staffBy: g.staffBy, memo: g.memo, result: p.fix.reason }
+  }
+  return { type: p.type }
+}
+
+describe("AC-8543.1 parseGoogleEvent — '이 병원 꼴' 종류 알아서 고르기 표 17줄", () => {
+  it.each([
+    // [#, 제목, 색, 때, 끝 시각, 종류, 시행자, 시행자 어디서, 메모]
+    [1, '1234 홍길동 30분 도수 (원)', null, FUTURE, '10:30', '도수 30분(원)', '박지원', 'title', ''],
+    [2, '5678 김가상 도수 50분 (현)', null, FUTURE, '10:30', '도수 50분(현)', '이수현', 'title', ''],
+    [3, '2468 이모의 도수 (호)', null, FUTURE, '10:50', '도수 50분(호)', '정호연', 'title', ''],
+    [4, '1234 홍길동 도수30분', 'banana', FUTURE, '10:30', '도수 30분(원)', '박지원', 'color', ''],
+    [5, '1234 홍길동 도수30분', null, PAST, '10:30', '도수 30분(호)', null, 'none', ''],
+    [6, '1234 홍길동 자보도수30분', 'banana', FUTURE, '10:30', '도수 30분(원)', '박지원', 'color', '자보'],
+    [7, '1234 홍길동(3천', 'banana', FUTURE, '10:30', '체외충격파 3000', '박지원', 'color', ''],
+    [8, '1234 홍길동 체외충격파', 'banana', FUTURE, '10:30', '체외충격파 2000', '박지원', 'color', ''],
+    [9, '1234 홍길동 체외충격파 (현) 4000타', null, FUTURE, '10:30', '체외충격파 4000', '이수현', 'title', ''],
+    [10, '1234 홍길동 (4000타)', null, PAST, '10:30', '체외충격파 4000', null, 'none', ''],
+    [11, '1234 홍길동 3000', null, PAST, '10:30', '체외충격파 3000', null, 'none', ''],
+    [12, '1234 홍길동 체외충격파(3천5백', null, PAST, '10:30', '체외충격파 2000', null, 'none', '3천5백'],
+    [13, '1234 홍길동 도수 30분(호)', null, FUTURE, '10:30', '도수 30분(호)', '정호연', 'title', ''],
+    [14, '1234 홍길동 도수 50분(원) 50분 (원) 허리', null, FUTURE, '10:30', '도수 50분(원)', '박지원', 'title', '허리'],
+    [15, '1234 홍길동 도수 30분(호) 30분 (원)', null, FUTURE, '10:30', '도수 30분(호)', '박지원', 'title', ''],
+    [16, '1234 홍길동 도수 50분(원) 허리', null, FUTURE, '10:30', '도수 50분(원)', '박지원', 'title', '허리'],
+    [17, '1234 홍길동 도수 30분(호) (원)', null, FUTURE, '10:30', '도수 30분(호)', '박지원', 'title', ''],
+  ] as const)('AC-8543.1 표 %i줄: %s (%s, %s)', (_n, title, color, day, to, kind, staff, staffBy, memo) => {
+    expect(hView(hParse(title, { color, day, to }))).toEqual({ kind, kindBy: 'title', staff, staffBy, memo, result: 'appt' })
+  })
+
+  it('AC-8543.1: 알아본 예약의 차트번호·이름·종류 id도 채운다(표 1줄)', () => {
+    const p = hParse('1234 홍길동 30분 도수 (원)')
+    expect(p.type === 'appt' && [p.appt.chart, p.appt.name, p.appt.kindId, p.appt.staffId, p.appt.staffMark]).toEqual(['1234', '홍길동', 'd30won', 'won', '원'])
+  })
+})
+
+describe('AC-8543.2 parseGoogleEvent — 기본 종류는 결과 그대로 · {숫자}천 = 충격파', () => {
+  it('AC-8543.2: 8034 문보기(3천 (세이지, 앞으로) → 충격파(제목)·메모 3000타·시행자를 골라야 하는 고쳐야 할 것', () => {
+    const p = parse('8034 문보기(3천', { color: 'sage' })
+    expect(view(p)).toEqual({ chart: '8034', name: '문보기', kind: 'shock', kindBy: 'title', staff: null, staffBy: null, memo: '3000타', result: 'no-staff' })
+    expect(p.type === 'fix' && p.fix.guess.needs).toEqual(['staff'])
+  })
+
+  it('AC-8543.2: 4618 표예시(3천5백 (세이지, 앞으로) → 충격파(색)·메모 3천5백', () => {
+    expect(view(parse('4618 표예시(3천5백', { color: 'sage' }))).toEqual({
+      chart: '4618',
+      name: '표예시',
+      kind: 'shock',
+      kindBy: 'color',
+      staff: null,
+      staffBy: null,
+      memo: '3천5백',
+      result: 'no-staff',
+    })
+  })
+})
+
+describe('AC-8543.3 parseGoogleEvent — 타수 글', () => {
+  it('AC-8543.3: {숫자}타는 그 수 — 고른 종류 이름에 그 수가 없으면 메모에 {수}타로 남는다', () => {
+    expect(hView(hParse('1234 홍길동 체외충격파 (현) 5000타'))).toEqual({
+      kind: '체외충격파 2000',
+      kindBy: 'title',
+      staff: '이수현',
+      staffBy: 'title',
+      memo: '5000타',
+      result: 'appt',
+    })
+  })
+
+  it('AC-8543.3: 기본 종류도 3천은 메모 3000타로 바꾸고 조각 안 다른 글은 그대로 둔다', () => {
+    expect(view(parse('5521 최시안 충격파 (현) 3천 허리', { color: 'sage' }))).toMatchObject({ kind: 'shock', staff: 'hyun', memo: '3000타 허리', result: 'appt' })
+  })
+
+  it('AC-8543.3: 3천원·3천5백처럼 천 뒤에 글자·숫자가 붙으면 타수가 아니다', () => {
+    expect(hView(hParse('1234 홍길동 체외충격파 (3천원)', { day: PAST }))).toEqual({
+      kind: '체외충격파 2000',
+      kindBy: 'title',
+      staff: null,
+      staffBy: 'none',
+      memo: '3천원',
+      result: 'appt',
+    })
+    expect(hView(hParse('1234 홍길동(3천원', { day: PAST }))).toMatchObject({ kind: null, result: 'bad-kind' })
+  })
+
+  it('AC-8543.3: 글자·숫자와 붙은 숫자, 충격파 종류 이름에 없는 맨 숫자는 타수가 아니다', () => {
+    const glued = hParse('1234 홍길동 3000원', { day: PAST })
+    expect(hView(glued)).toMatchObject({ kind: null, result: 'bad-kind' })
+    expect(glued.type === 'fix' && glued.fix.guess.bad).toBe('3000원')
+    expect(hView(hParse('1234 홍길동 A3000', { day: PAST }))).toMatchObject({ kind: null, result: 'bad-kind' })
+    const other = hParse('1234 홍길동 2500', { day: PAST })
+    expect(hView(other)).toMatchObject({ kind: null, result: 'bad-kind' })
+    expect(other.type === 'fix' && other.fix.guess.bad).toBe('2500')
+  })
+
+  it("AC-8543.3: 알아볼 글에 '타'가 든 종류도 충격파 종류다(타수만 있으면 그 가운데서 고름)", () => {
+    const kinds: GKind[] = [
+      { id: 'dosu', name: '도수', len: 30, color: null, words: ['도수'] },
+      { id: 'eswt', name: 'ESWT', len: 15, color: null, words: ['ESWT', '타'] },
+    ]
+    const p = parseGoogleEvent(event('1234 홍길동(3천 (현)'), { ...CTX, kinds, look: { ...LOOK, noKind: 'fix', noStaffKinds: [] } })
+    expect(view(p)).toMatchObject({ kind: 'eswt', kindBy: 'title', staff: 'hyun', memo: '3000타', result: 'appt' })
+  })
+
+  it('AC-8543.3: 충격파 종류가 없으면 타수만 있는 제목은 지금 규칙(⑨ 색·설정) 그대로다', () => {
+    const ctx: ParseCtx = { ...CTX, kinds: KINDS.filter((k) => k.id !== 'shock') }
+    expect(view(parseGoogleEvent(event('8034 문보기(3천 (호)'), ctx))).toMatchObject({ kind: 'dosu', kindBy: 'setting', staff: 'ho', result: 'appt' })
+    const fixCtx: ParseCtx = { ...ctx, look: { ...LOOK, noKind: 'fix' } }
+    expect(view(parseGoogleEvent(event('8034 문보기(3천 (호)'), fixCtx))).toMatchObject({ kind: null, result: 'bad-kind' })
+  })
+})
+
+describe('AC-8543.4 parseGoogleEvent — 같은 종류 낱말을 가진 종류가 여럿일 때', () => {
+  it('AC-8543.4: 제목에 한 종류 이름이 그대로 들어 있으면 그 종류다(빈칸은 보지 않음)', () => {
+    expect(hView(hParse('1234 홍길동 도수 50분 (현)'))).toMatchObject({ kind: '도수 50분(현)', staff: '이수현' })
+    expect(hView(hParse('1234 홍길동 도수50분(호) (원)'))).toMatchObject({ kind: '도수 50분(호)', staff: '박지원' })
+    expect(hView(hParse('1234 홍길동 체외충격파 3000 (현)'))).toMatchObject({ kind: '체외충격파 3000', staff: '이수현' })
+  })
+
+  it('AC-8543.4: 아니면 표시·길이·타수가 가장 많이 맞는 종류, 같으면 종류 차례가 앞인 것', () => {
+    // 표시 (현) + 구글 일정 50분 → 도수 50분(현)
+    expect(hView(hParse('1234 홍길동 도수 (현)', { to: '10:50' }))).toMatchObject({ kind: '도수 50분(현)' })
+    // 표시 (원)만 맞는 종류 둘(30분·50분) → 차례가 앞인 30분(구글 일정 40분이라 길이는 아무것도 안 맞음)
+    expect(hView(hParse('1234 홍길동 도수 (원)', { to: '10:40' }))).toMatchObject({ kind: '도수 30분(원)' })
+    // 아무것도 안 맞으면 맨 앞
+    expect(hView(hParse('1234 홍길동 도수', { to: '10:40', day: PAST }))).toMatchObject({ kind: '도수 30분(호)' })
+    // 길이는 제목의 첫 'N분'이 구글 일정 길이보다 먼저
+    expect(hView(hParse('1234 홍길동 도수 50분 허리 (원)', { to: '10:30' }))).toMatchObject({ kind: '도수 50분(원)', memo: '허리' })
+  })
+
+  it('AC-8543.4: 색으로 짐작한 표시는 점수에만 쓰고, 취소 색·변경 색이면 짐작하지 않는다', () => {
+    expect(hView(hParse('1234 홍길동 도수', { color: 'flamingo', to: '10:50' }))).toMatchObject({ kind: '도수 50분(현)', staff: '이수현', staffBy: 'color' })
+    expect(hView(hParse('1234 홍길동 도수', { color: 'tomato', to: '10:50', day: PAST }))).toMatchObject({ kind: '도수 50분(호)', staff: null, result: 'appt+cancel' })
+  })
+
+  it('AC-8543.4: 종류 목록·알아볼 글 저장 값은 바꾸지 않는다', () => {
+    const before = JSON.parse(JSON.stringify(H_KINDS)) as GKind[]
+    hParse('1234 홍길동 30분 도수 (원)')
+    hParse('1234 홍길동(3천', { color: 'banana' })
+    expect(H_KINDS).toEqual(before)
+  })
+})
+
+describe('AC-8543.5 parseGoogleEvent — 끝 표시 앞의 아는 표시 한 글자 괄호는 메모가 아니다', () => {
+  it('AC-8543.5: (호) (원) → 시행자는 끝 표시, 앞 (호)는 메모에 남지 않는다', () => {
+    expect(hView(hParse('1234 홍길동 도수 30분(호) (원)'))).toMatchObject({ staff: '박지원', memo: '' })
+    expect(hView(hParse('1234 홍길동 도수 30분(호) 30분 (원)'))).toMatchObject({ staff: '박지원', memo: '' })
+  })
+
+  it('AC-8543.5: 모르는 한 글자·두 글자 이상 괄호는 지금처럼 메모다', () => {
+    expect(hView(hParse('1234 홍길동 도수 30분 (좌) (원)'))).toMatchObject({ kind: '도수 30분(원)', staff: '박지원', memo: '좌' })
+    expect(hView(hParse('1234 홍길동 도수 30분 (호호) (원)'))).toMatchObject({ kind: '도수 30분(원)', staff: '박지원', memo: '호호' })
+  })
+})
+
+describe('AC-8548.1 formatGoogleTitle — 종류 이름에 든 길이·시행자 표시는 겹쳐 적지 않는다', () => {
+  const h = (over: Partial<TitleAppt>): TitleAppt => ({
+    chart: '1234',
+    name: '홍길동',
+    kindId: 'd30won',
+    kindName: '도수 30분(원)',
+    len: 30,
+    staffId: 'won',
+    staffMark: '원',
+    memo: '',
+    ...over,
+  })
+
+  it.each([
+    [1, '1234 홍길동 도수 30분 (원)', h({})],
+    [2, '2087 이보기 도수 50분 (원)', h({ chart: '2087', name: '이보기', kindId: 'd50won', kindName: '도수 50분(원)', len: 50 })],
+    [3, '1234 홍길동 도수 30분 (원)', h({ kindId: 'd30ho', kindName: '도수 30분(호)' })],
+    [4, '1234 홍길동 도수 30분 40분 (원)', h({ len: 40 })],
+    [5, '5521 최시안 체외충격파 3000 15분 (현)', h({ chart: '5521', name: '최시안', kindId: 's3000', kindName: '체외충격파 3000', len: 15, staffId: 'hyun', staffMark: '현' })],
+    [6, '1234 홍길동 도수 30분(호)', h({ kindId: 'd30ho', kindName: '도수 30분(호)', staffId: null, staffMark: null })],
+  ] as const)('AC-8548.1 %i줄: → %s', (_n, title, appt) => {
+    expect(formatGoogleTitle(appt, H_LOOK, H_KINDS, H_STAFF)).toBe(title)
+  })
+
+  it('AC-8548.1: 메모·도착 글은 지금처럼 뒤·앞에 붙는다', () => {
+    expect(formatGoogleTitle(h({ memo: '허리' }), H_LOOK, H_KINDS, H_STAFF, 'came')).toBe('왔음 1234 홍길동 도수 30분 (원) 허리')
+  })
+
+  it('AC-8548.1: 끝 괄호 글자가 시행자 목록의 표시가 아니면 떼지 않는다', () => {
+    const kinds = [...H_KINDS, hKind('dx', '도수 30분(좌)', 30)]
+    expect(formatGoogleTitle(h({ kindId: 'dx', kindName: '도수 30분(좌)' }), H_LOOK, kinds, H_STAFF)).toBe('1234 홍길동 도수 30분(좌) (원)')
+  })
+
+  it('AC-8548.1: 웹앱이 적은 제목을 다시 읽으면 제 종류·시행자로 돌아온다', () => {
+    const appts = [
+      h({}),
+      h({ kindId: 'd50hyun', kindName: '도수 50분(현)', len: 50, staffId: 'hyun', staffMark: '현' }),
+      h({ kindId: 's4000', kindName: '체외충격파 4000', len: 15, staffId: 'ho', staffMark: '호' }),
+    ]
+    for (const a of appts) {
+      const p = hParse(formatGoogleTitle(a, H_LOOK, H_KINDS, H_STAFF), { to: a.len === 50 ? '10:50' : '10:30' })
+      expect(p.type === 'appt' && [p.appt.kindId, p.appt.staffId, p.appt.memo]).toEqual([a.kindId, a.staffId, ''])
+    }
+  })
+})
+
+describe('AC-8548.3 formatGoogleTitle — 기본 종류는 지금과 한 글자도 같다', () => {
+  it('AC-8548.3: 이름에 길이·표시가 없는 종류는 {차트번호} {이름} {종류} {길이}분 ({표시}) 그대로', () => {
+    const a: TitleAppt = { chart: '1234', name: '홍길동', kindId: 'dosu', kindName: '도수', len: 30, staffId: 'ho', staffMark: '호', memo: '' }
+    expect(formatGoogleTitle(a, LOOK, KINDS, STAFF)).toBe('1234 홍길동 도수 30분 (호)')
+    expect(formatGoogleTitle({ ...a, kindId: 'shock', kindName: '충격파', len: 15, memo: '4000타' }, LOOK, KINDS, STAFF)).toBe('1234 홍길동 충격파 15분 (호) 4000타')
+  })
+})

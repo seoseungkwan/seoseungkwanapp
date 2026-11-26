@@ -20,10 +20,11 @@ import type {
 } from './gshapes'
 import { josa } from './josa'
 
-// 구글 제목 알아보기 · 웹앱 → 구글 제목 꼴 · 고쳐야 할 까닭 글과 고르기(spec google-link design.md 13절·REQ-8520·REQ-8521).
+// 구글 제목 알아보기 · 웹앱 → 구글 제목 꼴 · 고쳐야 할 까닭 글과 고르기(spec google-link design.md 13절·21-1·21-6, REQ-8520·REQ-8521·REQ-8543·REQ-8548).
 // 순수 함수다. 시각은 구글 코드가 준 한국 시각 글자('YYYY-MM-DDTHH:mm', 하루 종일은 'YYYY-MM-DD')만 읽는다.
-// 알아보는 차례: ① 맨 앞 숫자 = 차트번호 ② 끝 괄호 한 글자 = 시행자 표시(②-1 그 뒤 글 = 메모) ③ 그 밖 괄호 안 글 = 메모
-// ④ 숫자+분 버림 ⑤ 종류 글(긴 것부터, 한 글자 글은 숫자 바로 뒤만, 괄호 안도 봄) ⑥ 첫 한글 낱말 = 이름 ⑦ 괄호 밖 모르는 글 → bad-kind
+// 알아보는 차례: ① 맨 앞 숫자 = 차트번호 ② 끝 괄호 한 글자 = 시행자 표시(②-1 그 뒤 글 = 메모) ③ 그 밖 괄호 안 글 = 메모(아는 표시 한 글자 괄호는 뺌)
+// ④ 숫자+분 버림 ⑤ 종류 글(긴 것부터, 한 글자 글은 숫자 바로 뒤만, 괄호 안도 봄, 바탕 낱말 포함 — 같은 글의 종류가 여럿이면 이름·표시·길이·타수로 고름)
+// ⑤-1 종류 글 없이 타수만 → 충격파 종류 ⑥ 첫 한글 낱말 = 이름 ⑦ 괄호 밖 모르는 글 → bad-kind
 // ⑧ 시행자 글 없음 → 색 짐작 ⑨ 종류 글 없음 → 색·설정 ⑩ 다 없음 → not-appt ⑪ 취소 색·변경 색은 표시이고 색 짐작 안 함
 
 const DAY_MIN = 1440
@@ -53,7 +54,8 @@ export function withArrival(title: string, arrival: 'came' | 'noshow' | null): s
 
 /**
  * `{차트번호} {이름} {종류} {길이}분 ({표시}) {메모}`. 길이·메모는 설정대로, 차트번호 없으면 이름부터, 시행자 없으면 괄호 없음.
- * 종류 이름·시행자 표시는 지금 목록 값(없으면 예약에 남은 값). arrival을 주면 앞에 '왔음 '·'안 옴 '
+ * 종류 이름·시행자 표시는 지금 목록 값(없으면 예약에 남은 값). arrival을 주면 앞에 '왔음 '·'안 옴 '.
+ * 겹쳐 적지 않기(design.md 21-6): 시행자가 있으면 종류 이름 끝 `({시행자 목록의 표시})`를 떼고, 이름에 그 길이 `{N}분`이 있으면 길이를 다시 붙이지 않는다
  */
 export function formatGoogleTitle(
   appt: TitleAppt,
@@ -62,9 +64,14 @@ export function formatGoogleTitle(
   staff: readonly Pick<GStaff, 'id' | 'mark'>[],
   arrival: 'came' | 'noshow' | null = null,
 ): string {
-  const kind = kinds.find((k) => k.id === appt.kindId)?.name ?? appt.kindName
+  let kind = kinds.find((k) => k.id === appt.kindId)?.name ?? appt.kindName
   const mark = appt.staffId === null ? null : (staff.find((s) => s.id === appt.staffId)?.mark ?? appt.staffMark)
-  let title = [appt.chart, appt.name, kind, look.titleLen ? `${appt.len}분` : null].filter(Boolean).join(' ')
+  if (mark) {
+    const end = /\s*\(([^\s()])\)$/.exec(kind)
+    if (end && staff.some((s) => s.mark === end[1])) kind = kind.slice(0, end.index)
+  }
+  const len = look.titleLen && !hasMinutes(kind, appt.len) ? `${appt.len}분` : null
+  let title = [appt.chart, appt.name, kind, len].filter(Boolean).join(' ')
   if (mark) title += ` (${mark})`
   const memo = appt.memo.replace(/\s+/g, ' ').trim()
   if (look.titleMemo && memo) title += ` ${memo}`
@@ -73,37 +80,111 @@ export function formatGoogleTitle(
 
 // ── 제목 읽기 ───────────────────────────────────────────
 
-type KindHit = { kind: GKind; index: number; length: number; digits: boolean }
+type KindWord = { word: string; kinds: GKind[] }
+type KindHit = { kinds: GKind[]; index: number; length: number; digits: boolean }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const chars = (s: string) => [...s].length
 const clip = (s: string, n: number) => [...s].slice(0, n).join('').trim()
+const noSpace = (s: string) => s.replace(/\s/g, '')
 
-/** 알아볼 글(종류 words + 종류 이름) 긴 것부터. 같은 길이는 종류 차례 */
-function kindWords(kinds: readonly GKind[]): { kind: GKind; word: string }[] {
-  const list: { kind: GKind; word: string }[] = []
+/** 글에 `{N}분`이 있음(앞에 숫자가 붙지 않은 N) */
+function hasMinutes(text: string, n: number): boolean {
+  return new RegExp(`(?<!\\d)${n}\\s*분`).test(text)
+}
+
+/** 바탕 낱말: 길이·타수 숫자·괄호 한 글자 표시·빈칸을 뗀 글(두 글자 이상일 때만). `도수 30분(호)` → `도수` */
+function baseWord(word: string): string | null {
+  const b = noSpace(word.replace(/\d+\s*[분타천]?/g, '').replace(/\([^\s()]\)/g, ''))
+  return chars(b) >= 2 ? b : null
+}
+
+/** 알아볼 글(종류 words + 종류 이름 + 그 바탕 낱말) 긴 것부터. 같은 길이는 종류 차례. 같은 글을 가진 종류는 한 덩이(종류 차례) */
+function kindWords(kinds: readonly GKind[]): KindWord[] {
+  const byWord = new Map<string, KindWord & { i: number }>()
   for (const kind of kinds) {
-    for (const w of unique([...kind.words, kind.name])) list.push({ kind, word: w })
+    const own = unique([...kind.words, kind.name])
+    for (const w of unique([...own, ...own.map(baseWord).filter((b): b is string => b !== null)])) {
+      const hit = byWord.get(w)
+      if (!hit) byWord.set(w, { word: w, kinds: [kind], i: byWord.size })
+      else if (!hit.kinds.includes(kind)) hit.kinds.push(kind)
+    }
   }
-  return list.map((x, i) => ({ ...x, i })).sort((a, b) => chars(b.word) - chars(a.word) || a.i - b.i)
+  return [...byWord.values()].sort((a, b) => chars(b.word) - chars(a.word) || a.i - b.i)
 }
 
 function unique(words: readonly string[]): string[] {
   return [...new Set(words.map((w) => w.trim()).filter(Boolean))]
 }
 
-/** 한 글자 글('타')은 숫자 바로 뒤만(그 숫자까지 한 덩이) */
-function findKind(text: string, words: { kind: GKind; word: string }[]): KindHit | null {
-  for (const { kind, word } of words) {
+/** 한 글자 글('타')은 숫자 바로 뒤만(그 숫자까지 한 덩이). 처음 맞은 글을 가진 종류가 모두 후보 */
+function findKind(text: string, words: readonly KindWord[]): KindHit | null {
+  for (const { kinds, word } of words) {
     if (chars(word) === 1) {
       const m = new RegExp(`\\d+${escapeRe(word)}`).exec(text)
-      if (m) return { kind, index: m.index, length: m[0].length, digits: true }
+      if (m) return { kinds, index: m.index, length: m[0].length, digits: true }
     } else {
       const i = text.indexOf(word)
-      if (i >= 0) return { kind, index: i, length: word.length, digits: false }
+      if (i >= 0) return { kinds, index: i, length: word.length, digits: false }
     }
   }
   return null
+}
+
+/** 충격파 종류: 이름이나 알아볼 글에 '충격파', 또는 알아볼 글에 '타'가 든 종류 */
+const isShock = (k: GKind) => k.name.includes('충격파') || k.words.some((w) => w.includes('충격파') || w.includes('타'))
+
+/** 타수 S와 메모에서 그 조각을 찾는 꼴 */
+type Strokes = { n: number; piece: RegExp }
+
+/** 타수(design.md 21-1): `{N}타` → `{N}천`(뒤에 글자·숫자가 붙지 않음) ×1000 → 충격파 종류 이름에 든 수와 같은 맨 숫자, 이 차례로 처음 맞는 것 */
+function readStrokes(text: string, kinds: readonly GKind[]): Strokes | null {
+  const ta = /(?<!\d)(\d+)타/.exec(text)
+  if (ta) return { n: Number(ta[1]), piece: new RegExp(`(?<!\\d)${ta[1]}타`) }
+  const cheon = /(?<!\d)(\d+)천(?![\p{L}\p{N}])/u.exec(text)
+  if (cheon) return { n: Number(cheon[1]) * 1000, piece: new RegExp(`(?<!\\d)${cheon[1]}천(?![\\p{L}\\p{N}])`, 'u') }
+  const nums = new Set(kinds.filter(isShock).flatMap((k) => (k.name.match(/\d+/g) ?? []).map(Number)))
+  for (const m of text.matchAll(/(?<![\p{L}\p{N}])(\d+)(?![\p{L}\p{N}])/gu)) {
+    if (nums.has(Number(m[1]))) return { n: Number(m[1]), piece: new RegExp(`(?<![\\p{L}\\p{N}])${m[1]}(?![\\p{L}\\p{N}])`, 'u') }
+  }
+  return null
+}
+
+/** 메모의 타수 조각 → `{S}타`. 고른 종류 이름에 S가 있으면 뺀다(조각 밖 글은 그대로) */
+function strokeMemo(memo: string, st: Strokes | null, kind: GKind | null): string {
+  if (!st || !st.piece.test(memo)) return memo
+  const inName = kind !== null && new RegExp(`(?<!\\d)${st.n}(?!\\d)`).test(kind.name)
+  return memo
+    .replace(st.piece, inName ? '' : `${st.n}타`)
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** 후보 고르는 데 쓰는 제목 글: flat = 차트번호 뗀 제목(빈칸 없음), mark = 제목 표시(없으면 색 짐작 표시), len = 첫 `{N}분`(없으면 구글 일정 길이), strokes = 타수 */
+type PickHints = { flat: string; mark: string | null; len: number; strokes: number | null }
+
+/** 같은 낱말의 종류가 여럿이면: ⓪ 제목에 이름이 그대로(긴 이름) → 아니면 표시·길이·타수가 이름과 가장 많이 맞는 것. 같으면 종류 차례가 앞 */
+function pickKind(cands: readonly GKind[], h: PickHints): GKind {
+  if (cands.length === 1) return cands[0]
+  let named: GKind | null = null
+  for (const k of cands) {
+    const n = noSpace(k.name)
+    if (n && h.flat.includes(n) && (!named || chars(n) > chars(noSpace(named.name)))) named = k
+  }
+  if (named) return named
+  const strokesRe = h.strokes === null ? null : new RegExp(`(?<!\\d)${h.strokes}(?!\\d)`)
+  const score = (k: GKind) =>
+    Number(h.mark !== null && k.name.includes(`(${h.mark})`)) + Number(hasMinutes(k.name, h.len)) + Number(strokesRe?.test(k.name) ?? false)
+  let best = cands[0]
+  let top = score(best)
+  for (const k of cands.slice(1)) {
+    const sc = score(k)
+    if (sc > top) {
+      best = k
+      top = sc
+    }
+  }
+  return best
 }
 
 type TitleRead = {
@@ -118,9 +199,12 @@ type TitleRead = {
   memoHead: string[]
   /** 시행자 표시 뒤 글 */
   after: string
+  /** 타수(메모의 그 조각은 `{S}타`로 바꿈) */
+  strokes: Strokes | null
 }
 
-function readTitle(summary: string, ctx: Pick<ParseCtx, 'staff' | 'kinds' | 'arrival'>): TitleRead {
+/** hint: len = 구글 일정 길이, colorMark = 색으로 짐작한 시행자 표시(종류 고르기 점수에만) */
+function readTitle(summary: string, ctx: Pick<ParseCtx, 'staff' | 'kinds' | 'arrival'>, hint: { len: number; colorMark: string | null }): TitleRead {
   let s = summary.replace(/\s+/g, ' ').trim()
   if (ctx.arrival === 'title') s = stripArrival(s).trim()
 
@@ -128,6 +212,7 @@ function readTitle(summary: string, ctx: Pick<ParseCtx, 'staff' | 'kinds' | 'arr
   const cm = /^\d+/.exec(s)
   const chart = cm ? cm[0] : null
   if (chart) s = s.slice(chart.length)
+  const orig = s
 
   // ② 끝 괄호 한 글자 = 시행자 표시. 아는 표시가 있으면 그 마지막, 없으면 맨 끝 한 글자 괄호를 모르는 표시로
   const marks = new Map(ctx.staff.map((st) => [st.mark, st]))
@@ -149,28 +234,39 @@ function readTitle(summary: string, ctx: Pick<ParseCtx, 'staff' | 'kinds' | 'arr
     }
   }
 
-  // ③ 그 밖 괄호 안 글(닫는 괄호 없어도) = 메모
+  // ③ 그 밖 괄호 안 글(닫는 괄호 없어도) = 메모. 아는 시행자 표시 한 글자뿐인 괄호(끝 표시 앞의 `(호)`)는 메모가 아니다
   const parens: string[] = []
   s = s.replace(/\(([^()]*)(?:\)|$)/g, (_m, inner: string) => {
     const t = inner.trim()
-    if (t) parens.push(t)
+    if (t && !(chars(t) === 1 && marks.has(t))) parens.push(t)
     return ' '
   })
 
-  // ④ 숫자+분 = 길이 글이라 버림
+  // ④ 숫자+분 = 길이 글이라 버림(첫 길이 글은 종류 고르기에 씀)
+  const firstLen = /(\d+)\s*분/.exec(orig)
   s = s.replace(/\d+\s*분/g, ' ')
 
-  // ⑤ 종류 글: 괄호 밖 먼저, 없으면 괄호 안
+  // ⑤ 종류 글: 괄호 밖 먼저, 없으면 괄호 안. ⑤-1 종류 글이 없고 타수가 있으면 충격파 종류에서
   const words = kindWords(ctx.kinds)
+  const strokes = readStrokes(orig, ctx.kinds)
+  const hints: PickHints = {
+    flat: noSpace(orig),
+    mark: mark?.mark ?? unknownMark ?? hint.colorMark,
+    len: firstLen ? Number(firstLen[1]) : hint.len,
+    strokes: strokes?.n ?? null,
+  }
   const head: string[] = []
   let kind: GKind | null = null
   const main = findKind(s, words)
   if (main) {
-    kind = main.kind
+    kind = pickKind(main.kinds, hints)
     if (main.digits) head.push(s.slice(main.index, main.index + main.length))
     s = `${s.slice(0, main.index)} ${s.slice(main.index + main.length)}`
   } else {
-    kind = findKind(parens.join(' '), words)?.kind ?? null
+    const inParens = findKind(parens.join(' '), words)
+    const shock = strokes ? ctx.kinds.filter(isShock) : []
+    if (inParens) kind = pickKind(inParens.kinds, hints)
+    else if (shock.length) kind = pickKind(shock, hints)
   }
 
   // ⑥ 첫 한글 낱말 = 이름(한글이 없으면 첫 글자 낱말)
@@ -195,6 +291,7 @@ function readTitle(summary: string, ctx: Pick<ParseCtx, 'staff' | 'kinds' | 'arr
     leftover: kind ? '' : leftover,
     memoHead: [...head, ...parens],
     after,
+    strokes,
   }
 }
 
@@ -290,8 +387,10 @@ function parseTimed(ev: GEvent, ctx: ParseCtx): GParsed {
   const moved = !cancel && gColor !== null && gColor === look.change
   const canGuess = !cancel && !moved
   const colorKey: GColor | 'default' = gColor ?? 'default'
+  // 일정 색을 쓰는 시행자(색 짐작은 그 사람이 꼭 한 명일 때만)
+  const sameColor = canGuess && look.staffByColor && gColor !== null ? ctx.staff.filter((s) => s.color === gColor) : []
 
-  const r = readTitle(ev.summary, ctx)
+  const r = readTitle(ev.summary, ctx, { len, colorMark: sameColor.length === 1 ? sameColor[0].mark : null })
 
   // ⑤·⑦·⑨ 종류
   let kind = r.kind
@@ -327,7 +426,7 @@ function parseTimed(ev: GEvent, ctx: ParseCtx): GParsed {
     } else staffProblem = 'bad-mark'
   } else if (!staff) {
     const noGuessKind = kind !== null && look.noStaffKinds.includes(kind.id)
-    const byColor = canGuess && !noGuessKind && look.staffByColor && gColor !== null ? ctx.staff.filter((s) => s.color === gColor) : []
+    const byColor = noGuessKind ? [] : sameColor
     if (byColor.length === 1) {
       staff = byColor[0]
       staffBy = 'color'
@@ -336,7 +435,7 @@ function parseTimed(ev: GEvent, ctx: ParseCtx): GParsed {
     else staffProblem = noGuessKind ? 'no-staff' : 'no-staff-color'
   }
 
-  const memo = clip([...r.memoHead, ...memoTail, r.after].filter(Boolean).join(' '), MEMO_MAX)
+  const memo = clip(strokeMemo([...r.memoHead, ...memoTail, r.after].filter(Boolean).join(' '), r.strokes, kind), MEMO_MAX)
 
   // ⑩ 예약 같지 않음
   const nothing = !r.chart && !r.mark && !r.unknownMark && !r.kind && !colorHelped
