@@ -11,6 +11,7 @@ import { allDayChipClass, allDayText, dateNum, dayLabel } from './rows/parts'
 // 달 밖 날은 옅은 바탕 + muted 글(시안은 faint 글이지만 UI_GUIDE '대비': 글자는 muted 이상).
 // 병원 정보 휴진일(closedDates, spec clinic-profile AC-6603.3)은 칸에 '휴진' + 회색 바탕. 수는 그대로 세고 누르면 그날 일 보기다.
 // 반차 휴무 칩은 '오전 휴무'·'오후 휴무'(rows/parts allDayText, spec staff AC-7616.1)
+// 구글과 이은 병원(linked, spec google-link AC-8545.1)은 `변경 N`에 g_moved인 예약만 센다(처음 자리만 있는 예약은 세지 않음)
 
 export type MonthGridProps = {
   month: string // 'YYYY-MM'
@@ -18,6 +19,8 @@ export type MonthGridProps = {
   allday: readonly CalAllDay[]
   settings: Pick<CalSettings, 'kinds' | 'staff' | 'closedDates'>
   today: string
+  /** 구글과 이은 병원. 주지 않으면 지금 그대로(처음 자리도 변경) */
+  linked?: boolean
   onDay: (day: string) => void
 }
 
@@ -29,10 +32,10 @@ function lastDayOf(month: string): string {
   return addDays(next, -1)
 }
 
-export function MonthGrid({ month, rows, allday, settings, today, onDay }: MonthGridProps) {
+export function MonthGrid({ month, rows, allday, settings, today, linked = false, onDay }: MonthGridProps) {
   const first = `${month}-01`
   const last = lastDayOf(month)
-  const cells = monthCells(rows, allday, weekStartOf(first), addDays(weekStartOf(last), 6), today)
+  const cells = monthCells(rows, allday, weekStartOf(first), addDays(weekStartOf(last), 6), today, linked)
   const kindOrder = (id: string) => {
     const i = settings.kinds.findIndex((k) => k.id === id)
     return i < 0 ? settings.kinds.length : i

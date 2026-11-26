@@ -177,7 +177,8 @@ describe('AC-8526.3 취소·되돌리기·옮기기·지우기', () => {
   it('AC-8526.3: 날짜·시작을 옮기면 변경 색 + 새 시각, 가져온 제목은 칸을 고칠 때만(g_keep_title 거짓) 웹앱 꼴로 다시 쓴다', async () => {
     const { app, mem, deps } = rig()
     const appt = imported(mem, app)
-    const moved = (await mem.store.updateAppt(appt.id, { start: 660, gWait: 'move' })) as CalAppt
+    // google-link AC-8545.2: 웹앱에서 옮기면 같은 쓰기에 g_moved 참(이은 병원의 '변경' = g_moved)
+    const moved = (await mem.store.updateAppt(appt.id, { start: 660, gWait: 'move', gMoved: true })) as CalAppt
     expect(moved.origStart).toBe(600)
     await pushAppt(deps, moved)
     expect(app.store.event(IMPORTED)).toMatchObject({

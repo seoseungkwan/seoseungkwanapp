@@ -681,7 +681,7 @@ export function StaffKinds({ profile, settings, link, deps, band, today, onBack,
                   status: cancel ? 'cancel' : 'auto',
                   origDay: change ? SAMPLE_DAY : null,
                   origStart: null,
-                  gMoved: false,
+                  gMoved: change, // 이은 병원의 '변경'은 g_moved(google-link AC-8545.1)
                   colorFrom: 'app',
                   gColor: null,
                   kindId: kind.id,

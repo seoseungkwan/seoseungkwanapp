@@ -156,7 +156,7 @@ function PendingRow({ appt, look, settings }: { appt: CalAppt; look: GcalLook; s
   const suffix =
     appt.status === 'cancel'
       ? T.pendingCancel(colorName(look.cancel))
-      : appt.origStart !== null
+      : appt.gMoved && appt.origStart !== null // '변경'은 g_moved만(google-link AC-8545.1)
         ? T.pendingMoved(clock(appt.origStart), colorName(look.change))
         : null
   return (

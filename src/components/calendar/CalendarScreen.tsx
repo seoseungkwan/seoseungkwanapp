@@ -22,7 +22,7 @@ import { paintCtx } from './gcal/apptGoogle'
 import { fixStore, putFix } from './gcal/fixApply'
 import { FixPanel } from './gcal/FixPanel'
 import { GcalBand } from './gcal/GcalBand'
-import { FIX_CANT, GCAL_COLORS_HREF, PAST_DONE_TOAST, PUT_DONE_TOAST, PUT_FAILED, SAVED_OFFLINE, SKIP_DONE_TOAST } from './gcal/labels'
+import { CANCEL_DONE_TOAST, FIX_CANT, GCAL_COLORS_HREF, PAST_DONE_TOAST, PUT_DONE_TOAST, PUT_FAILED, SAVED_OFFLINE, SKIP_DONE_TOAST } from './gcal/labels'
 import { useGcal, type GcalScreen } from './gcal/useGcal'
 import { MonthGrid } from './MonthGrid'
 import { BitPicks } from './rows/BitPicks'
@@ -39,7 +39,8 @@ import { findQuery, useCalendarWorker, useCalendarWorkerObject, type CalendarWor
 // 저장은 이 화면이 lib/storage/calendar로 바로 하고, 된 값을 지금 기간 자료에 바로 넣은 뒤 rev를 다시 읽는다(다른 PC는 몇 초 안에).
 // 구글 캘린더와 이은 병원(spec google-link REQ-8532~8536, gcal/useGcal): 도구 줄 위 띠(GcalBand)·안내 줄 구글 묶음·예약표 RowsGoogle·
 // 자세히 구글 구역·고쳐야 할 판(FixPanel). 저장은 같은 쓰기에 g_wait(+ 새 예약 일정 id)를 싣고(useCalendarData googleNew·googlePatch·googleMemo)
-// 저장 뒤 그 예약을 바로 보낸다(lib/gcal/loop sendAppt — 맞춤 엔진은 TASK-23이 앱 틀에서 돌린다). 톱니·[설정]은 설정 › 구글 캘린더 › 시행자·종류 링크
+// 저장 뒤 그 예약을 바로 보낸다(lib/gcal/loop sendAppt — 맞춤 엔진은 TASK-23이 앱 틀에서 돌린다). 톱니·[설정]은 설정 › 구글 캘린더 › 시행자·종류 링크.
+// 이은 병원은 합계 줄·월 보기 '변경'이 g_moved만(linked, google-link AC-8545.1)이고 예약 취소 알림이 '칸은 취소 색으로 남아요'(AC-8549.2)
 
 const FIND_WAIT_MS = 400 // 이름·차트번호를 적고 멈춘 뒤 비트에서 찾기까지
 const TOAST_MS = 6_000
@@ -568,14 +569,14 @@ function Board({ worker, gcal, initialToday }: { worker: CalendarWorkerHandle; g
   } else {
     body = (
       <>
-        <SummaryLine key={`${view}|${shownFrom}`} view={view} from={shownFrom} to={shownTo} rows={summaryRows} settings={settings} />
+        <SummaryLine key={`${view}|${shownFrom}`} view={view} from={shownFrom} to={shownTo} rows={summaryRows} settings={settings} linked={g !== null} />
         <CalendarLegend
           settings={settings}
           bit={api.bit}
           google={g ? { look: g.look, waiting: gs.waiting > 0 || failing, fixes: gcal.fixes.length > 0 } : null}
         />
         {view === 'month' ? (
-          <MonthGrid month={month} rows={snap.counts ?? []} allday={allday} settings={settings} today={today} onDay={showDay} />
+          <MonthGrid month={month} rows={snap.counts ?? []} allday={allday} settings={settings} today={today} linked={g !== null} onDay={showDay} />
         ) : narrow && view === 'week' ? (
           <PhoneWeekList
             key={days[0]}
@@ -693,7 +694,7 @@ function Board({ worker, gcal, initialToday }: { worker: CalendarWorkerHandle; g
           onToggleCancel={() =>
             detail.status === 'cancel'
               ? patchAppt(detail, { status: 'auto' }, '취소를 되돌렸어요.')
-              : patchAppt(detail, { status: 'cancel' }, '예약을 취소했어요. 칸은 흐리게 남아요.')
+              : patchAppt(detail, { status: 'cancel' }, g ? CANCEL_DONE_TOAST : '예약을 취소했어요. 칸은 흐리게 남아요.')
           }
           onDelete={() => removeAppt(detail)}
         />

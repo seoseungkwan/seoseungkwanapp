@@ -10,7 +10,8 @@ import { RateBreakdown } from './RateTable'
 
 // 보이는 기간 합계 줄 + 나눠 보기 (spec clinic-calendar AC-5907.2, 시안 ?s=summary).
 // `이 주 합계  예약 N · 취소 N (x.x%) · 변경 N (x.x%) · 안 옴 N (x.x%)   시행자·종류별 ▾`, 누르면 아래에 시행자별·종류별 표.
-// 수는 lib/calendar rateSummary(취소 포함·지운 것 빼고, 비트 예약 칸은 줄에 없다). 받은 줄만 센다(읽기는 화면이 한다)
+// 수는 lib/calendar rateSummary(취소 포함·지운 것 빼고, 비트 예약 칸은 줄에 없다). 받은 줄만 센다(읽기는 화면이 한다).
+// 구글과 이은 병원(linked, spec google-link AC-8545.1)은 '변경'에 g_moved인 예약만 센다
 
 const PER: Record<CalView, string> = { day: '이 날', week: '이 주', month: '이 달' }
 const HINT = '예약 수는 취소 포함·지운 것 빼고 · 비율은 그 줄 예약 수로 나눠요 · 안 옴은 시간이 지난 예약만 · 비트 예약 칸은 세지 않아요'
@@ -21,14 +22,15 @@ type SummaryLineProps = {
   to: string
   rows: readonly CalCountRow[] // 보이는 기간 예약(이름·차트번호 없이 세는 칸만)
   settings?: CalSettings // 주면 나눠 보기가 설정 차례·(표시) 이름
+  linked?: boolean // 구글과 이은 병원. 주지 않으면 지금 그대로(처음 자리도 변경)
   defaultOpen?: boolean
 }
 
 /** 합계 줄(누르면 나눠 보기) */
-export function SummaryLine({ view, from, to, rows, settings, defaultOpen = false }: SummaryLineProps) {
+export function SummaryLine({ view, from, to, rows, settings, linked = false, defaultOpen = false }: SummaryLineProps) {
   const [open, setOpen] = useState(defaultOpen)
   const panelId = useId()
-  const sum = rateSummary(rows)
+  const sum = rateSummary(rows, linked)
   const items: [string, number, string | null][] = [
     ['예약', sum.total, null],
     ['취소', sum.cancel, ratePct(sum.cancel, sum.total)],

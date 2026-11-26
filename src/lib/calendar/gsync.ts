@@ -135,8 +135,10 @@ function decideMapped(ev: GEvent, mapped: GAppt, ctx: SyncCtx): GDecision {
   // 시간: 날짜·시작이 바뀌면 웹앱에서 옮긴 것처럼(처음 자리는 DB 트리거), 길이는 4시간까지만
   const t = eventTimes(ev)
   let movedTime = false
+  let backToOrig = false // 받은 날·시작이 그 줄의 처음 자리(orig_day·orig_start)와 같음 = 원래 자리로 되돌림
   if (t) {
     movedTime = t.day !== mapped.day || t.start !== mapped.start
+    backToOrig = t.day === mapped.origDay && t.start === mapped.origStart
     set('day', t.day)
     set('start', t.start)
     if (t.len <= MAX_LEN) set('len', t.len)
@@ -144,20 +146,21 @@ function decideMapped(ev: GEvent, mapped: GAppt, ctx: SyncCtx): GDecision {
   }
   if (how && !sameHow(how, mapped.gHow)) patch.gHow = how
 
-  // 색: 취소 색 → 취소, 취소였는데 다른 색 → 'auto', 변경 색 → g_moved, 그 밖 → g_color(설정 색과 다르면 구글 색으로 칠함)
+  // 색: 취소 색 → 취소, 취소였는데 다른 색 → 'auto', 변경 색 → g_moved, 그 밖 → g_color(설정 색과 다르면 구글 색으로 칠함).
+  // g_moved(이은 병원의 '변경', google-link AC-8545.2) = 변경 색이거나 날짜·시작을 옮김(원래 자리로 되돌림은 아님)
   const color = colorFromId(ev.colorId)
   const isCancel = color !== null && color === ctx.look.cancel
   const isChange = !isCancel && color !== null && color === ctx.look.change
   set('status', isCancel ? 'cancel' : mapped.status === 'cancel' ? 'auto' : mapped.status)
   if (mapped.gGone) patch.gGone = false
-  if (!isCancel) set('gMoved', isChange)
+  if (!isCancel) set('gMoved', isChange || (movedTime && !backToOrig))
   if (!isCancel && !isChange) {
     set('gColor', color)
     const kindId = patch.kindId ?? mapped.kindId
     const staffId = 'staffId' in patch ? (patch.staffId ?? null) : mapped.staffId
     if ((color ?? 'default') !== settingColor({ kindId, staffId }, ctx)) set('colorFrom', 'google')
   }
-  // 구글에서 옮긴 일정은 구글 색도 변경 색으로 다시 칠한다
+  // 구글에서 옮긴 일정은 구글 색도 변경 색으로 다시 칠한다(원래 자리로 되돌렸으면 g_moved가 거짓이라 원래 색으로 칠함)
   if (movedTime && !isCancel && !isChange) patch.gWait = 'color'
 
   if (notes.length) patch.gNote = clip(notes.join(' · '), NOTE_MAX)

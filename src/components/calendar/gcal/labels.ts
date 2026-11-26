@@ -38,6 +38,8 @@ export const PUT_DONE_TOAST = '예약표에 넣었어요. 구글 제목은 그�
 export const SKIP_DONE_TOAST = '가져오지 않아요. 구글에만 남아요.'
 export const PAST_DONE_TOAST = '지난 예약 도착을 다 채웠어요.'
 export const PUT_FAILED = '넣지 못했어요. 잠시 뒤 다시 눌러 주세요.'
+/** 예약 취소 알림(2차 고침 notes-calendar 'week 취소 칸 · 바뀐 글', google-link AC-8549.2). 이은 병원만 — 잇지 않은 병원은 화면의 지금 글 그대로 */
+export const CANCEL_DONE_TOAST = '예약을 취소했어요. 칸은 취소 색으로 남아요.'
 
 // ── 안내 줄 ──
 export const LEGEND_COLOR = '색 (구글과 같음)'
@@ -80,7 +82,7 @@ export const SYNC_WAIT = '구글에 아직 못 보냈어요 · 다시 닿으면 
 export const editNote = (title: string) =>
   `[고치기]로 바꾸면 구글 제목이 ${title}${josa(title, '로/으로')} 다시 적혀요. 시행자·종류를 바꾸면 색도 설정 색으로 바꿔요. 그 전에는 원문·색 그대로 둬요.`
 export const colorNote = (cancel: string, change: string) =>
-  `[예약 취소]하면 구글 일정 색이 취소 색(${cancel})으로 바뀌고, 웹앱에는 흐린 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${change})으로 바뀌어요. [지우기]는 둘 다에서 지워요.`
+  `[예약 취소]하면 구글 일정 색이 취소 색(${cancel})으로 바뀌고, 웹앱에도 그 색 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${change})으로 바뀌어요. [지우기]는 둘 다에서 지워요.`
 export const OPEN_EVENT = '구글 캘린더에서 이 일정 열기'
 export const ARRIVAL_NOT_SENT = '도착은 구글에 보내지 않아요(설정 › 맞춤 방법).'
 

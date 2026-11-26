@@ -61,6 +61,22 @@ describe('AC-5907.2: 합계 줄', () => {
   })
 })
 
+describe("AC-8545.1: 구글과 이은 병원(linked)의 요약 줄 '변경' 수는 g_moved만", () => {
+  it('AC-8545.1: linked면 처음 자리만 있는 예약(g_moved 거짓)은 변경이 아니고, g_moved 예약만 센다(나눠 보기 표도 같은 수)', () => {
+    const rows = [...ROWS10, row({ gMoved: true })]
+    render(<SummaryLine view="week" from="2026-11-16" to="2026-11-21" rows={rows} linked />)
+    expect(items(line())).toEqual(['예약 11', '취소 2 (18.2%)', '변경 1 (9.1%)', '안 옴 1 (9.1%)'])
+    cleanup()
+    render(<SummaryLine view="week" from="2026-11-16" to="2026-11-21" rows={ROWS10} linked />)
+    expect(items(line())[2]).toBe('변경 0 (0.0%)')
+  })
+
+  it('AC-8545.3: linked를 주지 않으면(잇지 않은 병원) 지금 그대로 처음 자리도 변경이다', () => {
+    render(<SummaryLine view="week" from="2026-11-16" to="2026-11-21" rows={[...ROWS10, row({ gMoved: true })]} />)
+    expect(items(line())[2]).toBe('변경 2 (18.2%)')
+  })
+})
+
 describe('AC-5907.2: 누르면 나눠 보기(시행자별·종류별 표)', () => {
   it('AC-5907.2: 처음은 닫혀 있고 누르면 열리며 제목·안내·두 표가 보인다. 다시 누르면 닫힌다', () => {
     render(<SummaryLine view="week" from="2026-11-16" to="2026-11-21" rows={ROWS10} />)

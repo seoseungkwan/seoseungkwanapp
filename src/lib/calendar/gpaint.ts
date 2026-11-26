@@ -3,8 +3,10 @@ import type { GColor, GKind, GLook, GPaint, GStaff, PaintAppt, PaintCtx } from '
 import { josa } from './josa'
 
 // 예약 칸 색 고르기·같은 색 경고(spec google-link REQ-8521, notes-calendar '색 규칙'·colors 경고). 순수 함수다.
-// 칸 색 차례: ① 취소 → 취소 색 ② 변경(처음 자리 있음·g_moved) → 변경 색 ③ 구글에서 온 색 → 그 일정 색(없으면 캘린더 기본 색)
-// ④ 그 밖 → 종류 고정 색, 없으면 시행자 색. 구글에 적을 colorId도 같은 차례다(캘린더 기본 색은 colorId 없음)
+// 칸 색 차례: ① 취소 → 취소 색 ② 변경(g_moved) → 변경 색 ③ 구글에서 온 색 → 그 일정 색(없으면 캘린더 기본 색)
+// ④ 그 밖 → 종류 고정 색, 없으면 시행자 색. 구글에 적을 colorId도 같은 차례다(캘린더 기본 색은 colorId 없음).
+// apptPaint는 구글과 이은 병원만 쓴다. 이은 병원의 '변경'은 g_moved만 본다(처음 자리 orig_day는 보지 않음 — google-link AC-8545.1:
+// 웹앱에서 옮기면 g_moved 참을 같은 쓰기에 싣고, 구글에서 변경 색을 다른 색으로 바꾸면 g_moved가 거짓이 된다)
 
 const paint = (key: GColor | 'default', why: GPaint['why']): GPaint => ({ key, colorId: key === 'default' ? null : G_COLOR_ID[key], why })
 
@@ -19,7 +21,7 @@ export function settingColor(appt: Pick<PaintAppt, 'kindId' | 'staffId'>, ctx: P
 
 export function apptPaint(appt: PaintAppt, ctx: PaintCtx): GPaint {
   if (appt.status === 'cancel') return paint(ctx.look.cancel, 'cancel')
-  if (appt.origDay !== null || appt.origStart !== null || appt.gMoved) return paint(ctx.look.change, 'change')
+  if (appt.gMoved) return paint(ctx.look.change, 'change')
   if (appt.colorFrom === 'google') return paint(appt.gColor ?? 'default', 'google')
   return paint(settingColor(appt, ctx), 'setting')
 }

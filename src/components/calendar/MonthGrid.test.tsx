@@ -135,6 +135,22 @@ describe('AC-5906.3: 월 칸의 변경 수', () => {
   })
 })
 
+describe("AC-8545.1: 구글과 이은 병원(linked)의 월 칸 '변경' 수는 g_moved만", () => {
+  it('AC-8545.1: linked면 처음 자리만 있고 g_moved 거짓인 예약은 세지 않고 g_moved 예약만 `변경 N`이다', () => {
+    renderMonth({
+      linked: true,
+      rows: [row({ day: '2026-11-18', origDay: TODAY }), row({ day: '2026-11-19', gMoved: true }), row({ day: '2026-11-19', gMoved: true, origDay: TODAY })],
+    })
+    expect(cell(/^11월 18일/).textContent).not.toContain('변경')
+    expect(cell(/^11월 19일/).textContent).toContain('변경 2')
+  })
+
+  it('AC-8545.3: linked를 주지 않으면(잇지 않은 병원) 지금 그대로 처음 자리가 있는 예약도 `변경 N`이다', () => {
+    renderMonth({ rows: [row({ day: '2026-11-18', origDay: TODAY })] })
+    expect(cell(/^11월 18일/).textContent).toContain('변경 1')
+  })
+})
+
 describe('AC-6603.3: 휴진일(병원 정보)은 월 칸에 "휴진", 칸이 회색', () => {
   it('AC-6603.3: 휴진일 칸에 "휴진"이 보이고 회색(data-closed)이며, 이름표에도 휴진이 든다. 그날 수는 그대로 센다', () => {
     renderMonth({ settings: { ...SETTINGS, closedDates: ['2026-11-19', '2026-11-20'] } })
