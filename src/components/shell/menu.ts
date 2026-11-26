@@ -115,9 +115,10 @@ export const DESK_MENU: readonly MenuItem[] = MENU.filter((item) => DESK_PATHS.i
 export const DESK_TABS: readonly MenuItem[] = [...DESK_MENU, LIBRARY_TAB]
 /** 데스크 첫 화면. 로그인 뒤 첫 주소 /dashboard는 여기로 바꾼다 */
 export const DESK_HOME: MenuPath = '/sunap'
-// 탭은 아니지만 데스크도 여는 주소: 비트 PC 연결 화면(desk-setup AC-7001.1 — 데스크 PC에 확장·도우미를 깔고 연결한다)
-const DESK_EXTRA: readonly string[] = ['/claim/setup']
-/** 데스크가 열 수 있는 주소: 탭 띠 네 주소(세 탭·자료실)와 비트 PC 연결 화면, 그 아래 */
+// 탭은 아니지만 데스크도 여는 주소: 비트 PC 연결 화면(desk-setup AC-7001.1 — 데스크 PC에 확장·도우미를 깔고 연결한다)과
+// 설정 › 구글 캘린더(spec google-link AC-8540.3, design.md 2절 표 12 — 보기만, 칸·단추 잠금은 그 화면이 한다). 다른 설정 주소는 그대로 막는다
+const DESK_EXTRA: readonly string[] = ['/claim/setup', '/settings/google-calendar']
+/** 데스크가 열 수 있는 주소: 탭 띠 네 주소(세 탭·자료실)와 비트 PC 연결 화면·설정 › 구글 캘린더, 그 아래 */
 export const isDeskPath = (pathname: string) => [...DESK_TABS.map((item) => item.path), ...DESK_EXTRA].some((base) => isUnder(pathname, base))
 
 /** 지금 화면의 탭 이름. 탭(MENU와 LOCATION_TAB·LIBRARY_TAB)의 path·owns 중 가장 길게 맞는 경로가 이긴다(/claim/setup은 청구 /claim보다 설정 /claim/setup이 길게 맞는다, AC-302.4) */

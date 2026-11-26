@@ -1,6 +1,8 @@
 // 메시지 약속(design.md 4-2·4-3): 명령 표(commands.json)와 답 모양 검사. 환자 자료 조각(data)은 글자인지만 보고 풀지 않는다
 import { isYmd } from '@/lib/analytics/dates'
-import type { BitCheckStepName, CommandName, PatientCommand, PatientSendCommand, Reply, SmallCommand } from '@/types/bridge'
+import { readFill, readLink, readMonths, readStatus } from '@/lib/gsheet/reply'
+import { readCatalog, readCode, readImport, readPing } from '@/lib/gsheet/settingsReply'
+import type { BitCheckStepName, CallCommand, CommandName, PatientCommand, PatientSendCommand, Reply } from '@/types/bridge'
 import commands from './commands.json'
 import { isRevenueDays } from './revenueResult'
 
@@ -13,8 +15,8 @@ export const PROTOCOL: number = commands.protocol
 
 /** 웹이 아는 명령 이름(types/bridge.ts의 CommandName과 같다, protocol.test.ts) */
 export const COMMANDS = Object.keys(TABLE) as readonly CommandName[]
-/** 숫자·상태 명령(hello는 Bridge.hello()로만) */
-export const SMALL_COMMANDS = COMMANDS.filter((c) => !TABLE[c].patient && c !== 'hello') as readonly SmallCommand[]
+/** 숫자·상태 명령과 수납 명령 — 답이 result 하나인 명령(hello는 Bridge.hello()로만) */
+export const SMALL_COMMANDS = COMMANDS.filter((c) => !TABLE[c].patient && c !== 'hello') as readonly CallCommand[]
 /** 답이 chunk … end인 환자 자료 명령 */
 export const PATIENT_COMMANDS = COMMANDS.filter((c) => TABLE[c].patient && !TABLE[c].send) as readonly PatientCommand[]
 /** Worker가 만든 글자를 보내는 명령 */
@@ -38,7 +40,7 @@ export function isPatient(cmd: string): boolean {
   return known(cmd) && TABLE[cmd].patient === true
 }
 
-export const isSmallCommand = (cmd: unknown): cmd is SmallCommand => SMALL_COMMANDS.includes(cmd as SmallCommand)
+export const isSmallCommand = (cmd: unknown): cmd is CallCommand => SMALL_COMMANDS.includes(cmd as CallCommand)
 export const isPatientCommand = (cmd: unknown): cmd is PatientCommand => PATIENT_COMMANDS.includes(cmd as PatientCommand)
 export const isSendCommand = (cmd: unknown): cmd is PatientSendCommand => SEND_COMMANDS.includes(cmd as PatientSendCommand)
 
@@ -155,8 +157,11 @@ function isClaimDates(d: Rec): boolean {
   )
 }
 
-/** 숫자·상태 명령의 result.data가 명령마다 정해 둔 모양인가(AC-004.6) */
-export function checkResult(cmd: SmallCommand, data: unknown): boolean {
+/**
+ * 숫자·상태 명령의 result.data가 명령마다 정해 둔 모양인가(AC-004.6).
+ * 수납 명령(sheet.*, spec google-link design.md 9-2)은 그 답을 읽는 함수(lib/gsheet/reply·settingsReply — 정해 둔 열쇠 밖이 섞이거나 칸 꼴이 틀리면 null)로 본다
+ */
+export function checkResult(cmd: CallCommand, data: unknown): boolean {
   if (!isRecord(data)) return false
   switch (cmd) {
     case 'bit.check':
@@ -167,6 +172,22 @@ export function checkResult(cmd: SmallCommand, data: unknown): boolean {
       return isClaimDates(data)
     case 'revenue.days':
       return isRevenueDays(data)
+    case 'sheet.status':
+      return readStatus(data) !== null
+    case 'sheet.link':
+      return readLink(data) !== null
+    case 'sheet.months':
+      return readMonths(data) !== null
+    case 'sheet.fill':
+      return readFill(data) !== null
+    case 'sheet.code':
+      return readCode(data) !== null
+    case 'sheet.import':
+      return readImport(data) !== null
+    case 'sheet.ping':
+      return readPing(data) !== null
+    case 'sheet.catalog':
+      return readCatalog(data) !== null
   }
 }
 

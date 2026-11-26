@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Icon, type IconName } from '@/components/common/Icon'
 import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
 import { ds } from '@/components/ui/classes'
+import { fillStatus, type FillDone } from '@/lib/gsheet/status'
 import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
@@ -33,6 +34,10 @@ vi.mock('next/navigation', () => ({ usePathname: pathname, useRouter: () => rout
 // 탭 숫자(NoticeBadge, notices AC-7423.3)가 읽는 안 읽은 수. 실제 Supabase에 붙지 않는다 — 기본은 실패(아무것도 그리지 않음)라 다른 시험의 탭 글자는 그대로다
 const { unreadCount } = vi.hoisted(() => ({ unreadCount: vi.fn<() => Promise<number | 'failed'>>() }))
 vi.mock('@/lib/storage/notices', () => ({ NOTICES_CHANGED: 'notices:changed', unreadCount }))
+// 보이지 않는 두 부품(google-link AC-8540.1 — 수납 저절로 넣기·예약 맞춤). 이 시험에서는 그렸는지만 센다(진짜 동작은 각 부품 시험이 본다)
+const { sheetAuto, gcalSync } = vi.hoisted(() => ({ sheetAuto: vi.fn((_props?: object): null => null), gcalSync: vi.fn((_props?: object): null => null) }))
+vi.mock('@/components/gsheet/auto/GoogleSheetAuto', () => ({ GoogleSheetAuto: sheetAuto }))
+vi.mock('@/components/gcal/GcalSync', () => ({ GcalSync: gcalSync }))
 
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 // 공통 아이콘 그림(svg 안쪽 글자)
@@ -74,6 +79,9 @@ const scrollIntoView = vi.fn()
 
 beforeEach(() => {
   pathname.mockReturnValue('/dashboard')
+  sheetAuto.mockClear()
+  gcalSync.mockClear()
+  fillStatus.reset()
   unreadCount.mockReset()
   unreadCount.mockResolvedValue('failed')
   router.replace.mockReset()
@@ -309,6 +317,19 @@ describe('menu', () => {
 
   it.each(['/claim', '/claim/setupx', '/claim/x', '/settings', '/stats', '/dashboard'])('AC-7001.1: isDeskPath(%s)는 그대로 거짓이다', (path) => {
     expect(isDeskPath(path)).toBe(false)
+  })
+
+  // google-link AC-8540.3: 데스크도 설정 › 구글 캘린더 한 주소만 연다(보기만). 다른 설정 주소는 그대로 막힌다
+  it.each(['/settings/google-calendar', '/settings/google-calendar/x'])('AC-8540.3: isDeskPath(%s)는 참이다(설정 › 구글 캘린더와 그 아래)', (path) => {
+    expect(isDeskPath(path)).toBe(true)
+  })
+
+  it.each(['/settings', '/settings/x', '/settings/google-calendarx', '/settings/google'])('AC-8540.3: isDeskPath(%s)는 그대로 거짓이다', (path) => {
+    expect(isDeskPath(path)).toBe(false)
+  })
+
+  it("AC-8540.3: /settings/google-calendar의 탭 자리는 '설정'이다(설정 탭 안 화면)", () => {
+    expect(currentMenuLabel('/settings/google-calendar')).toBe('설정')
   })
 })
 
@@ -2363,5 +2384,93 @@ describe('자료실 탭 (library REQ-8108)', () => {
     expect(router.replace).not.toHaveBeenCalled()
     expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(DESK_STRIP)
     expect(within(strip()).getByRole('link', { name: '자료실' }).getAttribute('aria-current')).toBe('page')
+  })
+})
+
+// ── google-link REQ-8540: 앱 틀에 잇기 ─────────────────────────────────────────
+describe('앱 틀 잇기 (google-link REQ-8540)', () => {
+  const SHELL_SOURCE = readFileSync(join(process.cwd(), 'src/components/shell/AppShell.tsx'), 'utf8')
+  const VIEWING = { hospitalId: '22222222-2222-4222-8222-222222222222', name: '다라 정형외과의원' }
+  // 넣기가 끝난 한 줄(fillStatus.finish에 넘기는 것). 오늘 한국 날 시트·저절로 넣기
+  const done = (outcome: FillDone['outcome'], at = new Date().toISOString()): FillDone => ({
+    at,
+    day: new Date(Date.parse(at) + 9 * 3600_000).toISOString().slice(0, 10),
+    via: 'auto',
+    mode: 'fillEmpty',
+    outcome,
+    code: outcome === 'fail' ? 'E-GSHEET-NET' : null,
+    rows: outcome === 'fail' ? 0 : 12,
+  })
+  const sunapTab = () => tab('수납일지')
+  const stopDot = () => sunapTab().querySelector('[title="넣기가 멈췄어요"]')
+
+  it('AC-8540.1: AppShell 소스에 <GoogleSheetAuto />·<GcalSync />가 한 줄씩 있고, 뿌리의 <AutoUpload /> 바로 옆이다', () => {
+    expect(SHELL_SOURCE.match(/<GoogleSheetAuto \/>/g)).toHaveLength(1)
+    expect(SHELL_SOURCE.match(/<GcalSync \/>/g)).toHaveLength(1)
+    expect(SHELL_SOURCE).toContain("import { GoogleSheetAuto } from '@/components/gsheet/auto/GoogleSheetAuto'")
+    expect(SHELL_SOURCE).toContain("import { GcalSync } from '@/components/gcal/GcalSync'")
+    const lines = SHELL_SOURCE.split('\n').map((line) => line.trim())
+    const at = lines.indexOf('<AutoUpload />')
+    expect(at).toBeGreaterThan(-1)
+    expect(lines.slice(at, at + 3)).toEqual(['<AutoUpload />', '<GoogleSheetAuto />', '<GcalSync />'])
+  })
+
+  it.each([
+    ['원장', {}],
+    ['데스크', { desk: true }],
+    ['보는 중(관리자)', { isAdmin: true, viewing: VIEWING }],
+  ] as const)('AC-8540.1: %s 앱 틀이 어느 탭이든 두 부품을 한 번씩 그리고, 두 부품은 아무것도 그리지 않는다(보는 중이면 부품이 스스로 쉰다)', (_, extra) => {
+    for (const path of ['/dashboard', '/sunap', '/calendar']) {
+      sheetAuto.mockClear()
+      gcalSync.mockClear()
+      pathname.mockReturnValue(path)
+      const { unmount } = render(
+        <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false} {...extra}>
+          <p>본문</p>
+        </AppShell>,
+      )
+      expect(sheetAuto, path).toHaveBeenCalled()
+      expect(gcalSync, path).toHaveBeenCalled()
+      // props 없이 그린다
+      expect(sheetAuto.mock.calls.every(([props]) => Object.keys((props ?? {}) as object).length === 0)).toBe(true)
+      expect(gcalSync.mock.calls.every(([props]) => Object.keys((props ?? {}) as object).length === 0)).toBe(true)
+      unmount()
+    }
+  })
+
+  it('AC-8540.2: 넣기가 멈춤 상태면 탭 줄 수납일지 옆에 주황 점(말풍선 "넣기가 멈췄어요", 화면 읽기 글 같음)이 있다', () => {
+    pathname.mockReturnValue('/dashboard')
+    render(<TabBar />)
+    expect(stopDot()).toBeNull()
+    act(() => fillStatus.finish(done('fail')))
+    const dot = stopDot() as HTMLElement
+    expect(dot).not.toBeNull()
+    expect(dot.getAttribute('aria-hidden')).toBe('true')
+    hasAll(dot, 'bg-warning rounded-control')
+    expect(within(sunapTab()).getByText('넣기가 멈췄어요').className).toContain('sr-only')
+    // 다른 탭에는 점이 없다
+    expect(nav().querySelectorAll('[title="넣기가 멈췄어요"]')).toHaveLength(1)
+  })
+
+  it('AC-8540.2: 다음 넣기가 되면 점이 없어진다', () => {
+    render(<TabBar />)
+    act(() => fillStatus.finish(done('fail', '2026-11-26T05:35:00.000Z')))
+    expect(stopDot()).not.toBeNull()
+    act(() => fillStatus.finish(done('ok', '2026-11-26T05:40:00.000Z')))
+    expect(stopDot()).toBeNull()
+    expect(sunapTab().textContent).toBe('수납일지')
+  })
+
+  it('AC-8540.2: 데스크 탭 띠의 수납일지에도 같은 점이 붙는다', () => {
+    pathname.mockReturnValue('/sunap')
+    render(<TabBar desk />)
+    act(() => fillStatus.finish(done('fail')))
+    expect(stopDot()).not.toBeNull()
+  })
+
+  it('AC-8540.2: 다른 탭이 통로를 쥐어 못 한 것(E-BRIDGE-BUSY)은 멈춤이 아니라 점이 없다', () => {
+    render(<TabBar />)
+    act(() => fillStatus.finish({ ...done('fail'), code: 'E-BRIDGE-BUSY' }))
+    expect(stopDot()).toBeNull()
   })
 })

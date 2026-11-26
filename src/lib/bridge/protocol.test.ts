@@ -10,8 +10,10 @@ import {
   PROTOCOL,
   SEND_COMMANDS,
   SMALL_COMMANDS,
+  checkResult,
   isErrorCode,
   isPatient,
+  isSmallCommand,
 } from './protocol'
 import { CAL_HELPER, CAL_PAST_HELPER, LATEST_HELPER, MIN_EXTENSION, MIN_HELPER, SHEET_EXTENSION, SHEET_HELPER } from './versions'
 
@@ -209,6 +211,28 @@ describe('AC-8511.1 수납 명령 여덟(sheet.*) — commands.json 모양', () 
     expect(Object.keys(link)).toEqual(Object.keys(table['sheet.link'].args))
     expect(Object.keys(months)).toEqual(Object.keys(table['sheet.months'].args))
     expect(catalog).toEqual({})
+  })
+
+  // TASK-23 (라): 통로가 sheet.* 답을 모두 E-BRIDGE-BAD-REPLY로 거절하던 것(checkResult에 경우 없음)을 고친다 — 명령마다 정해 둔 읽기 함수로 본다
+  it('AC-004.6 checkResult는 sheet.* 여덟마다 검사가 있다 — 맞는 답은 참, 빈 묶음·판(v) 없는 답은 거짓', () => {
+    const TAG = '0123456789abcdef'
+    const good: Record<SheetCommand, unknown> = {
+      'sheet.status': { v: 1, secretTag: null, bitsheet: false, codeVersion: '0', url: null, shareWith: [], verified: false },
+      'sheet.code': { v: 1, secretTag: TAG, codeVersion: '8' },
+      'sheet.link': { v: 1, ok: true },
+      'sheet.import': { v: 1, secretTag: TAG, settings: {} },
+      'sheet.ping': { v: 1, ok: false, code: 'E-GSHEET-NET' },
+      'sheet.catalog': { v: 1, hospitals: [], depts: [], rx: [], hospitalName: '' },
+      'sheet.months': { v: 1, version: '8', months: [] },
+      'sheet.fill': { v: 1, unchanged: true, rows: 0 },
+    }
+    for (const cmd of SHEET) {
+      expect(isSmallCommand(cmd), cmd).toBe(true)
+      expect(checkResult(cmd, good[cmd]), cmd).toBe(true)
+      expect(checkResult(cmd, {}), cmd).toBe(false)
+      expect(checkResult(cmd, { ...(good[cmd] as object), v: undefined }), cmd).toBe(false)
+      expect(checkResult(cmd, null), cmd).toBe(false)
+    }
   })
 })
 

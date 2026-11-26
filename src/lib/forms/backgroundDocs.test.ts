@@ -155,10 +155,11 @@ describe('AC-4613.5: CSP는 바꾸지 않는다', () => {
         .map(([name, ...values]) => [name, values]),
     )
 
+  // connect-src의 구글 두 origin은 예약 구글 캘린더 맞춤(google-link ADR-053, lib/gcal/client.ts) — 그림 AI 길과 상관없다
   it.each([
-    ['운영', false, ["'self'", SUPABASE]],
-    ['개발', true, ["'self'", SUPABASE, 'ws:']],
-  ] as const)("AC-4613.5: buildCsp(%s)에 'openai'가 없고 img-src·connect-src가 지금 그대로다", (_, isDev, connect) => {
+    ['운영', false, ["'self'", SUPABASE, 'https://script.google.com', 'https://script.googleusercontent.com']],
+    ['개발', true, ["'self'", SUPABASE, 'https://script.google.com', 'https://script.googleusercontent.com', 'ws:']],
+  ] as const)("AC-4613.5: buildCsp(%s)에 'openai'가 없고 img-src·connect-src가 지금 그대로다(예약 구글 캘린더 두 origin 포함)", (_, isDev, connect) => {
     const csp = buildCsp(isDev, SUPABASE)
     expect(csp.toLowerCase()).not.toContain('openai')
     const d = directives(csp)

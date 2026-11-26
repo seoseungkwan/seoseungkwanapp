@@ -744,6 +744,17 @@ const HEX_FILES = [
   'src/components/forms/noticeColors.ts',
   'src/components/forms/colorChoices.ts',
 ]
+// 파일 전체가 아니라 그 값·그 횟수만 허용하는 16진수 색(spec google-link TASK-23 (가)):
+// types/gcal.ts GCAL_DEFAULT_HEX '#4285F4'는 구글이 캘린더 색을 주지 않을 때 DB(gcal_links.default_hex)에 적는 자료 값이다(design.md 2절 표 9).
+// 화면 색이 아니라 화면은 이 값을 그리지 않고 var(--cal-default) 토큰을 쓴다. 같은 파일에 다른 색·두 번째 값이 생기면 다시 잡는다
+const HEX_VALUES_ALLOWED: Record<string, Record<string, number>> = { 'src/types/gcal.ts': { '#4285F4': 1 } }
+/** 그 파일의 16진수 색이 허용한 값·횟수와 꼭 같은가 */
+const onlyAllowedHex = (rel: string, hits: readonly string[]) => {
+  const allowed = HEX_VALUES_ALLOWED[rel]
+  if (allowed === undefined) return false
+  const total = Object.values(allowed).reduce((sum, n) => sum + n, 0)
+  return hits.length === total && Object.entries(allowed).every(([hex, n]) => hits.filter((hit) => hit === hex).length === n)
+}
 // rgb(를 둘 수 있는 곳: 안내문 그림 카드 그림자 한 곳 (ADR-028)
 const COLOR_FN_ALLOWED: Record<string, number> = { 'src/components/forms/Poster.tsx': 1 }
 
@@ -777,8 +788,23 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
     const files = colorSources()
     expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/common/LogoMark.tsx', 'src/components/landing/base.module.css']))
     const allowed = new Set(HEX_FILES)
-    const found = files.filter((rel) => !allowed.has(rel)).flatMap((rel) => (colorText(rel).match(HEX) ?? []).map((hex) => `${rel}: ${hex}`))
+    const found = files
+      .filter((rel) => !allowed.has(rel))
+      .flatMap((rel) => {
+        const hits = colorText(rel).match(HEX) ?? []
+        return onlyAllowedHex(rel, hits) ? [] : hits.map((hex) => `${rel}: ${hex}`)
+      })
     expect(found).toEqual([])
+  })
+
+  it('AC-202.3: 값·횟수로 묶은 허용은 types/gcal.ts의 캘린더 기본 색 자료 값 #4285F4 한 번뿐이다 — 값이 다르거나 두 번이면 잡는다', () => {
+    expect(HEX_VALUES_ALLOWED).toEqual({ 'src/types/gcal.ts': { '#4285F4': 1 } })
+    expect(colorText('src/types/gcal.ts').match(HEX)).toEqual(['#4285F4'])
+    expect(onlyAllowedHex('src/types/gcal.ts', ['#4285F4'])).toBe(true)
+    expect(onlyAllowedHex('src/types/gcal.ts', ['#4285F4', '#4285F4'])).toBe(false)
+    expect(onlyAllowedHex('src/types/gcal.ts', ['#4285f4'])).toBe(false)
+    expect(onlyAllowedHex('src/types/gcal.ts', ['#4285F4', '#FFFFFF'])).toBe(false)
+    expect(onlyAllowedHex('src/types/calendar.ts', ['#4285F4'])).toBe(false)
   })
 
   it('AC-202.3: rgb(·hsl(·color-mix(는 globals.css :root 토큰 블록 밖에는 안내문 그림 그림자 한 곳(Poster의 rgb( 하나)뿐이다', () => {

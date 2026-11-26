@@ -273,3 +273,30 @@ describe('AC-7706.4 DeskGate hidden — 숨긴 탭이 있는 데스크의 첫 �
     expect(src).toMatch(/\bdeskHomeOf\(/)
   })
 })
+
+// 설정 › 구글 캘린더(spec google-link REQ-8540 AC-8540.3, design.md 2절 표 12): 데스크도 이 주소 하나만 연다(보기만 — 칸·단추 잠금은 그 화면이 한다).
+// 다른 설정 주소(/settings·/settings/그 밖)는 지금처럼 막힌 화면이다
+describe('AC-8540.3 데스크의 설정 › 구글 캘린더(/settings/google-calendar)', () => {
+  it.each(['/settings/google-calendar', '/settings/google-calendar/x'])('AC-8540.3: %s는 isDeskPath가 참이고 DeskGate는 본문을 그대로 그린다(막힌 화면 아님)', (path) => {
+    pathname.mockReturnValue(path)
+    expect(isDeskPath(path)).toBe(true)
+    const { container } = render(gate())
+    expect(container.innerHTML).toBe('<p>본문</p>')
+    expect(screen.queryByText(TITLE)).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it.each(['/settings', '/settings/x', '/settings/google-calendarx', '/settings/google', '/google-calendar'])('AC-8540.3: 다른 설정 주소(%s)는 지금처럼 막힌 화면이다', (path) => {
+    pathname.mockReturnValue(path)
+    expect(isDeskPath(path)).toBe(false)
+    render(gate())
+    expect(screen.queryByText('본문')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(TITLE)
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-8540.3: 데스크 탭 띠는 그대로다(구글 캘린더는 탭이 아니라 열 수 있는 주소만 더함)', () => {
+    expect(DESK_MENU.map((item) => item.path)).toEqual(['/worklog', '/sunap', '/calendar'])
+    expect(DESK_HOME).toBe('/sunap')
+  })
+})

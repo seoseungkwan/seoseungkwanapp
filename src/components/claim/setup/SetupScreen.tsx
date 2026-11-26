@@ -47,6 +47,9 @@ const subIdle = `${subBase} font-medium text-ink-2 hover:text-ink`
 const subCurrent = `${subBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
 // [설정]은 설정 탭이 가리키는 화면(menu.ts, AC-012.6, 이름은 settings-tab-name AC-5201.2, 옛 [청구]는 clinic-profile AC-6602.1에서 설정 화면 메뉴와 같은 이름으로)
 const SETTINGS_HREF = MENU.find((m) => m.label === '설정')?.href ?? '/settings'
+// 셋째 칸 설정 › 구글 캘린더(spec google-link AC-8528.1) + 작은 꼬리표 '새'(시안 calendar.html .newb — 16px 알약, 설정 화면 메뉴와 같은 모양)
+const GCAL_HREF = '/settings/google-calendar'
+const newBadge = 'rounded-float bg-accent-soft px-1.5 text-caption leading-4 font-semibold text-accent-strong'
 
 // 한 줄 상자(목업 '.okline'): surface·1px 선·4px(rounded-control)·안쪽 12px 16px
 const line = 'flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface px-4 py-3'
@@ -59,6 +62,10 @@ function SettingsSubnav() {
       </Link>
       <Link href="/claim/setup" aria-current="page" className={subCurrent}>
         비트 PC 연결
+      </Link>
+      <Link href={GCAL_HREF} className={subIdle}>
+        구글 캘린더
+        <span className={newBadge}>새</span>
       </Link>
     </nav>
   )

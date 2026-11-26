@@ -276,7 +276,7 @@ describe('SetupScreen 틀', () => {
     const here = within(sub).getByRole('link', { name: '비트 PC 연결' })
     expect(here.getAttribute('href')).toBe('/claim/setup')
     expect(here.getAttribute('aria-current')).toBe('page')
-    expect(sub.textContent).toBe('설정비트 PC 연결')
+    expect(sub.textContent).toBe('설정비트 PC 연결구글 캘린더새')
     await screen.findByText('준비됨')
     expect(document.body.textContent).not.toContain('청구·연락')
   })
@@ -303,6 +303,26 @@ describe('SetupScreen 틀', () => {
 })
 
 // b2b 관리자 화면 안 탭(AdminApplications, b2b AC-220.1)과 같은 모양 (REQ-034, design.md 18-3)
+// google-link AC-8528.1: 설정 안 메뉴 셋째 칸 '구글 캘린더' + '새'(설정 › 구글 캘린더 화면 링크). 데스크 머리(안쪽 메뉴 없음)는 그대로(AC-7002.1)
+describe('AC-8528.1 설정 안 메뉴의 구글 캘린더', () => {
+  it("AC-8528.1: 원장의 설정 안 메뉴 셋째 칸은 '구글 캘린더'(/settings/google-calendar) + 작은 꼬리표 '새'이고, 모양은 [설정] 칸과 같다(지금 화면 아님)", async () => {
+    fakeExtension({ hello: HELLO })
+    renderSetup()
+    const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
+    const links = within(sub).getAllByRole('link')
+    expect(links.map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결', '구글 캘린더새'])
+    const gcal = links[2]!
+    expect(gcal.getAttribute('href')).toBe('/settings/google-calendar')
+    expect(gcal.hasAttribute('aria-current')).toBe(false)
+    expect(gcal.firstChild?.textContent).toBe('구글 캘린더')
+    const badge = within(gcal).getByText('새')
+    expect(badge.tagName).toBe('SPAN')
+    hasAll(badge, 'bg-accent-soft text-caption font-semibold text-accent-strong')
+    expect(classesOf(gcal)).toEqual(classesOf(links[0]!))
+    await screen.findByText('준비됨')
+  })
+})
+
 describe('AC-034.2 설정 안 메뉴 모양', () => {
   const subnav = () => screen.getByRole('navigation', { name: '설정 안 메뉴' })
 
@@ -311,7 +331,7 @@ describe('AC-034.2 설정 안 메뉴 모양', () => {
     renderSetup()
     hasAll(subnav(), 'flex border-b border-line')
     const items = Array.from(subnav().children)
-    expect(items.map((el) => el.getAttribute('aria-current') ?? el.getAttribute('aria-disabled'))).toEqual([null, 'page'])
+    expect(items.map((el) => el.getAttribute('aria-current') ?? el.getAttribute('aria-disabled'))).toEqual([null, 'page', null])
     for (const item of items) {
       hasAll(item, 'relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body first:-ml-3 max-md:h-11')
       hasNone(item, 'rounded-chip rounded-card gap-2')
@@ -1416,6 +1436,7 @@ describe('AC-7002.1·AC-7002.2 데스크로 연 연결 화면', () => {
     expect(within(sub).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['설정', '/settings'],
       ['비트 PC 연결', '/claim/setup'],
+      ['구글 캘린더새', '/settings/google-calendar'],
     ])
     expect(screen.getByText('이 PC에서 청구 화면을 쓸 수 있어요.')).toBeTruthy()
     expect(screen.getByRole('link', { name: '청구로 가기' }).getAttribute('href')).toBe('/claim')
@@ -1505,6 +1526,7 @@ describe('AC-7104.1·AC-7104.2 비트가 아닌 병원의 연결 화면', () => 
         expect(within(sub).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]), label).toEqual([
           ['설정', '/settings'],
           ['비트 PC 연결', '/claim/setup'],
+          ['구글 캘린더새', '/settings/google-calendar'],
         ])
         // 머리 아래에는 상자 하나만
         const root = container.firstElementChild as HTMLElement
@@ -1518,7 +1540,7 @@ describe('AC-7104.1·AC-7104.2 비트가 아닌 병원의 연결 화면', () => 
         expect(isSecondary(change), label).toBe(true)
         expect(primaries(), label).toEqual([])
         expect(screen.queryByText(DESK_SAY), label).toBeNull()
-        expect(screen.getAllByRole('link'), label).toHaveLength(3)
+        expect(screen.getAllByRole('link'), label).toHaveLength(4)
         expectOnlyBox(label)
 
         cleanup()

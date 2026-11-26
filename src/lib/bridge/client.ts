@@ -5,6 +5,7 @@ import type {
   ArgsOf,
   Bridge,
   BridgeState,
+  CallCommand,
   ChromeRuntimeLike,
   ChunkSink,
   CommandName,
@@ -15,7 +16,6 @@ import type {
   Progress,
   ResultOf,
   SendResult,
-  SmallCommand,
   StreamResult,
 } from '@/types/bridge'
 import { EXTENSION_ID } from './extensionId'
@@ -138,7 +138,7 @@ export function connectBridge(deps: { runtime: ChromeRuntimeLike | undefined; si
 
   function onResult(id: string, req: Pending, data: unknown) {
     if (req.kind === 'hello') return onHelloResult(id, req, data)
-    const ok = req.kind === 'small' ? checkResult(req.cmd as SmallCommand, data) : req.kind === 'save' && isSaved(data)
+    const ok = req.kind === 'small' ? checkResult(req.cmd as CallCommand, data) : req.kind === 'save' && isSaved(data)
     // 환자 자료 명령(store.save 말고)에는 result가 오지 않는다(AC-004.6)
     if (!ok) return fail(id, req, BAD_REPLY)
     pending.delete(id)
@@ -239,7 +239,7 @@ export function connectBridge(deps: { runtime: ChromeRuntimeLike | undefined; si
       if (!port && (current === 'no-extension' || current === 'busy')) return Promise.resolve(helloState(current))
       return request<HelloResult>('hello', {}, 'hello')
     },
-    call<C extends SmallCommand>(cmd: C, args: ArgsOf<C>) {
+    call<C extends CallCommand>(cmd: C, args: ArgsOf<C>) {
       if (!isSmallCommand(cmd) || !isRecord(args)) return rejected(REJECTED)
       return request<ResultOf<C>>(cmd, args, 'small')
     },

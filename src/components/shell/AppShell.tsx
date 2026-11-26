@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { AutoUpload } from '@/components/autoUpload/AutoUpload'
 import { LogoMark } from '@/components/common/LogoMark'
+import { GcalSync } from '@/components/gcal/GcalSync'
+import { GoogleSheetAuto } from '@/components/gsheet/auto/GoogleSheetAuto'
 import { AccountMenu } from './AccountMenu'
 import { DeskGate } from './DeskGate'
 import { KstClock } from './KstClock'
@@ -42,6 +44,7 @@ const MAIN_CLASS = 'flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:s
 // 없으면(undefined·null) 지금 그대로이고, 보기 쿠키가 남아 있으면 ViewCookieSync가 지우고 한 번 새로 연다(아무것도 그리지 않는다).
 // 관리자(데스크 아님)는 머리 시계 왼쪽에 '보는 의원' 단추(ViewPicker)가 있다
 // 저절로 올리기(admin-view REQ-8021): AutoUpload를 늘 그린다(아무것도 그리지 않고, 보는 중·보기 쿠키면 아무 일도 하지 않는다)
+// 구글 잇기(spec google-link AC-8540.1): 그 옆에 수납 저절로 넣기(GoogleSheetAuto)·예약 맞춤(GcalSync)도 늘 그린다 — 둘 다 아무것도 그리지 않고 보는 중이면 쉰다
 export function AppShell({
   hospitalName,
   email,
@@ -81,6 +84,8 @@ export function AppShell({
       </a>
       {!viewing && <ViewCookieSync />}
       <AutoUpload />
+      <GoogleSheetAuto />
+      <GcalSync />
       <div className="sticky top-0 z-10 print:hidden">
         {viewing && <ViewBand viewing={viewing} />}
         <header className="border-b border-line bg-surface">

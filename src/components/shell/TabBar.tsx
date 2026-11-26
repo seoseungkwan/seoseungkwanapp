@@ -1,7 +1,8 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
+import { fillStatus } from '@/lib/gsheet/status'
 import { LoadBar } from './LoadBar'
 import { DESK_TABS, LIBRARY_TAB, LOCATION_TAB, MENU, PRIMARY_MENU, currentMenuLabel, type MenuPath } from './menu'
 import { MoreMenu, ShellLink } from './MoreMenu'
@@ -40,6 +41,30 @@ function TabLabel({ label }: { label: string }) {
   )
 }
 
+// 수납일지 탭 옆 주황 점(spec google-link AC-8540.2, 시안 sunap.html .tdot — 7px 둥근 warning 점, 이름과 4px). 넣기 멈춤(lib/gsheet/status stopped —
+// 마지막 넣기가 실패, 다른 PC의 멈춤도 서버 기록으로 채워짐)이면 그린다. 마우스를 올리면 말풍선, 화면 읽기에는 같은 글을 따로 준다. 다음 넣기가 되면 사라진다
+const STOP_TEXT = '넣기가 멈췄어요'
+const stoppedNow = () => fillStatus.get().stopped
+const stoppedOnServer = () => null
+
+function SheetStopDot() {
+  const stopped = useSyncExternalStore(fillStatus.subscribe, stoppedNow, stoppedOnServer)
+  if (stopped === null) return null
+  return (
+    <>
+      <span aria-hidden="true" title={STOP_TEXT} className="ml-1 inline-block size-1.75 shrink-0 rounded-control bg-warning" />
+      <span className="sr-only">{STOP_TEXT}</span>
+    </>
+  )
+}
+
+/** 탭 이름 뒤에 붙는 것: 원장 고시·공지의 안 읽은 수, 원장·데스크 수납일지의 넣기 멈춤 점 */
+function badgeOf(path: string, desk: boolean): ReactNode {
+  if (path === '/sunap') return <SheetStopDot />
+  if (!desk && path === '/notices') return <NoticeBadge />
+  return null
+}
+
 function TabLink({
   label,
   href,
@@ -63,7 +88,7 @@ function TabLink({
   pending: boolean
   onPress: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
   onFocus: (e: FocusEvent<HTMLAnchorElement>) => void
-  /** 이름 뒤에 붙는 것(고시·공지의 안 읽은 수). 링크 글자 안이라 화면 읽기가 이름과 함께 읽는다 */
+  /** 이름 뒤에 붙는 것(고시·공지의 안 읽은 수·수납일지 넣기 멈춤 점). 링크 글자 안이라 화면 읽기가 이름과 함께 읽는다 */
   badge?: ReactNode
 }) {
   return (
@@ -172,7 +197,7 @@ export function TabBar({
                 pending={pendingHref === item.path}
                 onPress={press}
                 onFocus={(e) => revealInStrip(stripRef.current, e.currentTarget)}
-                badge={!desk && item.path === '/notices' ? <NoticeBadge /> : null}
+                badge={badgeOf(item.path, desk)}
               />
             ))}
           </div>

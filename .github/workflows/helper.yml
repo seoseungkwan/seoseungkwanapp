@@ -13,6 +13,8 @@ on:
       - 'helper/**'
       - 'extension/**'
       - 'src/lib/bridge/commands.json'
+      # 도우미가 수납 구글 코드(google-code/sheet/Code.gs)를 안에 싣는다 — 고치면 도우미를 다시 빌드한다(spec google-link TASK-23)
+      - 'google-code/sheet/**'
       - '.github/workflows/helper.yml'
     tags:
       - 'helper-v*'

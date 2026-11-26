@@ -83,11 +83,11 @@ describe('/settings 페이지', () => {
     expect(metadata.title).toBe('설정')
   })
 
-  it('AC-012.6·AC-5201.1·AC-6602.1: 제목 "설정"과 안쪽 메뉴 — [설정](옛 [청구])은 지금 화면, [비트 PC 연결]은 /claim/setup 링크, 옛 이름 청구·연락 글자 없음', async () => {
+  it('AC-012.6·AC-5201.1·AC-6602.1·AC-8528.1: 제목 "설정"과 안쪽 메뉴 — [설정](옛 [청구])은 지금 화면, [비트 PC 연결]은 /claim/setup 링크, [구글 캘린더 새], 옛 이름 청구·연락 글자 없음', async () => {
     render(<SettingsRoute />)
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
-    expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결'])
+    expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결', '구글 캘린더새'])
     expect(within(sub).queryByRole('link', { name: '청구' })).toBeNull()
     const here = within(sub).getByRole('link', { name: '설정' })
     expect(here.getAttribute('href')).toBe('/settings')
@@ -97,6 +97,21 @@ describe('/settings 페이지', () => {
     expect(setup.hasAttribute('aria-current')).toBe(false)
     await screen.findByText('LA-01')
     expect(document.body.textContent).not.toContain('청구·연락')
+  })
+
+  it("AC-8528.1: 설정 안 메뉴 셋째 칸은 '구글 캘린더'(/settings/google-calendar) + 작은 꼬리표 '새'이고 [비트 PC 연결] 칸과 같은 모양이다(지금 화면 아님)", async () => {
+    render(<SettingsRoute />)
+    const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
+    const links = within(sub).getAllByRole('link')
+    const gcal = links[2]!
+    expect(gcal.getAttribute('href')).toBe('/settings/google-calendar')
+    expect(gcal.hasAttribute('aria-current')).toBe(false)
+    expect(gcal.firstChild?.textContent).toBe('구글 캘린더')
+    const badge = within(gcal).getByText('새')
+    expect(badge.tagName).toBe('SPAN')
+    for (const c of ['bg-accent-soft', 'text-caption', 'font-semibold', 'text-accent-strong']) expect(badge.classList.contains(c), c).toBe(true)
+    expect(gcal.className).toBe(links[1]!.className)
+    await screen.findByText('LA-01')
   })
 
   it("AC-012.6: '청구'에 '점검 규칙' 칸이 있고 규칙 줄이 나온다", async () => {

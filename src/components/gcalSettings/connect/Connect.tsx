@@ -358,7 +358,7 @@ export function GcalConnect({ view, ping, saveConnection, saveCalendar, onNext, 
                     }}
                     className="size-4 accent-accent"
                   />
-                  <i aria-hidden="true" className="size-3 rounded-control" style={{ backgroundColor: isHex(calendar.hex) ? calendar.hex : GCAL_DEFAULT_HEX }} />
+                  <i aria-hidden="true" className="size-3 rounded-control" style={{ backgroundColor: isHex(calendar.hex) ? calendar.hex : 'var(--cal-default)' }} />
                   <b className="min-w-0 truncate font-semibold">{calendar.name}</b>
                   <small className="whitespace-nowrap text-caption text-muted">
                     {writable ? T.calendarSub(countText(calendar.past), countText(calendar.future)) : T.readOnlyCalendar}

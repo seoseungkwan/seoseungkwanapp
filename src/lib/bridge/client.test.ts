@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { BridgeState, ChromeRuntimeLike, ChunkSink, PortLike, ResultOf } from '@/types/bridge'
+import type { BridgeState, ChromeRuntimeLike, ChunkSink, PortLike, ResultOf, SheetCommand } from '@/types/bridge'
 import { connectBridge } from './client'
 import { EXTENSION_ID } from './extensionId'
 import { BridgeError } from './protocol'
@@ -427,6 +427,106 @@ describe('AC-004.6 숫자·상태 명령의 답 모양 검사', () => {
     // 타입 검사(tsc·next build)에서 확인한다
     expectTypeOf<keyof ResultOf<'bit.check'>>().toEqualTypeOf<'steps' | 'registered' | 'institutionCode'>()
     expectTypeOf<ResultOf<'bit.check'>['institutionCode']>().toEqualTypeOf<string | undefined>()
+  })
+
+  // ── 수납 명령 여덟(sheet.*, spec google-link TASK-23 (라)): 명령마다 정해 둔 열쇠로 검사한다 ─────────────
+  // sheet.status·link·months·fill = lib/gsheet/reply.ts 읽기 함수, sheet.code·import·ping·catalog = lib/gsheet/settingsReply.ts 읽기 함수.
+  // 맞는 답은 받은 그대로 돌려주고(부르는 쪽이 같은 함수로 다시 읽는다), 모르는 열쇠·틀린 꼴은 E-BRIDGE-BAD-REPLY. 값은 모두 지어낸 것
+  async function callSheet(cmd: SheetCommand, data: unknown) {
+    const t = await ready()
+    const p = t.bridge.call(cmd, {} as never)
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data })
+    return { t, p }
+  }
+  const TAG = '0123456789abcdef'
+  const STATUS = { v: 1, secretTag: TAG, bitsheet: false, codeVersion: '8', url: 'https://script.google.com/macros/s/AKfycbFAKE0123456789/exec', shareWith: ['desk@fake.test'], verified: true }
+  const MONTHS = { v: 1, version: '8', months: [{ ym: '2026-11', fileId: 'FAKEfileFAKEfile0001xyz', gids: { '1': 0, '26': 1234 } }, { ym: '2026-10', fileId: null, gids: {} }] }
+  const FILL = {
+    v: 1,
+    ...Object.fromEntries(
+      ['rows', 'patients', 'added', 'filled', 'overwritten', 'skipped', 'cancelCleared', 'cancelKept', 'freeFixed', 'inserted', 'cleaned', 'shareFailed', 'ratioFixed', 'ratioSkippedCount', 'split', 'free', 'paidOnly', 'notes'].map((k, i) => [k, i]),
+    ),
+    full: true,
+    created: false,
+    ratioFailed: false,
+    oldCode: false,
+    ratioSkipped: ['26!J9'],
+    notPut: { noName: 0, unlinked: 1, negative: 0, noChart: 2 },
+    fileId: 'FAKEfileFAKEfile0001xyz',
+    sheetGid: 1234,
+    version: '8',
+  }
+  const CATALOG = {
+    v: 1,
+    hospitals: [{ code: 'H01', name: '가짜정형외과의원', recent: 12 }],
+    depts: [{ code: 'D1', name: '정형외과', n90: 30, today: true }],
+    rx: [{ code: 'MM001', name: '가짜 처방', cls: 'block', n90: 4 }],
+    hospitalName: '가짜정형외과의원',
+  }
+
+  it.each([
+    ['sheet.status', STATUS],
+    ['sheet.status', { ...STATUS, secretTag: null, url: null, shareWith: [] }],
+    ['sheet.link', { v: 1, ok: true }],
+    ['sheet.link', { v: 1, ok: true, same: true }],
+    ['sheet.months', MONTHS],
+    ['sheet.fill', FILL],
+    ['sheet.fill', { v: 1, unchanged: true, rows: 5 }],
+    ['sheet.code', { v: 1, secretTag: TAG, codeVersion: '8' }],
+    ['sheet.import', { v: 1, secretTag: TAG, settings: { firstRow: 5, cols: { name: 'C' } } }],
+    ['sheet.ping', { v: 1, ok: true, templateTitle: '가짜 원본', version: '8' }],
+    ['sheet.ping', { v: 1, ok: false, code: 'E-GSHEET-KEY' }],
+    ['sheet.catalog', CATALOG],
+    ['sheet.catalog', { v: 1, hospitals: [], depts: [], rx: [], hospitalName: '' }],
+  ] as const)('AC-004.6 %s의 맞는 답 %j는 그대로 돌려준다', async (cmd, data) => {
+    const { p, t } = await callSheet(cmd, data)
+    await expect(p).resolves.toEqual(data)
+    expect(t.calls).toEqual([])
+  })
+
+  it.each([
+    ['sheet.status', { ...STATUS, secret: 'fake-secret' }],
+    ['sheet.status', { ...STATUS, name: '가상환자01' }],
+    ['sheet.status', { ...STATUS, v: 2 }],
+    ['sheet.status', { ...STATUS, secretTag: 'NOT-A-TAG' }],
+    ['sheet.status', (({ verified: _, ...rest }) => rest)(STATUS)],
+    ['sheet.link', { v: 1, ok: false }],
+    ['sheet.link', { v: 1, ok: true, url: 'https://script.google.com/macros/s/AKfycbFAKE0123456789/exec' }],
+    ['sheet.months', { ...MONTHS, months: [{ ym: '2026-13', fileId: null, gids: {} }] }],
+    ['sheet.months', { ...MONTHS, months: [{ ym: '2026-11', fileId: null, gids: { '32': 1 } }] }],
+    ['sheet.months', { ...MONTHS, extra: 1 }],
+    ['sheet.fill', { ...FILL, name: '가상환자01' }],
+    ['sheet.fill', { ...FILL, rows: -1 }],
+    ['sheet.fill', { ...FILL, ratioSkipped: ['홍길동'] }],
+    ['sheet.fill', { v: 1, unchanged: true, rows: 5, chart: '1234' }],
+    ['sheet.code', { v: 1, secretTag: TAG, codeVersion: '8', secret: 'fake-secret' }],
+    ['sheet.code', { v: 1, secretTag: TAG }],
+    ['sheet.import', { v: 1, secretTag: TAG, settings: { scriptUrl: 'https://script.google.com/macros/s/AKfycbFAKE0123456789/exec' } }],
+    ['sheet.import', { v: 1, secretTag: TAG, settings: { nested: { shareWith: ['a@fake.test'] } } }],
+    ['sheet.ping', { v: 1, templateTitle: '가짜 원본' }],
+    ['sheet.ping', { v: 1, ok: true, message: '구글이 준 글' }],
+    ['sheet.catalog', (({ hospitalName: _, ...rest }) => rest)(CATALOG)],
+    ['sheet.catalog', { ...CATALOG, rx: [{ code: 'MM001', name: '가짜 처방', cls: 'block', n90: 4, patient: '가상환자01' }] }],
+    ['sheet.catalog', null],
+  ] as const)('AC-004.6 %s의 틀린 답 %j는 E-BRIDGE-BAD-REPLY', async (cmd, data) => {
+    const { p, t } = await callSheet(cmd, data)
+    expect(await rejectCode(p)).toBe('E-BRIDGE-BAD-REPLY')
+    expect(t.calls).toEqual([])
+  })
+
+  it.each([
+    ['claim.dates', { days: [], extra: 1 }],
+    ['bit.check', { ...CHECK, patient: '가상환자01' }],
+    ['bit.register', {}],
+  ] as const)('AC-004.6 수납 명령 검사를 더한 뒤에도 지금 숫자 명령 %s의 틀린 답은 그대로 거절한다', async (cmd, data) => {
+    const { p } = await callWith(cmd, data)
+    expect(await rejectCode(p)).toBe('E-BRIDGE-BAD-REPLY')
+  })
+
+  it('AC-004.6 sheet.* 부르기 타입은 SheetCommand를 받는다(타입 검사 — tsc)', () => {
+    expectTypeOf<Parameters<ReturnType<typeof connectBridge>['call']>[0]>().toEqualTypeOf<
+      'bit.check' | 'bit.register' | 'claim.dates' | 'revenue.days' | SheetCommand
+    >()
   })
 
   it('AC-004.6 result 봉투에 모르는 칸이 있으면 E-BRIDGE-BAD-REPLY', async () => {

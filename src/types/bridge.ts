@@ -23,6 +23,8 @@ export type SheetCommand =
   | 'sheet.months'
   | 'sheet.fill'
 export type CommandName = 'hello' | SmallCommand | SheetCommand | PatientCommand | PatientSendCommand
+/** 답이 result 하나인 부르기(Bridge.call): 숫자·상태 명령 + 수납 명령. 통로가 명령마다 정해 둔 모양인지 본다(AC-004.6) */
+export type CallCommand = SmallCommand | SheetCommand
 
 type Empty = Record<string, never>
 type Period = { from: string; to: string } // YYYY-MM-DD
@@ -56,14 +58,20 @@ export type BitCheckStepName = 'find' | 'db' | 'registration'
 export type BitCheckStep = { name: BitCheckStepName; ok: boolean; code?: string }
 export type DayCount = { date: string; visits: number; memoInBit: number }
 
+/**
+ * 수납 명령 답: 통로가 명령마다 정해 둔 열쇠인지 본(lib/gsheet/reply·settingsReply) 묶음 그대로다.
+ * 부르는 쪽은 같은 읽기 함수로 칸을 골라 새로 만든다(받은 값을 그대로 넘기지 않음, spec google-link design.md 10-4)
+ */
+export type SheetResult = Record<string, unknown>
+
 export type ResultMap = {
   // 병원 이름은 없다: 화면은 사이트가 가진 병원 이름을 쓴다 (AC-005.10)
   'bit.check': { steps: BitCheckStep[]; registered: boolean; institutionCode?: string }
   'bit.register': { registered: boolean }
   'claim.dates': { days: DayCount[] }
   'revenue.days': RevenueDaysResult
-}
-export type ResultOf<C extends SmallCommand> = ResultMap[C]
+} & Record<SheetCommand, SheetResult>
+export type ResultOf<C extends CallCommand> = ResultMap[C]
 
 /** 환자 자료 답이 끝났다: 조각은 sink(Worker)로 갔고, 부른 쪽에는 이것만 */
 export type StreamResult = { id: string; count: number }
@@ -126,8 +134,8 @@ export type Bridge = {
   onProgress(fn: (p: Progress) => void): () => void
   /** 버전 맞추기까지(AC-004.3·004.4) */
   hello(): Promise<HelloResult>
-  /** 숫자·상태 명령(답 모양 검사, AC-004.6) */
-  call<C extends SmallCommand>(cmd: C, args: ArgsOf<C>): Promise<ResultOf<C>>
+  /** 숫자·상태 명령과 수납 명령(답 모양 검사, AC-004.6) */
+  call<C extends CallCommand>(cmd: C, args: ArgsOf<C>): Promise<ResultOf<C>>
   /** 환자 자료 명령: 조각은 sink로, 약속은 {id, count}(AC-004.5) */
   stream<C extends PatientCommand>(cmd: C, args: ArgsOf<C>): Promise<StreamResult>
   /** Worker가 만든 JSON 글자를 봉투 args.payload에 그대로(AC-004.9) */

@@ -295,24 +295,24 @@ public class RevenueCommandsTests
         Assert.Equal(("revenue.days", (string?)"E-BIT-READ-FAILED"), Assert.Single(outcome.Log));
     }
 
-    [Fact(DisplayName = "AC-4101.5 AC-4405.3 AC-6912.6 도우미 판은 0.13.2이고 명령 표의 revenue.days는 그대로다(새 명령·새 인자 없음: from·to 날짜, 31일, 환자 아님)")]
+    [Fact(DisplayName = "AC-4101.5 AC-4405.3 AC-6912.6 도우미 판은 0.14.0이고 명령 표의 revenue.days는 그대로다(수납 명령 sheet.* 여덟을 더해 명령 21개, revenue.days 새 인자 없음: from·to 날짜, 31일, 환자 아님)")]
     public void VersionAndCommandTableStay()
     {
-        Assert.Equal("0.13.2", HelperVersion.Value);
+        Assert.Equal("0.14.0", HelperVersion.Value);
 
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
         var commands = table.RootElement.GetProperty("commands");
-        Assert.Equal(13, commands.EnumerateObject().Count());
+        Assert.Equal(21, commands.EnumerateObject().Count());
         Assert.Equal(
             "{\"patient\":false,\"maxDays\":31,\"args\":{\"from\":{\"type\":\"date\"},\"to\":{\"type\":\"date\"}}}",
             JsonSerializer.Serialize(commands.GetProperty("revenue.days")));
         Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());
     }
 
-    [Fact(DisplayName = "AC-6912.6 도우미 판은 0.13.2이고 revenue.days 답의 칸 이름은 그대로다: {days, codes, dayCodes}, 날 줄 15칸, 코드 줄 4칸(새 칸 없음), 명령 13개·protocol 1")]
+    [Fact(DisplayName = "AC-6912.6 도우미 판은 0.14.0이고 revenue.days 답의 칸 이름은 그대로다: {days, codes, dayCodes}, 날 줄 15칸, 코드 줄 4칸(새 칸 없음), 명령 21개·protocol 1")]
     public void VersionAndReplyKeysStay()
     {
-        Assert.Equal("0.13.2", HelperVersion.Value);
+        Assert.Equal("0.14.0", HelperVersion.Value);
 
         using var rig = Ready();
         RevenueFake.Codes(rig.Session, RevenueFake.Code("MM101", 1, 1m, name: "가상 처방"));
@@ -322,7 +322,7 @@ public class RevenueCommandsTests
         Assert.All(data.GetProperty("codes").EnumerateArray(), code => Assert.Equal(new[] { "code", "name", "count", "amount" }, Json.Keys(code)));
 
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
-        Assert.Equal(13, table.RootElement.GetProperty("commands").EnumerateObject().Count());
+        Assert.Equal(21, table.RootElement.GetProperty("commands").EnumerateObject().Count());
         Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());
     }
 
@@ -345,14 +345,14 @@ public class RevenueCommandsTests
         Assert.Equal(DayKeys, Json.Keys(days[1]));
     }
 
-    [Fact(DisplayName = "AC-4405.3 AC-6912.6 판은 0.13.2이고 명령 목록은 그대로다(명령 13개·protocol 1, stats.rows·revenue.days 새 인자 없음)")]
+    [Fact(DisplayName = "AC-4405.3 AC-6912.6 판은 0.14.0이고 명령 목록은 그대로다(명령 21개·protocol 1, stats.rows·revenue.days 새 인자 없음)")]
     public void VersionIsZeroSevenAndCommandsStay()
     {
-        Assert.Equal("0.13.2", HelperVersion.Value);
+        Assert.Equal("0.14.0", HelperVersion.Value);
 
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
         var commands = table.RootElement.GetProperty("commands");
-        Assert.Equal(13, commands.EnumerateObject().Count());
+        Assert.Equal(21, commands.EnumerateObject().Count());
         Assert.True(commands.TryGetProperty("stats.rows", out _));
         Assert.True(commands.TryGetProperty("revenue.days", out _));
         Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());

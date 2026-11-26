@@ -19,7 +19,8 @@ const PROPS = 'helper/Directory.Build.props'
 const HELPER_CSPROJ = 'helper/src/Precheck.Helper/Precheck.Helper.csproj'
 const COMMANDS = 'src/lib/bridge/commands.json'
 
-const TRIGGER_PATHS = ['helper/**', 'extension/**', 'src/lib/bridge/commands.json', '.github/workflows/helper.yml']
+// google-code/sheet/**: 도우미가 수납 구글 코드(Code.gs)를 안에 싣는다(google-link TASK-23 (다)) — 고치면 도우미를 다시 빌드한다
+const TRIGGER_PATHS = ['helper/**', 'extension/**', 'src/lib/bridge/commands.json', 'google-code/sheet/**', '.github/workflows/helper.yml']
 const REG_KEY = 'HKCU:\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.seoseungkwan.precheck'
 const DATA_QUESTION = '고치던 메모·완료 표시가 지워집니다. 지울까요?'
 
