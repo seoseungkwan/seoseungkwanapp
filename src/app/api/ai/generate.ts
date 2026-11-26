@@ -3,7 +3,8 @@ import { buildReportInput, reportFingerprint } from '@/lib/ai/input'
 import { costMicroUsd } from '@/lib/ai/cost'
 import { parseAiReport } from '@/lib/ai/output'
 import { reportJsonSchema, systemPrompt, userMessage } from '@/lib/ai/prompt'
-import { addMonths } from '@/lib/analytics/dates'
+import { buildUisReportInput, validateUisReportMonths } from '@/lib/ai/uisInput'
+import { addMonths, todayInKorea } from '@/lib/analytics/dates'
 import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { AiErrorCode, AiUsage, SavedReport } from '@/types/aiReport'
 import { DEFAULT_HONORIFIC, HONORIFICS, type Honorific } from '@/types/clinicProfile'
@@ -68,7 +69,7 @@ async function currentInput(month: string, loadMonths: GenerateDeps['loadMonths'
   }
   const months = await loadMonths(month)
   const selected = checked(months.selected, month)
-  if (selected === null) return null
+  if (selected === null) return uisCurrentInput(month, months)
   const prevMonth = addMonths(month, -1)
   const lastYearMonth = addMonths(month, -12)
   const prev = compared(months.prev, prevMonth)
@@ -85,6 +86,16 @@ async function currentInput(month: string, loadMonths: GenerateDeps['loadMonths'
       lastYear: lastYear === null ? null : sectionsOf(sections?.lastYear, lastYearMonth),
     },
   })
+  return { input, inputHash: await reportFingerprint(input) }
+}
+
+// 의사랑 의원(specs/uisarang-upload AC-8816.1·AC-8816.4, design.md §10-5): 고른 달 비트 달 줄이 없고 서버가 읽은 의사랑 줄(months.uis)이 있을 때만.
+// 검사(validateUisReportMonths)를 지난 줄로만 입력을 만들고, 고른 달 의사랑 날 숫자가 없으면 null(= E-AI-NO-DATA). 오늘은 한국 날짜다(이번 달 partial · 처방은 어제까지)
+async function uisCurrentInput(month: string, months: ReportMonths) {
+  if (months.uis === undefined) return null
+  const valid = validateUisReportMonths(months.uis, month, todayInKorea())
+  if (valid === null) return null
+  const input = buildUisReportInput(valid)
   return { input, inputHash: await reportFingerprint(input) }
 }
 
@@ -110,7 +121,8 @@ export async function generateReport(month: string, deps: GenerateDeps): Promise
     current = await currentInput(month, (m) => deps.loadMonths(m))
     if (current === null) return { ok: false, code: 'E-AI-NO-DATA' }
     const honorific = await honorificOf(deps)
-    res = await deps.callClaude({ system: systemPrompt(honorific), user: userMessage(current.input), schema: reportJsonSchema() })
+    // 의사랑 입력(source: 'uisarang')만 시스템 글 끝에 의사랑 묶음이 붙는다. 비트 입력은 지금 글 그대로(AC-8816.5)
+    res = await deps.callClaude({ system: systemPrompt(honorific, current.input.source), user: userMessage(current.input), schema: reportJsonSchema() })
   } catch {
     return FAILED
   }

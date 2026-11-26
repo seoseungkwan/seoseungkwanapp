@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type JSX } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { Icon } from '@/components/common/Icon'
 import { WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
@@ -15,7 +16,9 @@ import { UsageAside } from './UsageAside'
 // AI 리포트 화면(spec ai-report-screen REQ-708~711·713, design.md '화면 상태'·'달을 옮겨도 저장하지 않는다', 시안 main). 상태와 동작은 모두 여기서 맡고 그리기는 부품에 넘긴다.
 // 고른 달은 화면 상태에만 둔다. 늦게 온 답은 요청 번호로 버린다: 읽기·분석이 시작할 때와 화면을 떠날 때 번호가 오르니, 받은 뒤 번호가 다르면 아무것도 하지 않는다.
 // 보는 중(admin-view AC-8011.2, 관리자가 다른 의원을 읽기만)에는 [다시 분석]을 그리지 않는다(WriteOnly, [AI 분석]은 ReportBody) — 분석 확인 창도 열 길이 없다.
-// 저장된 리포트 읽기(GET)·[복사]·달 옮기기는 그대로다(서버 읽기가 보기 머리로 보는 의원 리포트를 준다)
+// 저장된 리포트 읽기(GET)·[복사]·달 옮기기는 그대로다(서버 읽기가 보기 머리로 보는 의원 리포트를 준다).
+// 의사랑 의원(specs/uisarang-upload AC-8816.7, 시안 ?s=ai)은 리포트가 있을 때만 본문 아래에 셀 수 없음 안내 한 줄을 둔다.
+// EMR은 병원 정보 훅 값이다(보는 중이면 보는 의원 EMR, design.md §10-0). 읽는 중·읽지 못함은 비트로 본다
 
 type ReadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ok'; view: ReportView }
 
@@ -23,6 +26,10 @@ const TICK_MS = 1000
 const COPIED_MS = 2000
 const COPY_FAILED_MS = 2200
 const COPY_FAILED_TEXT = '복사하지 못했어요. 문장을 길게 눌러 직접 복사해 주세요.'
+
+// requirements '화면 글자' AI 경영 리포트: 굵게 제목 + ' · ' + 까닭
+const UIS_CANNOT = '의사랑 엑셀로는 셀 수 없어요'
+const UIS_CANNOT_WHY = '신환 재방문율 · 처방별 환자 수 · 동네 · 보험 · 원장님별 · 시간대별 접수는 이 리포트에 넣지 않았어요.'
 
 // 시안 .step button. 휴대폰은 44px
 const STEP_BUTTON = `grid w-9 cursor-pointer place-items-center text-ink-2 not-disabled:hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 max-md:w-11 ${ds.focusRing}`
@@ -58,6 +65,8 @@ export function AiReportScreen({ today }: { today: string }): JSX.Element {
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const copyFailedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const headButton = useRef<HTMLButtonElement>(null)
+  const clinic = useClinicProfile()
+  const isUis = clinic.state === 'ready' && clinic.profile.emr === 'uisarang'
 
   // 떠날 때 타이머를 끄고 번호를 올려 늦은 답을 버린다(늦은 reauth로 다른 탭에서 페이지가 다시 읽히면 안 된다).
   // StrictMode는 effect를 두 번 돌리므로 ref는 여기서 다시 세운다
@@ -239,6 +248,11 @@ export function AiReportScreen({ today }: { today: string }): JSX.Element {
               if (report !== null) void copy(report)
             }}
           />
+          {isUis && report !== null && (
+            <p className="mt-3 text-body text-ink-2">
+              <span className="font-semibold text-ink">{UIS_CANNOT}</span> · {UIS_CANNOT_WHY}
+            </p>
+          )}
         </div>
         <div className="col-span-full mt-8 min-w-0 border-t border-line-strong pt-5 max-md:pt-4 lg:col-span-4 lg:mt-0 lg:border-t-0 lg:border-l lg:border-line lg:pt-0 lg:pl-6">
           <UsageAside usage={read.kind === 'ok' ? read.view.usage : null} />

@@ -202,3 +202,34 @@ describe('basisLine — 원장님 매출·하루 평균 (AC-2905.1)', () => {
     )
   })
 })
+
+// 의사랑 처방량(qty) 근거 줄 (specs/uisarang-upload AC-8816.6). 처방량 글 규칙(formatQty, 단위 없음) · 없으면 '자료 없음'
+describe('basisLine — 의사랑 처방량 (AC-8816.6)', () => {
+  const qty = (values: Values, label = "처방 그룹 '도수치료' 처방량"): ReportMetric => ({ id: 'group:t0123456789abcdef.qty', label, kind: 'qty', values })
+
+  it('AC-8816.6: qty는 단위 없이 formatQty 글이다(시안 근거 줄과 같다)', () => {
+    expect(basisLine(qty({ selected: 186, prev: 172, lastYear: null }), october({ hasLastYear: false }))).toBe(
+      "근거 · 처방 그룹 '도수치료' 처방량 9월 172 → 10월 186 · 작년 10월 자료 없음",
+    )
+  })
+
+  it('AC-8816.6: 소수는 셋째 자리에서 반올림해 둘째 자리까지 · 끝 0을 떼고 · 천 단위 쉼표(1234.5 → 1,234.5 · 0.245 → 0.25 · 12 → 12)', () => {
+    expect(basisLine(qty({ selected: 1234.5, prev: 0.245, lastYear: 12 }, "처방 'ESWT 1부위' 처방량"), october())).toBe(
+      "근거 · 처방 'ESWT 1부위' 처방량 9월 0.25 → 10월 1,234.5 · 작년 10월 12",
+    )
+    expect(basisLine(qty({ selected: 0, prev: 2.5, lastYear: 1000000 }), october())).toBe("근거 · 처방 그룹 '도수치료' 처방량 9월 2.5 → 10월 0 · 작년 10월 1,000,000")
+  })
+
+  it("AC-8816.6: qty가 null이면 그 달 자료가 있어도 '자료 없음'이다('집계 중'이 아니다)", () => {
+    expect(basisLine(qty({ selected: null, prev: null, lastYear: null }), october())).toBe(
+      "근거 · 처방 그룹 '도수치료' 처방량 9월 자료 없음 → 10월 자료 없음 · 작년 10월 자료 없음",
+    )
+  })
+
+  it('AC-8816.6: 다른 종류 글은 그대로 — 총진료비(won)는 원, 내원 건수(visits)는 건', () => {
+    const won: ReportMetric = { id: 'sales.total', label: '총진료비', kind: 'won', values: { selected: 71905800, prev: 68412300, lastYear: null } }
+    const visits: ReportMetric = { id: 'agevisit:60대', label: "연령대 '60대' 내원 건수", kind: 'visits', values: { selected: 641, prev: 598, lastYear: null } }
+    expect(basisLine(won, october({ hasLastYear: false }))).toBe('근거 · 총진료비 9월 68,412,300원 → 10월 71,905,800원 · 작년 10월 자료 없음')
+    expect(basisLine(visits, october({ hasLastYear: false }))).toBe("근거 · 연령대 '60대' 내원 건수 9월 598건 → 10월 641건 · 작년 10월 자료 없음")
+  })
+})

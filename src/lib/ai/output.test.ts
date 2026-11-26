@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import { groupKey } from '@/components/stats/treatmentView'
+import { toUisDayPayload } from '@/lib/payload/uisarang'
 import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { ReportInput, ReportMetric } from '@/types/aiReport'
 import type { MonthPayload, MonthSections } from '@/types/payload'
 import { basisLine } from './basis'
 import { buildReportInput } from './input'
 import { CARD_TEXT_MAX, MAX_CARDS, MIN_CARDS, SUMMARY_MAX, hasForbiddenNumber, parseAiReport } from './output'
+import { buildUisReportInput, validateUisReportMonths } from './uisInput'
 
 // 시험 자료는 여기서 손으로 만든 가짜 숫자다(처방코드는 FAKE-…). AI 답도 손으로 쓴 JSON 글자다(진짜 Claude는 부르지 않는다)
 
@@ -656,5 +659,106 @@ describe('parseAiReport — 세 칸 지표 이름 안의 숫자 (AC-2905.4)', ()
   it('AC-2905.4 hasForbiddenNumber: 새 이름도 이름 목록으로 주면 지우고, 주지 않으면 지금처럼 걸린다', () => {
     expect(hasForbiddenNumber('오전 9시 접수가 붐빕니다.', ['오전 9시'])).toBe(false)
     expect(hasForbiddenNumber('오전 9시 접수가 붐빕니다.')).toBe(true)
+  })
+})
+
+// ── 의사랑 지표 이름 안의 숫자 (specs/uisarang-upload AC-8816.8, design.md §10-5 NAME_LABELS) ──
+// 입력은 buildUisReportInput으로 만든다(묶음·처방 'ESWT 1부위' · 처방명칭 'MRI 3T' · 나이대 '40대'). 숫자는 지어낸 것이다
+const UIS_ESWT = groupKey(['ESWT 1부위'])
+const uisDay = (day: string, patients: number, newPatients: number) => ({ day, payload: toUisDayPayload({ day, patients, newPatients }) })
+const UIS_INPUT: ReportInput = (() => {
+  const valid = validateUisReportMonths(
+    {
+      days: [uisDay('2026-10-01', 30, 3), uisDay('2026-09-01', 20, 2)],
+      coverage: [{ from_day: '2026-09-01', to_day: '2026-10-31' }],
+      sales: [{ day: '2026-10-01', total: 500_000, rough_total: null }],
+      rx: [
+        {
+          from_day: '2026-10-01',
+          to_day: '2026-10-31',
+          payload: {
+            v: 1,
+            rows: [
+              { code: 'ESWT 1부위', name: 'ESWT 1부위', qty: 6, amount: 300_000 },
+              { code: 'FAKE-M3', name: 'MRI 3T', qty: 2, amount: 400_000 },
+            ],
+            total: null,
+          },
+          updated_at: '2026-11-01T00:00:00.000Z',
+        },
+      ],
+      age: [
+        {
+          from_day: '2026-10-01',
+          to_day: '2026-10-01',
+          payload: { v: 1, patients: 30, newPatients: 3, bands: [0, 0, 0, 0, 30, 0, 0, 0, 0, 0], newBands: [0, 0, 0, 0, 3, 0, 0, 0, 0, 0] },
+          updated_at: '2026-11-01T00:00:00.000Z',
+        },
+      ],
+      groups: [{ key: UIS_ESWT, name: 'ESWT 1부위', codes: ['ESWT 1부위'], out: [], cond: [] }],
+    },
+    '2026-10',
+    '2026-11-27',
+  )
+  if (valid === null) throw new Error('시험 자료가 검사를 통과하지 못함')
+  return buildUisReportInput(valid)
+})()
+const uisBasis = (c: Card) => ({ ...c, basis: basisLine(UIS_INPUT.metrics.find((m) => m.id === c.metric)!, UIS_INPUT) })
+
+describe('parseAiReport — 의사랑 지표 이름 안의 숫자 (AC-8816.8)', () => {
+  it('AC-8816.8: 시험 입력의 의사랑 지표 이름은 design.md 모양이다', () => {
+    const labelOf = (id: string) => UIS_INPUT.metrics.find((m) => m.id === id)?.label
+    expect(labelOf(`group:${UIS_ESWT}.qty`)).toBe("처방 그룹 'ESWT 1부위' 처방량")
+    expect(labelOf(`group:${UIS_ESWT}.amount`)).toBe("처방 그룹 'ESWT 1부위' 총액")
+    expect(labelOf('rx:FAKE-M3.qty')).toBe("처방 'MRI 3T' 처방량")
+    expect(labelOf('rx:ESWT 1부위.amount')).toBe("처방 'ESWT 1부위' 총액")
+    expect(labelOf('agevisit:40대')).toBe("연령대 '40대' 내원 건수")
+  })
+
+  it("AC-8816.8: 'ESWT 1부위'·'MRI 3T'·'40대'를 글자 그대로 쓴 카드는 빠지지 않고 근거 줄이 붙는다", () => {
+    const cards = [
+      card(`group:${UIS_ESWT}.qty`, 'ESWT 1부위 처방량이 늘었습니다.'),
+      card(`group:${UIS_ESWT}.amount`, 'ESWT 1부위 총액이 늘었습니다.'),
+      card('rx:FAKE-M3.qty', 'MRI 3T 처방량을 살펴볼 만합니다.', 'watch'),
+      card('rx:ESWT 1부위.amount', 'ESWT 1부위 총액이 매출을 끌어올린 것으로 보입니다.', 'guess'),
+      card('agevisit:40대', '40대 내원 건수가 가장 많습니다.', 'watch'),
+    ]
+    const report = parseAiReport(answer(SUMMARY, cards), UIS_INPUT)
+    expect(report).not.toBeNull()
+    expect(report?.cards).toEqual(cards.map(uisBasis))
+  })
+
+  it('AC-8816.8: 요약도 의사랑 이름을 글자 그대로 쓰면 통과한다(리포트 전체가 null이 되지 않는다)', () => {
+    const summary = '10월은 ESWT 1부위 처방량과 40대 내원 건수가 함께 늘었습니다.'
+    const cards = [card('total.patients', '접수 건수가 늘었습니다.'), card('sales.total', '총진료비가 늘었습니다.'), card('agevisit:40대', '40대 내원이 많습니다.', 'watch')]
+    expect(parseAiReport(answer(summary, cards), UIS_INPUT)?.summary).toBe(summary)
+  })
+
+  it("AC-8816.8: 이름 밖 숫자·줄인 이름은 지금처럼 막힌다('12'·'1부위'만·'3T'만)", () => {
+    const good = [card('total.patients', '접수 건수가 늘었습니다.'), card('sales.total', '총진료비가 늘었습니다.'), card('agevisit:40대', '40대 내원이 많습니다.', 'watch')]
+    const bad = [
+      card(`group:${UIS_ESWT}.qty`, 'ESWT 1부위 처방량이 12 늘었습니다.'),
+      card('rx:ESWT 1부위.amount', '1부위 총액이 늘었습니다.'),
+      card('rx:FAKE-M3.qty', '3T 처방량이 늘었습니다.'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, [...bad, ...good]), UIS_INPUT)?.cards).toEqual(good.map(uisBasis))
+    expect(parseAiReport(answer('ESWT 1부위 처방량이 12 늘었습니다.', good), UIS_INPUT)).toBeNull()
+  })
+
+  it("AC-8816.8: agevisit: 줄은 따로다 — 'age:' 머리·'환자' 꼬리 모양이면 이름으로 보지 않고, 비트 'age:' 모양은 그대로 허락된다", () => {
+    const shapes: ReportInput = {
+      ...INPUT,
+      metrics: [
+        ...INPUT.metrics,
+        handMetric('agevisit:50대', "연령대 '50대' 환자"), // 꼬리가 다르다
+        handMetric('age:60대', "연령대 '60대' 환자"), // 비트 모양
+        handMetric('group:g-q', "처방 그룹 '재활7' 처방량"),
+        handMetric('rx:FAKE-Q', "처방 '주사8' 총액"),
+      ],
+    }
+    const plain = PLAIN_CARDS
+    expect(parseAiReport(answer('50대 내원이 늘었습니다.', plain), shapes)).toBeNull()
+    expect(parseAiReport(answer('60대 환자가 늘었습니다.', plain), shapes)?.summary).toBe('60대 환자가 늘었습니다.')
+    expect(parseAiReport(answer('재활7과 주사8이 늘었습니다.', plain), shapes)?.summary).toBe('재활7과 주사8이 늘었습니다.')
   })
 })

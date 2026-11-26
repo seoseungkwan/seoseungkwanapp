@@ -2,7 +2,8 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { groupKey } from '@/components/stats/treatmentView'
 import { parseSavedReport } from '@/lib/ai/savedReport'
-import { addMonths } from '@/lib/analytics/dates'
+import type { UisReportRaw } from '@/lib/ai/uisInput'
+import { addMonths, monthRange } from '@/lib/analytics/dates'
 import { isText } from '@/lib/payload/validate'
 import type { AiUsage, AiUsageView, SavedReport } from '@/types/aiReport'
 import { DEFAULT_HONORIFIC, HONORIFICS, type Honorific } from '@/types/clinicProfile'
@@ -13,17 +14,23 @@ import type { RxCond } from '@/types/rxGroups'
 // 쓰기는 DB 함수(save_ai_report·add_ai_usage, security definer)로만 한다. 승인 확인·한국 달·모양 검사는 함수와 표 제약이 한다.
 // 읽기 조건은 달뿐이다(묶음 표는 조건 없이 읽는다). 병원을 고르는 조건은 넣지 않는다 — RLS가 내 병원 줄만 보여 준다.
 // 오류 내용은 버린다(숫자·글자가 섞일 수 있다). 쓰기 실패는 false로만 알리고 흐름(generate.ts)이 E-AI-FAILED로 바꾼다.
-// 리포트·사용량 읽기 실패는 'failed'로만, 통계 숫자 읽기 실패는 고정 글의 던짐으로만 알린다
+// 리포트·사용량 읽기 실패는 'failed'로만, 통계 숫자 읽기 실패는 고정 글의 던짐으로만 알린다.
+// 의사랑 의원(specs/uisarang-upload REQ-8816, design.md §10-5): 고른 달 stats_months 줄이 없을 때만 의사랑 날 줄을 먼저 보고, 있으면 세 달 의사랑 표를 읽어 uis에 둔다.
+// 판정은 EMR이 아니라 자료로 한다 — 비트 의원의 빈 달은 stats_days를 한 번 더 읽고 지금처럼 '자료 없음'이다
+
+export type { UisReportRaw }
 
 // 세 달은 unknown이다 — DB에서 읽은 것도 믿지 않는다. 검사는 generate.ts가 validateMonthPayload로 한다.
 // sections(세 칸 달 합계, spec stats-bit-ai AC-2903.1)도 unknown 그대로 넘기고 generate.ts가 validateMonthSections로 검사한다.
 // loadReportMonths는 sections를 늘 채운다(없는 달은 null). 타입만 선택 칸이다 — 이 칸이 없는 값은 세 달 모두 없음으로 본다
+// uis(의사랑 세 달 줄, 검사 전)는 고른 달 stats_months 줄이 없고 그 달 의사랑 날 줄이 있을 때만 있다. 검사는 generate.ts가 validateUisReportMonths로 한다
 export type ReportMonths = {
   selected: unknown | null
   prev: unknown | null
   lastYear: unknown | null
   groupNames: Record<string, string>
   sections?: { selected: unknown | null; prev: unknown | null; lastYear: unknown | null }
+  uis?: UisReportRaw
 }
 
 // 고정 오류 글. 받은 오류 내용은 담지 않는다
@@ -53,12 +60,88 @@ export async function loadReportMonths(supabase: SupabaseClient, month: string):
     throw new Error(STATS_READ_FAILED)
   }
   const [selected, prev, lastYear] = monthsIn(monthRows, wanted)
-  return {
+  const months: ReportMonths = {
     selected: selected.payload,
     prev: prev.payload,
     lastYear: lastYear.payload,
     groupNames: groupNamesOf(groupRows),
     sections: { selected: selected.sections, prev: prev.sections, lastYear: lastYear.sections },
+  }
+  // 고른 달 달 줄이 있으면 비트 길만(의사랑으로 바꾼 의원의 옛 비트 달도 비트 리포트 그대로). 없으면 그 달 의사랑 날 줄이 있을 때만 의사랑 표를 읽는다
+  if (selected.payload !== null || !(await hasUisDays(supabase, month))) return months
+  return { ...months, uis: await loadUisReportRaw(supabase, month, groupDefsOf(groupRows)) }
+}
+
+const UIS_SOURCE = 'uisarang'
+const PAGE_ROWS = 1000
+
+type DayRange = { from: string; to: string }
+type Page = PromiseLike<{ data: unknown; error: unknown }>
+
+// 의사랑 날 줄(stats_days · 출처 uisarang · 그 기간 날). 먼저 보기(한 줄)와 세 달 읽기가 같은 거르기를 쓴다
+const uisDaysOf = (supabase: SupabaseClient, columns: string, range: DayRange) =>
+  supabase.from('stats_days').select(columns).eq('source', UIS_SOURCE).gte('day', range.from).lte('day', range.to)
+
+// 의사랑 처방(그 기간과 겹치는 줄)·나이대(하루 줄이라 그 기간 안 줄)
+function uisPeriodsOf(supabase: SupabaseClient, kind: 'rx' | 'age', range: DayRange) {
+  const rows = supabase.from('uis_periods').select('from_day, to_day, payload, updated_at').eq('kind', kind)
+  const inRange = kind === 'rx' ? rows.lte('from_day', range.to).gte('to_day', range.from) : rows.gte('from_day', range.from).lte('to_day', range.to)
+  return inRange.order('from_day').order('to_day')
+}
+
+// 고른 달에 의사랑 날 줄이 하나라도 있나(design.md §10-5). 읽기 오류·던짐·모양이 다른 답은 '없음'이다 —
+// 이 읽기가 실패해도 비트 의원의 빈 달은 지금처럼 '자료 없음'(E-AI-NO-DATA)이고 '실패'(E-AI-FAILED)로 바뀌지 않는다
+async function hasUisDays(supabase: SupabaseClient, month: string): Promise<boolean> {
+  try {
+    const { data, error } = await uisDaysOf(supabase, 'day', monthRange(month)).limit(1)
+    return !error && Array.isArray(data) && data.length > 0
+  } catch {
+    return false
+  }
+}
+
+// 1,000줄씩 끝까지(받은 줄이 1,000보다 적으면 끝). error가 있거나 답이 배열이 아니면 고정 글로 던진다
+async function allPages(page: (first: number, last: number) => Page): Promise<unknown[]> {
+  const rows: unknown[] = []
+  for (;;) {
+    const { data, error } = await page(rows.length, rows.length + PAGE_ROWS - 1)
+    if (error || !Array.isArray(data)) throw new Error(STATS_READ_FAILED)
+    rows.push(...(data as unknown[]))
+    if (data.length < PAGE_ROWS) return rows
+  }
+}
+
+// 의사랑 세 달(고른 달·지난달·작년 같은 달, 달마다 1일~말일) 읽기(design.md §10-5 loadUisReportRaw). 줄은 검사하지 않고 고른 칸만 넘긴다.
+// 표마다 세 달 차례로 이어 붙인다. 병원 조건은 넣지 않는다(RLS가 내 병원 · 보는 중이면 보는 의원 줄만 준다). 하나라도 실패하면 고정 글로 던진다
+async function loadUisReportRaw(supabase: SupabaseClient, month: string, groups: UisReportRaw['groups']): Promise<UisReportRaw> {
+  const ranges = [month, addMonths(month, -1), addMonths(month, -12)].map(monthRange)
+  const everyMonth = async (pageOf: (range: DayRange) => (first: number, last: number) => Page) =>
+    (await Promise.all(ranges.map((range) => allPages(pageOf(range))))).flat()
+  try {
+    const [days, coverage, sales, rx, age] = await Promise.all([
+      everyMonth((range) => (first, last) => uisDaysOf(supabase, 'day, payload', range).order('day').range(first, last)),
+      everyMonth(
+        (range) => (first, last) =>
+          supabase
+            .from('stats_coverage')
+            .select('from_day, to_day')
+            .eq('source', UIS_SOURCE)
+            .lte('from_day', range.to)
+            .gte('to_day', range.from)
+            .order('from_day')
+            .order('to_day')
+            .range(first, last),
+      ),
+      everyMonth(
+        (range) => (first, last) =>
+          supabase.from('sales_days').select('day, total, rough_total').gte('day', range.from).lte('day', range.to).order('day').range(first, last),
+      ),
+      everyMonth((range) => (first, last) => uisPeriodsOf(supabase, 'rx', range).range(first, last)),
+      everyMonth((range) => (first, last) => uisPeriodsOf(supabase, 'age', range).range(first, last)),
+    ])
+    return { days, coverage, sales, rx, age, groups }
+  } catch {
+    throw new Error(STATS_READ_FAILED)
   }
 }
 
@@ -99,18 +182,39 @@ function groupRowOf(row: unknown): GroupRow {
   return { name, codes, out, cond, sortOrder: sortOrder as number }
 }
 
-// 묶음 줄 → 열쇠 → 이름. sort_order 작은 차례, 같으면 이름 글자 코드 차례(localeCompare를 쓰지 않는다)로 보고 열쇠마다 처음 이름을 쓴다.
-// 처방이 빈 묶음과, 이름이 처방명·동네 이름과 같은 글자 검사(isText)를 못 넘는 묶음(연락처·식별 번호 모양)은 건너뛴다
-function groupNamesOf(rows: unknown): Record<string, string> {
+// 지금 묶음. sort_order 작은 차례, 같으면 이름 글자 코드 차례(localeCompare를 쓰지 않는다)로 보고 열쇠마다 처음 묶음만 남긴다.
+// 처방이 빈 묶음과, 이름이 처방명·동네 이름과 같은 글자 검사(isText)를 못 넘는 묶음(연락처·식별 번호 모양)은 건너뛴다. 모양이 틀리면 GROUPS_SHAPE_FAILED로 던진다
+function currentGroups(rows: unknown): Array<GroupRow & { key: string }> {
   if (!Array.isArray(rows)) throw new Error(GROUPS_SHAPE_FAILED)
   const groups = rows.map(groupRowOf).sort((a, b) => a.sortOrder - b.sortOrder || byText(a.name, b.name))
-  const names: Record<string, string> = {}
+  const seen = new Set<string>()
+  const kept: Array<GroupRow & { key: string }> = []
   for (const group of groups) {
     if (group.codes.length === 0 || !isText(group.name, true)) continue
     const key = groupKey(group.codes, { out: group.out, cond: group.cond })
-    if (!Object.hasOwn(names, key)) names[key] = group.name
+    if (seen.has(key)) continue
+    seen.add(key)
+    kept.push({ ...group, key })
   }
+  return kept
+}
+
+// 묶음 줄 → 열쇠 → 이름(넣는·빼는·조건 처방 코드는 여기서 버린다)
+function groupNamesOf(rows: unknown): Record<string, string> {
+  const names: Record<string, string> = {}
+  for (const group of currentGroups(rows)) names[group.key] = group.name
   return names
+}
+
+// 의사랑 묶음 정의(design.md §10-5 groupDefsOf): groupNamesOf와 같은 거르기·차례·열쇠에 이름·넣는·빼는·조건 처방을 남긴다(서버 셈에만 쓰고 Claude에는 열쇠·이름만 간다)
+function groupDefsOf(rows: unknown): UisReportRaw['groups'] {
+  return currentGroups(rows).map(({ key, name, codes, out, cond }) => ({
+    key,
+    name,
+    codes: [...codes],
+    out: [...out],
+    cond: cond.map((item) => ({ code: item.code, unless: [...item.unless] })),
+  }))
 }
 
 const isHonorific = (value: unknown): value is Honorific => typeof value === 'string' && (HONORIFICS as readonly string[]).includes(value)
