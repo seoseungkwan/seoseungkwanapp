@@ -4,6 +4,9 @@ import type { StaffErrorCode } from '@/types/staff'
 /** 문구가 있는 번호. 직원 탭 번호(E-STAFF-*)도 이제 ErrorCode 안에 있다 — StaffErrorCode는 같은 다섯을 가리키는 이름으로 남긴다 */
 export type KnownErrorCode = ErrorCode | StaffErrorCode
 
+// 수납 구글 오류 번호(E-GSHEET-*)의 '무엇이'는 모두 이 글이다(specs/google-link design.md 9-3)
+const GSHEET_WHAT = '구글 시트에 넣지 못했어요'
+
 // 오류 번호 → 한국어 안내(무엇이 · 어떻게 고치나). 안내 문구는 이 파일 한 곳에만 둔다.
 export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
   'E-PARSE-COLUMN': {
@@ -623,6 +626,80 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
     what: '파일을 지우지 못했어요.',
     fix: '인터넷 연결을 확인하고 [지우기]를 다시 눌러 보세요. 계속되면 오류 번호와 함께 알려 주세요.',
   },
+  // 예약 구글 캘린더(specs/google-link design.md 14절 표, 글은 그 표 글자 그대로 — 끝 마침표 있음). lib/gcal(TASK-12)이 구글 코드 답을 번호로 바꾼다:
+  // token_not_set → NOKEY, bad_token → KEY, gone → GONE, limit → LIMIT, no_service → SERVICE, busy·failed·네트워크 → REACH
+  'E-GCAL-REACH': {
+    what: '구글 캘린더에 닿지 못했어요.',
+    fix: '인터넷이 되는지 확인해 주세요. 계속되면 설정 › 구글 캘린더에서 [연결 시험]을 눌러 보세요.',
+  },
+  'E-GCAL-KEY': {
+    what: '비밀 글자가 맞지 않아요.',
+    fix: '설정에서 코드를 다시 복사해 붙여 주세요.',
+  },
+  'E-GCAL-GONE': {
+    what: '고른 캘린더를 찾을 수 없거나 고칠 권한이 없어요.',
+    fix: '설정 › 구글 캘린더에서 캘린더를 다시 골라 주세요.',
+  },
+  'E-GCAL-LIMIT': {
+    what: '구글이 오늘 부를 수 있는 횟수를 넘었어요.',
+    fix: '내일 저절로 다시 맞춰요(받아 오는 간격을 5분으로 늘려 주세요).',
+  },
+  'E-GCAL-LOGIN': {
+    what: '구글이 코드 대신 로그인 화면을 보냈어요.',
+    fix: '배포할 때 액세스 권한을 [모든 사용자]로 했는지, 주소가 /exec로 끝나는지 확인해 주세요.',
+  },
+  'E-GCAL-OLD': {
+    what: '구글 코드가 옛 판이에요.',
+    fix: '설정 › 구글 캘린더 › 잇기에서 [구글 코드 복사]로 새로 붙이고 새 버전으로 배포해 주세요.',
+  },
+  'E-GCAL-SERVICE': {
+    what: '구글 코드에서 캘린더 서비스가 켜져 있지 않아요.',
+    fix: "구글 코드 편집기 왼쪽 [서비스] 옆 [+]에서 'Google Calendar API'를 추가하고 새 버전으로 배포해 주세요.",
+  },
+  'E-GCAL-URL': {
+    what: '코드 주소 모양이 맞지 않아요.',
+    fix: "구글이 준 '웹 앱 주소'(https://script.google.com/macros/s/…/exec)를 붙여 넣어 주세요.",
+  },
+  'E-GCAL-NOKEY': {
+    what: '구글 코드에 비밀 글자가 들어가지 않았어요.',
+    fix: '[구글 코드 복사]로 다시 복사해 붙여 주세요.',
+  },
+  // 수납일지 구글 시트(specs/google-link design.md 9-3 표 = notes-sunap `err-google` 까닭 글). 무엇이는 모두 같은 글이고,
+  // 띠·알림은 fix(까닭 글)만 그린다. 도우미가 주는 번호를 통로가 받으려면 여기 있어야 한다(isErrorCode). E-GSHEET-EXT는 웹이 정한다
+  'E-GSHEET-NET': { what: GSHEET_WHAT, fix: '구글 연결 안 됨: 인터넷 연결을 확인해 주세요.' },
+  'E-GSHEET-TIMEOUT': { what: GSHEET_WHAT, fix: '구글이 제때 답하지 않았어요. 잠시 뒤 다시 해 보세요.' },
+  'E-GSHEET-CUT': { what: GSHEET_WHAT, fix: '구글과 연결이 중간에 끊겼어요. 잠시 뒤 다시 해 보세요.' },
+  'E-GSHEET-DENIED': { what: GSHEET_WHAT, fix: "구글 웹 앱에 들어갈 수 없어요. 배포할 때 '액세스 권한: 모든 사용자'로 했는지 확인해 주세요." },
+  'E-GSHEET-URL': { what: GSHEET_WHAT, fix: '구글에서 받은 주소가 맞지 않아요. 주소를 다시 붙여 넣어 주세요.' },
+  'E-GSHEET-SERVER': { what: GSHEET_WHAT, fix: '구글 쪽에서 잠시 문제가 생겼어요. 조금 뒤 다시 해 보세요.' },
+  'E-GSHEET-LOGIN': {
+    what: GSHEET_WHAT,
+    fix: "구글이 웹 앱 대신 로그인·안내 화면을 보냈어요. 안내문대로 '액세스 권한: 모든 사용자'로 배포하고 권한 허용까지 했는지, 주소가 /exec 로 끝나는지 확인해 주세요.",
+  },
+  'E-GSHEET-NOKEY': {
+    what: GSHEET_WHAT,
+    fix: '구글 코드에 비밀 글자가 아직 들어가지 않았어요. [구글에 붙일 코드 복사]로 다시 붙이고 새 버전으로 배포해 주세요.',
+  },
+  'E-GSHEET-KEY': { what: GSHEET_WHAT, fix: '비밀 글자가 맞지 않아요. [구글에 붙일 코드 복사]로 다시 붙이고 새 버전으로 배포해 주세요.' },
+  'E-GSHEET-BUSY': { what: GSHEET_WHAT, fix: '구글이 다른 넣기를 하는 중이에요. 잠시 뒤 다시 해 보세요.' },
+  'E-GSHEET-TEMPLATE': { what: GSHEET_WHAT, fix: '원본 시트를 열 수 없어요. 설정의 원본 시트 주소를 확인해 주세요.' },
+  'E-GSHEET-FOLDER': { what: GSHEET_WHAT, fix: '넣을 폴더를 열 수 없어요. 설정의 폴더 주소를 확인해 주세요.' },
+  'E-GSHEET-DAY': { what: GSHEET_WHAT, fix: '그날 시트를 찾지 못했어요. 원본에 1~31 시트가 있는지 확인해 주세요.' },
+  'E-GSHEET-LAYOUT': { what: GSHEET_WHAT, fix: '시트 칸 설정이 맞지 않아요. 설정 › 시트를 확인해 주세요.' },
+  'E-GSHEET-SHAPE': { what: GSHEET_WHAT, fix: '보낸 내용 모양이 맞지 않아요. 웹앱과 구글 코드가 같은 판인지 확인해 주세요.' },
+  'E-GSHEET-EXT': {
+    what: GSHEET_WHAT,
+    fix: '이 PC의 크롬 확장이 옛 판이라 넣지 못해요. 비트 PC 연결 화면에서 새 확장을 받아 바꾼 뒤 웹앱을 새로 고쳐 주세요.',
+  },
+  'E-GSHEET-DECLINED': { what: GSHEET_WHAT, fix: '이 PC의 확인 창에서 주소를 바꾸지 않았어요. 넣기는 전에 쓰던 주소로 해요.' },
+  'E-GSHEET-SECRET': {
+    what: GSHEET_WHAT,
+    fix: '이 PC에서 비밀 글자를 읽지 못했어요. 설정 › 구글 연결 › [구글에 붙일 코드 복사]로 비밀 글자를 새로 만들어 구글에 다시 붙여 주세요.',
+  },
+  'E-GSHEET-NOURL': { what: GSHEET_WHAT, fix: "설정 › 구글 연결에서 '구글에서 받은 주소'를 넣어 주세요." },
+  'E-GSHEET-NOTEMPLATE': { what: GSHEET_WHAT, fix: "설정 › 시트에서 '원본 시트 주소'를 넣어 주세요." },
+  'E-GSHEET-OLD': { what: GSHEET_WHAT, fix: '구글 코드가 옛 판이에요 — [설정] › 구글 연결에서 코드를 새로 붙여 주세요' },
+  'E-GSHEET-FAILED': { what: GSHEET_WHAT, fix: '구글 쪽에서 일을 마치지 못했어요.' },
 }
 
 /**
