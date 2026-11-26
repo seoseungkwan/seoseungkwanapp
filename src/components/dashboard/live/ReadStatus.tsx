@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Icon } from '@/components/common/Icon'
 import { NOTE } from '@/components/dashboard/briefing/layout'
+import { longDate } from '@/components/dashboard/summary/view'
 import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
@@ -104,6 +105,19 @@ function whenText(readAt: number | null, savedAt: string | null): string | null 
   return saved === null ? null : `서버에 마지막으로 저장된 시각 ${saved} · 날짜마다 저장된 때가 달라요`
 }
 
+// 의사랑 의원 머리 줄(uisarang-upload AC-8811.2, 시안 ?s=dash-data): 칩 하나(회색)와 "마지막으로 올린 때 {M}월 {D}일 {HH}:{mm} · {M}월 {D}일까지 있어요".
+// 시각은 저장 숫자의 마지막 저장 시각(readDays latest.at = 마지막으로 올린 때, 한국 시각 24시간 두 자리), 끝 날은 손에 든 날 줄의 가장 늦은 날이다.
+// 둘 가운데 하나라도 모르면 글을 그리지 않는다(시각을 지어내지 않는다)
+const UIS_CHIP = { text: '의사랑 엑셀 숫자', className: ds.chip.neutral }
+
+function uploadedText(savedAt: string | null, lastDay: string | null): string | null {
+  if (savedAt === null || lastDay === null) return null
+  const time = Date.parse(savedAt)
+  if (Number.isNaN(time)) return null
+  const parts = koreaParts(time)
+  return `마지막으로 올린 때 ${Number(parts.month)}월 ${Number(parts.day)}일 ${parts.hour}:${parts.minute} · ${longDate(lastDay)}까지 있어요`
+}
+
 /** 저장 숫자 새로고침(dashboard-ux AC-2701.7·AC-2701.8): LiveDashboard가 저장 숫자를 다시 읽는 중인지·실패했는지와 누름 */
 export type SavedRefresh = { refreshing: boolean; failed: boolean; onRefresh(): void }
 
@@ -123,7 +137,9 @@ function ReadButton({ label, busyLabel, busy, disabled, onClick }: { label: stri
  * 읽기 단추는 두 일을 이름으로 나눈다(AC-2701.7): [저장된 숫자 새로고침](화면 숫자가 저장 숫자일 때, savedRefresh가 있을 때만)과
  * [비트에서 다시 읽기](bitReadable — 이 브라우저에 chrome.runtime이 있을 때). 비트를 읽을 수 없으면 실행 단추 대신 연결 안내 링크다.
  * 한쪽이 읽는 동안 둘 다 막힌다(AC-2701.8). 비트 다시 읽기 실패면 오류 상자(RereadAlert)의 [다시 확인]이, 저장 숫자 새로고침 실패면
- * 오류 상자(SavedRefreshAlert)의 [다시 읽기]가 그 단추를 맡아 머리 줄에서 뺀다
+ * 오류 상자(SavedRefreshAlert)의 [다시 읽기]가 그 단추를 맡아 머리 줄에서 뺀다.
+ * variant 'uisarang'(uisarang-upload AC-8811.2): 의사랑 의원은 비트를 읽지 않아 칩 "의사랑 엑셀 숫자" · 마지막으로 올린 때 글(savedAt·lastDay) ·
+ * [저장된 숫자 새로고침]만이다(비트 단추·연결 안내 없음). 주지 않으면 'bit'(지금 그대로)
  */
 export function StatusHeader({
   readAt,
@@ -133,6 +149,8 @@ export function StatusHeader({
   onReread,
   bitReadable,
   savedRefresh,
+  variant = 'bit',
+  lastDay = null,
 }: {
   readAt: number | null
   savedAt: string | null
@@ -141,16 +159,20 @@ export function StatusHeader({
   onReread(): void
   bitReadable: boolean
   savedRefresh: SavedRefresh | null
+  variant?: 'bit' | 'uisarang'
+  /** 의사랑 모양의 끝 날(손에 든 날 줄의 가장 늦은 날 'YYYY-MM-DD'). 없으면 null */
+  lastDay?: string | null
 }) {
-  const chip = chipOf(readAt, reading, failed)
-  const when = whenText(readAt, savedAt)
+  const uis = variant === 'uisarang'
+  const chip = uis ? UIS_CHIP : chipOf(readAt, reading, failed)
+  const when = uis ? uploadedText(savedAt, lastDay) : whenText(readAt, savedAt)
   const refreshing = savedRefresh?.refreshing === true
   const busy = reading || refreshing
   const showSaved = savedRefresh !== null && readAt === null && !savedRefresh.failed
   // 다른 의원을 보는 중(admin-view AC-8008.3)이면 이 PC 비트 단추·연결 안내가 없고 [저장된 숫자 새로고침]만이다
   const readOnly = useReadOnly()
-  const showBit = bitReadable && !failed && !readOnly
-  const showConnect = !bitReadable && !readOnly
+  const showBit = bitReadable && !failed && !readOnly && !uis
+  const showConnect = !bitReadable && !readOnly && !uis
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-heading-m font-semibold text-ink max-md:text-title">대시보드</h1>

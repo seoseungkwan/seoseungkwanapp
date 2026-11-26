@@ -62,6 +62,11 @@ const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새�
 const NO_GROUPS = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.' // AC-606.4
 const RELOAD = '통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.' // AC-606.3
 const GROUPS_PENDING = '묶음을 읽는 중' // dashboard-ux AC-2701.2
+// 의사랑 의원(uisarang-upload AC-8811.5, requirements.md '셀 수 없음 안내' 표): 두 칸은 자리를 두고 그 자리에 안내 한 줄이다.
+// 모양은 통계 탭 EmptyNote와 같게 이 파일 안에서 직접 그린다 — 이 폴더는 통계 탭 구역을 부르지 않는다(DashboardAnalysis.test AC-311.8·imports.test AC-2707.6)
+const UIS_CANNOT = '의사랑 엑셀로는 셀 수 없어요'
+const UIS_WHY_REVISIT = '환자마다 다시 온 날을 알 수 없어요.'
+const UIS_WHY_TOP_RX = '처방을 환자 수로 셀 수 없어요. 통계 탭 처방 카드에서 처방량을 봐요.'
 /** source의 묶음: undefined·[] = 묶음 없음, null = 묶음을 읽지 못함, 'pending' = 묶음을 읽는 중 */
 type GroupLines = readonly RxGroupLine[] | null | 'pending' | undefined
 type SettledGroups = Exclude<GroupLines, 'pending'>
@@ -91,6 +96,8 @@ export type FlowSectionProps = {
   gainsRevisitDesc?: string
   /** 읽었는데 자료가 없을 때: 목록 대신 빈 그래프 틀을 그린다 */
   emptyCharts?: boolean
+  /** 의사랑 의원(uisarang-upload AC-8811.5): '신환 재방문율'·'처방 상위' 자리는 셀 수 없음 안내다. 기본 거짓 = 지금 그대로 */
+  uis?: boolean
 }
 
 export function FlowSection({
@@ -100,6 +107,7 @@ export function FlowSection({
   gainsNote = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.',
   gainsRevisitDesc,
   emptyCharts = false,
+  uis = false,
 }: FlowSectionProps) {
   // 고른 것 하나: 빠른 단추(처음 30일) 또는 통계 탭 기간 고르기의 고른 기간(dashboard-period). 저장하지 않아 새로 열면 늘 최근 30일이다(AC-1801.1)
   const [choice, setChoice] = useState<FlowChoice>(DEFAULT_PERIOD)
@@ -127,7 +135,7 @@ export function FlowSection({
       </div>
 
       {charts && period.kind === 'failed' && <PeriodReadFailed retrying={period.retrying} onRetry={retry} />}
-      {charts ? <FlowCharts flow={flow} period={period} groups={groups} /> : <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />}
+      {charts ? <FlowCharts flow={flow} period={period} groups={groups} uis={uis} /> : <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />}
     </section>
   )
 }
@@ -172,8 +180,13 @@ function PeriodReadFailed({ retrying, onRetry }: { retrying: boolean; onRetry: (
 
 // 연결 뒤 그래프 넷. 넷 모두 flow.current(센 기간)를 따르고, 처방 상위는 통계 탭 묶음으로 센다(bit-dashboard REQ-606).
 // 옛 기간을 읽는 중이면 빈 틀 가운데 '읽는 중'(숫자를 지어내지 않는다), 읽기 실패면 줄 없음('자료 없음')이다(dashboard-period AC-1804.2·AC-1804.3).
-// 1024px 이상 [추이 1~8 · 재방문율 9~12] / [요일별 1~6 · 처방 7~12], 768~1023px 추이 전체 / 반반 / 처방 전체, 폰 세로
-function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; groups: GroupLines }) {
+// 1024px 이상 [추이 1~8 · 재방문율 9~12] / [요일별 1~6 · 처방 7~12], 768~1023px 추이 전체 / 반반 / 처방 전체, 폰 세로.
+// 의사랑(uis)이면 재방문율·처방 상위 칸은 같은 자리에 제목 + 셀 수 없음 안내만이다(설명 줄·머리 링크·빈 틀 없음, 시안 ?s=dash-data)
+// 재방문율·처방 상위 칸 자리(의사랑 안내 칸도 같은 자리)
+const REVISIT_CELL = 'lg:col-span-4 lg:border-l lg:border-line lg:pl-6'
+const RANK_CELL = 'md:col-span-2 lg:col-span-6 lg:border-l lg:border-line lg:pl-6'
+
+function FlowCharts({ flow, period, groups, uis }: { flow: Flow; period: PeriodDays; groups: GroupLines; uis: boolean }) {
   const days = period.kind === 'ready' ? period.days : NO_ROWS
   const reading = period.kind === 'reading'
   const empty = reading ? READING : NO_DATA
@@ -194,29 +207,50 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
       >
         <TrendBody buckets={trend} series={series} flow={flow} message={empty} />
       </Chart>
-      <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className="lg:col-span-4 lg:border-l lg:border-line lg:pl-6">
-        <RevisitRows cells={cells} skipped={skipped} empty={empty} />
-      </Chart>
+      {uis ? (
+        <Chart title="신환 재방문율" className={REVISIT_CELL}>
+          <CannotNote why={UIS_WHY_REVISIT} />
+        </Chart>
+      ) : (
+        <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className={REVISIT_CELL}>
+          <RevisitRows cells={cells} skipped={skipped} empty={empty} />
+        </Chart>
+      )}
       <Chart title="요일별 환자 수" desc={withBasis(WEEK_DESC, flow)} className="lg:col-span-6">
         <WeekBody buckets={reading ? null : weekdayBuckets(days, flow.current)} flow={flow} message={empty} />
       </Chart>
-      <Chart
-        title="처방 상위"
-        desc="통계 탭에서 묶은 치료 중 많이 한 순서예요"
-        sub={rankLine(flow, period.kind === 'ready' ? dayCount(days, flow.current) : null)}
-        aside={groups === 'pending' ? undefined : <GroupsLink groups={groups} />}
-        className="md:col-span-2 lg:col-span-6 lg:border-l lg:border-line lg:pl-6"
-      >
-        {reading ? (
-          <EmptyRank message={READING} />
-        ) : groups === 'pending' ? (
-          // 묶음을 읽는 중(dashboard-ux AC-2701.2): 묶음이 있는지 모르니 숫자도 머리 링크도 없다. 묶음이 오면 이 칸만 바뀐다
-          <EmptyRank message={GROUPS_PENDING} live />
-        ) : (
-          <RankBody rank={groupRank(days, flow.current, groups ?? [])} groups={groups} />
-        )}
-      </Chart>
+      {uis ? (
+        <Chart title="처방 상위" className={RANK_CELL}>
+          <CannotNote why={UIS_WHY_TOP_RX} />
+        </Chart>
+      ) : (
+        <Chart
+          title="처방 상위"
+          desc="통계 탭에서 묶은 치료 중 많이 한 순서예요"
+          sub={rankLine(flow, period.kind === 'ready' ? dayCount(days, flow.current) : null)}
+          aside={groups === 'pending' ? undefined : <GroupsLink groups={groups} />}
+          className={RANK_CELL}
+        >
+          {reading ? (
+            <EmptyRank message={READING} />
+          ) : groups === 'pending' ? (
+            // 묶음을 읽는 중(dashboard-ux AC-2701.2): 묶음이 있는지 모르니 숫자도 머리 링크도 없다. 묶음이 오면 이 칸만 바뀐다
+            <EmptyRank message={GROUPS_PENDING} live />
+          ) : (
+            <RankBody rank={groupRank(days, flow.current, groups ?? [])} groups={groups} />
+          )}
+        </Chart>
+      )}
     </div>
+  )
+}
+
+// 셀 수 없음 안내 한 줄(통계 탭 EmptyNote 모양): 굵게 "의사랑 엑셀로는 셀 수 없어요" + " · " + 까닭
+function CannotNote({ why }: { why: string }) {
+  return (
+    <p className="mt-3 text-body text-ink-2">
+      <span className="font-semibold text-ink">{UIS_CANNOT}</span> · {why}
+    </p>
   )
 }
 
@@ -235,8 +269,9 @@ function TrendBody({ buckets, series, flow, message }: { buckets: BarBucket[] | 
   )
 }
 
-// 그래프 칸: 제목(h3 subtitle 600) + 옆 보조(범례) → 설명(small muted) → [설명 바로 아래 한 줄(sub, 같은 글자 + 고정폭 숫자)] → 그림. 이름은 제목이 준다
-function Chart({ title, desc, sub, aside, className, children }: { title: string; desc: string; sub?: string; aside?: ReactNode; className: string; children: ReactNode }) {
+// 그래프 칸: 제목(h3 subtitle 600) + 옆 보조(범례) → [설명(small muted)] → [설명 바로 아래 한 줄(sub, 같은 글자 + 고정폭 숫자)] → 그림. 이름은 제목이 준다.
+// 설명이 없는 칸은 의사랑 셀 수 없음 칸뿐이다(uisarang-upload AC-8811.5)
+function Chart({ title, desc, sub, aside, className, children }: { title: string; desc?: string; sub?: string; aside?: ReactNode; className: string; children: ReactNode }) {
   const id = useId()
   return (
     <div role="group" aria-labelledby={id} className={`min-w-0 ${className}`}>
@@ -246,7 +281,7 @@ function Chart({ title, desc, sub, aside, className, children }: { title: string
         </h3>
         {aside}
       </div>
-      <p className="text-small text-muted">{desc}</p>
+      {desc !== undefined && <p className="text-small text-muted">{desc}</p>}
       {sub !== undefined && <p className="text-small text-muted tabular-nums">{sub}</p>}
       {children}
     </div>

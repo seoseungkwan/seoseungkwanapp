@@ -20,6 +20,9 @@ import { StickyConnect } from './StickyConnect'
 // notice(contacts AC-6507.1, 무상 수리 알림)는 받은 그대로 '맨 위 줄 바로 아래'에 둔다: 연결 뒤는 브리핑 칸의 report(머리 줄과 그 아래 오류 상자, 또는 읽는 중·실패 블록) 다음,
 //   연결 전(비트·비트 아닌 EMR)은 날짜 줄 다음·큰 문장 앞. 무엇을 그릴지(0줄이면 null)는 넘기는 쪽이 정한다
 // locationNotice(location AC-7915.2, 새 경쟁 의원 알림 — 관리자만)는 notice 바로 다음에 둔다(같은 네 자리, notice가 없으면 그 자리). 무엇을 그릴지는 넘기는 쪽이 정한다
+// 의사랑 의원 연결 전 = 저장된 숫자 없음(uisarang-upload AC-8811.1·AC-8811.6, design.md §10-2, 시안 docs/mockups/uisarang-upload ?s=dash-empty): 준비 중 안내 대신 시작 칸
+//   (날짜 줄 → h1 → 안내 → 올리기 칸 자리 uisUpload → [쓰는 EMR 바꾸기]). 비트 연결 글인 '연결하면 바로 쓸 수 있어요' 줄과 빈 analysis('비트 PC 연결 전')는 그리지 않고
+//   기능 목차는 그대로다. 보는 중(readOnly)이면 '아직 올린 의사랑 엑셀이 없어요' 글만(올리기 칸·단추 없음). 올리기 칸이 무엇을 그리는지는 넘기는 쪽(BitDashboard ← LiveDashboard)이 정한다
 // analysis(오늘 하루 분석 + 기간별 흐름)는 갈래 라 몫이라 무엇이 오는지 모르고 받은 그대로 둔다. 무엇을 넘길지는 페이지 조립(TASK-9)이 정한다.
 // 바탕은 앱 틀이 늘 흰색 한 장이다(ui-90 AC-404.1) — 뿌리에 바탕 표시를 달지 않는다
 export type DashboardHomeProps = {
@@ -37,6 +40,10 @@ export type DashboardHomeProps = {
   notice?: ReactNode
   /** notice 바로 아래 알림(location AC-7915.2, 새 경쟁 의원). 주지 않거나 null이면 아무것도 없다 */
   locationNotice?: ReactNode
+  /** 의사랑 시작 칸의 올리기 칸(uisarang-upload AC-8811.1, 펼친 모양). 의사랑 · 연결 전 · 보는 중 아님에만 그린다. 주지 않거나 null이면 그 자리에 아무것도 없다 */
+  uisUpload?: ReactNode
+  /** 관리자가 다른 의원을 보는 중(uisarang-upload AC-8811.6). 의사랑 시작 칸만 이 값을 본다. 기본 거짓 */
+  readOnly?: boolean
 }
 
 // 휴대폰 아래 단추(StickyConnect)가 이 id로 위 주 단추를 지켜본다
@@ -105,7 +112,51 @@ function EmrWaitSentence({ emr }: { emr: NonBitEmr }) {
   )
 }
 
-export function DashboardHome({ today, report, analysis, dateLine: dateControl, emr = 'bit', notice, locationNotice }: DashboardHomeProps) {
+// 의사랑 시작 칸 글(requirements.md '화면 글자' 대시보드 · '시안에 없어 이 명세가 정한 글' 그대로)
+const UIS_START = {
+  title: '의사랑 엑셀을 올리면 숫자가 여기에 채워져요',
+  lead: '의사랑 통계에서 엑셀을 저장해 아래에 넣어 주세요. 그날 숫자와 보고 문장, 기간별 흐름이 채워져요. 업무일지·예약·서식은 그대로 쓸 수 있어요.',
+}
+const UIS_VIEWING = { title: '아직 올린 의사랑 엑셀이 없어요', lead: '원장님이 의사랑 엑셀을 올리면 여기에 숫자가 채워져요.' }
+// 시안 .hero(h1 24/32 · 안내 16/24 · 폭 880 · 안내 64ch 남짓) · 올리기 칸과 단추는 위 16. 폰 폭 클래스는 쓰지 않는다(PC 화면만, 2026-11-21 사용자 규칙)
+const UIS_H1 = 'mt-2 max-w-220 text-heading-m font-semibold text-balance text-ink'
+const UIS_LEAD = 'mt-2 max-w-144 text-lead text-ink-2'
+
+// 의사랑 시작 칸 몸(AC-8811.1·AC-8811.6): h1 → 안내 → [올리기 칸] → [쓰는 EMR 바꾸기]. 날짜 줄·알림은 부르는 쪽이 앞에 둔다(같은 칸의 형제)
+function UisStart({ upload, readOnly }: { upload: ReactNode; readOnly: boolean }) {
+  if (readOnly) {
+    return (
+      <>
+        <h1 className={UIS_H1}>{UIS_VIEWING.title}</h1>
+        <p className={UIS_LEAD}>{UIS_VIEWING.lead}</p>
+      </>
+    )
+  }
+  return (
+    <>
+      <h1 className={UIS_H1}>{UIS_START.title}</h1>
+      <p className={UIS_LEAD}>{UIS_START.lead}</p>
+      {upload != null && <div className="mt-4">{upload}</div>}
+      <div className="mt-4">
+        <Link href="/settings" className={`${ds.button.secondary} no-underline ${PRESS}`}>
+          쓰는 EMR 바꾸기
+        </Link>
+      </div>
+    </>
+  )
+}
+
+export function DashboardHome({
+  today,
+  report,
+  analysis,
+  dateLine: dateControl,
+  emr = 'bit',
+  notice,
+  locationNotice,
+  uisUpload,
+  readOnly = false,
+}: DashboardHomeProps) {
   // undefined도 연결 전이다(tab-frame 남은 일)
   const connected = report != null
   if (connected) {
@@ -129,6 +180,22 @@ export function DashboardHome({ today, report, analysis, dateLine: dateControl, 
           </div>
         </div>
         <FeatureIndex connected />
+      </div>
+    )
+  }
+  if (emr === 'uisarang') {
+    // 의사랑 의원 연결 전(저장된 숫자 없음, AC-8811.1): 브리핑 한 칸(전체 폭, 올리기 칸이 넓게) → 기능 목차. '지금 바로' 줄·analysis·폰 아래 단추는 없다
+    return (
+      <div className="pt-2 pb-4">
+        <section aria-label="오늘 브리핑">
+          <div>
+            {dateControl ?? <DateLine today={today} />}
+            {notice}
+            {locationNotice}
+            <UisStart upload={uisUpload} readOnly={readOnly} />
+          </div>
+        </section>
+        <FeatureIndex connected={false} />
       </div>
     )
   }

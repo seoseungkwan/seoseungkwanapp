@@ -35,6 +35,10 @@ const RETURNING_NOTE = '90일초진 포함'
 // 칸 아래 글은 없다(시안의 '재진 중'은 넣지 않음, requirements.md '시안과 다르게 정한 것'). 묶음을 안 골랐으면 값 대신 안내 글이다
 const PT_LABEL = '물리치료'
 const PT_UNSET = '수납일지 설정에서 묶음을 고르면 나와요'
+// 의사랑 의원(uisarang-upload AC-8811.4, requirements.md '셀 수 없음 안내' 작은 숫자 칸): 90일초진·물리치료는 의사랑 엑셀로 셀 수 없어 "–" + 이 글(까닭 없음).
+// 이 폴더는 정해 둔 곳만 불러와서(DashboardAnalysis.test AC-311.8) 글을 여기 상수로 둔다
+const UIS_CANNOT = '의사랑 엑셀로는 셀 수 없어요'
+const UIS_CELL: Pick<CountCell, 'value' | 'emptyText'> = { value: null, emptyText: UIS_CANNOT }
 // 숫자 칸: 위아래 16·좌우 20, 첫 칸 왼쪽 0, 칸 사이 1px line 세로선.
 // 768px 미만 2칸씩 세 줄: 12·16, 왼쪽 칸(홀수 칸) 왼쪽 0·세로선 없음, 둘째 줄부터 위 1px line. 셋째 줄 = 물리치료 · 지난주 같은 요일보다(AC-6302.4)
 const KPI_LEFT = 'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0'
@@ -70,6 +74,8 @@ export type DailySectionProps = {
   sentence?: ReactNode
   /** 물리치료 묶음 열쇠(desk-feedback AC-6302.3). undefined = 모름(설정·묶음을 못 읽음 → '자료 없음'), null = 수납일지 설정에서 안 고름(안내 글) */
   ptKey?: string | null
+  /** 의사랑 의원(uisarang-upload AC-8811.4): 90일초진·물리치료 칸은 셀 수 없음이다(숫자가 있을 때). 기본 거짓 = 지금 그대로 */
+  uis?: boolean
 }
 
 export function DailySection({
@@ -82,6 +88,7 @@ export function DailySection({
   dateLine,
   sentence,
   ptKey,
+  uis = false,
 }: DailySectionProps) {
   const todayId = useId()
   const dateId = useId()
@@ -107,7 +114,7 @@ export function DailySection({
           </div>
         </div>
       )}
-      <TodayNumbers view={days === null ? null : todayView(day, days)} emptyText={emptyText} past={past} pt={days === null ? null : ptCell(day, days, ptKey)} />
+      <TodayNumbers view={days === null ? null : todayView(day, days)} emptyText={emptyText} past={past} pt={days === null ? null : ptCell(day, days, ptKey)} uis={uis && days !== null} />
       {days === null && emptyNote !== null && <p className={`mt-3 ${NOTE}`}>{emptyNote}</p>}
       {sentence}
     </section>
@@ -125,8 +132,14 @@ function ptCell(day: string, days: readonly DayPayload[], ptKey: string | null |
 
 // 숫자 칸(지난주 칸 앞). 숫자 없음(view null) = 같은 다섯(환자 수 · 신환 · 90일초진 · 재진 · 물리치료), 칸마다 emptyText(AC-4404.1·AC-6302.3).
 // 숫자 있음 = 환자 수 · 신환 · 90일초진 · 재진 · 물리치료(AC-4404.1·AC-6302.3): 그날 first90이 있으면 그 값과 returning, 없으면 90일초진 "–" + 안내 글, 재진은 지금 값 + "90일초진 포함".
-// 그날 줄이 없으면(counts null) 다섯 모두 KpiStat 기본 '자료 없음'이다(물리치료 묶음을 안 골랐어도)
-function countCells(first: string, view: TodayView | null, emptyText: string, pt: PtCell | null): CountCell[] {
+// 그날 줄이 없으면(counts null) 다섯 모두 KpiStat 기본 '자료 없음'이다(물리치료 묶음을 안 골랐어도).
+// 의사랑(uis, uisarang-upload AC-8811.4)이면 90일초진·물리치료 두 칸은 그날 줄과 상관없이 셀 수 없음이고, 재진 칸은 지금처럼(first90이 없어 "90일초진 포함")이다
+function countCells(first: string, view: TodayView | null, emptyText: string, pt: PtCell | null, uis: boolean): CountCell[] {
+  const cells = baseCells(first, view, emptyText, pt)
+  return uis ? cells.map((cell) => (cell.label === F90_LABEL || cell.label === PT_LABEL ? { label: cell.label, ...UIS_CELL } : cell)) : cells
+}
+
+function baseCells(first: string, view: TodayView | null, emptyText: string, pt: PtCell | null): CountCell[] {
   if (view === null) return [first, '신환', F90_LABEL, '재진', PT_LABEL].map((label) => ({ label, value: null, emptyText }))
   const { counts } = view
   if (counts === null) return [first, '신환', F90_LABEL, '재진', PT_LABEL].map((label) => ({ label, value: null }))
@@ -143,8 +156,8 @@ function countCells(first: string, view: TodayView | null, emptyText: string, pt
 
 // 숫자 줄: 숫자 칸 + 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText). pt = 물리치료 칸 값(숫자가 없으면 null).
 // past = 지난 날짜(AC-605.3·AC-605.4): 첫 칸 이름이 "환자 수"이고, 그 날은 끝나기를 기다릴 날이 아니라 비교할 수 없으면 "자료 없음"이다
-function TodayNumbers({ view, emptyText, past, pt }: { view: TodayView | null; emptyText: string; past: boolean; pt: PtCell | null }) {
-  const cells = countCells(past ? '환자 수' : '오늘 환자 수', view, emptyText, pt)
+function TodayNumbers({ view, emptyText, past, pt, uis }: { view: TodayView | null; emptyText: string; past: boolean; pt: PtCell | null; uis: boolean }) {
+  const cells = countCells(past ? '환자 수' : '오늘 환자 수', view, emptyText, pt, uis)
 
   return (
     <div className={KPI_ROW}>

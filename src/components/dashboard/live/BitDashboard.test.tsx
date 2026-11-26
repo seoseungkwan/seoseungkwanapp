@@ -2410,8 +2410,8 @@ describe('AC-7103.1·AC-7103.2: 쓰는 EMR에 따른 연결 전 첫 화면', () 
   const TRUST = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 해요.'
   const noChange = () => expect(screen.queryByRole('link', { name: CHANGE })).toBeNull()
 
+  // 의사랑은 준비 중 글 대신 시작 칸이다(uisarang-upload AC-8811.1, uisDashboard.test.tsx)
   it.each([
-    ['uisarang', '의사랑 연결은 준비하고 있어요'],
     ['egis', '이지스 연결은 준비하고 있어요'],
     ['other', '우리 병원 EMR은 아직 연결할 수 없어요'],
   ] as const)('AC-7103.1: 병원 정보를 읽었고 EMR이 %s이면 연결 전 h1은 "%s"이고 [쓰는 EMR 바꾸기](/settings)가 있다 — [비트 PC 연결 시작]·안심 줄은 없다', (emr, title) => {
@@ -2453,10 +2453,11 @@ describe('AC-7103.1·AC-7103.2: 쓰는 EMR에 따른 연결 전 첫 화면', () 
     noChange()
   })
 
-  it('AC-7103.2: 비트가 아닌 병원도 숫자가 있으면(연결 뒤) 화면이 지금과 같다 — 머리 줄 h1 "대시보드"', () => {
+  // 의사랑은 숫자가 있으면 의사랑 머리 줄이다(uisarang-upload AC-8811.2, uisDashboard.test.tsx)
+  it.each(['egis', 'other'] as const)('AC-7103.2: 비트가 아닌 병원(%s)도 숫자가 있으면(연결 뒤) 화면이 지금과 같다 — 머리 줄 h1 "대시보드"', (emr) => {
     notBitPc()
     const bitMarkup = renderToStaticMarkup(<BitDashboard today={TODAY} initial={SAVED} />)
-    clinic.emr = 'uisarang'
+    clinic.emr = emr
     expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={SAVED} />)).toBe(bitMarkup)
     draw(SAVED)
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([HEADER_H1])

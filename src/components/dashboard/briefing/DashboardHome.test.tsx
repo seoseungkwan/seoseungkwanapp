@@ -860,8 +860,8 @@ describe('DashboardHome: 보조 글 · 연결 판정 (AC-414.6)', () => {
 
 // ── emr-choice: 쓰는 EMR이 비트가 아닌 병원의 연결 전 첫 화면 (REQ-7103, design.md 4절, 시안 docs/mockups/emr-choice/index.html ②) ──
 describe('DashboardHome: 비트가 아닌 병원의 연결 전 (emr-choice AC-7103.1·AC-7103.2)', () => {
+  // 의사랑은 준비 중 글 대신 시작 칸이다(uisarang-upload AC-8811.1, 아래 '의사랑 시작 칸' 시험)
   const WAIT_TITLES = [
-    ['uisarang', '의사랑 연결은 준비하고 있어요'],
     ['egis', '이지스 연결은 준비하고 있어요'],
     ['other', '우리 병원 EMR은 아직 연결할 수 없어요'],
   ] as const
@@ -1085,6 +1085,109 @@ describe('DashboardHome: 입지 알림 자리 (location AC-7915.2)', () => {
           expect(renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} notice={n} locationNotice={undefined} />)).toBe(plain)
         }
       }
+    }
+  })
+})
+
+// ── uisarang-upload: 의사랑 의원 · 숫자 없음의 시작 칸 (REQ-8811 AC-8811.1·AC-8811.6·AC-8811.7, design.md §10-2, 시안 docs/mockups/uisarang-upload ?s=dash-empty·?s=dash-missing) ──
+// 올리기 칸은 BitDashboard가 uisUpload로 넘긴다(TASK-7이 채움). 여기서는 가짜 노드로 자리만 본다
+describe('DashboardHome: 의사랑 시작 칸 (uisarang-upload AC-8811.1·AC-8811.6)', () => {
+  const START_H1 = '의사랑 엑셀을 올리면 숫자가 여기에 채워져요'
+  const START_LEAD = '의사랑 통계에서 엑셀을 저장해 아래에 넣어 주세요. 그날 숫자와 보고 문장, 기간별 흐름이 채워져요. 업무일지·예약·서식은 그대로 쓸 수 있어요.'
+  const VIEW_H1 = '아직 올린 의사랑 엑셀이 없어요'
+  const VIEW_TEXT = '원장님이 의사랑 엑셀을 올리면 여기에 숫자가 채워져요.'
+  const CHANGE = '쓰는 EMR 바꾸기'
+  const WAIT_LEAD = '지금은 비트만 연결돼요. 연결이 생기면 이 화면에 오늘 숫자와 보고 문장이 채워져요. 그동안 업무일지·예약·서식은 그대로 쓸 수 있어요.'
+  const upload = <section aria-label="의사랑 엑셀 올리기" data-testid="upload">가짜 올리기 칸</section>
+  const renderStart = (props: { uisUpload?: ReactNode; readOnly?: boolean } = { uisUpload: upload }) =>
+    render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr="uisarang" {...props} />).container
+  const markupOf = (emr: EmrKind, node: ReactNode | null, props: { uisUpload?: ReactNode; readOnly?: boolean } = {}) =>
+    renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} {...props} />)
+  // 새로 그린 자리(h1부터 끝까지)의 클래스
+  const newClasses = (container: HTMLElement) => {
+    const h1 = container.querySelector('h1')!
+    const after: Element[] = []
+    for (let el = h1 as Element | null; el; el = el.nextElementSibling) after.push(el, ...Array.from(el.querySelectorAll('*')))
+    return after.filter((el) => el.closest('[data-testid="upload"]') === null).flatMap(classesOf)
+  }
+
+  it('AC-8811.1: 날짜 줄 → h1 → 안내 → 올리기 칸 자리(받은 그대로) → [쓰는 EMR 바꾸기](/settings, 보조 단추) 차례이고 h1은 하나다', () => {
+    const container = renderStart()
+    const h1s = container.querySelectorAll('h1')
+    expect(Array.from(h1s).map(textOf)).toEqual([START_H1])
+    hasAll(h1s[0]!, 'text-heading-m font-semibold text-ink')
+    const left = briefLeft()
+    const lead = byText(left, START_LEAD, 'p')
+    hasAll(lead, 'text-lead text-ink-2')
+    const change = screen.getByRole('link', { name: CHANGE })
+    expect(change.getAttribute('href')).toBe('/settings')
+    hasAll(change, ds.button.secondary)
+    const slot = screen.getByTestId('upload')
+    for (const el of [h1s[0]!, lead, slot, change]) expect(left.contains(el)).toBe(true)
+    expectOrder(dateLineEl(), h1s[0]!, lead, slot, change)
+    expect(textOf(dateLineEl())).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+  })
+
+  it("AC-8811.1: 비트 연결 안내 줄('연결하면 바로 쓸 수 있어요')·빈 분석 칸(analysis)·연결 순서·폰 아래 단추·준비 중 글이 없고, 기능 목차(연결 먼저)는 그대로다", () => {
+    const container = renderStart()
+    const root = rootOf(container)
+    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['section', 'section'])
+    expect(root.children[0]).toBe(brief())
+    expect(root.children[1]).toBe(sectionNamed('기능 목차'))
+    expect(screen.queryByRole('heading', { level: 2, name: ROW_TITLE })).toBeNull()
+    expect(screen.queryByTestId('analysis')).toBeNull()
+    expect(within(sectionNamed('기능 목차')).getAllByText('연결 먼저')).toHaveLength(featureCount('connect-first'))
+    for (const text of ['의사랑 연결은 준비하고 있어요', WAIT_LEAD, '연결 순서', '비트 PC 연결 시작', '비트 자료는 읽기만 해요', ANALYSIS_TEXT]) noText(container, text)
+    expect(container.querySelector('details, .sticky, #dashboard-connect-start')).toBeNull()
+    expect(brief().children).toHaveLength(1)
+  })
+
+  it('AC-8811.1: uisUpload가 없거나 null이면 그 자리에 아무것도 없다(빈 상자 없음)', () => {
+    const plain = markupOf('uisarang', null)
+    expect(markupOf('uisarang', null, { uisUpload: null })).toBe(plain)
+    expect(markupOf('uisarang', null, { uisUpload: upload })).not.toBe(plain)
+    const container = renderStart({})
+    const lead = byText(briefLeft(), START_LEAD, 'p')
+    expect(lead.nextElementSibling).toBe(screen.getByRole('link', { name: CHANGE }).parentElement)
+    expect(container.querySelector('[data-testid="upload"]')).toBeNull()
+  })
+
+  it('AC-8811.1: 새 자리에는 폰 폭 클래스(max-md:)를 새로 쓰지 않고(공용 단추 ds.button.secondary 클래스만 그대로), 상자 안 상자가 없으며 앱 틀을 다시 그리지 않는다', () => {
+    const container = renderStart()
+    const shared = new Set(tokens(ds.button.secondary))
+    expect(newClasses(container).filter((c) => c.startsWith('max-md:') && !shared.has(c))).toEqual([])
+    expect(nestedBoxes(container)).toEqual([])
+    expect(container.querySelector('main, header, nav, .app-ui')).toBeNull()
+  })
+
+  it('AC-8811.1: 무상 수리 알림·입지 알림은 날짜 줄 바로 다음 · h1 앞이다(지금 자리 그대로)', () => {
+    const notice = <div data-testid="notice">가짜 무상 수리 알림</div>
+    const watch = <div data-testid="watch">가짜 입지 알림</div>
+    render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr="uisarang" notice={notice} locationNotice={watch} uisUpload={upload} />)
+    expect(screen.getByTestId('notice').previousElementSibling).toBe(dateLineEl())
+    expect(screen.getByTestId('watch').previousElementSibling).toBe(screen.getByTestId('notice'))
+    expect(screen.getByTestId('watch').nextElementSibling).toBe(screen.getByRole('heading', { level: 1, name: START_H1 }))
+  })
+
+  it("AC-8811.6: 보는 중(readOnly)이면 h1 '아직 올린 의사랑 엑셀이 없어요' + 글만이고 올리기 칸·[쓰는 EMR 바꾸기]가 없다", () => {
+    const container = renderStart({ uisUpload: upload, readOnly: true })
+    expect(Array.from(container.querySelectorAll('h1')).map(textOf)).toEqual([VIEW_H1])
+    const text = byText(briefLeft(), VIEW_TEXT, 'p')
+    hasAll(text, 'text-lead text-ink-2')
+    expect(screen.queryByTestId('upload')).toBeNull()
+    expect(screen.queryByRole('link', { name: CHANGE })).toBeNull()
+    for (const t of [START_H1, START_LEAD, ROW_TITLE, ANALYSIS_TEXT]) noText(container, t)
+    expect(sectionNamed('기능 목차')).toBeTruthy()
+    expect(text.nextElementSibling).toBeNull()
+  })
+
+  it('AC-8811.7: 이지스·그 밖·비트 연결 전과, 모든 EMR의 연결 뒤(report 있음)는 uisUpload·readOnly를 줘도 지금과 같다', () => {
+    for (const emr of ['bit', 'egis', 'other'] as const) {
+      expect(markupOf(emr, null, { uisUpload: upload, readOnly: true })).toBe(markupOf(emr, null))
+      expect(markupOf(emr, null, { uisUpload: upload, readOnly: false })).toBe(markupOf(emr, null))
+    }
+    for (const emr of ['bit', 'uisarang', 'egis', 'other'] as const) {
+      expect(markupOf(emr, report, { uisUpload: upload, readOnly: true })).toBe(markupOf(emr, report))
     }
   })
 })

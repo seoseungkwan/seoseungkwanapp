@@ -12,7 +12,7 @@ import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import { isConnected, type OlderDays, type SummarySource } from '@/components/dashboard/summary/source'
 import { useReadOnly } from '@/components/shell/viewing'
-import { addDays } from '@/lib/analytics/dates'
+import { addDays, compareYmd } from '@/lib/analytics/dates'
 import type { ChromeRuntimeLike } from '@/types/bridge'
 import type { Honorific } from '@/types/clinicProfile'
 import type { ErrorCode } from '@/types/errors'
@@ -37,9 +37,24 @@ import type { DashboardGroups } from './rxGroups'
 // 숫자가 없는 모양(연결 전·읽는 중·실패)이면 DashboardHome 앞(대시보드 내용 맨 위)에. 알림이 없으면 칸이 그리지 않아 지금 그대로다.
 // LiveDashboard가 저장 숫자 오류 카드 위에 이미 둔 때는 inventoryOnTop={false}로 맨 위 칸을 빼 한 화면에 하나다
 // 다른 의원을 보는 중(admin-view AC-8008.3, useReadOnly)이면 이 PC 비트를 읽지 않는다(저절로 읽기 없음) — 보는 의원의 저장 숫자로만 그린다
+// 의사랑 의원(uisarang-upload REQ-8811, design.md §10-2 — 병원 정보를 읽었고 EMR이 'uisarang')도 비트를 읽지 않고 저장 숫자(올린 의사랑 엑셀)로만 그린다:
+//   화면 상태는 늘 처음 자료(initial) 모양이라, 병원 정보를 읽는 동안(EMR을 아직 몰라 'bit') 시작한 비트 읽기는 의사랑으로 판정되면 효과 정리가 멈추고(abort)
+//   그 읽기의 '읽는 중'·답·실패가 화면에 남지 않는다(AC-8811.9). 처음 날은 오늘 이하 가장 늦은 저장된 날(AC-8811.3), 머리 줄은 의사랑 모양(AC-8811.2),
+//   일별 현황·보고 문장·기간별 흐름은 셀 수 없는 칸만 안내(AC-8811.4·AC-8811.5), AI 요약은 지금 자리 그대로(AC-8811.8)다.
+//   올리기 칸은 uisUpload(그리는 함수, TASK-7이 LiveDashboard에서 넘김)로 머리 줄 아래(folded)·시작 칸(open)에 그린다. 보는 중이면 부르지 않는다(AC-8811.6)
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
+
+/** 올리기 칸 모양: 시작 칸은 펼침(open), 숫자가 있으면 머리 줄 아래 접음(folded) — uisarang-upload design.md §10-1 */
+export type UisUploadLook = 'open' | 'folded'
+
+/** 오늘 이하 가장 늦은 날 줄의 날짜(없으면 null). 의사랑 처음 날·머리 줄 끝 날(AC-8811.2·AC-8811.3) */
+function latestDay(days: readonly DayPayload[], today: string): string | null {
+  let latest: string | null = null
+  for (const d of days) if (compareYmd(d.day, today) <= 0 && (latest === null || compareYmd(d.day, latest) > 0)) latest = d.day
+  return latest
+}
 
 /** 비트 읽기에 실을 묶음 정의. 읽지 못함(null)·읽는 중은 빈 목록이다(읽는 중에는 읽기를 시작하지 않는다) */
 const defsOf = (groups: DashboardGroups | null | 'pending') => (groups === null || groups === 'pending' ? [] : groups.defs)
@@ -122,6 +137,8 @@ function emptyLook(status: Status, honorific: Honorific): EmptyLook {
  * inventoryOnTop: 숫자가 없는 모양에서 재고 칸을 맨 위에 둔다(기본 참). LiveDashboard가 오류 카드 위에 이미 둘 때 거짓(AC-7512.4)
  * notice: 맨 위 줄 바로 아래 알림(contacts AC-6507.1, 무상 수리). LiveDashboard가 읽어 넘기고 여기서는 DashboardHome에 그대로 넘기기만 한다(읽지 않음)
  * locationNotice: notice 바로 아래 새 경쟁 의원 알림(location AC-7915.2, 관리자만). notice와 같이 LiveDashboard가 읽어 넘기고 그대로 넘기기만 한다(읽지 않음)
+ * uisUpload: 의사랑 올리기 칸을 그리는 함수(uisarang-upload design.md §10-1·§10-2). 의사랑 의원 · 보는 중 아님에만 부른다 — 숫자가 있으면 'folded'(머리 줄 아래),
+ * 없으면 'open'(시작 칸). 주지 않으면 그 자리에 아무것도 없다. 올리기 상태는 부르는 쪽(LiveDashboard)이 이 컴포넌트의 key 밖에서 든다
  */
 export function BitDashboard({
   today,
@@ -134,6 +151,7 @@ export function BitDashboard({
   inventoryOnTop = true,
   notice,
   locationNotice,
+  uisUpload,
 }: {
   today: string
   initial: SummarySource
@@ -145,8 +163,9 @@ export function BitDashboard({
   inventoryOnTop?: boolean
   notice?: ReactNode
   locationNotice?: ReactNode
+  uisUpload?: (look: UisUploadLook) => ReactNode
 }) {
-  const [status, setStatus] = useState(() => firstStatus(initial))
+  const [readStatus, setStatus] = useState(() => firstStatus(initial))
   // 새 처음 자료가 오면(저장 숫자 새로고침 성공) 그리는 중에 상태를 맞춘다 — 다시 놓지 않는다(AC-2701.8)
   const [shownInitial, setShownInitial] = useState(initial)
   if (shownInitial !== initial) {
@@ -158,6 +177,9 @@ export function BitDashboard({
   const clinic = useClinicProfile()
   const honorific = clinic.profile.honorific
   const emr = clinic.state === 'ready' ? clinic.profile.emr : 'bit'
+  // 의사랑 의원(AC-8811.2·AC-8811.9): 비트를 읽지 않고, 화면 상태는 읽기 상태와 상관없이 처음 자료(저장 숫자) 모양이다
+  const isUis = clinic.state === 'ready' && emr === 'uisarang'
+  const status = isUis ? firstStatus(initial) : readStatus
   const [attempt, setAttempt] = useState(0)
   const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
@@ -172,12 +194,16 @@ export function BitDashboard({
   const groupsSettled = groups !== 'pending'
   // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5).
   // 다른 의원을 보는 중이면 처음 날은 어제다: 저절로 올림은 어제까지라 오늘 숫자는 아직 없다(admin-view 시안 ?s=viewing — 11월 23일로 열림)
-  const firstDay = readOnly ? addDays(today, -1) : today
+  // 의사랑 의원은 오늘 이하 가장 늦은 저장된 날로 연다(AC-8811.3: 엑셀은 진료를 마친 뒤 올려 오늘 줄이 없을 때가 많다)
+  const savedLatest = isUis && status.kind === 'data' ? latestDay(status.days, today) : null
+  const firstDay = savedLatest ?? (readOnly ? addDays(today, -1) : today)
   const selected = picked !== null && inDateRange(picked, today) ? picked : firstDay
 
   useEffect(() => {
     // 보는 중: 이 PC 비트는 다른 의원 것이 아니라 읽지 않는다
     if (readOnly) return
+    // 의사랑 의원: 비트를 읽지 않는다. 병원 정보를 읽는 동안 시작한 읽기는 이 값이 바뀌어 아래 정리가 멈춘다(AC-8811.9)
+    if (isUis) return
     // 묶음을 기다린다: 끝나면 이 효과가 다시 돌아 그때 한 번 읽는다
     if (!groupsSettled) return
     // 저절로 읽은 답은 조용히 둔다(열 때·날짜가 바뀔 때, AC-601.13·AC-601.16)
@@ -194,7 +220,7 @@ export function BitDashboard({
       if (result.kind === 'days') bitLoaded.current?.()
     })
     return () => leaving.abort()
-  }, [today, attempt, groupsSettled, readOnly])
+  }, [today, attempt, groupsSettled, readOnly, isUis])
 
   const readAgain = () => {
     pressedNow.current = true
@@ -221,11 +247,12 @@ export function BitDashboard({
           emptyText={emptyText}
           emptyNote={emptyNote}
           ptKey={ptKeyOf(groups)}
+          uis={isUis}
           dateLine={<DateControl today={today} selected={selected} onChange={(day) => setPicked(day === firstDay ? null : day)} />}
           // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다. 재고 칸은 날짜와 상관없이 그대로다(다시 읽지 않는다)
           sentence={
             <InventoryAlertCard today={today}>
-              <ReportBlock key={selected} today={today} days={status.days} selected={selected} />
+              <ReportBlock key={selected} today={today} days={status.days} selected={selected} uis={isUis} />
             </InventoryAlertCard>
           }
         />
@@ -236,16 +263,22 @@ export function BitDashboard({
             <AiBrief today={today} honorific={honorific} />
           </div>
         )}
-        <FlowSection today={today} source={source} {...flowLook} />
+        <FlowSection today={today} source={source} {...flowLook} uis={isUis} />
       </>
     ) : (
       <DashboardAnalysis today={today} day={selected} source={source} {...look} />
     )
 
+  // 올리기 칸(AC-8811.1·AC-8811.2·AC-8811.6): 의사랑 · 보는 중 아님에만 부른다. 시작 칸은 펼침, 숫자가 있으면 머리 줄 아래 접음
+  const uploadLook: UisUploadLook | null = !isUis || readOnly ? null : status.kind === 'data' ? 'folded' : 'open'
+  const upload = uploadLook === null ? null : (uisUpload?.(uploadLook) ?? null)
+
   const home = (
     <DashboardHome
       today={today}
       emr={emr}
+      readOnly={readOnly}
+      uisUpload={uploadLook === 'open' ? upload : null}
       // 숫자가 있으면 날짜 고르기는 일별 현황 기준일 묶음 안이다(AC-2703.1) — 맨 위 날짜 줄을 그리지 않는다
       dateLine={status.kind === 'data' ? null : undefined}
       report={
@@ -264,6 +297,8 @@ export function BitDashboard({
               onReread={readAgain}
               bitReadable={bitReadable}
               savedRefresh={savedRefresh ?? null}
+              variant={isUis ? 'uisarang' : 'bit'}
+              lastDay={isUis ? latestDay(status.days, today) : null}
             />
             {status.code !== null && (
               <RereadAlert
@@ -278,6 +313,8 @@ export function BitDashboard({
               <SavedRefreshAlert refreshing={savedRefresh.refreshing} disabled={savedRefresh.refreshing || status.reading} onRetry={savedRefresh.onRefresh} />
             )}
             {status.unreadable && <UnreadableNote />}
+            {/* 의사랑 올리기 칸(접은 모양, AC-8811.2): 머리 줄(과 그 아래 오류 상자) 다음 · 알림·일별 현황 앞(시안 ?s=dash-data·?s=dash-ok) */}
+            {uploadLook === 'folded' && upload !== null && <div className="mt-4">{upload}</div>}
           </>
         )
       }

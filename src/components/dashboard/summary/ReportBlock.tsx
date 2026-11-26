@@ -17,6 +17,9 @@ import { longDate, reportSentence, todayView } from './view'
 
 const NO_TODAY = { first: '오늘 받은 진료 자료가 아직 없어요', rest: '오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.' }
 const NO_PAST_DAY = { first: '이 날은 진료 자료가 없어요', rest: '진료가 없었거나 비트에 접수 기록이 없는 날이에요.' }
+// 의사랑 의원(uisarang-upload AC-8811.4, requirements.md '시안에 없어 이 명세가 정한 글'): 그날 줄이 없을 때만 두 글이 의사랑 글이다
+const UIS_NO_TODAY = { first: '오늘 받은 진료 자료가 아직 없어요', rest: '오늘 엑셀을 올리면 이 자리에 보고 문장이 올라와요.' }
+const UIS_NO_PAST_DAY = { first: '이 날은 진료 자료가 없어요', rest: '진료가 없었거나 그날 의사랑 엑셀을 아직 올리지 않은 날이에요.' }
 const COPIED = '복사했어요'
 const COPY_FAILED = '복사하지 못했어요. 문장을 길게 눌러 직접 복사해 주세요.'
 const COPIED_MS = 2000
@@ -24,10 +27,11 @@ const COPIED_MS = 2000
 // 막힌 [복사]의 툴팁: 올림·초점에 보인다. 나타날 때만 투명 → 보임 + 아래 2px에서 제자리(150ms), 닫힐 때는 바로
 const TOOLTIP = `${ds.layer} pointer-events-none invisible absolute right-0 bottom-full z-10 mb-1.5 translate-y-0.5 whitespace-nowrap px-2 py-1.5 text-caption font-medium text-ink opacity-0 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-hover:transition group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-focus-within:transition`
 
-export function ReportBlock({ today, days, selected = today }: { today: string; days: readonly DayPayload[]; selected?: string }) {
+/** uis: 의사랑 의원(uisarang-upload AC-8811.4). 그날 줄이 없을 때의 글만 바뀐다. 기본 거짓 = 지금 그대로 */
+export function ReportBlock({ today, days, selected = today, uis = false }: { today: string; days: readonly DayPayload[]; selected?: string; uis?: boolean }) {
   const past = selected !== today
   const sentence = reportSentence(todayView(selected, days), past ? longDate(selected) : undefined)
-  const shown = sentence ?? (past ? NO_PAST_DAY : NO_TODAY)
+  const shown = sentence ?? (past ? (uis ? UIS_NO_PAST_DAY : NO_PAST_DAY) : uis ? UIS_NO_TODAY : NO_TODAY)
   const [status, setStatus] = useState<'idle' | 'done' | 'failed'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const alive = useRef(false)

@@ -394,3 +394,48 @@ describe('고른 날 (selected)', () => {
     expect(restOf().textContent).toBe('신환 1명, 재진 2명입니다.')
   })
 })
+
+// 의사랑 의원(uisarang-upload AC-8811.4, requirements.md '시안에 없어 이 명세가 정한 글'): 그날 줄이 없을 때 두 글만 의사랑 글이고 나머지는 지금 그대로다
+describe('의사랑 · 그날 줄 없음 (uisarang-upload AC-8811.4)', () => {
+  const LATER = '2026-11-02'
+  const pick = (selected: string | undefined, uis: boolean | undefined, days: readonly DayPayload[] = DAYS, today = LATER) =>
+    render(<ReportBlock today={today} days={days} selected={selected} uis={uis} />)
+
+  it('AC-8811.4: 오늘 줄이 없으면 "오늘 받은 진료 자료가 아직 없어요" / "오늘 엑셀을 올리면 이 자리에 보고 문장이 올라와요."이고 [복사] 막힘·툴팁은 그대로다', () => {
+    const { container } = pick(undefined, true)
+    expect(firstOf(container).textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(restOf(container).textContent).toBe('오늘 엑셀을 올리면 이 자리에 보고 문장이 올라와요.')
+    expect(copyButton().getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getByRole('tooltip', { hidden: true }).textContent).toBe('문장이 생기면 복사할 수 있어요')
+    expect(container.textContent).not.toContain('오늘 자료가 들어오면')
+  })
+
+  it('AC-8811.4: 지난 날 줄이 없으면 "이 날은 진료 자료가 없어요" / "진료가 없었거나 그날 의사랑 엑셀을 아직 올리지 않은 날이에요."이고 비트 글이 없다', () => {
+    const { container } = pick('2026-10-29', true)
+    expect(firstOf(container).textContent).toBe('이 날은 진료 자료가 없어요')
+    expect(restOf(container).textContent).toBe('진료가 없었거나 그날 의사랑 엑셀을 아직 올리지 않은 날이에요.')
+    expect(container.textContent).not.toContain('비트')
+    expect(copyButton().getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('AC-8811.4: 그날 줄이 있으면 uis와 상관없이 지금 문장 그대로다', () => {
+    const strip = (html: string) => html.replace(/_r_\w*_|:r\w*:|«r\w*»/g, '')
+    for (const selected of [TODAY, undefined]) {
+      const today = selected === undefined ? TODAY : LATER
+      const plain = pick(selected, undefined, DAYS, today)
+      const html = strip(plain.container.innerHTML)
+      plain.unmount()
+      const uis = pick(selected, true, DAYS, today)
+      expect(strip(uis.container.innerHTML)).toBe(html)
+      uis.unmount()
+    }
+  })
+
+  it('AC-8811.4: uis가 거짓이거나 없으면 지금 글 그대로다', () => {
+    for (const uis of [false, undefined]) {
+      const { container, unmount } = pick('2026-10-29', uis)
+      expect(restOf(container).textContent).toBe('진료가 없었거나 비트에 접수 기록이 없는 날이에요.')
+      unmount()
+    }
+  })
+})
