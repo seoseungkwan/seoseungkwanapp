@@ -278,6 +278,11 @@ const VIEW_TABLES = [
 ]
 const HIDDEN_TABLES = ['calendar_appts', 'calendar_rev', 'message_templates', 'contact_counts', 'claim_day_counts', 'claim_month_counts', 'claim_day_closes']
 const FUNCTION_ONLY_TABLES = ['hospital_members', 'ai_image_days', 'notice_ask_days', 'notice_ask_holds', 'admin_views', 'hospital_regions']
+// google-link AC-8502.2: 20261126000000_google_link.sql이 더하는 병원별 표 여덟(AC-8002.8 목록에만 — 그 파일이 정책 둘·하나를 더한다)
+const GLINK_PATH = fileOf('./migrations/20261126000000_google_link.sql')
+const GLINK_MIGRATION = existsSync(GLINK_PATH) ? readFileSync(GLINK_PATH, 'utf-8') : ''
+const GLINK_VIEW_TABLES = ['gsheet_settings', 'gsheet_months', 'gsheet_runs']
+const GLINK_HIDDEN_TABLES = ['gcal_links', 'gcal_state', 'gcal_fixes', 'gcal_deletes', 'gcal_off_days']
 const SIDO = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
 const FILE_BUCKETS = ['clinic-logos', 'staff-files', 'inventory-photos', 'location-photos', 'form-backgrounds']
 const ALL_BUCKETS = [...FILE_BUCKETS, 'install-files', 'other-bucket']
@@ -1436,6 +1441,27 @@ describe('AC-8002.8 병원별 표 목록 완전성 · 42P17 없음', SLOW, () =>
     const listed = [...VIEW_TABLES, ...HIDDEN_TABLES, ...FUNCTION_ONLY_TABLES]
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual(tables)
+    // google-link AC-8502.2: 이 파일 뒤에 20261126000000_google_link.sql을 더 붙인 DB에서도 새 표 여덟이 '보기 ○'(gsheet 셋)·'보기 ×'(gcal 다섯)에 든다
+    const linked = await PGlite.create()
+    try {
+      await migrate(linked)
+      await linked.exec(MIGRATION)
+      await linked.exec(GLINK_MIGRATION)
+      await operator(linked)
+      const linkedTables = (
+        await rows(
+          `select c.table_name from information_schema.columns c join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
+           where c.table_schema = 'public' and c.column_name = 'hospital_id' and t.table_type = 'BASE TABLE' order by 1`,
+          [],
+          linked,
+        )
+      ).map((r) => String(r.table_name))
+      const withGlink = [...VIEW_TABLES, ...GLINK_VIEW_TABLES, ...HIDDEN_TABLES, ...GLINK_HIDDEN_TABLES, ...FUNCTION_ONLY_TABLES]
+      expect(new Set(withGlink).size).toBe(withGlink.length)
+      expect([...withGlink].sort()).toEqual(linkedTables)
+    } finally {
+      await linked.close()
+    }
   })
 
   it("AC-8002.8: '함수로만' 표는 사용자 표 권한·정책이 없다", () => {
