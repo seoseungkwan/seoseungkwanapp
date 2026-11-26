@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "google-link",
-  "approved_at": "2026-11-26T22:37:51Z",
+  "approved_at": "2026-11-26T22:54:46Z",
   "approved_via": "auto",
   "session_id": "564f910f-c538-4591-ad30-a3552610b06c",
-  "spec_sha256": "6788d992c526ee02fbf18bdafb70daa597b00a1a33ef8be37d72abd3ad9d9d70",
+  "spec_sha256": "1ff72d096228ceb580d0bef1881db92209ead3fc78793a79f55a20a6b62820bc",
   "scope": [
     ".github/workflows/helper.yml",
     "CLAUDE.md",

@@ -348,7 +348,7 @@
 - Phase: 9
 - AC: AC-8554.1
 - REQ: REQ-8554
-- Files: src/components/calendar/rows/parts.tsx, src/components/calendar/rows/TimeGrid.test.tsx
+- Files: src/lib/calendar/shapes.ts, src/components/calendar/rows/parts.tsx, src/components/calendar/rows/TimeGrid.test.tsx
 - Tests: src/components/calendar/rows/TimeGrid.test.tsx
 - TDD: required — RED 먼저: `TimeGrid.test.tsx`(이은 병원 메모 `gColor: 'grape'` → `bg-cal-grape`·`text-cal-grape-on`·말풍선 `{글} · 구글 일정 색 그대로`·글 그대로·칩 차례 그대로·누르면 `onAllDay(그날)`, `default`·null → 캘린더 기본 색·`… · 캘린더 기본 색`, 잇지 않은 병원은 지금 그대로). 그다음 design.md 21-13대로. 지금 시험 기대는 고치지 않는다. PC 화면만
 - 의존: TASK-32
