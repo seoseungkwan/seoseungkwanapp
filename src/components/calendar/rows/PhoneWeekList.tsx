@@ -3,16 +3,20 @@
 import { useState } from 'react'
 import { ds } from '@/components/ui/classes'
 import { compareYmd } from '@/lib/analytics/dates'
+import { apptPaint } from '@/lib/calendar/gpaint'
+import type { RowsGoogle } from '@/lib/calendar/gshapes'
 import { shownStatus } from '@/lib/calendar/rules'
 import type { BitGhost, CalAllDay, ShownStatus } from '@/lib/calendar/shapes'
 import type { CalAppt, CalSettings } from '@/types/calendar'
-import { apptColor, CAL_TONES } from '../colors'
-import { allDayChipClass, allDayText, apptLabel, dateNum, dayLabel, ghostLabel, hm, MovedMark, weekdayName } from './parts'
+import { apptColor, CAL_TONES, type CalPaint } from '../colors'
+import { apptLabel, dateNum, dayChips, dayLabel, ghostLabel, hm, isMoved, linkedApptLabel, MovedMark, WaitMark, weekdayName } from './parts'
 
 // 폰 주 보기(768px 미만, spec clinic-calendar AC-5905.8·AC-5906.2, 시안 ?s=phone-week·기본값 7번).
 // 날짜별 목록: 날짜 줄(요약) + 종일 칩 + 펼치면 그날 예약 줄. 처음에는 오늘만 펼친다. 울타리 안 부품: props로만 받고 누름은 콜백으로만 넘긴다.
 // 받은 휴진일(closedDates, spec clinic-profile AC-6603.3)은 날짜 줄에 '휴진' + 카드 회색. 펼치기·예약 줄·+ 종일은 그대로다.
-// 반차 휴무 칩은 같은 모양에 글만 '오전 휴무'·'오후 휴무'(parts allDayText, spec staff AC-7616.1)
+// 반차 휴무 칩은 같은 모양에 글만 '오전 휴무'·'오후 휴무'(parts allDayText, spec staff AC-7616.1).
+// 구글과 이은 병원(google: RowsGoogle, spec google-link AC-8532.2·AC-8532.3): 지금 목록 모양 그대로 색 띠만 apptPaint, '변경' 꼬리표는 gMoved에도,
+// 못 보낸 예약은 주황 시계, 종일 칩은 예약표와 같다(parts dayChips). 고쳐야 할 구글 일정은 이 목록에 넣지 않는다(띠의 고쳐야 할 판에서 본다)
 
 export type PhoneWeekListProps = {
   days: readonly string[]
@@ -21,6 +25,8 @@ export type PhoneWeekListProps = {
   ghosts?: readonly BitGhost[] // 좁은 창의 비트 PC만. 폰은 주지 않는다
   allday: readonly CalAllDay[]
   today: string
+  google?: RowsGoogle | null // 구글과 이은 병원만(TASK-21이 넘김). 없으면 지금 모양
+  offWord?: string // 휴무 줄 끝 글(기본 'off'). google이 있을 때만 쓴다
   onAppt: (id: string) => void
   onGhost: (key: string) => void
   onAllDay: (day: string) => void
@@ -37,7 +43,7 @@ const ROW = `flex min-h-13 w-full cursor-pointer items-center gap-2.5 border-b b
 
 type Line = { at: number; order: number; appt: CalAppt | null; ghost: BitGhost | null }
 
-export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, today, onAppt, onGhost, onAllDay }: PhoneWeekListProps) {
+export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, today, google = null, offWord = 'off', onAppt, onGhost, onAllDay }: PhoneWeekListProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(days.includes(today) ? [today] : []))
   const toggle = (day: string) =>
     setOpen((prev) => {
@@ -64,7 +70,11 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
         const live = dayAppts.filter((a) => a.status !== 'cancel')
         const came = live.filter((a) => shownStatus(a) === 'came').length
         const noshow = live.filter((a) => shownStatus(a) === 'noshow').length
-        const items = allday.filter((it) => it.day === day)
+        const chips = dayChips(
+          allday.filter((it) => it.day === day),
+          settings.staff,
+          google ? { offColor: google.ctx.look.offColor, offWord } : null,
+        )
         // 시작 차례, 같으면 시행자 차례(비트 예약 칸은 뒤)
         const lines: Line[] = [
           ...dayAppts.map((a) => ({ at: a.start, order: staffOrder(a.staffId), appt: a, ghost: null })),
@@ -129,16 +139,17 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
               </span>
             </button>
 
-            {items.length || isOpen ? (
+            {chips.length || isOpen ? (
               <div className="flex flex-wrap items-center gap-1 px-3 pb-2">
-                {items.map((it) => (
+                {chips.map((chip) => (
                   <button
-                    key={it.id}
+                    key={chip.key}
                     type="button"
+                    title={chip.title}
                     onClick={() => onAllDay(day)}
-                    className={`flex h-6 max-w-full min-w-0 cursor-pointer items-center rounded-control px-2 text-caption font-semibold ${allDayChipClass(it, settings.staff)} ${ds.focusRing}`}
+                    className={`flex h-6 max-w-full min-w-0 cursor-pointer items-center rounded-control px-2 text-caption font-semibold ${chip.cls} ${ds.focusRing}`}
                   >
-                    <span className="truncate">{allDayText(it, settings.staff)}</span>
+                    <span className="truncate">{chip.text}</span>
                   </button>
                 ))}
                 {isOpen ? (
@@ -152,7 +163,19 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
             {isOpen ? (
               lines.length ? (
                 <div className="border-t border-line">
-                  {lines.map((line) => (line.appt ? <ApptRow key={line.appt.id} appt={line.appt} settings={settings} onOpen={onAppt} /> : <GhostRow key={line.ghost!.key} ghost={line.ghost!} onOpen={onGhost} />))}
+                  {lines.map((line) =>
+                    line.appt ? (
+                      <ApptRow
+                        key={line.appt.id}
+                        appt={line.appt}
+                        color={google ? apptPaint(line.appt, google.ctx).key : apptColor(line.appt, settings)}
+                        google={google ? { waiting: google.waiting.has(line.appt.id) } : null}
+                        onOpen={onAppt}
+                      />
+                    ) : (
+                      <GhostRow key={line.ghost!.key} ghost={line.ghost!} onOpen={onGhost} />
+                    ),
+                  )}
                 </div>
               ) : (
                 <div className="border-t border-line p-3 text-small text-muted">예약이 없어요</div>
@@ -165,21 +188,32 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
   )
 }
 
-function ApptRow({ appt, settings, onOpen }: { appt: CalAppt; settings: Pick<CalSettings, 'kinds' | 'staff'>; onOpen: (id: string) => void }) {
+function ApptRow({
+  appt,
+  color,
+  google,
+  onOpen,
+}: {
+  appt: CalAppt
+  color: CalPaint
+  google: { waiting: boolean } | null
+  onOpen: (id: string) => void
+}) {
   const shown = shownStatus(appt)
   const cancel = shown === 'cancel'
   const chip = STATUS_CHIP[shown]
-  const label = apptLabel(appt, shown)
+  const label = google ? linkedApptLabel(appt, shown, google.waiting) : apptLabel(appt, shown)
   return (
     <button type="button" aria-label={label} title={label} onClick={() => onOpen(appt.id)} className={ROW}>
       <span className={`w-11 shrink-0 text-body leading-4.5 font-semibold tabular-nums ${cancel ? 'text-muted line-through' : 'text-ink'}`}>
         {hm(appt.start)}
         <small className="block text-caption font-normal text-muted no-underline">{appt.len}분</small>
       </span>
-      <span data-bar className={`w-1 shrink-0 self-stretch rounded-control ${CAL_TONES[apptColor(appt, settings)].fill}`} />
+      <span data-bar className={`w-1 shrink-0 self-stretch rounded-control ${CAL_TONES[color].fill}`} />
       <span className="min-w-0 flex-1 leading-4.5">
         <b className={`block truncate text-body font-semibold ${cancel ? 'text-muted line-through' : 'text-ink'}`}>
-          {appt.origDay ? <MovedMark /> : null}
+          {google?.waiting ? <WaitMark /> : null}
+          {isMoved(appt, google !== null) ? <MovedMark /> : null}
           {appt.chart ? (
             <>
               <span className={`font-medium tabular-nums ${cancel ? '' : 'text-ink-2'}`}>{appt.chart}</span>{' '}

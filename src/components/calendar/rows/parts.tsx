@@ -1,4 +1,5 @@
 import { weekdayOf } from '@/lib/analytics/dates'
+import type { FixCell, GColor } from '@/lib/calendar/gshapes'
 import { slotLabel } from '@/lib/calendar/rules'
 import type { BitGhost, CalAllDay, ShownStatus } from '@/lib/calendar/shapes'
 import type { CalAppt, CalStaff } from '@/types/calendar'
@@ -27,6 +28,85 @@ export function apptLabel(appt: CalAppt, shown: ShownStatus): string {
   const head = [appt.chart, appt.name, appt.kindName, appt.staffMark === null ? '' : `(${appt.staffMark})`, `${hm(appt.start)}–${hm(appt.start + appt.len)}`, `${appt.len}분`]
   const moved = appt.origDay !== null && appt.origStart !== null ? ` · 변경 (원래 ${slotLabel(appt.origDay, appt.origStart)})` : ''
   return `${head.filter(Boolean).join(' ')}${STATUS_TEXT[shown] ? ` · ${STATUS_TEXT[shown]}` : ''}${moved}`
+}
+
+// ---------- 구글과 이은 병원(spec google-link REQ-8532, 예약표 prop RowsGoogle) ----------
+
+/** '변경' 꼬리표를 붙일 예약: 처음 자리가 있음(웹앱에서 옮김), 이은 병원은 구글에서 변경 색이 된 것(gMoved)도 */
+export const isMoved = (appt: Pick<CalAppt, 'origDay' | 'gMoved'>, linked: boolean) => appt.origDay !== null || (linked && appt.gMoved)
+
+/** 이은 병원의 예약 칸·줄 전체 글: 지금 글 + 구글 변경 색만 받음 ' · 변경' + 못 보냄 ' · 구글에 아직 못 보냄'(시안 evHTML label) */
+export function linkedApptLabel(appt: CalAppt, shown: ShownStatus, waiting: boolean): string {
+  const gMovedOnly = appt.gMoved && appt.origDay === null ? ' · 변경' : ''
+  return `${apptLabel(appt, shown)}${gMovedOnly}${waiting ? ` · ${WAIT_TEXT}` : ''}`
+}
+
+const WAIT_TEXT = '구글에 아직 못 보냄'
+
+// 못 보냄 = 주황 시계(시안 MK.gwait, notes-calendar '색 규칙'). 도착 표시 뒤·'변경' 앞
+export function WaitMark() {
+  return (
+    <span title={WAIT_TEXT} className="mr-0.5 inline-grid size-3.5 shrink-0 place-items-center rounded-full bg-negative-soft align-middle text-negative ring-1 ring-negative/50 ring-inset">
+      <svg aria-hidden="true" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+        <circle cx="5" cy="5" r="3.6" />
+        <path d="M5 3.1V5l1.3.9" />
+      </svg>
+    </span>
+  )
+}
+
+/** 고쳐야 할 구글 일정 칸·칩의 전체 글(시안 .ev.gfix title) */
+export const fixLabel = (fix: Pick<FixCell, 'gTitle'>) => `고쳐야 할 구글 예약 · ${fix.gTitle}`
+
+/** 고쳐야 할 것 칸·칩 모양: 노란 바탕·점선(구글 색 아님). 빗금은 Hatch kind="fix" */
+export const FIX_LOOK = 'border border-dashed border-warning bg-warning-soft text-warning'
+
+/** 고쳐야 할 것 안 글 `고쳐야 함 {구글 제목}`(시안 .ev.gfix) */
+export function FixText({ fix }: { fix: Pick<FixCell, 'gTitle'> }) {
+  return (
+    <>
+      <span className="font-semibold whitespace-nowrap">고쳐야 함</span> <span className="whitespace-nowrap">{fix.gTitle}</span>
+    </>
+  )
+}
+
+/** 종일 줄 칩 하나(글·말풍선·모양) */
+export type DayChip = { key: string; text: string; title?: string; cls: string }
+
+const HALF_TEXT = { am: '오전', pm: '오후' } as const
+
+/**
+ * 그날 종일 칩들. RowsGoogle이 없으면(잇지 않은 병원) 지금 그대로 항목마다 한 칩(allDayText·allDayChipClass).
+ * 이은 병원(spec google-link AC-8532.3, 시안 adHTML): 메모 = 캘린더 기본 색 칩 → 하루 종일 휴무는 한 칩 `{이름}, {이름} {offWord}`(휴무 줄 색) →
+ * 반차는 사람마다 흰 칩 `({표시}) {이름} {오전|오후} 반차`(시행자가 아닌 직원은 이름만). 이름 차례는 받은 차례
+ */
+export function dayChips(
+  items: readonly CalAllDay[],
+  staff: readonly CalStaff[],
+  google: { offColor: GColor; offWord: string } | null,
+): DayChip[] {
+  if (google === null) return items.map((it) => ({ key: it.id, text: allDayText(it, staff), cls: allDayChipClass(it, staff) }))
+  const memos: DayChip[] = items
+    .filter((it) => it.type === 'memo')
+    .map((it) => {
+      const text = it.memo ?? ''
+      return { key: it.id, text, title: `${text} · 캘린더 기본 색`, cls: `${CAL_TONES.default.fill} ${CAL_TONES.default.on}` }
+    })
+  const offs = items.filter((it) => it.type === 'off')
+  const whole = offs.filter((it) => !it.part)
+  const out = [...memos]
+  if (whole.length > 0) {
+    const text = `${whole.map((it) => it.staffName ?? '').join(', ')} ${google.offWord}`
+    const tone = CAL_TONES[google.offColor]
+    out.push({ key: `off:${whole[0].id}`, text, title: `${text} · 구글 하루 종일 줄과 같아요`, cls: `${tone.fill} ${tone.on}` })
+  }
+  for (const it of offs) {
+    if (!it.part) continue
+    const mark = staff.find((s) => s.id === it.staffId)?.mark
+    const text = `${mark ? `(${mark}) ` : ''}${it.staffName ?? ''} ${HALF_TEXT[it.part]} 반차`
+    out.push({ key: it.id, text, title: `${text} · 웹앱에만 보여요(반차는 구글 off 줄에 넣지 않아요)`, cls: 'bg-surface font-medium text-ink-2 ring-1 ring-line-strong ring-inset' })
+  }
+  return out
 }
 
 /** 비트 예약 칸의 전체 글 */
@@ -79,10 +159,12 @@ const hatchPath = (step: number) =>
   Array.from({ length: Math.ceil(HATCH_REACH / step) }, (_, i) => step * (i + 1))
     .map((k) => `M0 ${k} L${k} 0`)
     .join(' ')
-// 안 옴: 옅은 바탕 위 흰 줄(6px, 주기 12px) — 시안 13%/5% 줄무늬. 비트 예약: 회색 바탕 위 선 줄(5px, 주기 10px)
+// 안 옴: 옅은 바탕 위 흰 줄(6px, 주기 12px) — 시안 13%/5% 줄무늬. 비트 예약: 회색 바탕 위 선 줄(5px, 주기 10px).
+// 고쳐야 할 구글 일정(google-link): 옅은 노랑 위 노란 줄(6px, 주기 12px) — 시안 .ev.gfix
 const HATCH = {
   noshow: { d: hatchPath(17), width: 6 },
   ghost: { d: hatchPath(14), width: 5 },
+  fix: { d: hatchPath(17), width: 6 },
 } as const
 
 /** 칸(relative)을 채우는 빗금 svg 하나. 색은 className의 text-* 클래스가 준다 */

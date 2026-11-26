@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { RowsGoogle } from '@/lib/calendar/gshapes'
 import type { CalAllDay } from '@/lib/calendar/shapes'
 import type { CalAppt, CalKind, CalStaff } from '@/types/calendar'
 import { PhoneWeekList, type PhoneWeekListProps } from './PhoneWeekList'
@@ -237,5 +238,75 @@ describe('AC-7616.1: 폰 주 보기의 반차 휴무 칩', () => {
     expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' })).toBeTruthy()
     fireEvent.click(am)
     expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-16')
+  })
+})
+
+// ---------- google-link REQ-8532: 구글과 이은 병원(prop google: RowsGoogle) — 지금 폰 목록 모양 그대로, 색·표시만 예약표와 같게 ----------
+
+const CTX: RowsGoogle['ctx'] = {
+  look: { cancel: 'tomato', change: 'graphite', offColor: 'grape' },
+  kinds: KINDS.map(({ id, color }) => ({ id, color })),
+  staff: STAFF.map(({ id, color }) => ({ id, color })),
+}
+const linked = (over: Partial<RowsGoogle> = {}): RowsGoogle => ({ ctx: CTX, fixes: [], waiting: new Set<string>(), ...over })
+const G_APPTS: CalAppt[] = [
+  ...APPTS,
+  appt({ id: 'g-orange', start: 900, chart: '27750', name: '정모○', colorFrom: 'google', gColor: 'tangerine', gEventId: 'ev-1' }),
+  appt({ id: 'g-moved', start: 990, chart: '39070', name: '백모○', colorFrom: 'google', gColor: 'graphite', gMoved: true, gEventId: 'ev-3' }),
+  appt({ id: 'g-none', start: 1020, chart: '73450', name: '한예○', staffId: null, staffName: null, staffMark: null, colorFrom: 'google', gColor: 'banana' }),
+]
+const bar = (name: RegExp) => row(name).querySelector('[data-bar]')!.className
+
+describe('AC-8532.2: 폰 목록 — 색 띠는 구글 색 차례, 변경 꼬리표·주황 시계', () => {
+  it('AC-8532.2: 색 띠는 apptPaint 차례(취소 색·변경 색·구글 일정 색·설정 색)이다', () => {
+    renderList({ appts: G_APPTS, google: linked() })
+    expect(bar(/^18842 문○○/)).toContain('bg-cal-tomato')
+    expect(bar(/^10231 김○○/)).toContain('bg-cal-graphite')
+    expect(bar(/^27750 정모○/)).toContain('bg-cal-tangerine')
+    expect(bar(/^39070 백모○/)).toContain('bg-cal-graphite')
+    expect(bar(/^30117 송○○/)).toContain('bg-cal-flamingo')
+  })
+
+  it("AC-8532.2: 구글에서 변경 색이 된 예약(gMoved)도 '변경' 꼬리표이고, 못 보낸 예약은 주황 시계와 이름표 '· 구글에 아직 못 보냄'이다", () => {
+    renderList({ appts: G_APPTS, google: linked({ waiting: new Set(['a-noshow']) }) })
+    expect(within(row(/^39070 백모○/)).getByText('변경')).toBeTruthy()
+    const wait = row(/^23580 정○○/)
+    expect(within(wait).getByTitle('구글에 아직 못 보냄')).toBeTruthy()
+    expect(wait.getAttribute('aria-label')).toBe('23580 정○○ 자보도수 (나) 09:00–09:30 30분 · 안 옴 · 구글에 아직 못 보냄')
+    expect(within(row(/^10231 김○○/)).queryByTitle('구글에 아직 못 보냄')).toBeNull()
+  })
+
+  it('AC-8532.2: RowsGoogle이 없으면 지금 그대로(설정 색 띠, gMoved만으로는 꼬리표 없음)', () => {
+    renderList({ appts: G_APPTS })
+    expect(bar(/^18842 문○○/)).toContain('bg-cal-grape')
+    expect(bar(/^27750 정모○/)).toContain('bg-cal-blueberry')
+    expect(within(row(/^39070 백모○/)).queryByText('변경')).toBeNull()
+  })
+
+  it('AC-8532.5: 시행자 없는 예약 줄은 (표시)·시행자 이름 없이 종류만 쓴다', () => {
+    renderList({ appts: G_APPTS, google: linked() })
+    expect(within(row(/^73450 한예○/)).getByText('도수')).toBeTruthy()
+    expect(bar(/^73450 한예○/)).toContain('bg-cal-banana')
+  })
+})
+
+describe('AC-8532.3: 폰 목록 종일 칩 — off 한 칩·반차 흰 칩·메모 캘린더 기본 색', () => {
+  it('AC-8532.3: 그날 하루 종일 휴무는 한 칩 `윤○○, 김예○ off`(포도), 반차는 흰 칩, 메모는 캘린더 기본 색 칩이다', () => {
+    const allday: CalAllDay[] = [
+      { id: 'o-1', day: TODAY, type: 'off', memo: null, staffId: 'na', staffName: '윤○○' },
+      { id: 'o-2', day: TODAY, type: 'off', memo: null, staffId: 'm-desk1', staffName: '김예○' },
+      { id: 'h-1', day: TODAY, type: 'off', memo: null, staffId: 'da', staffName: '조○○', part: 'am' },
+      { id: 'm-1', day: TODAY, type: 'memo', memo: '주간 회의 13:00', staffId: null, staffName: null },
+    ]
+    const { props } = renderList({ allday, google: linked() })
+    const off = screen.getByRole('button', { name: '윤○○, 김예○ off' })
+    expect(off.className).toContain('bg-cal-grape')
+    expect(off.getAttribute('title')).toBe('윤○○, 김예○ off · 구글 하루 종일 줄과 같아요')
+    const half = screen.getByRole('button', { name: '(다) 조○○ 오전 반차' })
+    expect(half.className).toContain('bg-surface')
+    expect(half.getAttribute('title')).toBe('(다) 조○○ 오전 반차 · 웹앱에만 보여요(반차는 구글 off 줄에 넣지 않아요)')
+    expect(screen.getByRole('button', { name: '주간 회의 13:00' }).className).toContain('bg-cal-default')
+    fireEvent.click(off)
+    expect(props.onAllDay).toHaveBeenLastCalledWith(TODAY)
   })
 })

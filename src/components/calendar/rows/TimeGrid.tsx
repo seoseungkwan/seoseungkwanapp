@@ -3,20 +3,27 @@
 import { useState, type MouseEvent } from 'react'
 import { ds } from '@/components/ui/classes'
 import { hoursOn, isClosedOn } from '@/lib/calendar/clinic'
+import { apptPaint } from '@/lib/calendar/gpaint'
+import type { RowsGoogle } from '@/lib/calendar/gshapes'
 import { layoutDay } from '@/lib/calendar/layout'
 import type { BitGhost } from '@/lib/calendar/shapes'
 import type { CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
 import { apptColor } from '../colors'
 import { ApptBlock, BLOCK_GUTTER_PX } from './ApptBlock'
+import { FixBlock } from './FixBlock'
 import { GHOST_LEN, GhostBlock } from './GhostBlock'
-import { allDayChipClass, allDayText, dateNum, dayLabel, hm, SLOT_PX, weekdayName } from './parts'
+import { dateNum, dayChips, dayLabel, FIX_LOOK, fixLabel, FixText, Hatch, hm, SLOT_PX, weekdayName } from './parts'
 
 // 예약표 일·주 시간 표(spec clinic-calendar AC-5905.1·AC-5905.7·AC-5905.8·AC-5906.2, design.md '화면' rows/TimeGrid, 시안 ?s=week·day·empty).
 // 울타리 안 부품(components/calendar/rows): 예약·종일 줄·비트 예약 칸을 props로만 받아 그리고, 누름은 콜백으로만 넘긴다. 읽기·저장 없음.
 // 10분 = 20px, 보이는 시간은 설정(openHour~closeHour) — 그 밖 예약은 칸이 없다(날짜 머리 수·월 수·요약에는 든다).
 // 같은 날 칸은 layoutDay로 옆으로 나란히(비트 예약·취소 칸 포함). 날이 하나면 일 보기(칸마다 시간·길이·메모).
 // 병원 정보(spec clinic-profile AC-6603.2·AC-6603.3): 받은 days(요일 진료시간)로 그 요일 진료시간 밖·점심을 회색 띠(점심 띠에 '점심'),
-// 받은 closedDates(휴진일)·휴진 요일은 머리에 '휴진' + 열 전체 회색. 띠는 누름을 막지 않는다(예약은 지금처럼 넣는다). days가 없으면 띠가 없다
+// 받은 closedDates(휴진일)·휴진 요일은 머리에 '휴진' + 열 전체 회색. 띠는 누름을 막지 않는다(예약은 지금처럼 넣는다). days가 없으면 띠가 없다.
+// 구글과 이은 병원(google: RowsGoogle, spec google-link REQ-8532, 시안 ?s=week·fix·err): 칸 색은 lib/calendar/gpaint apptPaint,
+// 못 보낸 예약(waiting)은 주황 시계, 고쳐야 할 구글 일정(fixes)은 노란 빗금 칸(시간 있음 → 예약 칸과 나란히, 하루 종일 → 종일 줄 칩, 누르면 onFix),
+// 종일 줄은 하루 종일 휴무 한 칩·반차 흰 칩·메모 캘린더 기본 색(parts dayChips). google이 없으면 지금 모양 그대로.
+// 시작은 5분 단위(09:15)도 그 분 자리에 놓고, 시간 표 칸·누름·마우스 올림은 10분 그대로다(AC-8532.4)
 
 export type GridDraft = { day: string; start: number; len: number; editing: boolean; warn: boolean }
 
@@ -31,6 +38,9 @@ export type TimeGridProps = {
   today: string // 한국 날짜
   nowMin: number | null // 한국 시각(0시부터 분). null이면 지금 선 없음
   draft?: GridDraft | null // 더하기·고치기 판이 열려 있을 때 그 자리 표시
+  google?: RowsGoogle | null // 구글과 이은 병원만(TASK-21이 넘김). 없으면 지금 모양
+  offWord?: string // 휴무 줄 끝 글(구글 연결 설정 look.offWord, 기본 'off'). google이 있을 때만 쓴다
+  onFix?: (id: string) => void // 고쳐야 할 칸·칩 누름 → 고쳐야 할 판
   onSlot: (day: string, start: number) => void
   onAppt: (id: string) => void
   onGhost: (key: string) => void
@@ -59,6 +69,9 @@ export function TimeGrid({
   today,
   nowMin,
   draft = null,
+  google = null,
+  offWord = 'off',
+  onFix,
   onSlot,
   onAppt,
   onGhost,
@@ -86,6 +99,9 @@ export function TimeGrid({
     return open + index * 10
   }
   const onBlock = (e: MouseEvent<HTMLElement>) => (e.target as Element).closest('[data-block]') !== null
+  const fixes = google?.fixes ?? []
+  const openFix = (id: string) => onFix?.(id)
+  const paintOf = (a: CalAppt) => (google ? apptPaint(a, google.ctx).key : apptColor(a, settings))
 
   const hours: number[] = []
   for (let m = open; m < close; m += 60) hours.push(m)
@@ -109,9 +125,11 @@ export function TimeGrid({
     // 같은 시각·같은 길이면 시행자 차례(시안 lay), 비트 예약 칸은 뒤
     const list = appts.filter((a) => a.day === day).sort((a, b) => staffOrder(a.staffId) - staffOrder(b.staffId))
     const dayGhosts = ghosts.filter((g) => g.day === day)
+    const dayFixes = fixes.filter((f) => f.day === day && !f.allDay)
     const places = layoutDay([
       ...list.map((a) => ({ key: `a:${a.id}`, start: a.start, len: a.len })),
       ...dayGhosts.map((g) => ({ key: `g:${g.key}`, start: g.start, len: GHOST_LEN })),
+      ...dayFixes.map((f) => ({ key: `f:${f.id}`, start: f.start, len: f.len })),
     ])
     // 보이는 시간과 겹치는 부분만: 위 = 시작 자리, 높이 = 길이 − 1px(14px 이상)
     const frame = (start: number, len: number) => {
@@ -165,13 +183,31 @@ export function TimeGrid({
           const f = frame(a.start, a.len)
           const place = places.get(`a:${a.id}`)
           if (!f || !place) return null
-          return <ApptBlock key={a.id} appt={a} place={place} top={f.top} height={f.height} mode={mode} color={apptColor(a, settings)} onOpen={onAppt} />
+          return (
+            <ApptBlock
+              key={a.id}
+              appt={a}
+              place={place}
+              top={f.top}
+              height={f.height}
+              mode={mode}
+              color={paintOf(a)}
+              google={google ? { waiting: google.waiting.has(a.id) } : null}
+              onOpen={onAppt}
+            />
+          )
         })}
         {dayGhosts.map((g) => {
           const f = frame(g.start, GHOST_LEN)
           const place = places.get(`g:${g.key}`)
           if (!f || !place) return null
           return <GhostBlock key={g.key} ghost={g} place={place} top={f.top} height={f.height} mode={mode} onOpen={onGhost} />
+        })}
+        {dayFixes.map((fix) => {
+          const f = frame(fix.start, fix.len)
+          const place = places.get(`f:${fix.id}`)
+          if (!f || !place) return null
+          return <FixBlock key={fix.id} fix={fix} place={place} top={f.top} height={f.height} mode={mode} onOpen={openFix} />
         })}
         {isToday && nowMin !== null && nowMin >= open && nowMin <= close ? (
           <div title={`지금 ${hm(nowMin)}`} className="pointer-events-none absolute -left-px right-0 z-6 h-0 border-t-2 border-negative" style={{ top: yOf(nowMin) }}>
@@ -263,7 +299,12 @@ export function TimeGrid({
       <div className="flex border-b border-line-strong">
         <div className={`${GUTTER} pt-1.5 pr-2 text-right text-caption text-muted`}>종일</div>
         {days.map((day) => {
-          const items = allday.filter((it) => it.day === day)
+          const chips = dayChips(
+            allday.filter((it) => it.day === day),
+            settings.staff,
+            google ? { offColor: google.ctx.look.offColor, offWord } : null,
+          )
+          const dayFixes = fixes.filter((f) => f.day === day && f.allDay)
           return (
             <div
               key={day}
@@ -272,20 +313,40 @@ export function TimeGrid({
               onClick={() => onAllDay(day)}
               className="group flex min-h-8.5 min-w-0 flex-1 cursor-pointer flex-col gap-0.5 border-l border-line p-1 hover:bg-canvas"
             >
-              {items.map((it) => (
+              {chips.map((chip) => (
                 <button
-                  key={it.id}
+                  key={chip.key}
                   type="button"
+                  title={chip.title}
                   onClick={(e) => {
                     e.stopPropagation()
                     onAllDay(day)
                   }}
-                  className={`flex h-5.5 max-w-full min-w-0 cursor-pointer items-center rounded-control px-1.5 text-left text-caption font-semibold ${allDayChipClass(it, settings.staff)} ${ds.focusRing}`}
+                  className={`flex h-5.5 max-w-full min-w-0 cursor-pointer items-center rounded-control px-1.5 text-left text-caption font-semibold ${chip.cls} ${ds.focusRing}`}
                 >
-                  <span className="truncate">{allDayText(it, settings.staff)}</span>
+                  <span className="truncate">{chip.text}</span>
                 </button>
               ))}
-              {items.length === 0 ? (
+              {dayFixes.map((fix) => (
+                <button
+                  key={fix.id}
+                  type="button"
+                  data-block="fix"
+                  aria-label={fixLabel(fix)}
+                  title={fixLabel(fix)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openFix(fix.id)
+                  }}
+                  className={`relative flex h-5.5 max-w-full min-w-0 cursor-pointer items-center overflow-clip rounded-control px-1.5 text-left text-caption ${FIX_LOOK} ${ds.focusRing}`}
+                >
+                  <Hatch kind="fix" className="text-warning opacity-10" />
+                  <span className="relative truncate">
+                    <FixText fix={fix} />
+                  </span>
+                </button>
+              ))}
+              {chips.length === 0 && dayFixes.length === 0 ? (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -315,10 +376,10 @@ export function TimeGrid({
           ))}
         </div>
         {days.map(column)}
-        {mode === 'week' && appts.length === 0 ? (
+        {mode === 'week' && appts.length === 0 && !fixes.some((f) => days.includes(f.day)) ? (
           <div className={`absolute inset-x-4 top-37.5 z-7 mx-auto grid max-w-105 justify-items-start gap-2 p-5 ${ds.layer}`}>
             <h2 className="text-subtitle font-semibold text-ink">이번 주 예약이 아직 없어요</h2>
-            <p className="text-small text-ink-2">빈 칸을 누르면 그 시간으로 예약을 넣어요. 구글 캘린더에 있던 예약은 옮겨 오지 않아요.</p>
+            <p className="text-small text-ink-2">빈 칸을 누르면 그 시간으로 예약을 넣어요.</p>
             {onAdd ? (
               <button type="button" onClick={onAdd} className={`mt-1 ${ds.button.primary}`}>
                 <PlusIcon />
