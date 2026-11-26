@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ErrorCode } from '@/types/errors'
+import type { UisRefuseCode } from '@/types/uisarang'
 import { STAFF_ERROR_CODES } from '@/types/staff'
 import { ERRORS, errorInfo, isErrorCode } from './errors'
 
@@ -178,6 +179,21 @@ const ALL_CODES = [
   'E-GSHEET-NOTEMPLATE',
   'E-GSHEET-OLD',
   'E-GSHEET-FAILED',
+  'E-UIS-KIND',
+  'E-UIS-PERIOD',
+  'E-UIS-ONE-DAY',
+  'E-UIS-DATE',
+  'E-UIS-FUTURE',
+  'E-UIS-FILTER',
+  'E-UIS-COLUMN',
+  'E-UIS-ROW',
+  'E-UIS-TOTAL',
+  'E-UIS-TWICE',
+  'E-UIS-TOO-MANY',
+  'E-UIS-TOO-BIG',
+  'E-UIS-UNREADABLE',
+  'E-UIS-SAVE-FAILED',
+  'E-UIS-READ-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1806,5 +1822,123 @@ describe('AC-8515.5 수납 구글 오류 번호 스물둘', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(GSHEET_FIX)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 의사랑 엑셀 올리기 오류 번호(specs/uisarang-upload requirements.md '오류 번호' 표, TASK-2). 글은 그 표 글자 그대로다(끝 마침표 없음 — E-PARSE- 글과 같게)
+const UIS = {
+  'E-UIS-KIND': {
+    what: '의사랑 통계 엑셀이 아니라 받지 않았어요',
+    fix: '수입통계 › 일일수입통계, 진료통계 › 기간별처방통계, 인원통계 › 내원일별환자현황에서 저장한 엑셀인지 확인해 주세요',
+  },
+  'E-UIS-PERIOD': {
+    what: '조회일이 하루·한 주·한 달이 아니라 받지 않았어요',
+    fix: '조회일을 하루치, 한 주치(월요일~일요일), 한 달치(1일~말일) 가운데 하나로 바꿔 다시 엑셀로 저장해 주세요',
+  },
+  'E-UIS-ONE-DAY': {
+    what: '이 엑셀은 하루치만 받아요',
+    fix: '일일수입통계와 내원일별환자현황 아래쪽 표는 조회일을 하루로 해서 다시 저장해 주세요',
+  },
+  'E-UIS-DATE': {
+    what: '조회일을 읽지 못했거나 2020년보다 앞이에요',
+    fix: '엑셀 위쪽의 [조 회 일] 줄을 지우지 말고, 2020년 1월 1일부터의 날로 다시 저장해 주세요',
+  },
+  'E-UIS-FUTURE': {
+    what: '조회일에 오늘보다 뒤의 날이 있어요',
+    fix: '오늘까지만 들어가게 조회일을 바꿔 다시 저장해 주세요',
+  },
+  'E-UIS-FILTER': {
+    what: "조건이 '전체'가 아닌 엑셀이에요",
+    fix: "외/입 구분 같은 조건을 모두 '전체'로 두고 다시 저장해 주세요",
+  },
+  'E-UIS-COLUMN': {
+    what: '꼭 있어야 하는 칸이 엑셀에 없어요',
+    fix: '의사랑에서 칸을 숨기지 말고 다시 저장해 주세요',
+  },
+  'E-UIS-ROW': {
+    what: '읽지 못한 줄이 있어 이 엑셀은 받지 않았어요',
+    fix: '엑셀을 고치지 말고 의사랑에서 다시 저장해 주세요',
+  },
+  'E-UIS-TOTAL': {
+    what: '합계 줄이 없거나 줄의 합과 맞지 않아요',
+    fix: '엑셀을 고치지 말고 의사랑에서 다시 저장해 주세요',
+  },
+  'E-UIS-TWICE': {
+    what: '같은 날 같은 종류 엑셀이 둘 들어왔는데 숫자가 달라요',
+    fix: '맞는 엑셀 하나만 다시 넣어 주세요',
+  },
+  'E-UIS-TOO-MANY': {
+    what: '한 번에 넣은 파일이 100개를 넘어요',
+    fix: '100개씩 나눠 넣어 주세요',
+  },
+  'E-UIS-TOO-BIG': {
+    what: '파일이 너무 커요(50MB 또는 100만 줄 넘음)',
+    fix: '조회일을 줄여 다시 저장해 주세요',
+  },
+  'E-UIS-UNREADABLE': {
+    what: '파일을 읽지 못했어요',
+    fix: '암호가 걸렸거나 깨진 파일인지 확인하고 의사랑에서 다시 저장해 주세요',
+  },
+  'E-UIS-SAVE-FAILED': {
+    what: '숫자를 저장하지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요. 그래도 안 되면 잠시 뒤 파일을 다시 넣어 주세요',
+  },
+  'E-UIS-READ-FAILED': {
+    what: '저장된 의사랑 숫자를 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 화면을 새로 고쳐 주세요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+// Worker가 파일마다 주는 받지 않음 번호(design.md §5 UisRefuseCode)는 ErrorCode의 부분 집합이다 — satisfies가 tsc에서 본다
+const UIS_REFUSE = [
+  'E-UIS-KIND',
+  'E-UIS-PERIOD',
+  'E-UIS-ONE-DAY',
+  'E-UIS-DATE',
+  'E-UIS-FUTURE',
+  'E-UIS-FILTER',
+  'E-UIS-COLUMN',
+  'E-UIS-ROW',
+  'E-UIS-TOTAL',
+  'E-UIS-TWICE',
+  'E-UIS-TOO-BIG',
+  'E-UIS-UNREADABLE',
+] as const satisfies readonly ErrorCode[]
+
+describe('AC-8814.1 의사랑 엑셀 오류 번호 열다섯', () => {
+  it.each(Object.keys(UIS) as Array<keyof typeof UIS>)(
+    "AC-8814.1: %s는 번호가 있고 무엇이·어떻게 고치나가 requirements.md '오류 번호' 표 글자 그대로다(끝 마침표 없음)",
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(UIS[code])
+      expect(errorInfo(code).what.endsWith('.'), code).toBe(false)
+      expect(errorInfo(code).fix.endsWith('.'), code).toBe(false)
+    },
+  )
+
+  it('AC-8814.1: 이 명세가 더하는 E-UIS- 번호는 표의 열다섯뿐이고, 그 밖 번호 수는 그대로다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-UIS-')).sort()).toEqual(Object.keys(UIS).sort())
+    expect(Object.keys(UIS)).toHaveLength(15)
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  it('AC-8814.1: 다른 번호의 글은 그대로다 — 의사랑 읽기가 함께 쓰는 E-ANALYZE-TIMEOUT·E-ANALYZE-FAILED와 비트 파일 길 E-PARSE-TOO-BIG', () => {
+    expect(errorInfo('E-ANALYZE-TIMEOUT')).toEqual({ what: '계산이 너무 오래 걸려 멈췄어요', fix: '다시 시도하거나 기간을 줄여 보세요' })
+    expect(errorInfo('E-ANALYZE-FAILED')).toEqual({ what: '계산하다가 문제가 생겼어요', fix: '다시 시도해 보세요. 계속되면 오류 번호와 함께 문의해 주세요' })
+    expect(errorInfo('E-PARSE-TOO-BIG')).toEqual({ what: '파일이 너무 커요(50MB 또는 100만 줄 넘음)', fix: '기간을 줄여서 다시 뽑아 주세요' })
+  })
+
+  it('AC-8814.1: Worker의 받지 않음 번호(UisRefuseCode) 열둘은 모두 E-UIS- 오류 번호이고 문구가 있다', () => {
+    expectTypeOf<(typeof UIS_REFUSE)[number]>().toEqualTypeOf<UisRefuseCode>()
+    for (const code of UIS_REFUSE) expect(Object.keys(UIS), code).toContain(code)
+    expect(UIS_REFUSE).toHaveLength(12)
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-8814.1: 열다섯 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(UIS)) expect(union).toContain(`'${code}'`)
   })
 })

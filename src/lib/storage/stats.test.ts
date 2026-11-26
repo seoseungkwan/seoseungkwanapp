@@ -1366,3 +1366,90 @@ describe('AC-8024.6 saveStats(입력, { desk: true })', () => {
     ])
   })
 })
+
+// 의사랑 엑셀 출처(specs/uisarang-upload design.md §9, AC-8808.7): 통계 출처는 셋(bit·file·uisarang)이다.
+// 의사랑은 날 줄·덮은 기간만 쓰고 달 줄(stats_months)·세 칸 합계는 쓰지 않는다. 비트·파일 길은 위 시험이 그대로 지나 증명한다
+describe('AC-8808.7 통계 출처 uisarang', () => {
+  const RANGE = { from: '2026-09-01', to: '2026-09-30' }
+  const uisInput = (over: Record<string, unknown> = {}) =>
+    saveInput({ months: [], days: [dayPayload('2026-09-29'), dayPayload('2026-09-30')], covered: { from: '2026-09-28', to: '2026-09-30' }, source: 'uisarang', ...over })
+
+  it("AC-8808.7: source 'uisarang' · 달 줄 없음이면 날 줄·덮은 기간을 출처 uisarang으로 보내고 달 표에는 보내지 않는다", async () => {
+    const { client, calls } = fakeClient()
+    expect(await saveStats(uisInput(), { client })).toEqual({ saved: 2 })
+    expect(calls.map((c) => [c.table, c.op])).toEqual([
+      ['stats_days', 'upsert'],
+      ['stats_coverage', 'insert'],
+    ])
+    expect(writesTo(calls, 'stats_days')[0].rows.map((row) => [row.day, row.source])).toEqual([
+      ['2026-09-29', 'uisarang'],
+      ['2026-09-30', 'uisarang'],
+    ])
+    expect(writesTo(calls, 'stats_coverage')[0].rows).toEqual([{ from_day: '2026-09-28', to_day: '2026-09-30', source: 'uisarang' }])
+  })
+
+  it("AC-8808.7: sections가 null·없음이면 그대로 보낸다", async () => {
+    const { client } = fakeClient()
+    await expect(saveStats(uisInput({ sections: null }), { client })).resolves.toEqual({ saved: 2 })
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['달 줄이 함께 옴', { months: [monthPayload('2026-09')] }],
+    ['덜 덮인 달 줄이 함께 옴', { months: [monthPayload('2026-09', { partial: true })] }],
+    ['세 칸 합계가 함께 옴', { sections: [] }],
+  ])("AC-8808.7: source 'uisarang'인데 %s → 아무것도 보내지 않고 E-STATS-SAVE-FAILED", async (_name, over) => {
+    const { client, calls } = fakeClient()
+    const error = await failure(saveStats(uisInput(over), { client }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(calls).toEqual([])
+  })
+
+  it("AC-8808.7: 데스크 길은 의사랑 출처를 받지 않는다(비트만)", async () => {
+    const rpc = vi.fn()
+    const error = await failure(saveStats(uisInput(), { client: { from: vi.fn(), rpc } as unknown as SupabaseLike, desk: true }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it("AC-8808.7: readDays는 출처 uisarang 줄을 빼지 않고 latest.source가 'uisarang'일 수 있으며 fromFile은 거짓이다", async () => {
+    const stored = {
+      stats_days: [
+        storedDay('2026-09-01', { source: 'bit', updated_at: '2026-10-01T01:00:00+00:00' }),
+        storedDay('2026-09-02', { source: 'uisarang', updated_at: '2026-10-05T01:00:00+00:00' }),
+      ],
+    }
+    const { client } = fakeClient({ stored })
+    const { rows, dropped, latest, fromFile } = await readDays(RANGE, { client })
+    expect(rows.map((r) => r.day)).toEqual(['2026-09-01', '2026-09-02'])
+    expect(dropped).toBe(0)
+    expect(latest).toEqual({ at: '2026-10-05T01:00:00+00:00', source: 'uisarang' })
+    expect(fromFile).toBe(false)
+  })
+
+  it("AC-8808.7: fromFile은 'file' 줄이 있을 때만 참이다(uisarang과 섞여도)", async () => {
+    const stored = { stats_days: [storedDay('2026-09-01', { source: 'uisarang' }), storedDay('2026-09-02', { source: 'file' })] }
+    const { client } = fakeClient({ stored })
+    expect((await readDays(RANGE, { client })).fromFile).toBe(true)
+  })
+
+  it('AC-8808.7: readCoverage는 출처 uisarang 덮은 기간도 합쳐 준다', async () => {
+    const stored = {
+      stats_coverage: [
+        { from_day: '2026-09-01', to_day: '2026-09-07', source: 'uisarang', created_at: AT },
+        { from_day: '2026-09-08', to_day: '2026-09-10', source: 'bit', created_at: AT },
+      ],
+    }
+    const { client } = fakeClient({ stored })
+    expect(await readCoverage(RANGE, { client })).toEqual([{ from: '2026-09-01', to: '2026-09-10' }])
+  })
+
+  it("AC-8808.7: 출처 이름 표(통계 탭 SOURCE_NAME)에 uisarang: '의사랑 엑셀'이 있다", () => {
+    const screen = readFileSync(fileURLToPath(new URL('../../components/stats/StatsScreen.tsx', import.meta.url)), 'utf8')
+    expect(screen).toMatch(/const SOURCE_NAME = \{[^}]*uisarang: '의사랑 엑셀'[^}]*\} as const/)
+  })
+
+  it("AC-8808.7: 표 줄 모양 출처 칸(types/db.ts StatsSourceColumn)도 셋이다", () => {
+    const db = readFileSync(fileURLToPath(new URL('../../types/db.ts', import.meta.url)), 'utf8')
+    expect(db).toContain("export type StatsSourceColumn = 'bit' | 'file' | 'uisarang'")
+  })
+})

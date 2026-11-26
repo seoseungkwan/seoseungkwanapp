@@ -429,3 +429,21 @@ export async function loadSignupEmr(client: Pick<SupabaseClient, 'rpc'>): Promis
     return null
   }
 }
+
+/**
+ * 관리자가 다른 의원을 보는 중 그 의원의 쓰는 EMR(specs/uisarang-upload design.md §9·§10-0, AC-8808.8). my_signup_emr()는 부른 사람 자기 병원 EMR이라
+ * 보는 중에는 쓸 수 없다 → 관리자 정의자 함수 admin_uis_rows('clinic_emr', [그 의원], 오늘, 오늘)의 첫 줄 row.emr(병원 정보 EMR, 줄이 없으면 가입 때 EMR).
+ * 넷 중 하나가 아니거나 오류(함수가 아직 없음·관리자 아님 포함)·던짐이면 null — 부르는 쪽은 'bit'다
+ */
+export async function readViewedEmr(client: Pick<SupabaseClient, 'rpc'>, hospitalId: string, today: string): Promise<EmrKind | null> {
+  try {
+    const { data, error } = await client.rpc('admin_uis_rows', { p_kind: 'clinic_emr', p_hospital_ids: [hospitalId], p_from: today, p_to: today })
+    if (error || !Array.isArray(data)) return null
+    const first: unknown = data[0]
+    const row = isRecord(first) ? first.row : null
+    const emr = isRecord(row) ? row.emr : null
+    return isEmrKind(emr) ? emr : null
+  } catch {
+    return null
+  }
+}

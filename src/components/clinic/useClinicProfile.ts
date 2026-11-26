@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useViewing } from '@/components/shell/viewing'
-import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr, type Signup } from '@/lib/storage/clinicProfile'
+import { todayInKorea } from '@/lib/analytics/dates'
+import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr, readViewedEmr, type Signup } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { DEFAULT_EMR, type ClinicProfile, type EmrKind } from '@/types/clinicProfile'
 
@@ -12,7 +13,9 @@ import { DEFAULT_EMR, type ClinicProfile, type EmrKind } from '@/types/clinicPro
 // 로고는 { logo: true }일 때만 받는다(1MB까지라 필요한 화면만). 그때는 로고까지 받은 뒤에 ready다(받는 중에는 인쇄·그림 파일을 막는다, AC-6604.2)
 // 병원 정보 줄이 없을 때(ready, saved 거짓)만 쓰는 EMR은 가입 신청 때 고른 EMR이다(spec emr-signup AC-7302.3). 줄이 있으면 줄 값, 읽는 중·실패·가입 EMR 없음은 'bit'
 // 관리자가 다른 의원을 보는 중(useViewing, admin-view AC-8006.6)이면 이름은 늘 보는 의원 이름이다 — 병원 정보 줄은 RLS가 보는 의원 것을 주지만
-// 가입 줄(loadSignup)은 내 것이라, 가입 이름·전화로 돌아가지 않는다(가입 이름 = 보는 의원 이름, 가입 전화 없음). 읽기는 그대로다
+// 가입 줄(loadSignup)은 내 것이라, 가입 이름·전화로 돌아가지 않는다(가입 이름 = 보는 의원 이름, 가입 전화 없음). 읽기는 그대로다.
+// 보는 중이면 병원 정보 줄이 없을 때의 EMR도 내 가입 EMR(my_signup_emr — 부른 관리자 자기 병원)이 아니라 보는 의원 EMR(readViewedEmr)이고, 못 읽으면 'bit'다
+// (specs/uisarang-upload AC-8808.8 · 대시보드·통계 탭·AI 리포트 화면이 같이 쓴다)
 
 export type ClinicProfileState = 'loading' | 'ready' | 'failed'
 
@@ -39,14 +42,14 @@ type Held = { key: string; value: Read }
 const FAILED: Read = { profile: 'failed', signup: null, signupEmr: null, logo: null }
 
 // 클라이언트를 만들다 던져도(설정 없는 환경) 거절로 받는다. 로고 받기가 던지면 로고만 없다.
-// 가입 EMR은 줄이 있어도 함께 부른다(줄을 기다렸다 부르면 줄 없는 병원의 화면이 늦어진다)
-const read = (withLogo: boolean): Promise<Read> =>
+// 가입 EMR은 줄이 있어도 함께 부른다(줄을 기다렸다 부르면 줄 없는 병원의 화면이 늦어진다). 보는 중이면 그 자리에 보는 의원 EMR을 부른다
+const read = (withLogo: boolean, viewedId: string | null): Promise<Read> =>
   Promise.resolve().then(async () => {
     const client = supabaseBrowser()
     const [profile, signup, signupEmr] = await Promise.all([
       loadClinicProfile(client),
       loadSignup(client).catch(() => null),
-      loadSignupEmr(client).catch(() => null),
+      (viewedId !== null ? readViewedEmr(client, viewedId, todayInKorea()) : loadSignupEmr(client)).catch(() => null),
     ])
     const path = profile !== null && profile !== 'failed' ? profile.logoPath : null
     const logo = withLogo && path !== null ? await downloadLogo(client, path).catch(() => null) : null
@@ -57,12 +60,14 @@ export function useClinicProfile(options: { logo?: boolean } = {}): ClinicProfil
   const withLogo = options.logo === true
   const viewing = useViewing()
   const [attempt, setAttempt] = useState(0)
-  const key = `${attempt}|${withLogo}`
+  // 보는 의원이 바뀌면 다시 읽는다(EMR이 그 의원 것이어야 한다)
+  const viewedId = viewing?.hospitalId ?? null
+  const key = `${attempt}|${withLogo}|${viewedId ?? ''}`
   const [held, setHeld] = useState<Held | null>(null)
 
   useEffect(() => {
     let current = true
-    read(withLogo).then(
+    read(withLogo, viewedId).then(
       (value) => {
         if (current) setHeld({ key, value })
       },
@@ -73,7 +78,7 @@ export function useClinicProfile(options: { logo?: boolean } = {}): ClinicProfil
     return () => {
       current = false
     }
-  }, [key, withLogo])
+  }, [key, withLogo, viewedId])
 
   const reload = useCallback(() => setAttempt((n) => n + 1), [])
   const shown = held !== null && held.key === key ? held.value : null
