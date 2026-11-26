@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "google-link",
-  "approved_at": "2026-11-26T08:13:12Z",
+  "approved_at": "2026-11-26T08:30:04Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "0d5b8fb46c972fb9fa23c50985f10c4deced7d037b9993844f60e94f3890d3ef",
+  "spec_sha256": "2a00e3b28acd2874ed590509849b60080580057660dd8c7510ae2a5f9b7cf4bd",
   "scope": [
     ".github/workflows/helper.yml",
     "CLAUDE.md",
@@ -50,6 +50,7 @@
     "plan.md",
     "scripts/google-code.mjs",
     "scripts/googleCode.test.ts",
+    "specs/google-link/known-failures.md",
     "specs/google-link/user-checks.md",
     "src/app/(app)/calendar/page.test.tsx",
     "src/app/(app)/calendar/page.tsx",
@@ -58,6 +59,7 @@
     "src/app/(app)/settings/page.test.tsx",
     "src/app/(app)/sunap/page.test.tsx",
     "src/app/(app)/sunap/page.tsx",
+    "src/app/(app)/tabFrame.test.tsx",
     "src/app/globals.css",
     "src/app/theme.test.ts",
     "src/app/titles.test.tsx",
