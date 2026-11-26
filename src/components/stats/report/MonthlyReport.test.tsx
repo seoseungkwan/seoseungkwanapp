@@ -109,6 +109,41 @@ describe('AC-6108.2: 보고서 종이', () => {
   })
 })
 
+// 의사랑 의원 칸 셋(uisarang-upload AC-8817.2~AC-8817.4, 시안 ?s=monthly): 새 모양 없이 지금 줄 목록(items) 그림 그대로다
+describe('AC-8817.2·AC-8817.3·AC-8817.4: 의사랑 칸 셋', () => {
+  const UIS_DATA: MonthlyReportData = {
+    ...DATA,
+    blocks: [
+      DATA.blocks[0]!,
+      { key: 'uisRx', title: '묶음별 처방량', items: ['도수 처방량 186 · 총액 13,020,000원', '주사 처방량 233.5 · 총액 2,101,500원'] },
+      { key: 'ages', title: '나이대 (내원)', items: ['40대 436건 · 16.4%', '아래쪽 표가 없는 진료한 날 1일은 빼고 셌어요.'] },
+      { key: 'uisCannot', title: '의사랑 엑셀로는 셀 수 없어요', items: ['몇 번까지 받나 · 환자마다 다시 온 날을 알 수 없어요.', '신환 1명당 매출 · 환자마다 낸 돈을 알 수 없어요.'] },
+    ],
+  }
+  const itemsOf = (title: string) => within(block(title)).getAllByRole('listitem').map((li) => li.textContent)
+
+  it('AC-8817.2·AC-8817.3·AC-8817.4: 칸 제목 h5가 받은 차례이고 줄은 받은 글자 그대로 목록이다(치료별 칸과 같은 모양)', () => {
+    draw(UIS_DATA)
+    expect(within(paper()).getAllByRole('heading', { level: 5 }).map((h) => h.textContent)).toEqual(['한 달 요약', '묶음별 처방량', '나이대 (내원)', '의사랑 엑셀로는 셀 수 없어요'])
+    expect(itemsOf('묶음별 처방량')).toEqual(['도수 처방량 186 · 총액 13,020,000원', '주사 처방량 233.5 · 총액 2,101,500원'])
+    expect(itemsOf('나이대 (내원)')).toEqual(['40대 436건 · 16.4%', '아래쪽 표가 없는 진료한 날 1일은 빼고 셌어요.'])
+    expect(itemsOf('의사랑 엑셀로는 셀 수 없어요')).toEqual(['몇 번까지 받나 · 환자마다 다시 온 날을 알 수 없어요.', '신환 1명당 매출 · 환자마다 낸 돈을 알 수 없어요.'])
+  })
+
+  it('AC-8817.2: 새 칸 셋의 목록 모양은 치료별 칸 목록과 같다(새 모양 없음)', () => {
+    draw({ ...UIS_DATA, blocks: [...UIS_DATA.blocks, DATA.blocks[4]!] })
+    const shape = block('치료별').querySelector('ul')!.className
+    for (const title of ['묶음별 처방량', '나이대 (내원)', '의사랑 엑셀로는 셀 수 없어요']) expect(block(title).querySelector('ul')!.className).toBe(shape)
+  })
+
+  it('AC-8817.2: 의사랑 칸도 종이 안(인쇄 표시)이고 상자 안 상자·폰 폭 클래스가 없다', () => {
+    draw(UIS_DATA)
+    expect(paper().contains(block('묶음별 처방량'))).toBe(true)
+    expect(nestedBoxes(paper())).toEqual([])
+    expect(paper().outerHTML).not.toMatch(/max-md:|max-sm:/)
+  })
+})
+
 describe('AC-6108.1: 인쇄', () => {
   const printCss = () => document.querySelector('style')?.textContent ?? ''
 

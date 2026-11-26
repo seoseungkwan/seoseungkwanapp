@@ -5,6 +5,8 @@ import { groupKey } from '@/components/stats/treatmentView'
 import type { WideDays } from '@/components/stats/useWideDays'
 import { formatClinicReport } from '@/lib/clinicReport/reportText'
 import { loadGoal } from '@/lib/storage/goals'
+import { readCoverage } from '@/lib/storage/stats'
+import { readUisPeriods } from '@/lib/storage/uisarang'
 import type { CalSlotRow } from '@/types/calendar'
 import type { ClinicReportMode, ClinicReportNumbers } from '@/types/clinicReport'
 import type { Goal } from '@/types/goals'
@@ -28,6 +30,9 @@ vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn() }))
 const revenueStore = vi.hoisted(() => ({ loadDays: vi.fn() }))
 vi.mock('@/lib/storage/revenue', () => ({ createRevenueStore: vi.fn(() => revenueStore) }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
+// 의사랑 의원 월간 보고서(uisarang-upload AC-8817.5)가 더 읽는 자리: 고른 달 처방·나이대 줄 · 덮은 날. 이 파일 안에서만 가짜다(나머지는 진짜 그대로)
+vi.mock('@/lib/storage/uisarang', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/storage/uisarang')>()), readUisPeriods: vi.fn() }))
+vi.mock('@/lib/storage/stats', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/storage/stats')>()), readCoverage: vi.fn() }))
 // 병원 정보 훅(clinic-profile AC-6606.1~3): 통계 틀(StatsSections)이 한 번 읽어 칸마다 넘긴다. 이 파일 안에서만 가짜다
 const clinic = vi.hoisted(() => ({ view: null as unknown }))
 vi.mock('@/components/clinic/useClinicProfile', () => ({ useClinicProfile: () => clinic.view }))
@@ -739,6 +744,124 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
     expect(titles).not.toContain('몇 번까지 받나')
     expect(titles).not.toContain('신환 1명당 매출')
     expect(container.textContent).not.toContain(CHART)
+  })
+})
+
+// ── 의사랑 의원 월간 보고서 (uisarang-upload REQ-8817, design.md §10-6, 시안 ?s=monthly) ─────────────
+// StatsSections가 넘기는 uis(AC-8817.5)를 받아 고른 달 처방·나이대·덮은 날을 함께 읽고 의사랑 칸 셋을 그린다. 숫자·코드는 이 파일에서 지어낸 가짜다
+describe('AC-8817.1~AC-8817.6: 의사랑 의원 월간 보고서 칸', () => {
+  const G_DOSU: StatsRxGroup = { id: 'g1', name: '도수', codes: ['MM01'], sortOrder: 0 }
+  // 의사랑 날 줄(묶음 숫자 없음). 10월 진료한 날 = 5일·6일, 9월 = 7일
+  const uisDay = (ymd: string, patients: number, newPatients: number): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: ymd,
+    partial: false,
+    totals: { patients, newPatients, returning: patients - newPatients, unknown: 0 },
+    rx: [],
+    groups: [],
+    revisit: { cohort: 0, within7: null, within14: null },
+  })
+  const DAYS = [uisDay('2026-09-07', 600, 50), uisDay('2026-10-05', 700, 40), uisDay('2026-10-06', 800, 60)]
+  const wide: WideDays = { state: 'ready', days: DAYS, retry: vi.fn() }
+  const OCT_RX = { kind: 'rx' as const, from: '2026-10-01', to: '2026-10-31', payload: { v: 1 as const, rows: [{ code: 'MM01', name: '가짜 도수', qty: 186, amount: 13_020_000 }], total: null }, updatedAt: '2026-11-01T00:00:00Z' }
+  const OCT_AGE = { kind: 'age' as const, from: '2026-10-05', to: '2026-10-05', payload: { v: 1 as const, patients: 3, newPatients: 0, bands: [0, 0, 0, 0, 3, 0, 0, 0, 0, 0], newBands: Array(10).fill(0) }, updatedAt: '2026-11-01T00:00:00Z' }
+  const COVERED = [{ from: '2025-11-13', to: '2026-11-12' }]
+  const salesDay = (date: string, total: number) => ({ date, total, roughTotal: null, dayCodes: false }) as unknown as SavedRevenueDay
+  const NA = '의사랑 엑셀로는 셀 수 없어요'
+
+  const el = (over: { revision?: number } = {}) => (
+    <StatsCard title="원장님 보고 문장">
+      <MonthlyReportSection today={TODAY} hospitalName={HOSPITAL} wide={wide} groups={[G_DOSU]} revision={over.revision ?? 0} uis />
+    </StatsCard>
+  )
+  const paperEl = () => document.querySelector('[data-print-report]') as HTMLElement
+  const titles = () => within(paperEl()).getAllByRole('heading', { level: 5 }).map((h) => h.textContent)
+  const itemsOf = (title: string) =>
+    within(within(paperEl()).getByRole('heading', { level: 5, name: title }).closest('section')!)
+      .getAllByRole('listitem')
+      .map((li) => li.textContent)
+  const uisCalls = () => vi.mocked(readUisPeriods).mock.calls.map(([kind, range]) => [kind, range.from, range.to])
+  const monthGroup = () => screen.getByRole('group', { name: '달' })
+
+  beforeEach(() => {
+    vi.mocked(loadGoal).mockReset()
+    vi.mocked(loadGoal).mockResolvedValue({ visits: 1000, newPatients: null, revenue: null })
+    revenueStore.loadDays.mockReset()
+    revenueStore.loadDays.mockResolvedValue([salesDay('2026-09-07', 50_000_000), salesDay('2026-10-05', 110_000_000)])
+    vi.mocked(readUisPeriods).mockReset()
+    vi.mocked(readUisPeriods).mockImplementation((async (kind: 'rx' | 'age') => (kind === 'rx' ? [OCT_RX] : [OCT_AGE])) as typeof readUisPeriods)
+    vi.mocked(readCoverage).mockReset()
+    vi.mocked(readCoverage).mockResolvedValue(COVERED)
+  })
+
+  it('AC-8817.1~AC-8817.4: 치료별 자리에 묶음별 처방량, 그다음 나이대 (내원), 맨 끝 셀 수 없어요 두 줄이고 몇 번까지 받나·신환 1명당 매출 칸은 없다', async () => {
+    render(el())
+    await waitFor(() => expect(titles()).toContain('묶음별 처방량'))
+    expect(titles()).toEqual(['한 달 요약', '목표', '달라진 것', '내원 흐름 (최근 12달)', '묶음별 처방량', '나이대 (내원)', NA])
+    expect(itemsOf('묶음별 처방량')).toEqual(['도수 처방량 186 · 총액 13,020,000원'])
+    expect(itemsOf('나이대 (내원)')).toEqual(['40대 3건 · 100.0%', '아래쪽 표가 없는 진료한 날 1일은 빼고 셌어요.'])
+    expect(itemsOf(NA)).toEqual(['몇 번까지 받나 · 환자마다 다시 온 날을 알 수 없어요.', '신환 1명당 매출 · 환자마다 낸 돈을 알 수 없어요.'])
+    for (const gone of ['치료별', '몇 번까지 받나', '신환 1명당 매출']) expect(titles()).not.toContain(gone)
+    // 한 달 요약은 지금 셈 그대로(날 숫자·매출)
+    const summary = within(within(paperEl()).getByRole('heading', { level: 5, name: '한 달 요약' }).closest('section')!)
+    expect(summary.getByText('1,500')).toBeTruthy()
+    await waitFor(() => expect(summary.getByText('110,000,000원')).toBeTruthy())
+    expect(paperEl().textContent).not.toContain('가짜 도수')
+  })
+
+  it('AC-8817.5: 고른 달 범위(10월 1일~31일)의 처방 줄·나이대 줄·덮은 날을 읽고, 다른 달을 고르면 그 달 범위로 다시 읽는다', async () => {
+    render(el())
+    await waitFor(() => expect(titles()).toContain('묶음별 처방량'))
+    expect(uisCalls()).toEqual([
+      ['rx', '2026-10-01', '2026-10-31'],
+      ['age', '2026-10-01', '2026-10-31'],
+    ])
+    expect(vi.mocked(readCoverage).mock.calls.map(([range]) => [range.from, range.to])).toEqual([['2026-10-01', '2026-10-31']])
+    fireEvent.click(within(monthGroup()).getByRole('button', { name: '9월' }))
+    await waitFor(() => expect(uisCalls()).toContainEqual(['rx', '2026-09-01', '2026-09-30']))
+    expect(uisCalls()).toContainEqual(['age', '2026-09-01', '2026-09-30'])
+    expect(vi.mocked(readCoverage)).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-09-30' })
+    // 9월은 처방 줄이 덮지 않는다 → 한 줄 안내
+    await waitFor(() => expect(itemsOf('묶음별 처방량')).toEqual(['처방 엑셀이 모자라요 · 1일 치가 없어요: 9월 7일']))
+  })
+
+  it('AC-8817.5: revision이 오르면 처방·나이대·덮은 날을 다시 읽는다', async () => {
+    const view = render(el())
+    await waitFor(() => expect(titles()).toContain('묶음별 처방량'))
+    view.rerender(el({ revision: 1 }))
+    await waitFor(() => expect(vi.mocked(readUisPeriods)).toHaveBeenCalledTimes(4))
+    expect(vi.mocked(readCoverage)).toHaveBeenCalledTimes(2)
+    expect(titles()).toContain('묶음별 처방량')
+  })
+
+  it('AC-8817.5: 읽지 못하면 종이 밖에 E-UIS-READ-FAILED 오류 카드 + [다시 읽기]이고, 종이는 그 두 칸만 빼고 그린다. [다시 읽기]는 다시 읽는다', async () => {
+    vi.mocked(readUisPeriods).mockRejectedValueOnce(new Error('가짜 실패'))
+    render(el())
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('E-UIS-READ-FAILED')
+    expect(paperEl().contains(alert)).toBe(false)
+    expect(titles()).not.toContain('묶음별 처방량')
+    expect(titles()).not.toContain('나이대 (내원)')
+    expect(titles().at(-1)).toBe(NA)
+    fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(titles()).toContain('묶음별 처방량'))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-8817.6: 비트 의원(uis 없음·거짓)은 의사랑 읽기를 하지 않고 의사랑 칸이 없다', async () => {
+    const bitEls = [
+      <MonthlyReportSection key="none" today={TODAY} hospitalName={HOSPITAL} wide={wide} groups={[G_DOSU]} />,
+      <MonthlyReportSection key="false" today={TODAY} hospitalName={HOSPITAL} wide={wide} groups={[G_DOSU]} uis={false} />,
+    ]
+    for (const section of bitEls) {
+      const view = render(<StatsCard title="원장님 보고 문장">{section}</StatsCard>)
+      await waitFor(() => expect(within(paperEl()).getByText('110,000,000원')).toBeTruthy())
+      for (const title of ['묶음별 처방량', '나이대 (내원)', NA]) expect(titles()).not.toContain(title)
+      view.unmount()
+    }
+    expect(readUisPeriods).not.toHaveBeenCalled()
+    expect(readCoverage).not.toHaveBeenCalled()
   })
 })
 

@@ -273,7 +273,8 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
 // 내원·신환·묶음 숫자는 넓은 하루 읽기(wide), 매출·목표는 고른 달마다 useReportReads가 읽는다(이번 달 목표는 요약 칸 목표 훅 값 goal).
 // 예약·빈자리는 예약 칸 값(calendar), 몇 번까지 받나·1명당 매출은 비트 칸 답(bit)이다. 셈은 reportData(순수), 그림은 MonthlyReport.
 // [인쇄]는 window.print — 인쇄에는 종이만 나오고(MonthlyReport의 인쇄 규칙) 달 고르기·[인쇄]·오류 카드는 종이 밖이라 나오지 않는다.
-// 넓은 읽기가 읽는 중이면 제목뿐, 실패면 오류 카드 + [다시 읽기], 저장된 달이 없으면 칸이 없다. 고른 달은 이 칸의 React 상태뿐이다
+// 넓은 읽기가 읽는 중이면 제목뿐, 실패면 오류 카드 + [다시 읽기], 저장된 달이 없으면 칸이 없다. 고른 달은 이 칸의 React 상태뿐이다.
+// 의사랑 의원(uisarang-upload REQ-8817, uis): useReportReads가 고른 달 처방·나이대 줄·덮은 날도 읽고, 못 읽으면 같은 자리에 E-UIS-READ-FAILED 카드 + [다시 읽기]다
 
 const MONTHLY_TITLE = '월간 보고서'
 const PRINT = '인쇄'
@@ -306,15 +307,16 @@ export type MonthlyReportProps = {
   bit?: BitSectionsShown // 비트 칸 답. 주지 않거나 null·'waiting'이면 몇 번까지 받나·1명당 매출 칸이 없다
   goal?: GoalRead<Goal> // 이번 달 목표(useStatsGoals). 주지 않으면 이번 달도 따로 읽는다
   revision?: number // 저장·[다시 읽기]·비트 매출 읽기가 끝날 때마다 는다(고른 달의 매출·목표를 다시 읽는다, AC-6108.5)
-  uis?: boolean // 의사랑 의원(uisarang-upload AC-8817.5). StatsSections가 넘기기만 하고 쓰는 것은 월간 보고서 의사랑 칸(TASK-9)이다. 주지 않으면 거짓
+  // 의사랑 의원(uisarang-upload AC-8817.5, StatsSections가 넘김): 고른 달 처방·나이대 줄·덮은 날도 읽어 묶음별 처방량·나이대·셀 수 없어요 칸을 그린다. 주지 않으면 거짓
+  uis?: boolean
 }
 
-export function MonthlyReportSection({ today, hospitalName, wide, groups, calendar, bit, goal, revision = 0 }: MonthlyReportProps) {
+export function MonthlyReportSection({ today, hospitalName, wide, groups, calendar, bit, goal, revision = 0, uis = false }: MonthlyReportProps) {
   const [picked, setPicked] = useState<string | null>(null)
   const months = wide.state === 'ready' ? reportMonths(wide.days, today) : []
   const month = picked !== null && months.includes(picked) ? picked : firstReportMonth(months, today)
   const given = month === monthOf(today) && goal !== undefined ? goal : null
-  const reads = useReportReads(month, today, { revision, withGoal: given === null })
+  const reads = useReportReads(month, today, { revision, withGoal: given === null, uis })
 
   if (wide.state === 'reading') return <Section title={MONTHLY_TITLE}>{null}</Section>
   if (wide.state === 'failed') {
@@ -345,9 +347,14 @@ export function MonthlyReportSection({ today, hospitalName, wide, groups, calend
     goal: typeof goalShown === 'object' ? goalShown : null,
     calendar: reportCalendar(calendar),
     bit: bit === undefined || bit === null || bit === 'waiting' ? null : bit,
+    // 의사랑: 읽는 중·실패면 'unknown'(묶음별 처방량·나이대 칸만 빠진다)
+    uis: !uis ? null : reads.uis === null || reads.uis === 'reading' || reads.uis === 'failed' ? 'unknown' : reads.uis,
   })
-  // 이번 달 목표(요약 칸 값)의 실패는 목표 칸이 알린다. 여기서는 이 칸이 읽은 것만
-  const failed = reads.sales === 'failed' || (given === null && reads.goal === 'failed')
+  // 이번 달 목표(요약 칸 값)의 실패는 목표 칸이 알린다. 여기서는 이 칸이 읽은 것만. 의사랑 줄을 못 읽으면 E-UIS-READ-FAILED 카드다
+  const failedCodes = [
+    ...(reads.sales === 'failed' || (given === null && reads.goal === 'failed') ? (['E-STATS-READ-FAILED'] as const) : []),
+    ...(reads.uis === 'failed' ? (['E-UIS-READ-FAILED'] as const) : []),
+  ]
   const names = monthNames(months)
 
   return (
@@ -370,11 +377,13 @@ export function MonthlyReportSection({ today, hospitalName, wide, groups, calend
           {PRINT}
         </button>
       </div>
-      {failed && (
+      {failedCodes.length > 0 && (
         <>
-          <div className="mt-3">
-            <ErrorCard code="E-STATS-READ-FAILED" />
-          </div>
+          {failedCodes.map((code) => (
+            <div key={code} className="mt-3">
+              <ErrorCard code={code} />
+            </div>
+          ))}
           <div className="mt-2">
             <button type="button" onClick={reads.retry} className={`${ds.button.secondarySmall} max-md:w-full`}>
               {RETRY}
