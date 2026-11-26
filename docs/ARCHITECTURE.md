@@ -55,6 +55,7 @@ public/                  # fake-sample/ · poster/(서식 안내문: themes/ 테
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳과 `lib/patients`(환자 탭 계산)는 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
+- 의사랑 엑셀 읽기 `lib/parsers/uisarang/`·`workers/uisarang.worker.ts`도 환자 구역이다(위 울타리 그대로). 아래쪽 표의 차트번호·이름·주민번호·전화·주소는 Worker 안에서 나이 띠로만 바뀌고, 파일 이름도 Worker·서버로 가지 않는다 (ADR-056, specs/uisarang-upload)
 - (예정, 청구 사전점검 ADR-016·020·021) `lib/bridge`(비트 자료 통로)·`lib/precheck`(청구 계산)도 환자 구역이다. 환자 줄을 그리는 `components/claim/rows`·`components/patients/rows`(환자 줄 울타리)는 네트워크·저장소·console·supabase를 못 쓴다. 저장소 밖에 `extension/`(크롬 확장)·`helper/`(윈도우 도우미, C#)·`.github/workflows/helper.yml`이 생긴다 — `specs/precheck/design.md` 3절
 - `lib/supabase/`(연결), `lib/auth/`(문지기·가입·관리자·자동 로그아웃), `components/{auth,shell,dashboard,admin,common}/`, `supabase/migrations/`(SQL 편집기에 붙여 넣음) — `specs/auth/design.md`
 - 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
@@ -184,6 +185,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `notice_keywords` · `notice_keyword_hits` | 내 낱말(병원마다 30개, 1~20자, 띄어쓰기·영문 대소문자만 다른 낱말은 하나만, 넣기·지우기만) · 글마다 맞은 낱말(정의자 트리거만 씀, 읽기만). migration `20261121000001_notice_keywords.sql` (specs/notices 15절) |
 | `location_settings` · `location_candidates` · `location_listings` · `location_notes` · `location_photos` · `location_events` | 입지 분석: 설정(병원마다 한 줄, 점수 설정 `score_rule` jsonb 4,000바이트까지·DB 검사 함수 `location_score_rule_ok`로 모양·범위만 봄, 지금 의원 체외충격파 값, 지우기 없음) · 후보(고른 점 위도 33~39·경도 124~132, 이름 1~40자, 적은 주소 글 100자, 범위 300·500·700·1,000·1,500·2,000·3,000m, 상태 다섯, 층·넓이·간판·위반 건축물 고름, 비용·협상표·점검표·다 함 jsonb, 그날 값 `snapshot` 65,536바이트까지, 마지막 알림 확인 날) · 매물(링크 https만, 넓이·층·보증금·월세·권리금·관리비 원 정수, 중개사 = 주소록 업체) · 날짜별 메모 · 사진 줄(`<병원 id>/<후보 id>/<uuid>.jpg`, 후보마다 30줄, 트리거) · 새 경쟁 의원 알림(개업·폐업·같은 줄 한 번·본 시각만 고침). 바깥 키는 (`hospital_id`, 부모 id) 둘로, 후보를 지우면 메모·사진 줄·알림이 함께 지워지고 매물은 후보 칸만, 업체를 지우면 매물의 중개사 칸만 빈다. 관리자만(`my_hospital_id()` + `admins` 줄) 읽고 쓰며 데스크 정책은 없다. 카카오 결과는 두지 않는다. migration `20261122000000_location.sql` (ADR-043~045, specs/location) |
 | gcal_links · gcal_state · gcal_fixes · gcal_deletes · gcal_off_days · gsheet_settings · gsheet_months · gsheet_runs | 구글 캘린더·시트 잇기(ADR-052~054) |
+| `uis_periods` | 의사랑 의원이 올린 엑셀의 기간 숫자 한 줄: `kind`(`rx` 처방 코드별 처방량·총액 — 하루·월~일 한 주·1일~말일 한 달, `age` 나이대 수 — 하루)·`from_day`·`to_day`·`payload`(jsonb 객체, `v` = 1, 262,144바이트까지, 안 모양은 앱 `lib/payload/uisarang`)·`updated_at`. 환자 칸 없음. 원장 내 병원 읽기·넣기·고치기(upsert), 지우기 없음, 보는 중 정책 둘. 관리자 비교는 정의자 함수 `admin_uis_rows`(`uis_periods`·`clinic_emr`). migration `20261127000000_uisarang_upload.sql` (ADR-056) |
 
 - Storage 버킷 `form-backgrounds`(내 배경 큰 그림, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만). `storage.objects` 정책은 첫 폴더가 내 병원 id인 것만 읽기·지우기, 올리기는 거기에 더해 이름이 내 `form_backgrounds` 줄의 `path`와 같을 때만이다(고치기 없음). 버킷과 정책은 migration `20261115020000_form_backgrounds.sql`이 만든다 (ADR-029)
 - Storage 버킷 `clinic-logos`(병원 로고, 공개 아님, 한 파일 1,000,000바이트·`image/png`만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 이름이 내 `clinic_profiles.logo_path`와 같을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261119000000_clinic_profile.sql` (ADR-033)
@@ -191,6 +193,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - Storage 버킷 `staff-files`(직원 서류·세무사 파일, 공개 아님, 한 파일 10,000,000바이트·PDF·JPEG·PNG·ZIP·XLSX·XLS만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 같은 이름의 내 `staff_files` 줄이 먼저 있을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261121000000_staff.sql` (ADR-039)
 - Storage 버킷 `location-photos`(입지 분석 현장 사진, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만, 이름 `<병원 id>/<후보 id>/<uuid>.jpg`): 첫 폴더가 내 병원 id이고 관리자(`admins` 줄)인 것만 읽기·올리기·지우기(고치기 없음, 관리자 아닌 원장·데스크·다른 병원 못 함). 후보를 지우면 앱이 파일도 지운다. migration `20261122000000_location.sql` (ADR-045)
 - Storage 버킷 `library`(자료실 파일, 공개 아님, 한 파일 52,428,800바이트(50MB)·형식 제한 없음, 이름 `<uuid>` 하나(폴더 없음 — 원래 파일 이름은 `library_files.file_name`)): 승인된 의원의 원장·데스크·관리자가 읽기(받기), 관리자만 올리기(uuid 모양 이름만)·지우기(고치기 없음). 모든 의원이 같은 한 벌. 옛 버킷 `install-files`(설치 파일 보관함, `20261117000000_install_files.sql`·`20261119200000_desk_install_files.sql`)는 지우지 않고 남지만 앱은 더 읽지 않는다. migration `20261125000000_library.sql` (ADR-051)
+- 통계 출처(`stats_days`·`stats_coverage`의 `source`)는 셋: `bit`(비트 도우미)·`file`(파일 끌어다 놓기)·`uisarang`(의사랑 엑셀 올리기, ADR-056). `stats_months`는 `bit`·`file`뿐이다(의사랑은 달 줄을 쓰지 않는다)
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 숨기고, 퇴사 3년 뒤에만 지울 수 있다(임금대장 3년 보존, §6-3, 지워도 달별 급여 줄은 이름 없이 남음). 주민번호는 저장하지 않고 계좌는 저장한다(원장만, ADR-039)
 - 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료). `stats_rx_picks`: `lib/backup/tables.ts`가 생기면 이 표도 넣는다. `stats_rx_groups`(손으로 만든 자료, 통계 처방별 추세 묶음, specs/treatment-trend)도 넣는다
