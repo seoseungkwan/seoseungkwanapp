@@ -127,6 +127,10 @@ describe('AC-8530.1 표 머리·날짜 줄·상태·꼬리표', () => {
     expect(why('evfut05')).toBe('차트번호·시행자·종류 글이 없어 예약 같지 않아요')
     expect(why('evfut08')).toBe('구글 시간이 09:00–21:00 (12시간)이에요. 예약 칸은 4시간까지예요')
     expect(why('evfut11')).toBe("'최호'를 원장님·직원 목록에서 찾지 못했어요")
+    // 긴 까닭은 글자 중간이 아니라 '…'로 줄이고 온 글은 title로(화면 사진 — TASK-23 (아))
+    const longWhy = line('evfut08').querySelector('[data-why]') as HTMLElement
+    expect(longWhy.className.split(/\s+/)).toContain('truncate')
+    expect(longWhy.getAttribute('title')).toBe(longWhy.textContent)
     expect(cells('evfut02')[0]).toBe('! 고쳐야 함')
     expect(line('evfut02').getAttribute('data-state')).toBe('fix')
     expect(line('evfut01').querySelector('[data-why]')).toBeNull()

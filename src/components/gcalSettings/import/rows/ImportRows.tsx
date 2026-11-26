@@ -220,7 +220,7 @@ function RowLine({ row, state, keys, ctx, locked = false, onPick, index }: LineP
           {moved && <Tag tone="plain">{TABLE.changeTag(G_COLOR_NAME[ctx.look.change])}</Tag>}
         </div>
         {why !== null && (
-          <span data-why="" className="mt-0.5 line-clamp-2 pl-5 text-caption leading-4 text-warning">
+          <span data-why="" title={why} className="mt-0.5 block truncate pl-5 text-caption leading-4 text-warning">
             {why}
           </span>
         )}

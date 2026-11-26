@@ -58,7 +58,7 @@ function FlowBar({ tab }: { tab: Exclude<GcalTab, 'rules'> }) {
   const at = FLOW.indexOf(tab)
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-small text-muted">
-      <ol aria-label={FRAME_TEXT.flowLabel} className="flex flex-wrap items-center gap-1.5">
+      <ol aria-label={FRAME_TEXT.flowLabel} className="flex list-none flex-wrap items-center gap-1.5">
         {FLOW.map((step, i) => (
           <Fragment key={step}>
             {i > 0 && (

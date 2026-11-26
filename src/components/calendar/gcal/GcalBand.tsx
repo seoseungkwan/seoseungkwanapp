@@ -43,7 +43,7 @@ export type GcalBandProps = {
 export const calendarUrl = (calendarId: string) => `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(calendarId)}`
 
 const BAND = 'flex flex-wrap items-center gap-x-3.5 gap-y-1.5 rounded-control border py-1.5 pr-2 pl-3.5 text-small text-ink-2'
-const LINK = `inline-flex items-center gap-1 rounded-control text-small font-medium whitespace-nowrap text-accent underline-offset-3 hover:underline ${ds.focusRing}`
+const LINK = `inline-flex items-center gap-1 rounded-control text-small font-medium whitespace-nowrap text-accent no-underline underline-offset-3 hover:underline ${ds.focusRing}`
 const FIX_BUTTON = `inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-control border border-warning/40 bg-warning-soft px-3 text-small font-semibold whitespace-nowrap text-warning transition hover:brightness-95 ${ds.focusRing}`
 
 export function GcalBand(props: GcalBandProps) {

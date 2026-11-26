@@ -90,6 +90,8 @@ describe('AC-8528.1 설정 안 메뉴 · 구글 캘린더 안 메뉴 · 처음 �
     expect(steps[0].querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(steps[2].querySelector('svg')).toBeNull()
     expect(screen.getByText(FLOW_NOTE)).toBeTruthy()
+    // 차례 목록에 목록 번호('1.'·'2.')가 붙지 않는다(화면 사진 — TASK-23 (아))
+    expect((bar as HTMLElement).className.split(/\s+/)).toContain('list-none')
     // 차례 사이 화살표는 그림 글자라 읽지 않는다
     expect((bar as HTMLElement).parentElement?.textContent).toBe(`${FLOW.join('→')}${FLOW_NOTE}`)
   })

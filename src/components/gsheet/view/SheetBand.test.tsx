@@ -93,6 +93,11 @@ describe('AC-8514.3: 위 한 줄 띠 — 시트 그림 + 파일 이름 + 달 고
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toContain('noopener')
   })
+
+  it('AC-8514.3: [새 창으로 열기]는 단추 모양 링크라 밑줄이 없다(시안, 화면 사진에서 밑줄 보임 — TASK-23 (아))', () => {
+    renderBand(status({ lastOk: done() }))
+    expect(screen.getByRole('link', { name: '새 창으로 열기' }).className.split(/\s+/)).toContain('no-underline')
+  })
 })
 
 describe('AC-8515.1: 넣는 PC 띠 — 켜짐·꺼짐·확인 필요·오늘 아직', () => {

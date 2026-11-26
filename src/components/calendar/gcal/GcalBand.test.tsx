@@ -115,6 +115,13 @@ describe('AC-8532.1 이어진 병원의 초록 띠 (시안 ?s=week)', () => {
     expect(onSync).toHaveBeenCalledTimes(1)
   })
 
+  it('AC-8532.1: [구글 캘린더 열기]는 평소 밑줄이 없고 올렸을 때만 밑줄(시안 — TASK-23 (아))', () => {
+    draw()
+    const cls = screen.getByRole('link', { name: /^구글 캘린더 열기/ }).className.split(/\s+/)
+    expect(cls).toContain('no-underline')
+    expect(cls).toContain('hover:underline')
+  })
+
   it('AC-8532.1: 받아 오는 간격이 5분이면 "5분마다 맞춰요", 캘린더 이름 끝 받침에 맞춰 와/과를 고른다(design.md 2절 표 7)', () => {
     draw({ calendarName: '양지 예약', pullMin: 5 })
     expect(text(band()!.querySelector('[data-band-text]'))).toBe('구글 캘린더 양지 예약과 이어짐 · 마지막 맞춤 14:35 · 5분마다 맞춰요')

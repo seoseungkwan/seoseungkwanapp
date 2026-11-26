@@ -39,7 +39,7 @@ const todayOk = (lastOk: FillDone | null, today: string) => (lastOk !== null && 
 
 export function OpenLink({ href, primary = false, children }: { href: string; primary?: boolean; children: ReactNode }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={primary ? ds.button.primarySmall : ds.button.secondarySmall}>
+    <a href={href} target="_blank" rel="noopener noreferrer" className={`${primary ? ds.button.primarySmall : ds.button.secondarySmall} no-underline`}>
       {children}
       <ExtIcon />
     </a>
