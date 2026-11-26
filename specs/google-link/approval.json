@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "google-link",
-  "approved_at": "2026-11-26T06:26:24Z",
+  "approved_at": "2026-11-26T07:36:10Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "bf0d437ac1caa5d99550cf7256474aa8d19f40c556d6649c2fb22ed4cc2321d9",
+  "spec_sha256": "d94e07cedca59791ade44503e24f793a455a9a62c50799ba0a3b6881c565d455",
   "scope": [
     ".github/workflows/helper.yml",
     "CLAUDE.md",
@@ -61,6 +61,7 @@
     "src/app/globals.css",
     "src/app/theme.test.ts",
     "src/app/titles.test.tsx",
+    "src/b2b-merge.test.ts",
     "src/components/admin/compare/statsInput.test.ts",
     "src/components/admin/compare/statsInput.ts",
     "src/components/autoUpload/AutoUpload.test.tsx",
