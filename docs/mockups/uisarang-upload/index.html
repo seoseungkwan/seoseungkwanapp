@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>의사랑 엑셀 올리기 시안</title>
+<!--
+  의사랑 엑셀 올리기(uisarang-upload) 시안. 의사랑 의원 원장이 의사랑 통계 엑셀을 끌어다 놓으면 이 PC 안에서 읽어 숫자만 저장하고
+  대시보드 첫 화면 · 통계 탭 · 관리자 의원 비교에 보인다. 결정·상태 목록은 notes.md, 글자는 specs/uisarang-upload/requirements.md '화면 글자'.
+  ?s=dash-empty(기본) · reading · dash-missing · dash-ok · refused · dash-data · stats · stats-gap · admin
+  색·글자는 앱 토큰(src/app/globals.css :root)만 쓴다. 파일 이름·숫자·의원 이름은 모두 지어낸 값이다.
+  오늘은 2026-11-26 (목) 19:10으로 고정. 어디로도 보내지 않는다. PC 화면만(폰 모양 없음).
+-->
+<style>
+@font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+/* 앱 토큰(src/app/globals.css :root) */
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --r: 4px; --r-float: 8px;
+  /* 통계 탭 토큰 */
+  --st-canvas: #F4F6F9; --st-ink: #172B4D; --st-ink-2: #3B4A63; --st-muted: #5B6B82; --st-line: #E5EAF1; --st-line-2: #CBD3DF;
+  --st-r: 14px; --st-r-sm: 8px; --st-card-shadow: 0 1px 2px rgb(23 43 77 / 0.04); --st-h2: #B5CEF8; --st-h4: #3F7BE6;
+  --elev: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --ui: 'AppPretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 400 14px/22px var(--ui); word-break: keep-all; font-variant-numeric: tabular-nums; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+h1, h2, h3, h4, p, ul { margin: 0; }
+ul { padding: 0; list-style: none; }
+svg { flex: none; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; font-weight: 600; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mdesc { font-size: 13px; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; line-height: 18px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.mnote { font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.mnote b { font-size: 12px; }
+/* 시안 표시(만들지 않음): 새로 생기거나 바뀌는 자리 */
+.mark-new { outline: 2px dashed #F59E0B; outline-offset: 4px; }
+.mark-tag { display: inline-block; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap; }
+.same { color: var(--faint); font-size: 12px; }
+
+/* 앱 틀 */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-weight: 500; white-space: nowrap; background: var(--surface); }
+.tabsbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs-in { max-width: 1280px; margin: 0 auto; display: flex; }
+.tabs { display: flex; min-width: 0; flex: 1; padding: 0 24px; }
+.tabs > :first-child { margin-left: -12px; }
+.tabs a, .more { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; flex: none; border: 0; background: none; }
+.tabs a[aria-current="page"], .more.on { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after, .more.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.morewrap { display: flex; flex: none; margin-right: 12px; }
+main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+main > * { min-width: 0; }
+.stbg { background: var(--st-canvas); }
+
+/* 단추 · 칩 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; line-height: 22px; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.btn:hover:not(:disabled) { background: var(--canvas); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
+.tbtn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px; border: 0; background: none; color: var(--accent); font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; border-radius: var(--r); }
+.tbtn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; vertical-align: 1px; }
+.chip.neutral { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip.pos { background: var(--positive-soft); color: var(--positive); }
+.chip.neg { background: var(--negative-soft); color: var(--negative); }
+.chip.accent { background: var(--accent-soft); color: var(--accent-strong); }
+
+/* 오류 카드 */
+.errc { display: flex; align-items: flex-start; gap: 8px; padding: 12px 16px; border-radius: var(--r); background: var(--negative-soft); }
+.errc svg { margin-top: 2px; color: var(--negative); }
+.errc .w { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--negative); }
+.errc .f { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.errc .d { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.errc .no { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.errc > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* 올리기 칸 */
+.ubox { margin-top: 16px; border-radius: var(--r); background: var(--canvas); padding: 16px 20px; display: grid; gap: 12px; min-width: 0; }
+.ubox.stbox { background: var(--surface); border: 1px solid var(--st-line); border-radius: var(--st-r-sm); }
+.uhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.uhead h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.uhelp { color: var(--ink-2); }
+.ufiles { display: grid; gap: 2px; }
+.ufiles .cap { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--muted); }
+.ufiles li { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.ufiles li svg { color: var(--muted); }
+.uperiod { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.uerp { display: flex; align-items: flex-start; gap: 8px; padding: 10px 14px; border-radius: var(--r); background: var(--warning-soft); color: var(--warning); font-size: 13px; line-height: 20px; font-weight: 500; }
+.uerp svg { margin-top: 2px; }
+.udrop { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 16px; min-height: 96px; padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink-2); }
+.udrop.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.udrop svg { color: var(--muted); }
+.upriv { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.ubar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.ubar .grow { flex: 1; min-width: 0; color: var(--ink-2); font-size: 13px; line-height: 20px; }
+.ubar h2 { font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.uwork { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: var(--r); background: var(--surface); color: var(--ink-2); }
+.spin { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* 결과 */
+.res { display: grid; gap: 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); min-width: 0; }
+.res-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.res-h b { font-weight: 600; color: var(--ink); }
+.res-h span { font-size: 13px; color: var(--muted); }
+.rrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); align-items: start; }
+.rrow:last-child { border-bottom: 0; }
+.rrow .nm { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.rrow .kd { display: block; font-size: 13px; line-height: 20px; color: var(--muted); }
+.rrow .chip { margin-top: 2px; }
+.rrow .below { grid-column: 1 / -1; }
+.rrow .note { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.miss { display: grid; gap: 6px; padding: 12px 16px; border-radius: var(--r); background: var(--warning-soft); }
+.miss b { font-weight: 600; color: var(--ink); }
+.miss p { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.miss li { font-size: 13px; line-height: 20px; color: var(--ink); }
+.miss li span { color: var(--ink-2); }
+.allok { display: flex; align-items: center; gap: 6px; color: var(--positive); font-weight: 500; }
+
+/* 대시보드 */
+.dline { font-size: 13px; line-height: 20px; color: var(--muted); font-weight: 500; }
+.hero { margin-top: 8px; max-width: 880px; }
+.hero h1 { font-size: 24px; line-height: 32px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.hero .lead { margin-top: 8px; font-size: 16px; line-height: 24px; color: var(--ink-2); max-width: 64ch; }
+.hero .after { margin-top: 16px; }
+.shead { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.shead h1 { font-size: 24px; line-height: 32px; font-weight: 600; color: var(--ink); }
+.shead .when { display: flex; min-width: 0; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.shead .when svg { color: var(--muted); }
+.shead .acts { margin-left: auto; display: flex; gap: 8px; }
+.sect { margin-top: 48px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+.sect-h { margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.sect-h h2 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.datec { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); font-size: 13px; color: var(--ink); background: var(--surface); }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.kpi { min-width: 0; border-left: 1px solid var(--line); padding: 16px 20px; }
+.kpi:first-child { border-left: 0; padding-left: 0; }
+.kpi .l { font-size: 13px; line-height: 20px; color: var(--ink-2); font-weight: 500; }
+.kpi .v { margin-top: 4px; font-size: 28px; line-height: 36px; font-weight: 600; color: var(--ink); }
+.kpi .v small { margin-left: 2px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.kpi .v.dash { color: var(--faint); }
+.kpi .n { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.kpi .v.up { font-size: 20px; color: var(--positive); }
+.rep { margin-top: 20px; display: grid; gap: 4px; max-width: 760px; }
+.rep .t { font-size: 13px; line-height: 20px; color: var(--muted); font-weight: 500; }
+.rep .f { font-size: 18px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.rep .r { color: var(--ink-2); }
+.flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; }
+.fpanel { min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.fpanel h3 { font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.fpanel .s { font-size: 12px; line-height: 16px; color: var(--muted); }
+.bars { margin-top: 12px; height: 120px; display: flex; align-items: flex-end; gap: 6px; border-bottom: 1px solid var(--line); }
+.bars i { flex: 1; min-width: 0; background: var(--accent); border-radius: 2px 2px 0 0; opacity: .85; }
+.bars i.zero { background: var(--line); height: 2px !important; }
+.bars-x { display: flex; gap: 6px; margin-top: 4px; }
+.bars-x span { flex: 1; min-width: 0; text-align: center; font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.enote { margin-top: 12px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.enote b { font-weight: 600; color: var(--ink); }
+
+/* 통계 탭 */
+.st-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+.st-top h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pchips .cap { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.pc { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.pc[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.srcline { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--st-ink-2); }
+.srcline b { font-weight: 600; color: var(--st-ink); }
+.cards { margin-top: 24px; display: grid; gap: 20px; }
+.card { min-width: 0; border-radius: var(--st-r); background: var(--surface); padding: 20px 24px; box-shadow: var(--st-card-shadow); }
+.card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.card-h h2 { font-size: 18px; line-height: 28px; font-weight: 600; color: var(--st-ink); }
+.card-h .d { font-size: 13px; color: var(--st-muted); }
+.card-b { margin-top: 16px; }
+.card-b > * + * { margin-top: 24px; border-top: 1px solid var(--st-line); padding-top: 20px; }
+.sub-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.sub-h h3 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--st-ink); }
+.sub-h .d { font-size: 13px; color: var(--st-muted); }
+.sumcells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sumcells > div { min-width: 0; padding: 4px 20px; border-left: 1px solid var(--st-line); }
+.sumcells > div:first-child { border-left: 0; padding-left: 0; }
+.sumcells .l { font-size: 13px; color: var(--st-ink-2); font-weight: 500; }
+.sumcells .v { margin-top: 2px; font-size: 28px; line-height: 36px; font-weight: 600; color: var(--st-ink); }
+.sumcells .v small { margin-left: 2px; font-size: 14px; color: var(--st-ink-2); }
+.sumcells .v.dash { color: var(--faint); }
+.sumcells .n { font-size: 12px; line-height: 16px; color: var(--st-muted); }
+.tablist { margin-top: 8px; display: flex; gap: 24px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.tab { position: relative; height: 40px; padding: 0; border: 0; background: none; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.tab[aria-selected="true"] { font-weight: 600; color: var(--ink); }
+.tab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); }
+.tlead { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.covl { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--st-ink-2); }
+.tbw { margin-top: 12px; min-width: 0; overflow-x: auto; }
+.tb { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.tb th { height: 36px; padding: 0 12px; border-bottom: 1px solid var(--st-line); text-align: left; font-weight: 500; color: var(--st-muted); white-space: nowrap; }
+.tb td { height: 40px; padding: 0 12px; border-bottom: 1px solid var(--st-line); white-space: nowrap; color: var(--st-ink); }
+.tb th:first-child, .tb td:first-child { padding-left: 0; }
+.tb th.num, .tb td.num { text-align: right; }
+.tb tr.sum td { font-weight: 600; border-bottom: 0; }
+.tb tr.oth td { color: var(--st-ink-2); }
+.tb td.dash { color: var(--faint); }
+.tb td.code { font-weight: 600; }
+.tfoot { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.agebar { display: inline-block; height: 8px; border-radius: 2px; background: var(--st-h4); vertical-align: middle; margin-left: 8px; }
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.three > div { min-width: 0; }
+.mini-l { font-size: 13px; font-weight: 500; color: var(--st-ink-2); }
+.mini-v { margin-top: 2px; font-size: 24px; line-height: 32px; font-weight: 600; color: var(--st-ink); }
+.mini-n { font-size: 12px; color: var(--st-muted); }
+.opsrow { display: flex; gap: 32px; }
+.opsrow > div { flex: 1; min-width: 0; }
+.wkbars { margin-top: 12px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; height: 96px; }
+.wkbars i { display: block; background: var(--st-h4); border-radius: 2px 2px 0 0; }
+.wkx { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 4px; font-size: 11px; color: var(--st-muted); text-align: center; }
+.rx-notes { margin-top: 8px; }
+
+/* 관리자 비교 */
+.adm-loc { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.adm-h1 { margin-top: 4px; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.pick-row { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.selbox { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); }
+.selbox .k { font-size: 12px; color: var(--muted); }
+.panel { margin-top: 20px; min-width: 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 16px 20px; }
+.panel h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.panel .d { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.grp { margin-top: 12px; display: flex; gap: 6px; }
+.grp span { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--r); font-size: 13px; color: var(--ink-2); }
+.grp span.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.rk { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; margin-top: 12px; }
+.rk th { height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); text-align: right; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.rk th:first-child { text-align: left; padding-left: 0; }
+.rk td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: right; color: var(--ink); }
+.rk td:first-child { text-align: left; padding-left: 0; }
+.ncell { display: inline-flex; align-items: center; gap: 8px; }
+.ncell .rkn { width: 20px; color: var(--muted); font-weight: 600; }
+.ncell b { font-weight: 600; }
+.ncell .rg { color: var(--muted); }
+.ncell .mark-new, .who .mark-new { outline-offset: 2px; margin-right: 4px; }
+.foot { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.side { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.scard { min-width: 0; border-radius: var(--st-r); background: var(--st-canvas); padding: 16px 20px; }
+.scard .who { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.scell { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.scell:first-of-type { border-top: 0; padding-top: 0; }
+.scell h4 { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.scell .na { margin-top: 6px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.hbar { margin-top: 6px; display: grid; grid-template-columns: 112px minmax(0, 1fr) 72px; gap: 8px; align-items: center; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.hbar i { display: block; height: 8px; border-radius: 2px; background: var(--accent); }
+.hbar i.c3 { background: #0D9488; }
+.hbar em { font-style: normal; text-align: right; color: var(--ink); font-weight: 600; }
+.nums { margin-top: 6px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nums .l { font-size: 12px; color: var(--ink-2); }
+.nums .v { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>의사랑 엑셀 올리기 시안</b><span class="ex">예시</span> <span class="mdesc">파일 이름·숫자·의원 이름은 모두 지어낸 값이에요. 오늘은 11월 26일 (목) 19:10으로 정해 두었어요. 점선과 노란 표시는 시안에서만 보이는 표시예요(만들지 않음).</span></div>
+  <div class="seg" id="seg"></div>
+  <div class="mnote" id="mnote"></div>
+</div></div>
+
+<div class="app">
+  <header class="top"><div class="top-in">
+    <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span id="brand">가나정형외과의원</span></div>
+    <div class="top-r" id="topr"></div>
+  </div></header>
+  <nav class="tabsbar" aria-label="메뉴"><div class="tabs-in" id="tabs"></div></nav>
+  <div id="mainwrap"><main id="main"></main></div>
+</div>
+
+<script>
+/* ───────── 상태 고르기 ───────── */
+const STATES = [
+  ['dash-empty', '대시보드 · 처음', "의사랑 의원 원장이 아직 아무 엑셀도 올리지 않았을 때 대시보드 첫 화면이에요. 지금 '의사랑 연결은 준비하고 있어요' 자리에 올리기 칸이 펼쳐져 있어요. 점선 상자에 엑셀을 끌어다 놓거나 [파일 고르기]를 눌러요."],
+  ['reading', '읽는 중', '엑셀 넷을 놓은 직후예요. 이 PC 안(브라우저)에서 읽는 동안 [파일 고르기]는 눌리지 않아요. 다 읽으면 숫자만 저장하는 중 → 결과 차례예요.'],
+  ['dash-missing', '일부 파일만', "11월 25일·26일 일일수입통계와 26일 아래쪽 표만 넣었을 때예요. 있는 것은 저장하고, 그 날 아직 없는 파일을 종류·날짜로 알려 줘요. 날 숫자(위쪽 표)가 아직 없어서 대시보드는 그대로 시작 칸이에요."],
+  ['dash-ok', '다 저장', '11월 26일 엑셀 넷을 넣었을 때예요. 위쪽 표가 저장돼 대시보드가 숫자 화면으로 바뀌고, 결과는 머리 줄 아래 접은 올리기 칸 안에 그대로 남아요.'],
+  ['refused', '받지 않은 파일', "한 달 중간까지(11월 1일~26일)로 저장한 기간별처방통계는 받지 않고 다시 저장해 달라고 알려요. 예약환자통계는 쓰지 않아 건너뛰고, 의사랑 통계 엑셀이 아닌 파일도 받지 않아요. 나머지는 저장해요."],
+  ['dash-data', '대시보드 · 숫자 있음', "숫자가 있는 대시보드예요. 머리 줄 칩이 '의사랑 엑셀 숫자'이고 비트 단추는 없어요. 올리기 칸은 접혀 있고(ERP 줄은 늘 보임) [도움말 보기]로 펼쳐요. 90일초진·물리치료·신환 재방문율·처방 상위는 자리를 두고 '셀 수 없어요'를 보여요."],
+  ['stats', '통계 탭', "통계 탭(최근 7일)이에요. 비트 불러오기 칸 자리에 접은 올리기 칸이 있어요. 셀 수 없는 칸은 자리마다 까닭을 보여요. 환자 구성은 나이대 표, 처방은 '처방량'(환자 수 아님) 표예요. 처방 카드·매출 카드 탭을 눌러 볼 수 있어요."],
+  ['stats-gap', '통계 · 처방 엑셀 모자람', '최근 30일을 골랐는데 기간별처방통계가 없는 날이 있을 때예요. 반쪽 합을 보이지 않고 없는 날을 알려 줘요. 환자 구성도 아래쪽 표가 없는 날을 빼고 셌다고 적어요.'],
+  ['admin', '관리자 의원 비교', "관리자가 의원 비교를 연 모습이에요. 의사랑 의원은 이름 옆에 '의사랑' 표시가 있고, 표 아래에 한 줄이 더 있어요. 나란히 보기에서 의사랑 의원 처방 칸은 '묶음별 처방량'이고, 셀 수 없는 칸은 작은 글로 알려요."],
+]
+const Q = new URLSearchParams(location.search)
+let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'dash-empty'
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+const cur = STATES.find(x => x[0] === S)
+document.getElementById('mnote').innerHTML = `<b>${cur[1]}</b> — ${cur[2]}`
+
+/* ───────── 화면 글자(requirements.md '화면 글자' 그대로) ───────── */
+const T = {
+  title: '의사랑 엑셀 올리기',
+  help: '의사랑 통계에서 저장한 엑셀을 여기에 끌어다 놓거나 [파일 고르기]를 눌러요. 여러 개를 한 번에 넣어도 돼요.',
+  filesCap: '받는 파일',
+  files: ['수입통계 › 일일수입통계', '진료통계 › 기간별처방통계', '인원통계 › 내원일별환자현황 (위쪽 표 · 아래쪽 표)'],
+  period: '조회일은 하루 · 한 주(월~일) · 한 달(1일~말일)만 받아요. 일일수입통계와 아래쪽 표는 하루치만 돼요.',
+  erp: 'ERP 마감일지를 채우기 전에 여기에 먼저 올려 주세요. 마감일지 도우미는 엑셀을 읽은 뒤 지워요.',
+  drop: '파일을 여기에 끌어다 놓으세요',
+  dropping: '놓으면 이 PC 안에서 읽어요',
+  pick: '파일 고르기',
+  privacy: '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.',
+  folded: '엑셀을 끌어다 놓거나 [파일 고르기]를 눌러요.',
+  helpOpen: '도움말 보기', helpClose: '도움말 접기',
+  reading: n => `파일 ${n}개를 이 PC 안에서 읽는 중이에요.`,
+  saving: '숫자를 저장하는 중이에요.',
+  resHead: n => `방금 넣은 파일 ${n}개`,
+  rsv: '예약환자통계는 웹앱에서 쓰지 않아 건너뛰었어요.',
+  same: '같은 엑셀이 한 번 더 들어와 하나만 저장했어요.',
+  missHead: '아직 없는 파일',
+  missDesc: '이번에 넣은 날 가운데 아래 파일이 아직 없어요. 같은 날 엑셀을 더 넣으면 채워져요.',
+  allHave: '넣은 날은 네 가지 파일이 모두 있어요.',
+  na: '의사랑 엑셀로는 셀 수 없어요',
+  why: {
+    revisit: '환자마다 다시 온 날을 알 수 없어요.',
+    rxSplit: '처방을 환자마다 나눌 수 없어요.',
+    block: '환자마다 받은 처방을 알 수 없어요.',
+    hours: '접수 시각이 엑셀에 없어요.',
+    doctors: '원장님마다 나눈 숫자가 엑셀에 없어요.',
+    treat: '처방 카드의 묶음별 총액에서 볼 수 있어요.',
+    mix: '아래쪽 표에서는 나이대만 세요.',
+    topRx: '처방을 환자 수로 셀 수 없어요. 통계 탭 처방 카드에서 처방량을 봐요.',
+    report: '기간을 직접 고르면 저장된 숫자로 보고 글을 만들어요.',
+  },
+  startH1: '의사랑 엑셀을 올리면 숫자가 여기에 채워져요',
+  startLead: '의사랑 통계에서 엑셀을 저장해 아래에 넣어 주세요. 그날 숫자와 보고 문장, 기간별 흐름이 채워져요. 업무일지·예약·서식은 그대로 쓸 수 있어요.',
+  emrBtn: '쓰는 EMR 바꾸기',
+  chip: '의사랑 엑셀 숫자',
+  when: (at, day) => `마지막으로 올린 때 ${at} · ${day}까지 있어요`,
+  refresh: '저장된 숫자 새로고침',
+  srcName: '의사랑 엑셀',
+  rxDesc: '처방량은 환자 수가 아니라 의사랑 총투여량의 합이에요',
+  grpLead: '만들어 둔 묶음마다 처방량과 총액',
+  codeLead: '기간별처방통계의 코드마다',
+  ignored: '빼는 처방·조건은 의사랑 엑셀로 셀 수 없어 넣는 처방만 더했어요.',
+  gapTitle: '처방 엑셀이 모자라요',
+  gap: (n, list) => `${n}일 치가 없어요: ${list}. 그 날(또는 그 주·달) 기간별처방통계를 올려 주세요.`,
+  mixDesc: n => `내원한 날마다 센 수 · 아래쪽 표를 올린 날 ${n}일`,
+  mixMiss: n => `아래쪽 표가 없는 진료한 날 ${n}일은 빼고 셌어요.`,
+  reportDesc: '저장된 숫자로 만든 보고 글 · 환자 이름은 쓰지 않아요',
+  rankFoot: '–는 그 의원에 그 달 숫자가 없는 칸이에요. 줄을 세울 때 늘 맨 아래에 둬요.',
+  uisFoot: '의사랑 표시 의원은 의사랑 엑셀로 올린 숫자예요. 처방 칸은 환자 수가 아니라 처방량이고, 나이대는 내원한 날마다 센 수예요.',
+  mark: '의사랑',
+}
+const ERR = {
+  'E-UIS-PERIOD': ['조회일이 하루·한 주·한 달이 아니라 받지 않았어요', '조회일을 하루치, 한 주치(월요일~일요일), 한 달치(1일~말일) 가운데 하나로 바꿔 다시 엑셀로 저장해 주세요'],
+  'E-UIS-KIND': ['의사랑 통계 엑셀이 아니라 받지 않았어요', '수입통계 › 일일수입통계, 진료통계 › 기간별처방통계, 인원통계 › 내원일별환자현황에서 저장한 엑셀인지 확인해 주세요'],
+}
+
+/* ───────── 그림 ───────── */
+const ICON = {
+  upload: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10"/></svg>',
+  file: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5H13"/></svg>',
+  bigfile: '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5H13M5.5 9.5h5M5.5 12h3"/></svg>',
+  warn: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 1.75 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6h.01"/></svg>',
+  lock: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3.5 8.5 3 3 6-6.5"/></svg>',
+  err: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>',
+  clock: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>',
+  refresh: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>',
+  cal: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>',
+  chev: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>',
+  chevUp: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
+  arrow: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>',
+}
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const won = n => n.toLocaleString('en-US')
+const note = (why, title = T.na) => `<p class="enote"><b>${title}</b> · ${why}</p>`
+const errCard = (code, detail) => { const [w, f] = ERR[code]; return `<div class="errc" role="alert">${ICON.err}<div><p class="w">${w}</p><p class="f">${f}</p>${detail ? `<p class="d">${detail}</p>` : ''}<p class="no">오류 번호 ${code}</p></div></div>` }
+
+/* ───────── 지어낸 결과 ───────── */
+const R = {
+  ok: [
+    { nm: '일일수입통계_1126.xls', kd: '일일수입통계 · 11월 26일', st: 'saved' },
+    { nm: '기간별처방통계_1126.xls', kd: '기간별처방통계 · 11월 26일', st: 'saved' },
+    { nm: '내원일별_위_1126.xls', kd: '내원일별 위쪽 표 · 11월 26일', st: 'saved' },
+    { nm: '내원일별_아래_1126.xls', kd: '내원일별 아래쪽 표 · 11월 26일', st: 'saved' },
+  ],
+  missing: [
+    { nm: '일일수입통계_1125.xls', kd: '일일수입통계 · 11월 25일', st: 'saved' },
+    { nm: '일일수입통계_1126.xls', kd: '일일수입통계 · 11월 26일', st: 'saved' },
+    { nm: '내원일별_아래_1126.xls', kd: '내원일별 아래쪽 표 · 11월 26일', st: 'saved' },
+  ],
+  refused: [
+    { nm: '일일수입통계_1126.xls', kd: '일일수입통계 · 11월 26일', st: 'saved' },
+    { nm: '처방통계_11월.xls', kd: '기간별처방통계 · 조회일 11월 1일 ~ 11월 26일', st: 'refused', code: 'E-UIS-PERIOD' },
+    { nm: '내원일별_위_1126.xls', kd: '내원일별 위쪽 표 · 11월 26일', st: 'saved' },
+    { nm: '내원일별_아래_1126.xls', kd: '내원일별 아래쪽 표 · 11월 26일', st: 'saved' },
+    { nm: '예약환자_1126.xls', kd: '예약환자통계', st: 'skipped', why: 'rsv' },
+    { nm: '환자목록_정리.xlsx', kd: '모르는 엑셀', st: 'refused', code: 'E-UIS-KIND' },
+  ],
+}
+const MISS = {
+  missing: [['기간별처방통계', '11월 25일~26일'], ['내원일별 위쪽 표', '11월 25일~26일'], ['내원일별 아래쪽 표', '11월 25일']],
+  refused: [['기간별처방통계', '11월 26일']],
+}
+const CHIP = { saved: '<span class="chip pos">저장함</span>', refused: '<span class="chip neg">받지 않음</span>', skipped: '<span class="chip neutral">건너뜀</span>', failed: '<span class="chip neg">저장 못 함</span>' }
+
+/* ───────── 올리기 칸 ───────── */
+const st = { help: false, drag: false, rxTab: 0, revTab: 2 }
+function resultsHtml(rows, miss) {
+  const n = k => rows.filter(r => r.st === k).length
+  const counts = [['저장', n('saved')], ['받지 않음', n('refused')], ['건너뜀', n('skipped')]].filter(([, c]) => c > 0).map(([t, c]) => `${t} ${c}개`).join(' · ')
+  const body = rows.map(r => `<div class="rrow"><div><span class="nm">${esc(r.nm)}</span><span class="kd">${esc(r.kd)}</span></div>${CHIP[r.st]}${
+    r.st === 'refused' ? `<div class="below">${errCard(r.code)}</div>` : r.st === 'skipped' ? `<p class="below note">${r.why === 'rsv' ? T.rsv : T.same}</p>` : ''}</div>`).join('')
+  const after = miss && miss.length
+    ? `<div class="miss"><b>${T.missHead}</b><p>${T.missDesc}</p><ul>${miss.map(([k, d]) => `<li>${k} <span>· ${d}</span></li>`).join('')}</ul></div>`
+    : `<p class="allok">${ICON.check}${T.allHave}</p>`
+  return `<div class="res"><div class="res-h"><b>${T.resHead(rows.length)}</b><span>${counts}</span></div>${body}</div>${after}`
+}
+function helpHtml() {
+  return `<p class="uhelp">${T.help}</p>
+    <div class="ufiles"><p class="cap">${T.filesCap}</p><ul>${T.files.map(f => `<li>${ICON.file}${f}</li>`).join('')}</ul></div>
+    <p class="uperiod">${T.period}</p>`
+}
+const erpHtml = () => `<p class="uerp">${ICON.warn}<span>${T.erp}</span></p>`
+const privHtml = () => `<p class="upriv">${ICON.lock}${T.privacy}</p>`
+function openBox({ phase = 'idle', n = 0, rows = null, miss = null } = {}) {
+  const busy = phase === 'reading'
+  const work = busy ? `<div class="uwork"><span class="spin" aria-hidden="true"></span>${T.reading(n)}</div>` : ''
+  const drop = `<div class="udrop ${st.drag ? 'on' : ''}" data-drop>${ICON.bigfile}<span>${st.drag ? T.dropping : T.drop}</span><button class="btn primary" data-act="pick" ${busy ? 'disabled' : ''}>${ICON.upload}${T.pick}</button></div>`
+  return `<section class="ubox mark-new" aria-label="${T.title}">
+    <div class="uhead"><h2>${T.title}</h2></div>
+    ${helpHtml()}
+    ${erpHtml()}
+    ${drop}
+    ${work}
+    ${rows ? resultsHtml(rows, miss) : ''}
+    ${privHtml()}
+  </section>`
+}
+function foldedBox({ rows = null, miss = null, stats = false } = {}) {
+  return `<section class="ubox ${stats ? 'stbox' : ''} mark-new" aria-label="${T.title}" data-drop>
+    <div class="ubar"><h2>${T.title}</h2><span class="grow">${T.folded}</span>
+      <button class="btn sm" data-act="pick">${ICON.upload}${T.pick}</button>
+      <button class="tbtn" data-act="help" aria-expanded="${st.help}">${st.help ? T.helpClose + ICON.chevUp : T.helpOpen + ICON.chev}</button></div>
+    ${erpHtml()}
+    ${st.help ? helpHtml() + privHtml() : ''}
+    ${rows ? resultsHtml(rows, miss) : ''}
+  </section>`
+}
+
+/* ───────── 틀 ───────── */
+function frame(tab) {
+  const T1 = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약']
+  document.getElementById('tabs').innerHTML = `<div class="tabs">${T1.map(t => `<a href="#" ${t === tab ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</div><div class="morewrap"><button class="more ${tab === '관리자' ? 'on' : ''}">${tab === '관리자' ? '더보기 · 관리자' : '더보기'}${ICON.chev}</button></div>`
+  const view = tab === '관리자' ? '<span class="acct">보는 의원' + ICON.chev + '</span>' : ''
+  document.getElementById('topr').innerHTML = `${view}<time>2026년 11월 26일 (목) 19:10 (KST)</time><span class="acct">계정${ICON.chev}</span>`
+  if (tab === '관리자') document.getElementById('brand').textContent = '샘플정형외과의원'
+}
+
+/* ───────── 대시보드 ───────── */
+function dashStart(box) {
+  return `<p class="dline">11월 26일 (목)</p>
+    <div class="hero mark-new"><h1>${T.startH1}</h1><p class="lead">${T.startLead}</p></div>
+    ${box}
+    <div class="after" style="margin-top:16px"><a class="btn" href="#">${T.emrBtn}</a> <span class="same">(지금 그대로)</span></div>`
+}
+const DAYS14 = [['13', 126], ['14', 70], ['15', 0], ['16', 148], ['17', 133], ['18', 121], ['19', 124], ['20', 128], ['21', 74], ['22', 0], ['23', 151], ['24', 139], ['25', 118], ['26', 132]]
+function barsHtml(list, max) {
+  return `<div class="bars">${list.map(([, v]) => v === 0 ? '<i class="zero"></i>' : `<i style="height:${Math.round(v / max * 100)}%"></i>`).join('')}</div><div class="bars-x">${list.map(([d]) => `<span>${d}일</span>`).join('')}</div>`
+}
+function dashData(box) {
+  const kpi = (l, v, unit, n, cls = '') => `<div class="kpi"><p class="l">${l}</p><p class="v ${cls}">${v}${unit ? `<small>${unit}</small>` : ''}</p>${n ? `<p class="n">${n}</p>` : ''}</div>`
+  return `<div class="shead mark-new"><h1>대시보드</h1><span class="chip neutral">${T.chip}</span>
+      <p class="when">${ICON.clock}${T.when('11월 26일 19:05', '11월 26일')}</p>
+      <div class="acts"><button class="btn sm">${ICON.refresh}${T.refresh}</button></div></div>
+    ${box}
+    <section class="sect"><div class="sect-h"><h2>일별 현황</h2><span class="datec">${ICON.cal}11월 26일 (목)${ICON.chev}</span></div>
+      <div class="kpis">
+        ${kpi('환자 수', '132', '명')}${kpi('신환', '9', '명')}
+        <div class="kpi mark-new"><p class="l">90일초진</p><p class="v dash">–</p><p class="n">${T.na}</p></div>
+        ${kpi('재진', '123', '명', '90일초진 포함')}
+        <div class="kpi mark-new"><p class="l">물리치료</p><p class="v dash">–</p><p class="n">${T.na}</p></div>
+        ${kpi('지난주 같은 요일보다', '+8', '명', '11월 19일 124명', 'up')}
+      </div>
+      <div class="rep"><p class="t">오늘 보고 문장 <span class="same">(지금 그대로)</span></p><p class="f">오늘 환자 132명이 왔습니다.</p><p class="r">신환 9명, 재진 123명입니다. 지난주 목요일보다 8명 많습니다.</p></div>
+    </section>
+    <section class="sect"><div class="sect-h"><h2>기간별 흐름</h2><span class="same">(최근 14일 · 지금 그대로)</span></div>
+      <div class="flow">
+        <div class="fpanel"><h3>환자 수 추이</h3><p class="s">단위 명</p>${barsHtml(DAYS14, 151)}</div>
+        <div class="fpanel mark-new"><h3>신환 재방문율</h3>${note(T.why.revisit)}</div>
+        <div class="fpanel"><h3>요일별 환자 수</h3><p class="s">하루 평균, 요일마다</p>${barsHtml([['월', 150], ['화', 136], ['수', 120], ['목', 128], ['금', 128], ['토', 72], ['일', 0]].map(([d, v]) => [d, v]), 150).replace(/일<\/span>/g, '</span>')}</div>
+        <div class="fpanel mark-new"><h3>처방 상위</h3>${note(T.why.topRx)}</div>
+      </div>
+    </section>`
+}
+
+/* ───────── 통계 탭 ───────── */
+const AGE = [['10세 미만', 12, 1], ['10대', 31, 4], ['20대', 58, 9], ['30대', 84, 8], ['40대', 109, 7], ['50대', 152, 9], ['60대', 158, 7], ['70대', 98, 4], ['80세 이상', 37, 1], ['생년월일 없음', 3, 0]]
+const GROUPS = [['도수치료', '186', 13020000], ['물리치료 기본', '1,312', 6428800], ['충격파', '94', 5640000], ['주사', '233.5', 2101500]]
+const CODES = [['MT30', '도수치료 30분', '122', 9760000], ['ESWT 1부위', '체외충격파 1부위', '94', 5640000], ['HP', '표층열치료', '657', 3612300], ['MT20', '도수치료 20분', '64', 3260000], ['ICT', '간섭파 전류치료', '655', 2816500], ['mm010 100/100', '주사 약제', '233.5', 2101500], ['carm', 'C-arm 투시', '12', 1440000], ['CRYO 대관절', '한랭치료 대관절', '41', 287000]]
+const pct = (a, b) => b === 0 ? '0%' : `${(Math.round(a / b * 1000) / 10).toFixed(1)}%`
+function ageHtml(days, missDays) {
+  const tv = AGE.reduce((s, r) => s + r[1], 0), tn = AGE.reduce((s, r) => s + r[2], 0)
+  return `<div class="mark-new"><div class="sub-h"><h3>환자 구성</h3><span class="d">${T.mixDesc(days)}</span></div>
+    <div class="tbw"><table class="tb"><thead><tr><th>나이대</th><th class="num">내원</th><th class="num">비율</th><th class="num">신환</th><th class="num">비율</th></tr></thead><tbody>
+    ${AGE.map(([b, v, nw]) => `<tr><td>${b}</td><td class="num">${v}건</td><td class="num">${pct(v, tv)}<span class="agebar" style="width:${Math.round(v / 158 * 48)}px"></span></td><td class="num">${nw}명</td><td class="num">${pct(nw, tn)}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${missDays ? `<p class="tfoot">${T.mixMiss(missDays)}</p>` : ''}
+    ${note(T.why.mix)}</div>`
+}
+function rxPanel(gap) {
+  const gapNote = gap ? note(T.gap(3, '11월 3일~4일, 11월 12일'), T.gapTitle) : ''
+  if (st.rxTab === 0) {
+    const total = 37060600, other = total - GROUPS.reduce((s, g) => s + g[2], 0)
+    return `<p class="tlead">${T.grpLead}</p>${gap ? gapNote : `<p class="covl">최근 7일 처방 엑셀: 하루 6개</p>
+      <div class="tbw"><table class="tb"><thead><tr><th>묶음</th><th class="num">처방량</th><th class="num">총액</th></tr></thead><tbody>
+      ${GROUPS.map(([g, q, a]) => `<tr><td>${g}</td><td class="num">${q}</td><td class="num">${won(a)}원</td></tr>`).join('')}
+      <tr class="oth"><td>그 밖 처방</td><td class="num dash">–</td><td class="num">${won(other)}원</td></tr>
+      <tr class="sum"><td>합계</td><td class="num dash">–</td><td class="num">${won(total)}원</td></tr></tbody></table></div>
+      <p class="tfoot">${T.ignored}</p>`}
+      <div style="margin-top:12px"><button class="btn sm">묶음 고치기</button> <span class="same">(지금 고치기 화면 그대로 · 찾기 목록은 의사랑 처방 코드)</span></div>`
+  }
+  if (st.rxTab === 1) {
+    return `<p class="tlead">${T.codeLead}</p>${gap ? gapNote : `<div class="tbw"><table class="tb"><thead><tr><th>코드</th><th>처방명칭</th><th class="num">처방량</th><th class="num">총액</th></tr></thead><tbody>
+      ${CODES.map(([c, n, q, a]) => `<tr><td class="code">${esc(c)}</td><td>${n}</td><td class="num">${q}</td><td class="num">${won(a)}원</td></tr>`).join('')}
+      </tbody></table></div><p class="tfoot same">(시안이라 총액이 작은 나머지 코드 줄은 줄였어요)</p>`}`
+  }
+  return note(st.rxTab === 2 ? T.why.rxSplit : T.why.revisit)
+}
+function rxCard(gap) {
+  const tabs = ['묶음별 처방량', '처방 코드별', '처방별 신환·재진', '몇 번까지 받나']
+  return `<section class="card mark-new" id="rxcard"><div class="card-h"><h2>처방</h2><span class="d">${T.rxDesc}</span></div>
+    <div role="tablist" class="tablist" aria-label="처방 보기">${tabs.map((t, i) => `<button role="tab" class="tab" data-act="rxtab" data-i="${i}" aria-selected="${i === st.rxTab}">${t}</button>`).join('')}</div>
+    <div>${rxPanel(gap)}</div></section>`
+}
+function statsTop(label) {
+  const P = ['최근 7일', '최근 30일', '최근 90일', '최근 12달']
+  return `<div class="st-top"><h1>통계</h1><div class="pchips"><span class="cap">빠르게 보기</span>${P.map(p => `<button class="pc" aria-pressed="${p === label}">${p}</button>`).join('')}<button class="pc">기간 고르기</button></div></div>
+    <p class="srcline mark-new"><b>자료: ${T.srcName} · 11월 26일 (목) 19:05 저장</b> · 11월 26일까지 <span class="same">(자료 줄 모양은 지금 그대로, 출처 이름만)</span></p>
+    ${foldedBox({ stats: true })}`
+}
+function stats() {
+  const rev = ['매출 추이', '급여·비급여·기타', '치료별 매출', '건당 진료비']
+  return `${statsTop('최근 7일')}
+  <div class="cards">
+    <section class="card"><div class="card-h"><h2>환자 요약</h2><span class="d">11월 20일 ~ 11월 26일</span></div>
+      <div class="card-b"><div class="sumcells">
+        <div><p class="l">하루 평균 내원</p><p class="v">123<small>명</small></p><p class="n">진료한 날 6일 평균</p></div>
+        <div><p class="l">신환</p><p class="v">50<small>명</small></p><p class="n">처음 온 환자</p></div>
+        <div class="mark-new"><p class="l">90일초진</p><p class="v dash">–</p><p class="n">${T.na}</p></div>
+        <div><p class="l">재진</p><p class="v">692<small>건</small></p><p class="n">90일초진 포함</p></div>
+      </div></div></section>
+    <section class="card"><div class="card-h"><h2>환자</h2><span class="d">11월 20일 ~ 11월 26일</span></div>
+      <div class="card-b">
+        <div><div class="sub-h"><h3>일별 내원</h3><span class="same">(지금 그대로)</span></div>${barsHtml(DAYS14.slice(7), 151)}</div>
+        <div class="mark-new"><div class="sub-h"><h3>신환 재방문율</h3></div>${note(T.why.revisit)}</div>
+        ${ageHtml(6, 0)}
+      </div></section>
+    <section class="card"><div class="card-h"><h2>예약·전환</h2></div>
+      <div class="card-b"><div class="three">
+        <div><p class="mini-l">신환 예약률</p><p class="mini-v">32.0%</p><p class="mini-n">수납일지 마감한 날만 <span class="same">(지금 그대로)</span></p></div>
+        <div><p class="mini-l">90일 예약률</p><p class="mini-v">41.5%</p><p class="mini-n">수납일지 마감한 날만 <span class="same">(지금 그대로)</span></p></div>
+        <div class="mark-new"><p class="mini-l">Block 전환</p>${note(T.why.block)}</div>
+      </div></div></section>
+    ${rxCard(false)}
+    <section class="card"><div class="card-h"><h2>진료 운영</h2><span class="d">언제 붐비는지 · 원장님마다</span></div>
+      <div class="card-b"><div class="opsrow">
+        <div><div class="sub-h"><h3>요일별 내원</h3><span class="same">(지금 그대로)</span></div><div class="wkbars">${[150, 136, 120, 128, 128, 72, 0].map(v => `<i style="height:${v ? Math.round(v / 150 * 100) : 2}%;${v ? '' : 'background:var(--st-line)'}"></i>`).join('')}</div><div class="wkx">${['월', '화', '수', '목', '금', '토', '일'].map(d => `<span>${d}</span>`).join('')}</div></div>
+        <div class="mark-new"><div class="sub-h"><h3>시간대별 접수</h3></div>${note(T.why.hours)}</div>
+        <div class="mark-new"><div class="sub-h"><h3>원장님별</h3></div>${note(T.why.doctors)}</div>
+      </div></div></section>
+    <section class="card"><div class="card-h"><h2>매출</h2></div>
+      <div role="tablist" class="tablist" aria-label="매출 보기">${rev.map((t, i) => `<button role="tab" class="tab" data-act="revtab" data-i="${i}" aria-selected="${i === st.revTab}">${t}</button>`).join('')}</div>
+      <div>${st.revTab === 2 ? `<div class="mark-new">${note(T.why.treat)}</div>` : `<p class="tlead same">(${rev[st.revTab]} — 지금 그대로, 일일수입통계로 저장한 매출)</p>`}</div></section>
+    <section class="card"><div class="card-h"><h2>원장님 보고</h2><span class="d mark-new">${T.reportDesc}</span></div>
+      <div class="mark-new">${note(T.why.report)}</div></section>
+  </div>`
+}
+function statsGap() {
+  st.rxTab = st.rxTab > 1 ? 0 : st.rxTab
+  return `${statsTop('최근 30일')}
+  <div class="cards">
+    <section class="card"><div class="card-h"><h2>환자</h2><span class="d">10월 28일 ~ 11월 26일</span></div>
+      <div class="card-b">${ageHtml(23, 2)}</div></section>
+    ${rxCard(true)}
+  </div>`
+}
+
+/* ───────── 관리자 의원 비교 ───────── */
+function admin() {
+  const rows = [
+    [1, '샘플정형외과의원', 'me', '서울 강남구', '3억 1,240만 원', '4,812건', '312명', '4,500건', '192.4건'],
+    [2, '가나정형외과의원', 'uis', '서울 서초구', '2억 8,630만 원', '4,105건', '287명', '3,818건', '164.2건'],
+    [3, '다라정형외과의원', '', '서울 송파구', '2억 2,410만 원', '3,602건', '240명', '3,362건', '144.0건'],
+    [4, '마바정형외과의원', 'uis', '경기 성남시', '1억 6,050만 원', '2,744건', '198명', '2,546건', '109.7건'],
+  ]
+  const chip = k => k === 'me' ? '<span class="chip accent">내 의원</span>' : k === 'uis' ? `<span class="chip neutral mark-new">${T.mark}</span>` : ''
+  const bar = (l, w, v, c = '') => `<div class="hbar"><span>${l}</span><i class="${c}" style="width:${w}%"></i><em>${v}</em></div>`
+  const na = `<p class="na">${T.na}</p>`
+  return `<p class="adm-loc">관리자</p><h1 class="adm-h1">의원 비교</h1>
+    <div class="pick-row"><span class="selbox"><span class="k">지역</span>전체${ICON.chev}</span><span class="selbox"><span class="k">달</span>2026년 10월${ICON.chev}</span><span class="same">(고르기는 지금 그대로)</span></div>
+    <section class="panel"><h2>의원 순위</h2><p class="d">칸 이름을 누르면 그 숫자로 줄을 세워요. 한 번 더 누르면 거꾸로예요.</p>
+      <div class="grp"><span class="on">매출·환자 수</span><span>직군별 평균 월급</span><span>통계 대표 숫자</span></div>
+      <div class="tbw"><table class="rk"><thead><tr><th>의원</th><th>총진료비</th><th>내원 수</th><th>신환</th><th>재진</th><th>하루 평균 내원</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><span class="ncell"><span class="rkn">${r[0]}</span><b>${r[1]}</b>${chip(r[2])}<span class="rg">${r[3]}</span></span></td>${r.slice(4).map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <p class="foot">${T.rankFoot}</p><p class="foot mark-new" style="margin-top:2px">${T.uisFoot}</p></section>
+    <section class="panel"><h2>통계 나란히 보기</h2><p class="d">2026년 10월 · 고른 두 의원 <span class="same">(칸 차례·모양은 지금 그대로, 의사랑 의원 칸만 바뀜)</span></p>
+      <div class="side">
+        <div class="scard"><p class="who">샘플정형외과의원 <span class="chip accent">내 의원</span></p>
+          <div class="scell"><h4>환자 구성</h4>${bar('60대', 92, '22.1%')}${bar('50대', 80, '19.3%')}${bar('40대', 61, '14.8%')}</div>
+          <div class="scell"><h4>신환 재방문율</h4><div class="nums"><div><p class="l">7일</p><p class="v">41.2%</p></div><div><p class="l">14일</p><p class="v">52.0%</p></div><div><p class="l">30일</p><p class="v">60.3%</p></div></div></div>
+          <div class="scell"><h4>처방별 추세</h4>${bar('도수치료', 90, '812건', 'c3')}${bar('충격파', 52, '466건', 'c3')}${bar('물리치료 기본', 40, '351건', 'c3')}</div>
+          <div class="scell"><h4>처방별 신환·재진</h4><p class="na" style="color:var(--ink-2)">도수치료 신환 18% · 재진 82% … <span class="same">(지금 그대로)</span></p></div>
+          <div class="scell"><h4>원장님별</h4><p class="na" style="color:var(--ink-2)">원장님 두 분 표 <span class="same">(지금 그대로)</span></p></div>
+          <div class="scell"><h4>시간대별 접수</h4><p class="na" style="color:var(--ink-2)">시간대 칸 그림 <span class="same">(지금 그대로)</span></p></div>
+        </div>
+        <div class="scard mark-new"><p class="who">가나정형외과의원 <span class="chip neutral">${T.mark}</span></p>
+          <div class="scell"><h4>환자 구성</h4>${bar('60대', 88, '21.3%')}${bar('50대', 84, '20.5%')}${bar('40대', 60, '14.7%')}</div>
+          <div class="scell"><h4>신환 재방문율</h4>${na}</div>
+          <div class="scell"><h4>묶음별 처방량</h4>${bar('물리치료 기본', 92, '5,604')}${bar('주사', 18, '1,021.5')}${bar('도수치료', 14, '788')}</div>
+          <div class="scell"><h4>처방별 신환·재진</h4>${na}</div>
+          <div class="scell"><h4>원장님별</h4>${na}</div>
+          <div class="scell"><h4>시간대별 접수</h4>${na}</div>
+        </div>
+      </div></section>`
+}
+
+/* ───────── 그리기 ───────── */
+function render() {
+  const main = document.getElementById('main'), wrap = document.getElementById('mainwrap')
+  wrap.className = ''
+  if (S === 'stats' || S === 'stats-gap') { frame('통계'); wrap.className = 'stbg'; main.innerHTML = S === 'stats' ? stats() : statsGap() }
+  else if (S === 'admin') { frame('관리자'); main.innerHTML = admin() }
+  else {
+    frame('대시보드')
+    if (S === 'dash-empty') main.innerHTML = dashStart(openBox())
+    else if (S === 'reading') main.innerHTML = dashStart(openBox({ phase: 'reading', n: 4 }))
+    else if (S === 'dash-missing') main.innerHTML = dashStart(openBox({ rows: R.missing, miss: MISS.missing }))
+    else if (S === 'dash-ok') main.innerHTML = dashData(foldedBox({ rows: R.ok, miss: [] }))
+    else if (S === 'refused') main.innerHTML = dashData(foldedBox({ rows: R.refused, miss: MISS.refused }))
+    else main.innerHTML = dashData(foldedBox())
+  }
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]')
+  if (!t) { if (e.target.closest('a[href="#"]')) e.preventDefault(); return }
+  e.preventDefault()
+  const a = t.dataset.act
+  if (a === 'help') { st.help = !st.help; render() }
+  else if (a === 'rxtab') { st.rxTab = +t.dataset.i; render() }
+  else if (a === 'revtab') { st.revTab = +t.dataset.i; render() }
+  else if (a === 'pick') { location.search = '?s=reading' }
+})
+document.addEventListener('dragover', e => { if (e.target.closest('[data-drop]')) { e.preventDefault(); if (!st.drag) { st.drag = true; render() } } })
+document.addEventListener('dragleave', e => { if (st.drag && !e.relatedTarget) { st.drag = false; render() } })
+document.addEventListener('drop', e => { if (e.target.closest('[data-drop]')) { e.preventDefault(); location.search = '?s=reading' } })
+render()
+</script>
+</body>
+</html>
