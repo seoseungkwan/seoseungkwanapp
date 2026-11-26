@@ -294,7 +294,8 @@ grant execute on function public.admin_uis_rows(text, uuid[], date, date) to aut
   3. 남은 날 가운데 `휴진`(덮은 기간 안이고 진료한 날 아님)·오늘·오늘 뒤를 뺀 날이 있으면 `gap`(날 차례). 없으면 ok.
   4. 같은 기간 줄이 둘이면(일어나면 안 됨) `updated_at`이 늦은 것.
 - `sumRxCodes(used)` → 코드마다 `{code, name(가장 늦은 줄), qty(셋째 자리 반올림), amount}` · 총액 큰 차례(같으면 code 차례).
-- `sumRxGroups(codes, groups: RxGroupDef[])` → 묶음마다 `{id, qty, amount}`(넣는 처방 code와 앞뒤 빈칸 떼고 대소문자 무시로 맞춤) · `other {amount}`(어느 묶음에도 없는 코드) · `total {amount}` · `ignored: boolean`(빼는 처방·조건이 있는 묶음이 하나라도).
+- `UisGroupDef = { id: string; codes: readonly string[]; out: readonly string[]; cond: readonly unknown[] }`(`src/types/uisarang.ts`, 통계 탭은 `StatsRxGroup`에서 · AI 서버는 `groupDefsOf`에서 만든다).
+- `sumRxGroups(codes, groups: UisGroupDef[])` → 묶음마다 `{id, qty, amount}`(넣는 처방 code와 앞뒤 빈칸 떼고 대소문자 무시로 맞춤) · `other {amount}`(어느 묶음에도 없는 코드) · `total {amount}` · `ignored: boolean`(빼는 처방·조건이 있는 묶음이 하나라도).
 - `sumAges(rows: UisPeriodRow<UisAgePayload>[], range, worked)` → `{bands[10], newBands[10], days, missingDays}`(missingDays = 기간 안 진료한 날인데 나이대 줄이 없는 날 수).
 - `missingFiles(days: string[], have: UisHave, today)` → `Array<{kind: 'income' | 'rx' | 'visits' | 'visitPatients'; days: string[]}>`(아직 없는 날이 있는 종류만, 차례 고정). `days` = 이번에 저장한 파일들이 덮는 날(합집합, 오늘 뒤 뺌). 날마다 휴진(덮었고 진료 없음)이면 건너뛴다. income = `have.income`에 없음, rx = 그날을 덮는 처방 줄 없음, visits = `have.covered` 밖, visitPatients = `have.age`에 없음.
 - `formatQty(x)`: 셋째 자리에서 반올림한 뒤 둘째 자리까지, 끝 0과 `.` 뗌, 천 단위 쉼표, 음수는 `-` 앞(`1234.5 → '1,234.5'`, `12 → '12'`, `0.245 → '0.25'`).
@@ -319,7 +320,7 @@ grant execute on function public.admin_uis_rows(text, uuid[], date, date) to aut
 - 보는 중(`viewing` 있음)이고 보는 의원 `clinic_profiles` 줄이 없으면 `signupEmr`를 `my_signup_emr()` 대신 `readViewedEmr(client, viewing.id, today)`로 채우고, null이면 `DEFAULT_EMR`(`bit`). 보는 중이 아니면 지금 그대로 `my_signup_emr()`. 이 값을 대시보드·통계 탭·AI 리포트 화면이 같이 쓴다(AC-8808.8).
 
 ### 10-1. 올리기 칸 (`src/components/uisarang/`)
-- `UisUpload({ look: 'open' | 'folded', upload })` — 그리기. `useUisUpload({ onSaved })` — 상태(`idle → reading → saving → done | saveFailed`)·결과·[다시 저장]. 상태는 놓는 쪽이 한 번 들고 두 모양에 같은 값을 넘긴다. **대시보드는 `LiveDashboard`가 든다** — `BitDashboard`는 `key={drawn.round}`라 첫 숫자가 오면 다시 놓여 그 안의 상태가 지워지기 때문이다(검토 발견 1). `LiveDashboard`는 맨 위(이른 return 앞)에서 `useUisUpload({ onSaved })`를 한 번 부르고, `onSaved`는 ref로 늘 마지막 `readAgain`을 부른다(시작 칸 · 저장 숫자 없음에서도). `BitDashboard`에는 `uisUpload={(look) => <UisUpload look={look} upload={upload} />}`(그리는 함수)를 넘긴다. 시작 칸에서 저장해 숫자 화면으로 바뀌어도 결과가 접은 칸 안에 남는다(AC-8810.9·AC-8810.10). 통계 탭은 `StatsScreen`이 든다. `UisResult` — 결과 줄·아직 없는 파일 상자. `texts.ts` — '화면 글자' 글을 한 곳에(시험이 시안 글자와 견줌).
+- `UisUpload({ look: 'open' | 'folded', upload })` — 그리기. `useUisUpload({ onSaved })` — 상태(`idle → reading → saving → done | saveFailed`)·결과·[다시 저장]. 상태는 놓는 쪽이 한 번 들고 두 모양에 같은 값을 넘긴다. **대시보드는 `LiveDashboard`가 든다** — `BitDashboard`는 `key={drawn.round}`라 첫 숫자가 오면 다시 놓여 그 안의 상태가 지워지기 때문이다(검토 발견 1). `LiveDashboard`는 맨 위(이른 return 앞)에서 `useUisUpload({ onSaved })`를 한 번 부르고, `onSaved`는 ref로 늘 마지막 `readAgain`을 부른다(시작 칸 · 저장 숫자 없음에서도). `BitDashboard`에는 `uisUpload={(look) => <UisUpload look={look} upload={upload} />}`(그리는 함수)를 넘긴다. 시작 칸에서 저장해 숫자 화면으로 바뀌어도 결과가 접은 칸 안에 남는다(AC-8810.9·AC-8810.10). 통계 탭은 `StatsScreen`이 들고 `onSaved` = `data.reread()` + `revenue.reread()`(매출은 `useStatsRevenue`가 자기 `reread`로만 다시 읽음 — 처방·나이대는 `useUisPeriods(range, data.revision)`이라 날 숫자 다시 읽기로 revision이 올라 함께 다시 읽힌다). `UisResult` — 결과 줄·아직 없는 파일 상자. `texts.ts` — '화면 글자' 글을 한 곳에(시험이 시안 글자와 견줌).
 - 놓기: 칸 전체(`dragover`·`drop`), 고르기: `<input type="file" multiple accept=".xls,.xlsx,.csv">`(숨김, [파일 고르기]가 엶). 읽는 동안 [파일 고르기] 잠김, 놓기 무시.
 - 흐름: `runUisarang(files, { today: todayInKorea() })` → `planUisSave` → `saveUisPlan` → (저장된 파일이 하나라도 있으면) `readUisHave({from: 이번 날 처음, to: 끝})` → `missingFiles` → `onSaved()`.
 - 결과 줄의 파일 이름 = 놓은 `File.name`(이 화면 상태에만 · 저장소·요청·Worker에 없음). 줄 차례 = 놓은 차례. 칩: read → 저장함(저장 실패한 번호면 저장 못 함), skipped → 건너뜀, refused → 받지 않음.
@@ -329,7 +330,7 @@ grant execute on function public.admin_uis_rows(text, uuid[], date, date) to aut
 
 ### 10-2. 대시보드 (`components/dashboard/`)
 - `BitDashboard`: `isUis = clinic.state === 'ready' && emr === 'uisarang'`이면 비트 읽기 효과를 돌리지 않는다. 효과 의존에 `isUis`를 넣어, 병원 정보를 읽는 동안(`emr`이 아직 `bit`) 시작한 읽기는 `isUis`가 참이 되면 정리 함수가 멈추고(`leaving.abort()`) 같은 때 `status`를 저장 숫자 처음 모양(`initial`로 만든 상태 · 읽는 중 표시 없음)으로 되돌린다(검토 발견 8, AC-8811.9). 처음 날 = `status.days`에서 오늘 이하 가장 늦은 날(없으면 오늘). `report` 머리 줄은 `StatusHeader` 의사랑 모양(`variant: 'uisarang'`, `savedAt`·`lastDay`), 그 아래 `uisUpload?.('folded')`(prop, 아래).
-- `DashboardHome`: `emr === 'uisarang'`이고 `report === null`이면 `EmrWaitSentence` 대신 `UisStart`(날짜 줄 → h1 → 안내 → `uisUpload` 자리 → [쓰는 EMR 바꾸기]). 보는 중이면 '보는 중 · 숫자 없음' 글.
+- `DashboardHome`: `emr === 'uisarang'`이고 `report === null`이면 `EmrWaitSentence` 대신 `UisStart`(날짜 줄 → h1 → 안내 → `uisUpload` 자리 → [쓰는 EMR 바꾸기]). 보는 중이면 '보는 중 · 숫자 없음' 글. 이 갈래에서는 지금 비트 아닌 병원 연결 전 모양의 `ReadyNowRow`('연결하면 바로 쓸 수 있어요')와 빈 `analysis`('비트 PC 연결 전' 칩·'연결하면 보여요')를 그리지 않는다 — 의사랑에 맞지 않는 비트 연결 글이고 승인 시안 `?s=dash-empty`에도 없다. `FeatureIndex connected={false}`는 지금 그대로 둔다(시안 메모에 '지금 그대로'). 이지스·그 밖 EMR은 지금 그대로.
 - 올리기 칸 자리: `BitDashboard`는 새 prop `uisUpload?: (look: 'open' | 'folded') => ReactNode`(없으면 null)를 받아 머리 줄 아래(`folded`)와 `DashboardHome` 시작 칸(`open`)에 그린다. TASK-6은 prop 자리만 만들고, TASK-7이 `LiveDashboard`에서 넘긴다(Phase 3에서 `BitDashboard.tsx`는 고치지 않음).
 - AI 요약(`AiBrief`)은 의사랑에도 지금 자리 그대로다(분석 구역, 날 숫자가 있을 때). 숫자는 서버가 §10-5 길로 만든다(AC-8811.8).
 - `DailySection`: `uis` 참이면 90일초진·물리치료 칸 = `{value: null, emptyText: '의사랑 엑셀로는 셀 수 없어요'}`. `FlowSection`: `uis` 참이면 신환 재방문율·처방 상위 자리 = 셀 수 없음 안내. **`summary/` 폴더는 `stats/sections/parts`(`EmptyNote`)·`components/uisarang/texts`·`lib/analytics/uisarang`을 부르지 않는다**(울타리 시험 `imports.test.ts` HEAVY · `DashboardAnalysis.test.tsx` ALLOWED, 검토 발견 4) — 같은 모양(굵은 제목 + ` · ` + 까닭, `ds`·`text-*` 클래스)을 그 파일 안에서 직접 그리고 글은 파일마다 상수로 적는다(시험이 requirements 글자와 견줌). `ReportBlock`: `uis` 참이면 그날 줄 없음 글 둘(requirements '시안에 없어…').
@@ -346,22 +347,46 @@ grant execute on function public.admin_uis_rows(text, uuid[], date, date) to aut
   - 매출 카드: `치료별 매출` 탭 = 안내(나머지 탭 그대로). `noDayCodes`(날 단위 처방 줄 없음)로 뜨는 옛 도우미 안내는 의사랑이면 그리지 않는다(의사랑 날은 늘 `day_codes` 거짓이다).
   - 처방 카드 옆 글은 `RX_DESC` 대신 의사랑 글, 보고 카드 옆 글은 `REPORT_DESC` 대신 의사랑 글(requirements '화면 글자').
   - 보고 카드: 비트 보고 자리 = 안내, [고른 기간 보고]는 그대로(처방 줄 없이 날 숫자로).
-- `useUisPeriods(range)`(`components/stats/uisarang/`): 지금 기간의 `readUisPeriods('rx')`·`('age')`를 읽는다(보는 중에도 읽음 — RLS가 보는 의원 줄을 줌). 실패 = 그 자리 E-UIS-READ-FAILED 카드.
-- `useRxCatalog`: 의사랑이면 날 줄 rx 대신 넓은 범위 `readUisPeriods('rx')`의 코드·이름으로 `RxLine`을 만든다(type 빈 글자).
+- `useUisPeriods(range, revision)`(`components/stats/uisarang/`): 지금 기간의 `readUisPeriods('rx')`·`('age')`를 읽는다(보는 중에도 읽음 — RLS가 보는 의원 줄을 줌). 열쇠에 `revision`(= `data.revision`)을 넣어 저장 뒤 다시 읽는다. 실패 = 그 자리 E-UIS-READ-FAILED 카드.
+- `StatsSections`는 `MonthlyReportSection`에 `uis`를 넘긴다: `MonthlyReportProps`에 선택 칸 `uis?: boolean`(기본 거짓)을 더하고 넘기기만 한다(쓰는 것은 TASK-9 §10-6).
+- 묶음 찾기 목록(의사랑): `useRxCatalog`는 날 줄을 돌려주는 훅이고 설정 화면(`HospitalPhrases.tsx`)도 쓰므로 **고치지 않는다**. `UisRxSection`이 이미 읽은 `useUisPeriods`의 rx 줄(지금 기간, `sumRxCodes`)과 지금 묶음에 든 코드로 `RxLine`(type 빈 글자)을 직접 만들어 `TreatmentGroupEditor`에 `lines`로 넘긴다.
 - 덮음 줄 이름 `{기간 이름}`은 지금 `PERIOD_NAME`/고른 기간 이름 그대로.
 
 ### 10-4. 관리자 의원 비교
 - `adminRows.ts`: `ADMIN_ROW_KINDS`에 `'uis_periods'`·`'clinic_emr'`(스물), 이 둘은 `FUNCTION_OF[kind] = 'admin_uis_rows'`, 나머지 `'admin_rows'`. 쪽 읽기·오류는 같다.
-- `load.ts`: `COMPARE_KINDS`에 둘 더함(그 달 범위). `readAdminRows`는 함수가 없을 때(PostgREST `PGRST202` · Postgres `42883`) `AdminRowsError`에 `missing: true`를 달고, `loadHospital`은 새 두 종류에서만 그 오류를 빈 목록으로 받는다 — SQL을 아직 안 붙인 DB에서도 비트 의원 비교가 깨지지 않는다(검토 발견 6, AC-8813.7). 그 밖 오류·지금 열여덟 종류는 지금처럼 실패다. `rank.ts`·`statsInput.ts`의 출처 거르기에 `'uisarang'`.
+- `load.ts`: `COMPARE_KINDS`에 둘 더함(그 달 범위). `readAdminRows`는 함수가 없을 때(PostgREST `PGRST202` · Postgres `42883`) `AdminRowsError`에 `missing: true`를 달고, `loadHospital`은 새 두 종류에서만 그 오류를 빈 목록으로 받는다 — SQL을 아직 안 붙인 DB에서도 비트 의원 비교가 깨지지 않는다(검토 발견 6, AC-8813.7). 그 밖 오류·지금 열여덟 종류는 지금처럼 실패다. `statsInput.ts`·`sales.ts` 등 `CompareRaw`를 읽는 곳은 새 두 종류를 `raw.clinic_emr ?? []`·`raw.uis_periods ?? []`로 읽는다(열여덟 종류만 만든 지금 시험 `components/stats/viewSums.test.ts`의 값도 비트 의원으로 그대로 — 그 시험도 TASK-5가 돌리고 필요하면 두 종류 빈 목록을 더한다). `rank.ts`·`statsInput.ts`의 출처 거르기에 `'uisarang'`.
 - 의사랑 의원(`clinic_emr` = `uisarang`): `sales.ts` `salesRow`에 날 숫자(stats_days totals)를 넘겨 `visits`·`newPatients`·`returnVisits`·`visitDays`(환자 1명 이상 날)·`dayAvg`를 그것으로, `total`은 sales_days로. 대표 숫자 `가장 많은 나이대` = `sumAges` 그 달. `비급여 비율`·`신환 예약률`·`예약 수`·`목표 달성률`은 지금 그대로, `신환 재방문율 30일`·`Block 전환율`·`3번 이상 받은 비율` = `–`(지금 FOOT가 설명).
 - `RankTable` `NameCell`: `내 의원` 칩 다음 `ds.chip.neutral` `의사랑`. 표 아래 의사랑 줄(requirements). `CompareCells`: 의사랑 의원 칸은 requirements 표대로(`묶음별 처방량` 위 셋 = 그 달 `tileRx`가 ok일 때 `sumRxGroups` 처방량 큰 차례, 값 `formatQty`).
 
 ### 10-5. AI 경영 리포트 (서버 · `app/api/ai/`·`lib/ai/`, TASK-8)
-- `route.ts`는 고치지 않는다. `store.ts` `loadReportMonths(sb, month)`: 지금처럼 세 달 `stats_months`·묶음을 읽고, **고른 달 `stats_months` 줄이 없으면** `loadUisReportRaw(sb, month)`도 읽어 `ReportMonths.uis`에 둔다(있으면 비트 길만 — 의사랑으로 바꾼 의원의 옛 비트 달은 비트 리포트 그대로). 판정은 EMR이 아니라 자료로 한다(보는 중 EMR 문제가 서버에 없음).
+- `route.ts`는 고치지 않는다. `store.ts` `loadReportMonths(sb, month)`: 지금처럼 세 달 `stats_months`·묶음을 읽고, **고른 달 `stats_months` 줄이 없으면** 먼저 고른 달 `stats_days`(`source = 'uisarang'`)만 읽는다. 그 줄이 없으면 더 읽지 않고 지금 값 그대로 돌려준다(비트 의원의 빈 달은 지금처럼 `E-AI-NO-DATA` — `uis_periods`를 읽지 않으므로 새 SQL이 없는 DB에서도 바뀌지 않음). 있으면 `loadUisReportRaw(sb, month)`로 나머지를 읽어 `ReportMonths.uis`에 둔다. 고른 달 `stats_months`가 있으면 비트 길만(의사랑으로 바꾼 의원의 옛 비트 달은 비트 리포트 그대로). 판정은 EMR이 아니라 자료로 한다(보는 중 EMR 문제가 서버에 없음).
+- `ReportMonths`에 선택 칸 `uis?: UisReportRaw`(검사 전 · `store.ts`):
+
+```ts
+export type UisReportRaw = {
+  days: unknown[]     // stats_days {day, payload} · source = 'uisarang' · 세 달(달 1일~말일)
+  coverage: unknown[] // stats_coverage {from_day, to_day} · source = 'uisarang' · 세 달과 겹치는 줄
+  sales: unknown[]    // sales_days {day, total, rough_total} · 세 달
+  rx: unknown[]       // uis_periods {from_day, to_day, payload, updated_at} · kind = 'rx' · 세 달과 겹치는 줄
+  age: unknown[]      // uis_periods {from_day, to_day, payload, updated_at} · kind = 'age' · 세 달 안
+  groups: Array<{ key: string; name: string; codes: string[]; out: string[]; cond: unknown[] }> // groupDefsOf: groupNamesOf와 같은 거르기·차례·열쇠(groupKey)에 codes·out·cond를 남긴 것
+}
+```
+
+- `validateUisReportMonths(raw, month, today)` 검사 줄(CLAUDE.md '서버가 DB에서 읽어 검사한 집계만'):
+  - 날 줄: `day`가 `isYmd`이고 그 달 안, `payload`가 `validateDayPayload`를 지나고 `payload.day === day`. 한 줄이라도 어기면 그 달 날 숫자 없음(고른 달이면 `E-AI-NO-DATA`, 비교 달이면 없는 달).
+  - 덮은 기간 줄: `from_day`·`to_day`가 `isYmd`이고 `from_day ≤ to_day`인 줄만 쓴다(어긴 줄은 버림 — 덮이지 않은 날이 늘어 `partial`이 될 뿐이다).
+  - 매출 줄: `day`가 `isYmd`이고 그 달 날, `total`·`rough_total`이 0 이상 정수(`Number.isSafeInteger`) 또는 null. 한 줄이라도 어기면 그 달 총진료비 null. 맞으면 `revenueDayValues({date, total, roughTotal})` 합.
+  - 처방·나이대 줄: `from_day`·`to_day` `isYmd`, 기간 모양(§7 span), `payload`가 `validateUisRxPayload`·`validateUisAgePayload`를 지난 줄만(어긴 줄은 버림 — `tileRx` 모자람·나이대 빠진 날이 되어 그 값이 null).
+  - 묶음: `groupDefsOf`가 이미 모양을 본다(지금 `groupRowOf` 그대로, 어기면 던져 `STATS_READ_FAILED`).
 - `loadUisReportRaw`: 세 달 범위(달 1일~말일)마다 `stats_days`(`source = 'uisarang'`, day·payload) · `stats_coverage`(`source = 'uisarang'`, 겹치는 from·to) · `sales_days`(그 달 날 줄, `revenueDayValues`가 쓰는 칸) · `uis_periods`(kind rx·age, 겹치는 줄)를 1,000줄씩 모두. 읽기 실패 = 지금 `STATS_READ_FAILED`.
 - `generate.ts` `currentInput`: 고른 달 비트 payload가 없고 `months.uis`가 있으면 `validateUisReportMonths(months.uis, month, todayInKorea())`(`lib/ai/uisInput.ts` — `validateDayPayload`·`validateUisRxPayload`·`validateUisAgePayload`를 지난 줄만) → 고른 달 의사랑 날 줄이 없으면 null(= `E-AI-NO-DATA`) → `buildUisReportInput(valid)`. 지문·저장·바뀜 비교는 지금 그대로 이 입력으로.
 - `buildUisReportInput`(순수): 지표 차례 AC-8816.2. 값: 날 숫자 합 · 총진료비 = `revenueDayValues` 합 · 처방 = 그 달 범위(이번 달이면 1일~어제) `tileRx`가 ok일 때 `sumRxCodes`/`sumRxGroups`(묶음 열쇠·이름은 지금 `groupNamesOf`와 같은 열쇠, 넣는 처방 있는 묶음만) · 나이대 = `sumAges`의 `missingDays === 0`일 때 띠마다 내원 합. `partial` = 이번 달 이상이거나 그 달 날 가운데 덮이지 않은 날이 있음. 비교 달은 `partial` 거짓일 때만(아니면 그 달 값 모두 null · `hasPrev`/`hasLastYear` 거짓). 입력 끝 열쇠 `source: 'uisarang'`(비트 입력에는 열쇠가 없어 지문이 그대로).
-- `types/aiReport.ts`: `MetricKind`에 `'qty'`(처방량), `ReportInput`에 선택 `source?: 'uisarang'`(맨 끝). `lib/ai/basis.ts` `valueText`: `qty` → `formatQty(value)`(단위 없음). `lib/ai/output.ts`의 숫자 든 이름 허락(따옴표 안 이름)이 `'40대'`·`'10세 미만'`을 받는지 시험으로 본다.
+- `types/aiReport.ts`: `MetricKind`에 `'qty'`(처방량), `ReportInput`에 선택 `source?: 'uisarang'`(맨 끝). `lib/ai/basis.ts` `valueText`: `qty` → `formatQty(value)`(단위 없음). `lib/ai/output.ts` `NAME_LABELS`(숫자 든 이름 허락 표)를 정확히 이렇게 고친다 — 지금 줄은 지우거나 바꾸지 않고 꼬리만 더한다:
+  - `{ id: 'group:', head: "처방 그룹 '", tails: ["' 환자", "' 신환", "' 재진", "' 처방량", "' 총액"] }`
+  - `{ id: 'rx:', head: "처방 '", tails: ["' 환자", "' 처방량", "' 총액"] }`
+  - 새 줄 `{ id: 'agevisit:', head: "연령대 '", tails: ["' 내원 건수"] }`(`'agevisit:'`는 `'age:'`로 시작하지 않아 따로 둔다)
+  - 시험: `'ESWT 1부위'` 묶음·처방 이름과 `'40대'`를 쓴 카드·요약이 지나고(카드가 빠지지 않고 `parseAiReport`가 null이 아님), 이름 밖 숫자는 지금처럼 막히며, 비트 이름 모양(`환자`·`신환`·`재진`·`age:` 등)의 지금 시험이 그대로 지난다(AC-8816.8).
 - `lib/ai/prompt.ts` `systemPrompt(honorific, source?)`: `source === 'uisarang'`이면 지금 글 끝에 빈 줄 + 아래 묶음을 붙인다. 비트(source 없음)는 지금 글 그대로(`PROMPT_VERSION`도 그대로):
 
 ```
@@ -379,7 +404,7 @@ grant execute on function public.admin_uis_rows(text, uuid[], date, date) to aut
 - `reportData.ts` `ReportInput`에 `uis: UisReportData | null`(null = 의사랑 아님 → 지금 그대로). `UisReportData = { rx: UisPeriodRow<UisRxPayload>[]; age: UisPeriodRow<UisAgePayload>[]; covered: DateRange[] }`. 의사랑이면 `spans.now`로: `treatments` 대신 `{key: 'uisRx', title: '묶음별 처방량', items}`(`tileRx` ok → `sumRxGroups` 묶음 차례 `{묶음} 처방량 {formatQty} · 총액 {formatWon}`, 아니면 `처방 엑셀이 모자라요 · {n}일 치가 없어요: {dayListText}` 한 줄) → `{key: 'ages', title: '나이대 (내원)', items}`(`sumAges` 띠마다 0건 뺌, 비율은 통계 탭 환자 구성 표와 같은 함수, `missingDays > 0`이면 끝 줄) → (예약·시행자별·빈자리 지금 그대로) → 맨 끝 `{key: 'uisCannot', title: '의사랑 엑셀로는 셀 수 없어요', items: [두 줄]}`. `dropoff`·`value`는 `bit`가 null이라 지금도 빠진다. `REPORT_TITLES`에 셋을 더한다.
 - `MonthlyReport.tsx`: 새 key 셋은 지금 `items` 칸 그림 그대로(새 모양 없음).
 - `useReportReads(month, today, { revision, withGoal, uis })`: `uis` 참이면 같은 열쇠·같은 늦은 답 버리기로 고른 달 범위(1일 ~ `salesEnd`)의 `readUisPeriods('rx')`·`readUisPeriods('age')`·`readCoverage`를 함께 읽어 `uis: ReportRead<UisReportData>`로 준다. 실패면 지금 월간 보고서 실패 카드 길(번호 `E-UIS-READ-FAILED`).
-- `ReportSection.tsx` 월간 보고서 칸: 이미 받는 `uis`(TASK-4)를 `useReportReads`에 넘기고 `monthlyReport` 입력 `uis`를 채운다. 비트는 `uis` 거짓이라 읽기·칸이 지금 그대로(AC-8817.6).
+- `ReportSection.tsx` `MonthlyReportSection`: `StatsSections`가 TASK-4에서 넘기는 `uis` prop(`MonthlyReportProps.uis?: boolean`)을 받아 `useReportReads`에 넘기고 `monthlyReport` 입력 `uis`를 채운다. `StatsSections.tsx`는 TASK-9에서 고치지 않는다. 비트는 `uis` 거짓이라 읽기·칸이 지금 그대로(AC-8817.6).
 
 ## 11. 오류
 - `lib/errors.ts`에 requirements '오류 번호' 표 열다섯 줄을 글자 그대로, `types/errors.ts` 합집합에 같은 번호. 끝 마침표 없음(지금 E-PARSE- 글과 같게).
