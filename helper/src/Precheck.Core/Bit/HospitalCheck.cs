@@ -83,6 +83,25 @@ public static class HospitalCheck
     }
 
     /// <summary>
+    /// 범위별 최근 30일 외래 건수(AC-005.19 고르기 창): ReadActiveScopes와 같은 SQL·기간이고, 빈 값·NULL 범위는 빼고 뒤 공백을 지운 범위마다 더한다.
+    /// </summary>
+    public static IReadOnlyDictionary<string, long> ReadActiveCounts(IBitDb db, DateTime today)
+    {
+        var day = today.Date;
+        var rows = ReadOnlyGuard.Query(db, Sql.ActiveScopesSql,
+            Args(("@from", Day(day.AddDays(-RecentDays)) + "0000"), ("@to", Day(day.AddDays(1)) + "0000")), Sql.MemoTimeout);
+        var counts = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            var scope = (First(row) ?? "").Trim();
+            if (scope.Length == 0) continue;
+            var visits = row != null && row.Count > 1 ? Count(row[1]) : 0;
+            counts[scope] = (counts.TryGetValue(scope, out var before) ? before : 0) + visits;
+        }
+        return counts;
+    }
+
+    /// <summary>
     /// DB 안 범위가 여럿일 때 처음 등록할 범위(AC-005.18): ① 로그인 계정의 범위가 DB 안에 있으면 그것(최근 내원은 읽지 않음)
     /// ② 아니면 최근 내원이 있는 범위 가운데 DB 안에 있는 것이 하나면 그것 ③ 못 정하면 null.
     /// </summary>

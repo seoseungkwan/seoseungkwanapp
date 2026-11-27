@@ -236,11 +236,11 @@ describe('AC-8511.1 수납 명령 여덟(sheet.*) — commands.json 모양', () 
   })
 })
 
-describe('AC-8511.1·AC-8541.2 판 글자 — 도우미 0.14.0 · 크롬 확장 0.5.0', () => {
+describe('AC-8511.1·AC-8541.2 판 글자 — 도우미 0.14.1(수납 시트·지난 도착 400일은 0.14.0부터) · 크롬 확장 0.5.0', () => {
   const root = new URL('../../../', import.meta.url)
 
-  it('AC-8511.1 LATEST_HELPER·SHEET_HELPER·CAL_PAST_HELPER는 0.14.0이고 helper/Directory.Build.props와 같다', () => {
-    expect(LATEST_HELPER).toBe('0.14.0')
+  it('AC-005.16 AC-8511.1 LATEST_HELPER는 0.14.1이고 helper/Directory.Build.props와 같다, SHEET_HELPER·CAL_PAST_HELPER는 0.14.0 그대로다', () => {
+    expect(LATEST_HELPER).toBe('0.14.1')
     expect(SHEET_HELPER).toBe('0.14.0')
     expect(CAL_PAST_HELPER).toBe('0.14.0')
     const props = readFileSync(new URL('helper/Directory.Build.props', root), 'utf8')

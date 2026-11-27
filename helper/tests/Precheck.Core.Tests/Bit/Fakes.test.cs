@@ -218,6 +218,20 @@ internal sealed class FakeConfirm : IConfirmWindow
     }
 }
 
+/// <summary>가짜 병원 고르기 창(AC-005.19). 고른 줄 번호를 돌려준다(null이면 [취소]·창 닫기·시간 지남).</summary>
+internal sealed class FakePick : IHospitalPick
+{
+    /// <summary>창에 보인 것으로 고를 줄. 처음 값은 미리 골라 둔 줄 그대로 [확인].</summary>
+    public Func<HospitalPickView, int?> Answer { get; set; } = view => view.Preselected;
+    public List<(HospitalPickView View, TimeSpan Timeout)> Shown { get; } = new List<(HospitalPickView View, TimeSpan Timeout)>();
+
+    public int? Pick(HospitalPickView view, TimeSpan timeout)
+    {
+        Shown.Add((view, timeout));
+        return Answer(view);
+    }
+}
+
 /// <summary>
 /// 가짜 비트 통계 화면(TASK-8). 표는 key마다 정해 둔 줄(머리 줄 + 자료 줄, 비트 화면 표시 글자)을 준다.
 /// 메뉴 파일은 원본 BITSTATISTICS.Xml 모양을 흉내 낸 지어낸 것이다(83·47 보이는 항목).
@@ -304,11 +318,15 @@ internal sealed class Rig : IDisposable
     private readonly TempFolder folder = new TempFolder();
     private int nextId;
 
-    public Rig()
+    /// <param name="withPick">true면 병원 고르기 창(AC-005.19)을 넣는다. 처음 값 false는 TASK-46 그대로(고르기 창 없음).</param>
+    public Rig(bool withPick = false)
     {
         Store = new RegistrationStore(folder.Path, Protector);
-        Services = new BitServices(Locator, Connector, Login, Confirm, Store, () => Today, NewProfileId, Screens);
+        Services = new BitServices(Locator, Connector, Login, Confirm, Store, () => Today, NewProfileId, Screens, withPick ? Pick : null);
     }
+
+    /// <summary>가짜 병원 고르기 창(AC-005.19). Rig(withPick: true)일 때만 BitServices에 들어간다.</summary>
+    public FakePick Pick { get; } = new FakePick();
 
     /// <summary>가짜 비트 통계 화면(claim.month의 83·83D·47 표, TASK-8).</summary>
     public FakeScreens Screens { get; } = new FakeScreens();

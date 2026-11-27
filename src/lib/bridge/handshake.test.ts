@@ -87,9 +87,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.13.2 = 0.13.1 + 비트 설치 위치 상관없이 찾기(precheck TASK-45)
   // 도우미 0.13.1 = 0.13.0 + 다른 의원 비트에서도 처음 등록·요양기관번호 없어도 청구(precheck TASK-43). 새 명령·새 칸 없음, 다른 최소 판은 그대로
   // 도우미 0.14.0 = 0.13.2 + 수납 구글 시트 명령 여덟(sheet.*)·지난 도착 calday 400일(google-link TASK-10). MIN·MIN_EXTENSION·다른 최소 판은 그대로
-  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.14.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.14.1 = 0.14.0 + precheck TASK-46·47(병원 범위 여럿 처음 등록·매출 읽기 빠르게) + 병원이 여럿이면 등록 때 고르기 창(precheck TASK-48). 새 명령·새 칸 없음
+  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.14.1, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.14.0')
+    expect(LATEST_HELPER).toBe('0.14.1')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({

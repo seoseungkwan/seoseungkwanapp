@@ -423,8 +423,8 @@ describe('REQ-002 도우미 설치 파일 (helper/install/)', () => {
 describe('REQ-8511 도우미 0.14.0 빌드 (Precheck.Core에 수납 구글 코드 싣기)', () => {
   const CORE_CSPROJ = 'helper/src/Precheck.Core/Precheck.Core.csproj'
 
-  it('AC-8511.1 Directory.Build.props 판은 0.14.0이다', () => {
-    expect(read(PROPS).match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe('0.14.0')
+  it('AC-8511.1 AC-005.16 Directory.Build.props 판은 0.14.1이다(수납 구글 코드는 0.14.0부터 실림)', () => {
+    expect(read(PROPS).match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe('0.14.1')
   })
 
   it('AC-8511.2 Precheck.Core.csproj가 google-code/sheet/Code.gs를 LogicalName SheetCode.gs로 싣는다(명령 표 commands.json 싣기는 그대로)', () => {

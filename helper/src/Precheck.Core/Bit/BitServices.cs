@@ -17,7 +17,8 @@ public sealed class BitServices
         RegistrationStore store,
         Func<DateTime>? today = null,
         Func<string>? newProfileId = null,
-        IStatsScreens? screens = null)
+        IStatsScreens? screens = null,
+        IHospitalPick? pick = null)
     {
         Locator = locator ?? throw new ArgumentNullException(nameof(locator));
         Connector = connector ?? throw new ArgumentNullException(nameof(connector));
@@ -27,7 +28,11 @@ public sealed class BitServices
         Today = today ?? (() => DateTime.Today);
         NewProfileId = newProfileId ?? RandomProfileId;
         Screens = screens;
+        Pick = pick;
     }
+
+    /// <summary>병원 고르기 창(AC-005.19). 없으면 범위가 여럿일 때 TASK-46 그대로 계정 → 최근 내원으로 고르고 못 정하면 E-BIT-REG-MANY.</summary>
+    public IHospitalPick? Pick { get; }
 
     public IBitLocator Locator { get; }
 
