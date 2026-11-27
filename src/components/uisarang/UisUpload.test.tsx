@@ -206,6 +206,31 @@ describe('AC-8810.6: 접은 모양(숫자가 있는 대시보드 · 통계 탭, 
     expect(visible(HELP)).toBe(false)
   })
 
+  // 앱 CSS에는 Preflight가 없어 [hidden]이 display 클래스(grid)를 이기지 못한다 — 접힌 묶음은 hidden 클래스로 숨는다(화면 확인 버그)
+  it('AC-8810.6: 접힌 도움말 묶음(aria-controls)은 hidden 클래스이고 grid가 없다 · 펼치면 grid로 보인다', () => {
+    draw('folded')
+    const panel = () => document.getElementById(within(box()).getByRole('button', { name: /^도움말 (보기|접기)$/ }).getAttribute('aria-controls') ?? '')!
+    expect(panel().hidden).toBe(true)
+    expect(panel().classList.contains('hidden')).toBe(true)
+    expect(panel().classList.contains('grid')).toBe(false)
+    fireEvent.click(within(box()).getByRole('button', { name: HELP_OPEN }))
+    expect(panel().hidden).toBe(false)
+    expect(panel().classList.contains('hidden')).toBe(false)
+    expect(panel().classList.contains('grid')).toBe(true)
+  })
+
+  it('AC-8810.1·AC-8810.6: 받는 파일 목록에 점이 없다(ul마다 list-none, 시안 ul { list-style: none })', () => {
+    draw('open')
+    const open = [...box().querySelectorAll('ul')]
+    cleanup()
+    draw('folded')
+    fireEvent.click(within(box()).getByRole('button', { name: HELP_OPEN }))
+    const folded = [...box().querySelectorAll('ul')]
+    expect(open).toHaveLength(1)
+    expect(folded).toHaveLength(1)
+    for (const ul of [...open, ...folded]) expect(ul.classList.contains('list-none')).toBe(true)
+  })
+
   it('AC-8810.6: 칸 전체에 파일을 놓을 수 있다', () => {
     const upload = view()
     draw('folded', upload)

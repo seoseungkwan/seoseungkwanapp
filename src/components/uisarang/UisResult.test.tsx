@@ -184,6 +184,14 @@ describe('AC-8810.4: 아직 없는 파일 · 다 있음', () => {
     expect(screen.queryByText('넣은 날은 네 가지 파일이 모두 있어요.')).toBeNull()
   })
 
+  it('AC-8810.3·AC-8810.4: 결과 목록·아직 없는 파일 목록에 점이 없다(ul마다 list-none, 시안 ul { list-style: none })', () => {
+    render(<UisResult upload={view({ rows: OK_ROWS.slice(0, 1), missing: { state: 'ready', items: [{ kind: 'rx', days: [TODAY] }] } })} />)
+    const lists = [...document.querySelectorAll('ul')]
+    expect(lists).toHaveLength(2)
+    expect(lists[1]!.closest('[role="group"]')).toBe(screen.getByRole('group', { name: '아직 없는 파일' }))
+    for (const ul of lists) expect(ul.classList.contains('list-none')).toBe(true)
+  })
+
   it('AC-8810.4: 날 목록은 열 덩어리가 넘으면 외 {n}일(dayListText)', () => {
     const days = Array.from({ length: 12 }, (_, i) => `2026-11-${String(i * 2 + 1).padStart(2, '0')}`)
     render(<UisResult upload={view({ rows: OK_ROWS.slice(0, 1), missing: { state: 'ready', items: [{ kind: 'income', days }] } })} />)

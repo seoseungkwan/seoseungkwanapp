@@ -54,7 +54,7 @@ function FilesList() {
   return (
     <div className="grid gap-0.5">
       <p className="text-caption font-semibold text-muted">{UIS_UPLOAD_FILES_CAP}</p>
-      <ul className="grid gap-0.5">
+      <ul className="grid list-none gap-0.5">
         {UIS_UPLOAD_FILES.map((line) => (
           <li key={line} className="flex items-center gap-2 text-body text-ink">
             <Icon name="doc" size={14} className="shrink-0 text-muted" />
@@ -174,7 +174,8 @@ export function UisUpload({ look, upload, place = 'dashboard' }: { look: UisUplo
             </button>
           </div>
           <ErpLine />
-          <div id={helpId} hidden={!helpOpen} className="grid gap-3">
+          {/* 앱 CSS에는 Preflight가 없어 [hidden]이 grid를 이기지 못한다 — 접으면 hidden 클래스로 숨긴다 */}
+          <div id={helpId} hidden={!helpOpen} className={helpOpen ? 'grid gap-3' : 'hidden'}>
             <p className="text-body text-ink-2">{UIS_UPLOAD_HELP}</p>
             <FilesList />
             <p className="text-small text-ink-2">{UIS_UPLOAD_PERIOD}</p>

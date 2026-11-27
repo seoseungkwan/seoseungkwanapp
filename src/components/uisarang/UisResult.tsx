@@ -84,7 +84,7 @@ export function UisResult({ upload }: { upload: UisUploadView }) {
           </p>
           <p className="text-small text-muted">{uisResultCounts(countOf(rows, 'saved'), countOf(rows, 'refused'), countOf(rows, 'skipped'))}</p>
         </div>
-        <ul aria-labelledby={headId}>
+        <ul aria-labelledby={headId} className="list-none">
           {rows.map((row, i) => (
             <Row key={i} row={row} today={today} />
           ))}
@@ -107,7 +107,7 @@ export function UisResult({ upload }: { upload: UisUploadView }) {
             {UIS_MISSING_HEAD}
           </p>
           <p className="text-small text-ink-2">{UIS_MISSING_DESC}</p>
-          <ul className="grid gap-0.5">
+          <ul className="grid list-none gap-0.5">
             {missing.items.map((item) => (
               <li key={item.kind} className="text-small text-ink">
                 {uisMissingName(item.kind)} · <span className="text-ink-2">{dayListText(item.days, today)}</span>
