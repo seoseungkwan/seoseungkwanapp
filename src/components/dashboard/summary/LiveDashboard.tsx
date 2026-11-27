@@ -10,6 +10,8 @@ import { RuleAlert } from '@/components/dashboard/notices/RuleAlert'
 import { useWarrantySoon } from '@/components/dashboard/warranty/useWarrantySoon'
 import { WarrantyNotice } from '@/components/dashboard/warranty/WarrantyNotice'
 import { ds } from '@/components/ui/classes'
+import { UisUpload } from '@/components/uisarang/UisUpload'
+import { useUisUpload } from '@/components/uisarang/useUisUpload'
 import { addDays } from '@/lib/analytics/dates'
 import { readDays } from '@/lib/storage/stats'
 import { toSummarySource, type OlderDays, type SummarySource } from './source'
@@ -31,6 +33,9 @@ import { toSummarySource, type OlderDays, type SummarySource } from './source'
 // 새 경쟁 의원 알림(location AC-7915.1~AC-7915.3, design.md 12절)도 같다: 관리자(isAdmin — 페이지가 문지기 값에서 넘긴 참·거짓 또는 그 약속)일 때만
 // 화면을 열 때 한 번 확인·읽어(useLocationWatch, 20초 한도) locationNotice로 넘긴다(자리는 무상 수리 알림 바로 아래). 관리자가 아니면 아무것도 부르지 않는다.
 // 훅과 줄 그림은 이 폴더의 불러오기 울타리(DashboardAnalysis.test AC-311.8) 때문에 재고 칸처럼 BitDashboard 파일을 거쳐 불러온다
+// 의사랑 올리기 칸(uisarang-upload AC-8810.9·AC-8810.10, design.md §10-1)의 상태도 여기서 든다 — BitDashboard는 key={drawn.round}라 첫 숫자가 와
+// 다시 놓이면 그 안의 상태가 지워지기 때문이다. 저장되면 저장 숫자를 다시 읽는다(시작 칸에서도). 이 다시 읽기는 비트 숫자가 먼저 왔던 적이 있어도(bitLoaded)
+// 버리지 않는다 — 올리기 칸은 의사랑 의원(BitDashboard가 비트 숫자를 그리지 않는 화면)에만 있어서다
 
 export const SAVED_READ_TIMEOUT_MS = 10_000
 
@@ -86,6 +91,8 @@ export function LiveDashboard({ today, isAdmin = false }: { today: string; isAdm
   const retrying = useRef(false)
   // 날짜가 바뀌거나 떠날 때 올린다. 그 전에 시작한 [다시 읽기]의 늦은 답은 버린다(AC-2701.6)
   const era = useRef(0)
+  // 마지막에 시작한 다시 읽기만 답을 쓴다(올린 뒤 다시 읽기가 손 [다시 읽기]와 겹칠 때 늦게 온 앞 답을 버린다)
+  const readSeq = useRef(0)
   const warranty = useWarrantySoon(today)
   const watch = useLocationWatch(isAdmin, today)
 
@@ -112,6 +119,26 @@ export function LiveDashboard({ today, isAdmin = false }: { today: string; isAdm
     }
   }, [today])
 
+  // 저장 숫자 다시 읽기. afterUpload = 의사랑 올리기 칸이 저장한 뒤: 손 [다시 읽기]가 도는 중이어도 새로 읽고, bitLoaded를 풀어 답을 쓴다
+  const reread = useCallback(
+    (afterUpload: boolean) => {
+      if (retrying.current && !afterUpload) return
+      retrying.current = true
+      const started = era.current
+      readSeq.current += 1
+      const seq = readSeq.current
+      setDrawn((current) => (current === null ? current : { ...current, retrying: true, bitLoaded: afterUpload ? false : current.bitLoaded }))
+      void readSaved(today).then((result) => {
+        if (era.current !== started || readSeq.current !== seq) return
+        retrying.current = false
+        setDrawn((current) => withAnswer(current, result))
+      })
+    },
+    [today],
+  )
+  // 이른 return 앞 맨 위에서 한 번(시작 칸·숫자 화면이 같은 상태를 받는다). 훅이 늘 마지막 onSaved를 부른다
+  const upload = useUisUpload({ onSaved: () => reread(true) })
+
   const markBitLoaded = useCallback(() => setDrawn((current) => (current === null ? current : { ...current, bitLoaded: true })), [])
   // 날짜가 바뀔 때만 새로 만든다(같은 객체라 기간별 흐름이 다시 그려져도 읽기를 다시 시작하지 않는다)
   const older = useMemo(() => olderDays(today), [today])
@@ -126,17 +153,7 @@ export function LiveDashboard({ today, isAdmin = false }: { today: string; isAdm
     )
   }
 
-  const readAgain = () => {
-    if (retrying.current) return
-    retrying.current = true
-    const started = era.current
-    setDrawn((current) => (current === null ? current : { ...current, retrying: true }))
-    void readSaved(today).then((result) => {
-      if (era.current !== started) return
-      retrying.current = false
-      setDrawn((current) => withAnswer(current, result))
-    })
-  }
+  const readAgain = () => reread(false)
 
   // 저장 숫자를 손에 들고 있으면(toSummarySource는 줄이 있을 때만 data) 새로고침 단추·실패 상자는 머리 줄이 맡는다(AC-2701.7·AC-2701.8).
   // 없으면(처음 읽기 실패) 위쪽 카드가 맡는다. 연결 판정은 하지 않는다(AC-601.14)
@@ -172,6 +189,7 @@ export function LiveDashboard({ today, isAdmin = false }: { today: string; isAdm
         inventoryOnTop={!failedCard}
         notice={<WarrantyNotice items={warranty} today={today} />}
         locationNotice={<LocationAlert events={watch.events} onClose={watch.close} />}
+        uisUpload={(look) => <UisUpload look={look} upload={upload} />}
       />
     </>
   )

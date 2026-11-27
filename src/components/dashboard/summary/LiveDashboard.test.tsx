@@ -15,17 +15,21 @@ import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { ContactsStorageError, listWarrantySoon } from '@/lib/storage/contacts'
 import { loadInventory } from '@/lib/storage/inventory'
 import { addEvents, listUnseenEvents, listWatchCandidates, markEventsSeen, setWatchChecked } from '@/lib/storage/location'
 import { ruleAlerts, unreadCount } from '@/lib/storage/notices'
 import { ruleChangeAlerts } from '@/lib/storage/ruleChanges'
 import { readDays, StorageError } from '@/lib/storage/stats'
+import { readUisHave, saveUisPlan } from '@/lib/storage/uisarang'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { WarrantyItem } from '@/types/contacts'
 import type { InvInventory } from '@/types/inventory'
 import type { LocationEvent } from '@/types/location'
 import type { DayPayload } from '@/types/payload'
+import type { UisFileResult, UisHave } from '@/types/uisarang'
+import { runUisarang } from '@/workers/runUisarang'
 import { DashboardAnalysis } from './DashboardAnalysis'
 import { LiveDashboard, SAVED_READ_TIMEOUT_MS } from './LiveDashboard'
 import type { SummarySource } from './source'
@@ -82,6 +86,39 @@ vi.mock('@/lib/storage/location', async (importOriginal) => {
   return { ...real, listWatchCandidates: vi.fn(), addEvents: vi.fn(), setWatchChecked: vi.fn(), listUnseenEvents: vi.fn(), markEventsSeen: vi.fn() }
 })
 vi.mock('@/components/location/clients', () => ({ queryLocation: vi.fn() }))
+// 의사랑 올리기 칸(uisarang-upload TASK-7): 병원 정보 훅은 진짜를 그대로 돌리고(지금 시험은 그대로), 시험이 profileOverride로 값을 주면 그 값을 돌려준다.
+// 엑셀 읽기(runUisarang)·저장(saveUisPlan)·있는 것 읽기(readUisHave)는 잡아 두고 답을 시험이 정한다. 진짜 Worker·Supabase에 붙지 않는다
+const profileOverride = vi.hoisted(() => {
+  let view: unknown = null
+  const listeners = new Set<() => void>()
+  return {
+    get: () => view,
+    set(next: unknown) {
+      view = next
+      for (const listener of listeners) listener()
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+  }
+})
+vi.mock('@/components/clinic/useClinicProfile', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/clinic/useClinicProfile')>()
+  const { useSyncExternalStore } = await import('react')
+  return {
+    ...real,
+    useClinicProfile: (options?: { logo?: boolean }) => {
+      const view = real.useClinicProfile(options)
+      const forced = useSyncExternalStore(profileOverride.subscribe, profileOverride.get, profileOverride.get)
+      return forced === null ? view : (forced as typeof view)
+    },
+  }
+})
+vi.mock('@/workers/runUisarang', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/workers/runUisarang')>()), runUisarang: vi.fn() }))
+vi.mock('@/lib/storage/uisarang', () => ({ saveUisPlan: vi.fn(), readUisHave: vi.fn(), readUisPeriods: vi.fn() }))
 
 type SavedResult = Awaited<ReturnType<typeof readDays>>
 
@@ -307,6 +344,7 @@ const expectOnlyAiRead = () => {
 }
 
 beforeEach(() => {
+  profileOverride.set(null)
   savedReads.length = 0
   groupReads.length = 0
   bitReads.length = 0
@@ -1588,5 +1626,174 @@ describe('입지 알림: LiveDashboard가 관리자일 때 한 번 읽어 무상
     expect(text).toMatch(/useLocationWatch\(isAdmin, today\)/)
     expect(text).toMatch(/locationNotice=\{<LocationAlert events=\{watch\.events\} onClose=\{watch\.close\} \/>\}/)
     expect(text).not.toMatch(/listWatchCandidates|listUnseenEvents|storage\/location|queryLocation|lib\/supabase/)
+  })
+})
+
+// ── 의사랑 올리기 칸(uisarang-upload TASK-7, design.md §10-1): 상태는 LiveDashboard가 BitDashboard key 밖에서 든다 ──
+describe('의사랑 올리기 칸: LiveDashboard가 상태를 들고 저장 뒤 저장 숫자를 다시 읽는다 (AC-8810.9·AC-8810.10)', () => {
+  const BOX = '의사랑 엑셀 올리기'
+  const START_H1 = '의사랑 엑셀을 올리면 숫자가 여기에 채워져요'
+  const CHIP = '의사랑 엑셀 숫자'
+  const uisView = (state: 'loading' | 'ready') => ({
+    state,
+    profile: { ...defaultProfile(), emr: state === 'ready' ? ('uisarang' as const) : ('bit' as const) },
+    saved: true,
+    signupName: '',
+    signupPhone: null,
+    name: '',
+    logoDataUrl: null,
+    reload: () => undefined,
+  })
+  // 의사랑 날 줄(toUisDayPayload 모양). 오늘(11월 2일) 132명 · 신환 9
+  const uisRow = (ymd: string, patients: number, newPatients: number): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: ymd,
+    partial: false,
+    totals: { patients, newPatients, returning: patients - newPatients, unknown: 0 },
+    rx: [],
+    groups: [],
+    revisit: { cohort: 0, within7: null, within14: null },
+  })
+  const UIS_ROWS = [uisRow(TODAY, 132, 9), uisRow('2026-10-30', 121, 7)]
+  const visitsFile: UisFileResult = { status: 'read', read: { kind: 'visits', span: { from: TODAY, to: TODAY, unit: 'day' }, days: [{ day: TODAY, patients: 132, newPatients: 9 }] } }
+  const rxFile: UisFileResult = {
+    status: 'read',
+    read: { kind: 'rx', span: { from: TODAY, to: TODAY, unit: 'day' }, payload: { v: 1, rows: [{ code: 'MT30', name: '가짜 도수 30분', qty: 2, amount: 160_000 }], total: 160_000 } },
+  }
+  const HAVE_VISITS: UisHave = { covered: [{ from: TODAY, to: TODAY }], worked: [TODAY], income: [], rx: [], age: [] }
+  const uisBox = () => screen.getByRole('region', { name: BOX })
+  const results = (count: number) => within(uisBox()).getByRole('list', { name: `방금 넣은 파일 ${count}개` })
+  const missingBox = () => within(uisBox()).getByRole('group', { name: '아직 없는 파일' })
+  const dropFile = (name: string) =>
+    act(async () => {
+      fireEvent.drop(uisBox(), { dataTransfer: { types: ['Files'], files: [new File(['가짜 바이트'], name)] } })
+    })
+  const flush = () => act(async () => {})
+
+  beforeEach(() => {
+    vi.mocked(runUisarang).mockReset()
+    vi.mocked(saveUisPlan).mockReset()
+    vi.mocked(saveUisPlan).mockResolvedValue({ failed: [] })
+    vi.mocked(readUisHave).mockReset()
+    vi.mocked(readUisHave).mockResolvedValue(HAVE_VISITS)
+  })
+
+  it('AC-8810.10·AC-8810.9: 시작 칸에서 저장하면 저장 숫자를 다시 읽고, 숫자 화면으로 바뀌어(BitDashboard 다시 놓임) 결과·아직 없는 파일 상자가 머리 줄 아래 접은 칸 안에 그대로 남는다', async () => {
+    notBitPc()
+    profileOverride.set(uisView('ready'))
+    draw()
+    await savedAnswer([])
+    expect(screen.getByRole('heading', { level: 1, name: START_H1 })).toBeTruthy()
+    expect(within(uisBox()).getByText('파일을 여기에 끌어다 놓으세요')).toBeTruthy()
+    expect(savedReads).toHaveLength(1)
+
+    vi.mocked(runUisarang).mockResolvedValueOnce([visitsFile])
+    await dropFile('내원일별_위_1102.xls')
+    await flush()
+    expect(saveUisPlan).toHaveBeenCalledTimes(1)
+    expect(savedReads).toHaveLength(2) // onSaved = LiveDashboard의 다시 읽기
+    expect(savedReads[1]!.range).toEqual(RANGE)
+    expect(results(1)).toBeTruthy()
+
+    await savedAnswer(UIS_ROWS, 1, '2026-11-02T06:30:00Z')
+    expect(screen.queryByText(START_H1)).toBeNull()
+    expect(within(header()).getByText(CHIP)).toBeTruthy()
+    // 다시 놓인 BitDashboard 안 접은 칸에 앞 결과가 그대로다
+    expect(within(uisBox()).getByRole('button', { name: '도움말 보기' })).toBeTruthy()
+    expect(within(results(1)).getByText('내원일별_위_1102.xls')).toBeTruthy()
+    expect(within(missingBox()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['일일수입통계 · 11월 2일', '기간별처방통계 · 11월 2일', '내원일별 아래쪽 표 · 11월 2일'])
+    expect(screen.getAllByRole('region', { name: BOX })).toHaveLength(1)
+  })
+
+  it('AC-8810.9: 날 숫자가 없는 파일(처방)만 저장해도 저장 숫자를 다시 읽는다 — 숫자가 없으면 시작 칸 그대로 결과를 둔다', async () => {
+    notBitPc()
+    profileOverride.set(uisView('ready'))
+    draw()
+    await savedAnswer([])
+    vi.mocked(runUisarang).mockResolvedValueOnce([rxFile])
+    vi.mocked(readUisHave).mockResolvedValueOnce({ covered: [], worked: [], income: [], rx: [{ from: TODAY, to: TODAY }], age: [] })
+    await dropFile('기간별처방통계_1102.xls')
+    await flush()
+    expect(savedReads).toHaveLength(2)
+    await savedAnswer([], 1)
+    expect(screen.getByRole('heading', { level: 1, name: START_H1 })).toBeTruthy()
+    expect(within(uisBox()).getByText('파일을 여기에 끌어다 놓으세요')).toBeTruthy()
+    expect(results(1)).toBeTruthy()
+  })
+
+  it('AC-8810.9: 저장된 파일이 없으면(받지 않음만) 다시 읽지 않는다', async () => {
+    notBitPc()
+    profileOverride.set(uisView('ready'))
+    draw()
+    await savedAnswer([])
+    vi.mocked(runUisarang).mockResolvedValueOnce([{ status: 'refused', code: 'E-UIS-KIND', kind: null, span: null }])
+    await dropFile('환자목록.xlsx')
+    await flush()
+    expect(results(1)).toBeTruthy()
+    expect(saveUisPlan).toHaveBeenCalledTimes(1)
+    expect(savedReads).toHaveLength(1)
+  })
+
+  it('AC-8810.9·AC-8811.9: 병원 정보를 읽는 동안 비트 숫자가 먼저 왔던(bitLoaded) 의사랑 의원도, 올린 뒤 다시 읽은 저장 숫자는 버리지 않고 그린다', async () => {
+    onBitPc()
+    profileOverride.set(uisView('loading'))
+    draw()
+    await savedAnswer([])
+    await act(async () => {})
+    expect(bitReads).toHaveLength(1)
+    await bitAnswer(bitDays())
+    expect(bigLine().textContent).toBe(BIT_H1) // 병원 정보를 읽기 전에는 비트 의원처럼 그렸다
+    await act(async () => {
+      profileOverride.set(uisView('ready'))
+    })
+    expect(screen.getByRole('heading', { level: 1, name: START_H1 })).toBeTruthy()
+
+    vi.mocked(runUisarang).mockResolvedValueOnce([visitsFile])
+    await dropFile('내원일별_위_1102.xls')
+    await flush()
+    expect(savedReads).toHaveLength(2)
+    await savedAnswer(UIS_ROWS, 1, '2026-11-02T06:30:00Z')
+    expect(screen.queryByText(START_H1)).toBeNull()
+    expect(within(header()).getByText(CHIP)).toBeTruthy()
+    expect(within(results(1)).getByText('내원일별_위_1102.xls')).toBeTruthy()
+    expect(bitReads).toHaveLength(1) // 의사랑 의원이라 비트 읽기를 새로 시작하지 않는다
+  })
+
+  it('AC-8810.9: 저장 뒤 다시 읽기는 손 [다시 읽기]가 도는 중이어도 시작되고, 늦게 온 앞 답은 쓰지 않는다', async () => {
+    notBitPc()
+    profileOverride.set(uisView('ready'))
+    draw()
+    await savedFail()
+    fireEvent.click(retryButton()) // 손 다시 읽기(답을 아직 주지 않음)
+    expect(savedReads).toHaveLength(2)
+    vi.mocked(runUisarang).mockResolvedValueOnce([visitsFile])
+    await dropFile('내원일별_위_1102.xls')
+    await flush()
+    expect(savedReads).toHaveLength(3)
+    await savedAnswer(UIS_ROWS, 2, '2026-11-02T06:30:00Z')
+    expect(within(header()).getByText(CHIP)).toBeTruthy()
+    await savedAnswer([], 1) // 앞서 누른 다시 읽기의 늦은 답(숫자 없음)
+    expect(within(header()).getByText(CHIP)).toBeTruthy()
+    expect(screen.queryByText(START_H1)).toBeNull()
+  })
+
+  it('AC-8810.7: 데스크 계정이면 의사랑 시작 칸에도 올리기 칸이 없다', async () => {
+    notBitPc()
+    profileOverride.set(uisView('ready'))
+    render(
+      <RoleProvider desk>
+        <LiveDashboard today={TODAY} />
+      </RoleProvider>,
+    )
+    await savedAnswer([])
+    expect(screen.queryByRole('region', { name: BOX })).toBeNull()
+  })
+
+  it('AC-8810.10: LiveDashboard 소스는 이른 return 앞에서 useUisUpload를 부르고 BitDashboard에 uisUpload 그리는 함수를 넘긴다(BitDashboard.tsx는 그대로)', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/dashboard/summary/LiveDashboard.tsx'), 'utf8')
+    expect(text.indexOf('useUisUpload(')).toBeGreaterThan(0)
+    expect(text.indexOf('useUisUpload(')).toBeLessThan(text.indexOf('if (drawn === null)'))
+    expect(text).toContain('uisUpload={(look) => <UisUpload look={look} upload={upload} />}')
   })
 })
