@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, compareYmd, eachDay, weekdayOf } from '@/lib/analytics/dates'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { listCalendarCounts, loadCalendarSettings } from '@/lib/storage/calendar'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { loadGoal, saveGoal } from '@/lib/storage/goals'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import { listSunapDays, loadSunapSettings, type SunapDay } from '@/lib/storage/sunap'
+import { readUisHave, readUisPeriods, saveUisPlan } from '@/lib/storage/uisarang'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import { nestedBoxes } from '@/testing/boxes'
@@ -24,7 +26,9 @@ import type { RevenueDayRow, RevenueDaysResult, SavedRevenueDay } from '@/types/
 import type { RxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsLoadRequest, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { DEFAULT_RSV_KINDS, SUNAP_TOTAL_KEYS, type SunapRates, type SunapTotals } from '@/types/sunap'
+import type { UisFileResult } from '@/types/uisarang'
 import { runAnalysis } from '@/workers/runAnalysis'
+import { runUisarang } from '@/workers/runUisarang'
 import { createStatsWorker } from '@/workers/statsClient'
 import { planLoad, revenueProgressText } from './loadPlan'
 import { StatsScreen } from './StatsScreen'
@@ -94,6 +98,21 @@ vi.mock('@/lib/storage/calendar', () => ({
 }))
 // 이번 달 목표 서버 저장 가짜(stats-insights TASK-7). 기본은 목표 없음 · 저장 성공(beforeEach)
 vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn(), saveGoal: vi.fn() }))
+// 의사랑 올리기 칸(uisarang-upload TASK-7): 병원 정보 훅은 진짜를 그대로 돌리고(지금 시험은 그대로 비트), 시험이 clinicOverride.view를 주면 그 값을 돌려준다.
+// 엑셀 읽기·의사랑 저장·읽기는 잡아 두고 답을 시험이 정한다. 진짜 Worker·Supabase에 붙지 않는다
+const clinicOverride = vi.hoisted(() => ({ view: null as unknown }))
+vi.mock('@/components/clinic/useClinicProfile', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/clinic/useClinicProfile')>()
+  return {
+    ...real,
+    useClinicProfile: (options?: { logo?: boolean }) => {
+      const view = real.useClinicProfile(options)
+      return clinicOverride.view === null ? view : (clinicOverride.view as typeof view)
+    },
+  }
+})
+vi.mock('@/lib/storage/uisarang', () => ({ saveUisPlan: vi.fn(), readUisHave: vi.fn(), readUisPeriods: vi.fn() }))
+vi.mock('@/workers/runUisarang', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/workers/runUisarang')>()), runUisarang: vi.fn() }))
 
 const TODAY = '2026-11-13' // 금요일
 const HOSPITAL = '가짜정형외과의원'
@@ -4464,5 +4483,79 @@ describe('AC-8018.4 비트 불러오기에 Block·물리치료 묶음 정의를 
     pressLoad(port)
     await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
     expect('sunap' in loadSent(fake.sent)!).toBe(false)
+  })
+})
+
+// ── 의사랑 올리기 칸(uisarang-upload TASK-7, design.md §10-1·§10-3): 통계 탭은 StatsScreen이 상태를 든다 ──
+describe('의사랑 의원 · 올리기 칸 저장 뒤 다시 읽기 (AC-8810.9)', () => {
+  const BOX = '의사랑 엑셀 올리기'
+  const UIS_VIEW = {
+    state: 'ready' as const,
+    profile: { ...defaultProfile(), emr: 'uisarang' as const },
+    saved: true,
+    signupName: '',
+    signupPhone: null,
+    name: '',
+    logoDataUrl: null,
+    reload: () => undefined,
+  }
+  const visitsFile: UisFileResult = {
+    status: 'read',
+    read: { kind: 'visits', span: { from: '2026-11-12', to: '2026-11-12', unit: 'day' }, days: [{ day: '2026-11-12', patients: 10, newPatients: 2 }] },
+  }
+  const periodReads = (kind: 'rx' | 'age') => vi.mocked(readUisPeriods).mock.calls.filter(([k]) => k === kind).length
+  const counts = () => ({ days: vi.mocked(readDays).mock.calls.length, revenue: revenueStore.loadDays.mock.calls.length, rx: periodReads('rx'), age: periodReads('age') })
+
+  beforeEach(() => {
+    clinicOverride.view = UIS_VIEW
+    vi.mocked(readUisPeriods).mockReset()
+    vi.mocked(readUisPeriods).mockResolvedValue([])
+    vi.mocked(runUisarang).mockReset()
+    vi.mocked(saveUisPlan).mockReset()
+    vi.mocked(saveUisPlan).mockResolvedValue({ failed: [] })
+    vi.mocked(readUisHave).mockReset()
+    vi.mocked(readUisHave).mockResolvedValue({ covered: [{ from: '2026-11-12', to: '2026-11-12' }], worked: ['2026-11-12'], income: [], rx: [], age: [] })
+  })
+
+  afterEach(() => {
+    clinicOverride.view = null
+  })
+
+  it('AC-8810.9: 올리기 칸에서 저장하면 날 숫자(readDays)·매출(loadDays)·처방·나이대(readUisPeriods rx·age)를 모두 다시 읽는다 — 그대로 두면 다시 읽지 않는다', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-13T09:00:00Z')) // 한국 11월 13일 18시
+    draw()
+    await waitFor(() => {
+      expect(heading('환자 요약')).toBeTruthy()
+      expect(screen.queryByText('불러오는 중')).toBeNull()
+      expect(periodReads('rx')).toBeGreaterThan(0)
+      expect(periodReads('age')).toBeGreaterThan(0)
+      expect(revenueStore.loadDays).toHaveBeenCalled()
+    })
+    const box = screen.getByRole('region', { name: BOX })
+    expect(screen.queryByRole('button', { name: LOAD })).toBeNull()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
+    const before = counts()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
+    expect(counts()).toEqual(before)
+
+    vi.mocked(runUisarang).mockResolvedValueOnce([visitsFile])
+    await act(async () => {
+      fireEvent.drop(box, { dataTransfer: { types: ['Files'], files: [new File(['가짜 바이트'], '내원일별_위_1112.xls')] } })
+    })
+    await waitFor(() => expect(within(screen.getByRole('region', { name: BOX })).getByRole('list', { name: '방금 넣은 파일 1개' })).toBeTruthy())
+    await waitFor(() => {
+      const after = counts()
+      expect(after.days).toBeGreaterThan(before.days)
+      expect(after.revenue).toBeGreaterThan(before.revenue)
+      expect(after.rx).toBeGreaterThan(before.rx)
+      expect(after.age).toBeGreaterThan(before.age)
+    })
+    expect(saveUisPlan).toHaveBeenCalledTimes(1)
+    expect(runUisarang).toHaveBeenCalledTimes(1)
   })
 })

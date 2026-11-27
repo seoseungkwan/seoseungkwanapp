@@ -6,6 +6,8 @@ import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { useViewing, WriteOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
+import { UisUpload } from '@/components/uisarang/UisUpload'
+import { useUisUpload } from '@/components/uisarang/useUisUpload'
 import { addDays, compareYmd, monthRange, todayInKorea } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
@@ -237,8 +239,6 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
   // 의사랑 의원(병원 정보를 읽었고 emr가 uisarang)이면 비트·파일 고르기 칸 대신 올리기 칸 자리이고 빈 글이 의사랑 글이다. 읽는 중·실패는 비트 그대로
   const clinic = useClinicProfile()
   const uis = clinic.state === 'ready' && clinic.profile.emr === 'uisarang'
-  // 올리기 칸 자리(TASK-7이 채운다: UisUpload + useUisUpload({ onSaved: data.reread() + revenue.reread() })). 지금은 아무것도 그리지 않는다
-  const uisUploadSlot: UisUploadSlot = () => null
   const [choice, setChoice] = useState<StatsChoice>(DEFAULT_STATS_PERIOD)
   const data = useStatsData(choice, today)
   const { todayDone } = data
@@ -255,6 +255,18 @@ export function StatsScreen({ hospitalName: myName, today }: { hospitalName: str
   const goals = useStatsGoals(today, salesRevision)
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
   const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
+  // 올리기 칸(uisarang-upload AC-8810.9): 저장되면 날 숫자(처방·나이대는 data.revision으로 함께)와 매출을 다시 읽는다
+  const upload = useUisUpload({
+    onSaved: () => {
+      data.reread()
+      revenue.reread()
+    },
+  })
+  const uisUploadSlot: UisUploadSlot = (look) => (
+    <div className="mt-4">
+      <UisUpload look={look} upload={upload} place="stats" />
+    </div>
+  )
   // 다른 의원을 보는 중(admin-view AC-8025.1)이면 Block 전환·몇 번까지 받나·처방별 신환·재진을 그 의원 저장 합계로 그린다(viewSums).
   // 보는 중이 아니면 undefined라 지금과 같다. 'waiting' = 고른 달 줄을 읽는 중(처방별 답을 기다릴 때처럼 칸 전체가 기다린다)
   const sums = useViewSums(data.input, lastDay, data.revision)
