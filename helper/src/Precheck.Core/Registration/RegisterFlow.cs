@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Precheck.Core.Bit;
 
 namespace Precheck.Core.Registration;
@@ -57,6 +58,8 @@ public static class RegisterFlow
         // DB를 닫은 뒤 창을 띄운다(사람이 5분까지 생각하는 동안 DB 연결을 붙잡지 않는다)
         if (pickView != null)
         {
+            // 저장 모양이 틀린 줄이 있으면 창 없이 번호만(AC-005.13). 프로필 ID는 아직 만들지 않고 모양 맞는 빈 값으로 본다
+            if (pickView.Choices.Any(c => !Place(c, pickView.Target).IsValid)) throw new BitException(BitErrors.RegisterPlace);
             // 고르기 창이 PC 확인 창을 대신한다: [확인]이면 고른 줄로 저장, [취소]·닫기·시간 지남이면 저장 안 함(AC-005.19)
             var index = services.Pick!.Pick(pickView, ConfirmTimeout);
             if (index == null || index.Value < 0 || index.Value >= pickView.Choices.Count) return false;
@@ -72,6 +75,16 @@ public static class RegisterFlow
         services.Store.Save(candidate);
         return true;
     }
+
+    /// <summary>프로필 ID 말고 저장 모양만 보려는 값(프로필 ID 자리는 모양 맞는 0).</summary>
+    private static HospitalRegistration Place(HospitalChoice choice, BitTarget target) =>
+        new HospitalRegistration(
+            institutionCode: choice.InstitutionCode,
+            scope: choice.Scope,
+            installPath: target.InstallPath,
+            server: target.Server,
+            database: target.Database,
+            profileId: new string('0', 32));
 
     /// <summary>
     /// 저장할 등록 값. 병원 이름은 저장하지 않는다(AC-005.9): 원본 비트 읽기(HospitalSecurity)에 병원 이름 SQL이 없고, 화면은 사이트 값을 쓴다.

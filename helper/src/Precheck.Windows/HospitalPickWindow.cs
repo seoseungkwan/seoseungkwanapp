@@ -10,7 +10,7 @@ namespace Precheck.Windows;
 
 /// <summary>
 /// 병원 고르기 창(AC-005.19, 승인 시안 docs/mockups/reg-pick): 비트에 병원 범위가 둘 이상일 때 처음 등록·다시 등록에서 PC 확인 창 대신 뜬다.
-/// ConfirmWindow와 같은 모양(맨 위·가운데·고정 테두리·맑은 고딕 10). 줄마다 라디오 하나, 미리 고른 줄이 없으면 줄을 고를 때까지 [확인]이 꺼져 있다.
+/// ConfirmWindow와 같은 모양(맨 위·가운데·고정 테두리·맑은 고딕 10). 줄마다 라디오 하나(Tab으로 닿고 Space·마우스로 켬), 미리 고른 줄이 없으면 줄을 고를 때까지 [확인]이 꺼져 있다.
 /// 기본 단추는 [취소](엔터로 잘못 등록되지 않게). [확인]이면 고른 줄 번호, [취소]·창 닫기·Esc·시간 지남이면 null.
 /// 글은 HospitalPickView(도우미가 비트에서 읽은 값)로만 만든다.
 /// </summary>
@@ -123,7 +123,7 @@ public sealed class HospitalPickForm : Form
 
         if (view.Preselected is int preselected) choices[preselected].Checked = true;
         Ok.Enabled = Selected != null;
-        // 줄마다 다른 칸 안에 있어 윈도우가 라디오를 한 묶음으로 보지 않는다: 하나가 켜지면 나머지를 직접 끈다
+        // 줄마다 다른 칸 안에 있어 윈도우가 라디오를 한 묶음으로 보지 않는다: 하나가 켜지면 나머지를 직접 끈다(TabStop은 그대로 둔다)
         foreach (var radio in choices)
         {
             radio.CheckedChanged += (sender, e) =>
@@ -167,7 +167,11 @@ public sealed class HospitalPickForm : Form
             UseMnemonic = false,
             Font = new Font(Font, FontStyle.Bold),
             Margin = new Padding(0),
+            // 줄마다 칸이 달라 윈도우의 라디오 묶음(화살표·켜진 것만 Tab)이 안 맞는다: 자동 켜기를 끄고 줄마다 Tab이 닿게, 누름(마우스·Space)으로 켠다
+            AutoCheck = false,
+            TabStop = true,
         };
+        radio.Click += (sender, e) => radio.Checked = true;
         choices.Add(radio);
         row.Controls.Add(radio, 0, 0);
 

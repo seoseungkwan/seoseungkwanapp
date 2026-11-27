@@ -462,12 +462,18 @@ public class RegisterFlowTests
         {
             rig.Session.Answer(Sql.UserScopeSql);
             Active(rig, (Synthetic.Scope, 5));
-            rig.Pick.Answer = _ => 1; // 미리 골라 둔 줄(0)이 아닌 줄을 사람이 고름
+            var disposedWhenShown = -1;
+            rig.Pick.Answer = _ =>
+            {
+                disposedWhenShown = rig.Session.Disposed;
+                return 1; // 미리 골라 둔 줄(0)이 아닌 줄을 사람이 고름
+            };
             Assert.True(Registered(Handle(rig)));
 
             Assert.Empty(rig.Confirm.Shown);
             var shown = Assert.Single(rig.Pick.Shown);
             Assert.Equal(TimeSpan.FromMinutes(5), shown.Timeout);
+            Assert.Equal(1, disposedWhenShown); // 창이 뜰 때 DB는 이미 닫혀 있다
             Assert.Equal(new[] { Synthetic.Scope, "FOREIGN" }, shown.View.Choices.Select(c => c.Scope));
             Assert.Equal(new[] { Synthetic.Institution, Synthetic.OtherInstitution }, shown.View.Choices.Select(c => c.InstitutionCode));
             Assert.Equal(0, shown.View.Preselected);
@@ -531,7 +537,7 @@ public class RegisterFlowTests
         Assert.Empty(rig.IssuedIds);
     }
 
-    [Fact(DisplayName = "AC-005.19 범위가 하나면 고르기 창 없이 지금 PC 확인 창 그대로, 고른 줄의 저장 모양이 틀리면 E-BIT-REG-PLACE")]
+    [Fact(DisplayName = "AC-005.19 범위가 하나면 고르기 창 없이 지금 PC 확인 창 그대로, 저장 모양이 틀리면 창을 띄우기 전에 E-BIT-REG-PLACE")]
     public void PickOnlyWhenMany()
     {
         using (var rig = new Rig(withPick: true))
@@ -546,6 +552,7 @@ public class RegisterFlowTests
             rig.Session.Target = Synthetic.Target(server: "");
             Assert.Equal("E-BIT-REG-PLACE", ErrorCode(Handle(rig)));
             Assert.Null(rig.Store.Load());
+            Assert.Empty(rig.Pick.Shown); // 고르기 창 없이 번호만(AC-005.13)
         }
     }
 }

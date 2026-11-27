@@ -78,6 +78,40 @@ public class HospitalPickWindowTests
         Assert.Equal(1, form.Selected);
     }
 
+    [Fact(DisplayName = "AC-005.19 한 줄을 고르면 다른 줄은 꺼진다(줄마다 칸이 달라 직접 끔) — 미리 고른 줄이 있어도 사람이 고른 줄로 저장")]
+    public void PickingTurnsOthersOff()
+    {
+        using var form = HospitalPickWindow.CreateForm(View(mine: true));
+        Assert.True(form.Choices[0].Checked);
+        Click(form.Choices[1]);
+        Assert.False(form.Choices[0].Checked);
+        Assert.True(form.Choices[1].Checked);
+        Assert.Equal(1, form.Selected);
+        Click(form.Choices[0]);
+        Assert.True(form.Choices[0].Checked);
+        Assert.False(form.Choices[1].Checked);
+        Assert.Equal(0, form.Selected);
+    }
+
+    [Fact(DisplayName = "AC-005.19 키보드로도 고른다: 줄마다 Tab이 닿고(TabStop), 누름(마우스·Space)으로 켜진다(AutoCheck 끔)")]
+    public void KeyboardReachesEveryRow()
+    {
+        using var form = HospitalPickWindow.CreateForm(NoPreselect());
+        Assert.All(form.Choices, radio =>
+        {
+            Assert.True(radio.TabStop);
+            Assert.False(radio.AutoCheck);
+        });
+        Click(form.Choices[0]);
+        Assert.Equal(0, form.Selected);
+        Assert.True(form.Ok.Enabled);
+    }
+
+    /// <summary>창을 띄우지 않고 누름(Click)을 일으킨다(PerformClick은 보이는 컨트롤에만 돈다).</summary>
+    private static void Click(RadioButton radio) =>
+        typeof(Control).GetMethod("OnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(radio, new object[] { EventArgs.Empty });
+
     [Fact(DisplayName = "AC-005.19 시간이 없으면 창 없이 null(저장 안 함)")]
     public void NoTimeNoWindow()
     {
