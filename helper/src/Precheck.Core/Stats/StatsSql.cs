@@ -383,10 +383,12 @@ ORDER BY v.PatientId,v.VisitDay,VisitTime";
     /// <summary>
     /// 사람 줄 [차트번호, 생년월일, 주소], 기간 환자마다(AC-2701.3). 원래 도구 PatientMix의 연결 그대로이고 성별 칸만 뺐다.
     /// 환자 표에서 읽는 칸은 이 셋뿐이다(이름·전화·주민번호·상세주소 PbsAdrSta·성별 없음). 주소는 StatsExtra.AddressHead가 앞부분만 남긴다.
+    /// 잇는 칸 PbsChtNum은 RTRIM·NULLIF로 감싸지 않는다(spec precheck AC-039.2): 감싸면 환자 표 전체를 훑는다. 문자 = 는 뒤 공백을 무시하고
+    /// p.PatientId는 Visits 글이 빈 값·NULL을 이미 뺐으므로 빈 차트번호는 지금처럼 어떤 줄과도 이어지지 않는다.
     /// </summary>
     public const string PeopleSql = Visits + @"
 SELECT p.PatientId,b.PbsBirDte,b.PbsDtlAdr
-FROM Patients p LEFT JOIN dbo.PbsInf b ON NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId
+FROM Patients p LEFT JOIN dbo.PbsInf b ON b.PbsChtNum=p.PatientId
 ORDER BY p.PatientId";
 
     /// <summary>원장님 이름 SQL의 코드 자리 수(@d0~@d49). 코드가 더 많으면 나눠 부른다.</summary>

@@ -159,18 +159,90 @@ public class RegisterFlowTests
         }
     }
 
-    [Fact(DisplayName = "AC-005.13 DB 안 병원 범위가 그것 하나가 아니면 E-BIT-REG-MANY")]
+    /// <summary>최근 30일 내원 답: (범위, 내원 수) 줄</summary>
+    private static void Active(Rig rig, params (string? Scope, long Visits)[] rows) =>
+        rig.Session.Answer(Sql.ActiveScopesSql, _ => rows.Select(row => new object?[] { row.Scope, row.Visits }).ToArray());
+
+    [Fact(DisplayName = "AC-005.18 DB 안 범위가 여럿이면 로그인한 계정의 범위(DB 안에 있는 것)로 등록하고 최근 내원은 읽지 않는다")]
+    public void ManyHospitalsUseAccountScope()
+    {
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+            Assert.Contains(Sql.UserScopeSql, rig.Session.Sqls);
+            Assert.DoesNotContain(Sql.ActiveScopesSql, rig.Session.Sqls);
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "", "FOREIGN ");
+            rig.Session.Answer(Sql.UserScopeSql, "FOREIGN ");
+            SavesWith(rig, "FOREIGN", Synthetic.Institution);
+            Assert.DoesNotContain(Sql.ActiveScopesSql, rig.Session.Sqls);
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.18 계정 범위를 못 정하면(없음·둘·DB 밖·로그인 모양 틀림) 최근 30일 외래 내원이 있는 범위 하나로 등록한다(오늘 30일 전 0시 ~ 다음 날 0시)")]
+    public void ManyHospitalsUseRecentVisits()
+    {
+        var accounts = new Action<Rig>[]
+        {
+            rig => rig.Session.Answer(Sql.UserScopeSql),
+            rig => rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope, "FOREIGN"),
+            rig => rig.Session.Answer(Sql.UserScopeSql, "ELSEWHERE"),
+            rig => rig.Login.User = new VendorUser("NINECHARS", "20261030"),
+        };
+        foreach (var account in accounts)
+        {
+            using var rig = new Rig();
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            account(rig);
+            Active(rig, ("FOREIGN ", 0), (Synthetic.Scope + " ", 812), ("ELSEWHERE", 5), ("", 9), (null, 4));
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Answer(Sql.UserScopeSql);
+            Active(rig, ("FOREIGN", 3));
+            SavesWith(rig, "FOREIGN", Synthetic.Institution);
+            var call = rig.Session.Calls.Single(c => c.Sql == Sql.ActiveScopesSql);
+            Assert.Equal("202609300000", call.Args["@from"]);
+            Assert.Equal("202610310000", call.Args["@to"]);
+            Assert.Equal(Sql.MemoTimeout, call.Timeout);
+            Assert.All(rig.Session.Sqls, sql => Assert.Contains(sql, Sql.All));
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.18 계정 범위도 최근 내원 범위도 하나로 못 정하면 E-BIT-REG-MANY, 읽기가 실패하면 그 번호로 멈춘다(저장 없음)")]
     public void ManyHospitalsStop()
     {
         using (var rig = new Rig())
         {
             rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Answer(Sql.UserScopeSql);
+            Active(rig, (Synthetic.Scope, 3), ("FOREIGN", 1));
             StopsWith(rig, "E-BIT-REG-MANY");
         }
         using (var rig = new Rig())
         {
             rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "", "FOREIGN ");
+            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope, "FOREIGN");
+            Active(rig, (Synthetic.Scope, 0), ("", 9), (null, 4));
             StopsWith(rig, "E-BIT-REG-MANY");
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Answer(Sql.UserScopeSql);
+            rig.Session.Fail(Sql.ActiveScopesSql, BitErrors.ReadFailed);
+            StopsWith(rig, "E-BIT-READ-FAILED");
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Fail(Sql.UserScopeSql, BitErrors.ReadFailed);
+            StopsWith(rig, "E-BIT-READ-FAILED");
         }
     }
 

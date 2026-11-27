@@ -425,7 +425,8 @@ public class StatsSqlTests
     // reception-paper PaperVisit과 같은 보험 이름 고르기(접수 날은 VisitDay = LEFT(c.OcmAcpDtm,8))
     private const string InsuranceApply = "OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=v.VisitDay ORDER BY m.InsAdpDte DESC,m.InsCodNam) i";
 
-    private const string PeopleSelect = "SELECT p.PatientId,b.PbsBirDte,b.PbsDtlAdr FROM Patients p LEFT JOIN dbo.PbsInf b ON NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId ORDER BY p.PatientId";
+    // AC-039.2: 환자 표 차트번호 칸을 감싸지 않는다(b.PbsChtNum=p.PatientId). p.PatientId는 Visits 글이 빈 값·NULL을 이미 뺐다
+    private const string PeopleSelect = "SELECT p.PatientId,b.PbsBirDte,b.PbsDtlAdr FROM Patients p LEFT JOIN dbo.PbsInf b ON b.PbsChtNum=p.PatientId ORDER BY p.PatientId";
 
     private static readonly string DoctorNamesText = "SELECT RTRIM(u.UidCod) Code,RTRIM(u.UidNam) Name,u.UidExpDte FROM dbo.UidMst u WHERE RTRIM(u.UidCod) IN ("
         + string.Join(",", Enumerable.Range(0, 50).Select(i => "@d" + i)) + ") ORDER BY Code,u.UidExpDte";
@@ -477,6 +478,54 @@ public class StatsSqlTests
         Assert.Equal(new[] { "PbsBirDte", "PbsChtNum", "PbsDtlAdr", "PbsInf" }, columns);
         Assert.DoesNotContain("PbsAdrSta", sql);
         Assert.DoesNotContain("PbsSexTyp", sql);
+    }
+
+    [Fact(DisplayName = "AC-039.2 사람 줄 SQL은 PbsChtNum을 감싸지 않고(b.PbsChtNum=p.PatientId) Visits 글이 빈 차트번호·NULL을 그대로 뺀다")]
+    public void PeopleJoinUsesBareChartColumn()
+    {
+        var sql = Squash(StatsSql.PeopleSql);
+        Assert.EndsWith("FROM Patients p LEFT JOIN dbo.PbsInf b ON b.PbsChtNum=p.PatientId ORDER BY p.PatientId", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("RTRIM(b.PbsChtNum)", sql, StringComparison.Ordinal);
+
+        // p.PatientId는 빈 글자도 NULL도 아니다: Visits 글은 원본 사본 그대로이고 그 안에 두 조건이 있다
+        var visits = VisitsOfCopy();
+        Assert.StartsWith(visits + " SELECT ", sql, StringComparison.Ordinal);
+        Assert.Contains("NULLIF(RTRIM(c.OcmChtNum),'') PatientId", visits, StringComparison.Ordinal);
+        Assert.Contains("SELECT DISTINCT PatientId FROM PeriodVisits WHERE PatientId IS NOT NULL", visits, StringComparison.Ordinal);
+
+        Assert.True(Sql.IsAllowed(StatsSql.PeopleSql));
+        ReadOnlyGuard.Require(StatsSql.PeopleSql, VisitArgs());
+        Assert.Equal(new[] { "@from", "@to", "@hospital" }, StatsSql.ParametersOf(StatsSql.PeopleSql).Select(p => p.Name));
+    }
+
+    // AC-039.3: 표 칸 둘을 잇는 같음 조건에서 한쪽 칸을 RTRIM·NULLIF(RTRIM(…),'')로 감싼 모양(색인을 못 쓴다)
+    private static readonly Regex WrappedColumnJoin = new Regex(
+        @"(?:NULLIF\(\s*RTRIM\(\s*[A-Za-z]\w*\.\w+\s*\)\s*,\s*''\s*\)|RTRIM\(\s*[A-Za-z]\w*\.\w+\s*\))\s*=\s*[A-Za-z]\w*\.\w+"
+        + @"|[A-Za-z]\w*\.\w+\s*=\s*(?:NULLIF\(\s*)?RTRIM\(\s*[A-Za-z]\w*\.\w+\s*\)",
+        RegexOptions.CultureInvariant);
+
+    [Fact(DisplayName = "AC-039.3 매출·통계 읽기 문장(매출 Parameters·통계 All·Sections·수납 All)에는 표 칸을 감싸서 다른 표 칸과 잇는 같음 조건이 없다")]
+    public void NoWrappedColumnJoins()
+    {
+        var all = Precheck.Core.Revenue.RevenueSql.Parameters.Keys
+            .Concat(StatsSql.All).Concat(StatsSql.Sections).Concat(Precheck.Core.Sunap.SunapSql.All)
+            .Distinct().ToArray();
+        Assert.Contains(Precheck.Core.Revenue.RevenueSql.CodeAmounts, all);
+        Assert.Contains(StatsSql.PeopleSql, all);
+        foreach (var sql in all)
+        {
+            var found = WrappedColumnJoin.Match(sql);
+            Assert.False(found.Success, found.Success ? found.Value : "");
+        }
+
+        // 정규식이 옛 두 모양을 잡고, 그대로 두는 상수·매개변수 견주기는 잡지 않는다
+        Assert.Matches(WrappedColumnJoin, "WHERE RTRIM(s.SeeOdrCod) = c.Code");
+        Assert.Matches(WrappedColumnJoin, "ON NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId");
+        Assert.Matches(WrappedColumnJoin, "ON p.PatientId = RTRIM(b.PbsChtNum)");
+        Assert.DoesNotMatch(WrappedColumnJoin, "WHERE s.SeeOdrCod = c.Code");
+        Assert.DoesNotMatch(WrappedColumnJoin, "CASE WHEN RTRIM(o.OdrCod)=N'도수' THEN 'manual'");
+        Assert.DoesNotMatch(WrappedColumnJoin, "WHERE RTRIM(u.UidCod) IN (@d0,@d1)");
+        Assert.DoesNotMatch(WrappedColumnJoin, "AND RTRIM(o.OdrCod) <> ''");
     }
 
     [Fact(DisplayName = "AC-2701.4 원장님 이름 SQL은 UidMst에서 코드 50자리(@d0~@d49) 안의 줄을 코드·UidExpDte 차례로 읽는다")]
