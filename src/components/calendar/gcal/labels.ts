@@ -1,7 +1,10 @@
 import { josa } from '@/lib/calendar/josa'
 
 // 예약 탭 구글 캘린더 글(spec google-link REQ-8532·8533·8534·8535·8536, notes-calendar `week`·`detail`·`fix`·`err` 글자 그대로).
-// 시험은 이 상수를 쓰지 않고 notes 글자를 따로 적어 견준다(design.md 4절). {…}는 함수 인자
+// 시험은 이 상수를 쓰지 않고 notes 글자를 따로 적어 견준다(design.md 4절). {…}는 함수 인자. 수는 세 자리마다 쉼표(시안 fmt)
+
+/** 시안 fmt — '1,234' */
+const num = (n: number) => n.toLocaleString('ko-KR')
 
 // ── 띠 (week·err) ──
 export const BAND_OPEN = '구글 캘린더 열기'
@@ -11,7 +14,7 @@ export const BAND_LINKED_HEAD = '구글 캘린더'
 export const bandLinkedTail = (name: string) => `${josa(name, '와/과')} 이어짐`
 export const BAND_LAST = '마지막 맞춤'
 export const bandEvery = (min: number) => `· ${min}분마다 맞춰요`
-export const FIX_BUTTON = (n: number) => `고쳐야 할 구글 예약 ${n}개`
+export const FIX_BUTTON = (n: number) => `고쳐야 할 구글 예약 ${num(n)}개`
 
 export const ERR_HEAD = '구글 캘린더에 닿지 못했어요'
 export const errSince = (hm: string) => `${hm}부터`
@@ -38,6 +41,8 @@ export const PUT_DONE_TOAST = '예약표에 넣었어요. 구글 제목은 그�
 export const SKIP_DONE_TOAST = '가져오지 않아요. 구글에만 남아요.'
 export const PAST_DONE_TOAST = '지난 예약 도착을 다 채웠어요.'
 export const PUT_FAILED = '넣지 못했어요. 잠시 뒤 다시 눌러 주세요.'
+/** 예약 취소 알림(2차 고침 notes-calendar 'week 취소 칸 · 바뀐 글', google-link AC-8549.2). 이은 병원만 — 잇지 않은 병원은 화면의 지금 글 그대로 */
+export const CANCEL_DONE_TOAST = '예약을 취소했어요. 칸은 취소 색으로 남아요.'
 
 // ── 안내 줄 ──
 export const LEGEND_COLOR = '색 (구글과 같음)'
@@ -80,12 +85,12 @@ export const SYNC_WAIT = '구글에 아직 못 보냈어요 · 다시 닿으면 
 export const editNote = (title: string) =>
   `[고치기]로 바꾸면 구글 제목이 ${title}${josa(title, '로/으로')} 다시 적혀요. 시행자·종류를 바꾸면 색도 설정 색으로 바꿔요. 그 전에는 원문·색 그대로 둬요.`
 export const colorNote = (cancel: string, change: string) =>
-  `[예약 취소]하면 구글 일정 색이 취소 색(${cancel})으로 바뀌고, 웹앱에는 흐린 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${change})으로 바뀌어요. [지우기]는 둘 다에서 지워요.`
+  `[예약 취소]하면 구글 일정 색이 취소 색(${cancel})으로 바뀌고, 웹앱에도 그 색 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${change})으로 바뀌어요. [지우기]는 둘 다에서 지워요.`
 export const OPEN_EVENT = '구글 캘린더에서 이 일정 열기'
 export const ARRIVAL_NOT_SENT = '도착은 구글에 보내지 않아요(설정 › 맞춤 방법).'
 
 // ── 고쳐야 할 판 (fix) ──
-export const fixTitle = (n: number) => `고쳐야 할 구글 예약 ${n}개`
+export const fixTitle = (n: number) => `고쳐야 할 구글 예약 ${num(n)}개`
 export const FIX_LEAD = '구글 캘린더에 새로 들어온 일정 가운데 웹앱이 알아보지 못한 거예요. 고르고 [예약표에 넣기]를 누르면 웹앱 예약이 돼요. 구글 일정은 그대로 둬요.'
 export const fixWhen = (day: string, from: string, to: string, min: number) => `${day} ${from}–${to} · ${min}분`
 /** 하루 종일 일정의 때(notes에 없어 이 TASK가 정함, 보고) */
@@ -111,6 +116,26 @@ export const FIX_INFO_LEAVE = '고르지 않고 둬도 돼요. 예약표에 노�
 export const FIX_INFO_WORDS = "같은 꼴이 자주 나오면 설정 › 구글 캘린더 › 시행자·종류에서 '제목에서 알아볼 글'을 더해 주세요(예: 충격파에 '체외충격')."
 export const FIX_CLOSE = '닫기'
 export const FIX_CANT = '이대로는 예약표에 넣을 수 없어요. 구글에서 제목을 고쳐 주세요.'
+
+// ── 고쳐야 할 판 기간 · 한꺼번에 (2차 고침 notes-calendar 'fix-range'·'fix-skipall', google-link REQ-8550·8551, design.md 21-8) ──
+export const FIX_RANGE_LABEL = '기간 고르기' // 기간 칸 묶음의 이름(시안 aria-label)
+export const FIX_FROM = '시작'
+export const FIX_TO = '끝'
+export const FIX_TO_HINT = '비우면 앞으로 전부'
+export const FIX_RANGE_MEMO = '고른 기간은 이 PC에서 기억해요.'
+export const FIX_SKIP_ALL = '이 기간 모두 가져오지 않기'
+export const FIX_NO_FROM = '시작 날짜를 골라 주세요.'
+export const FIX_END_BEFORE = '끝 날짜는 시작 날짜보다 앞일 수 없어요.'
+export const fixTotal = (n: number) => `· 전체 ${num(n)}개`
+export const FIX_EMPTY = '이 기간에는 고쳐야 할 구글 예약이 없어요.'
+export const fixElsewhere = (n: number) => `다른 기간에 ${num(n)}개 남아 있어요.`
+export const skipAllAsk = (n: number) => `${num(n)}개를 가져오지 않을까요?`
+export const SKIP_ALL_KEEP = '구글 일정은 그대로예요.'
+/** 확인 창 기간 글. 날짜는 화면이 고친 글(올해가 아니면 해를 붙임), to가 비면 앞으로 전부 */
+export const skipAllRange = (from: string, to: string) => `기간 ${from} – ${to === '' ? '앞으로 전부' : to}`
+export const SKIP_ALL_CANCEL = '취소'
+export const SKIP_ALL_GO = '가져오지 않기'
+export const bulkSkipDone = (n: number) => `${num(n)}개를 가져오지 않기로 했어요. 구글에만 남아요.`
 
 // ── 톱니 ──
 /** 예약 탭 톱니·[설정] → 설정 › 구글 캘린더 › 시행자·종류(AC-8529.3) */

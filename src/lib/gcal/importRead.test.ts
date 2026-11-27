@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CAL_SETTINGS } from '@/types/calendar'
-import { DEFAULT_GCAL_LOOK, DEFAULT_GCAL_RULES, type GcalLink } from '@/types/gcal'
+import { DEFAULT_GCAL_LOOK, DEFAULT_GCAL_RULES, type GcalLink, type GcalLook } from '@/types/gcal'
 import { CAL_ID, CAL_NAME, HOSPITAL, load, NOW } from '../../../google-code/test/fakeCalendar'
 import { readReply } from './client'
 import { createMemoryStore, type GcalCaller, type GcalDeps, type GcalParts } from './deps'
@@ -26,7 +26,7 @@ const PARTS: GcalParts = {
 }
 const READS = new Set(['loadLink', 'loadState', 'loadParts', 'findAppts', 'listAppts', 'listAllDay', 'listOffDays', 'listFixes'])
 
-function rig() {
+function rig(look: Partial<GcalLook> = {}) {
   const app = load()
   app.store.maxPage = 3 // 쪽 나눔을 보려고 작게
   const link: GcalLink = {
@@ -37,7 +37,7 @@ function rig() {
     defaultHex: '#4285F4',
     linkedOn: null, // 처음 잇기 ③ — 아직 이은 날 없음
     rules: { ...DEFAULT_GCAL_RULES },
-    look: { ...DEFAULT_GCAL_LOOK, noStaffKinds: ['shock'] },
+    look: { ...DEFAULT_GCAL_LOOK, noStaffKinds: ['shock'], ...look },
   }
   const now = () => new Date(app.env.nowMs)
   const mem = createMemoryStore({ now, link, parts: PARTS })
@@ -225,5 +225,77 @@ describe('AC-8527.2·AC-8527.3 [가져오기]', () => {
     app.store.failOn('Events.list', new Error('API call to calendar.events.list failed with error: Not Found'))
     expect(await readImport(deps)).toEqual({ ok: false, code: 'E-GCAL-GONE' })
     expect(mem.calls.every((c) => READS.has(c.fn))).toBe(true)
+  })
+})
+
+describe('AC-8547.2·AC-8547.3 처음 가져오기: 휴무 줄 색은 구글 off 일정 색을 따른다', () => {
+  it('AC-8547.2: off 일정 색(포도)이 휴무 줄 색(바나나)과 다르면 보내기 전에 맞춰, 웹앱에만 있는 사람이 든 off 날을 구글로 보낼 때 새 색으로 칠한다', async () => {
+    const { app, mem, deps } = rig({ offColor: 'banana' })
+    mem.seedAllDay({ day: '2026-11-30', type: 'off', memo: null, staffId: 's-ho', staffName: '정호연' }) // 웹앱에만 있는 휴가 사람(구글에는 박지원만)
+    const p = await preview(deps)
+    const done = await applyImport(deps, p, { evfut0002: ['staff:s-won'] })
+    expect(done).toMatchObject({ ok: true, offs: 1 })
+
+    const fns = mem.calls.map((c) => c.fn)
+    expect(mem.calls.filter((c) => c.fn === 'setOffColor').map((c) => c.args)).toEqual([['grape']])
+    // off 줄을 적은 뒤(짝 적기 다음), 보내기(pushWaiting이 못 보낸 off 날을 읽기) 전에
+    const pair = fns.indexOf('saveOffDay')
+    expect(pair).toBeGreaterThanOrEqual(0)
+    expect(fns.indexOf('setOffColor')).toBeGreaterThan(pair)
+    expect(fns.indexOf('setOffColor')).toBeLessThan(fns.indexOf('listWaitingOffDays'))
+    expect(mem.db.link.look).toEqual({ ...DEFAULT_GCAL_LOOK, noStaffKinds: ['shock'], offColor: 'grape' })
+    // 보낸 off 줄: 이름은 웹앱 사람까지, 색은 새 휴무 줄 색(포도 = '3'). 옛 색(바나나)으로 보냈으면 '5'가 된다
+    expect(app.store.event('evoff0001')).toMatchObject({ summary: '정호연, 박지원 off', colorId: '3' })
+  })
+
+  it('AC-8547.3: off 일정 색이 이미 휴무 줄 색과 같거나 색이 없으면 setOffColor를 부르지 않는다', async () => {
+    const same = rig() // 휴무 줄 색 포도 = 구글 off 일정 색
+    await applyImport(same.deps, await preview(same.deps), { evfut0002: ['staff:s-won'] })
+    expect(same.mem.calls.map((c) => c.fn)).not.toContain('setOffColor')
+
+    const plain = rig({ offColor: 'banana' })
+    plain.app.store.allDay('evoff0001', '2026-11-30', '2026-12-01', { summary: '박지원 off' }) // 색 없는 off 일정으로 바꿔 둔다
+    await applyImport(plain.deps, await preview(plain.deps), { evfut0002: ['staff:s-won'] })
+    expect(plain.mem.calls.map((c) => c.fn)).not.toContain('setOffColor')
+    expect(plain.mem.db.link.look.offColor).toBe('banana')
+  })
+
+  it('AC-8547.3: 색 저장이 던져도 가져오기 결과는 그대로다', async () => {
+    const ok = rig({ offColor: 'banana' })
+    const bad = rig({ offColor: 'banana' })
+    const want = await applyImport(ok.deps, await preview(ok.deps), { evfut0002: ['staff:s-won'] })
+    const store = {
+      ...bad.mem.store,
+      setOffColor: async () => {
+        throw new Error('함수 없음')
+      },
+    }
+    const badDeps = { ...bad.deps, store }
+    const got = await applyImport(badDeps, await preview(badDeps), { evfut0002: ['staff:s-won'] })
+    expect(got).toEqual(want)
+    expect(bad.mem.db.link.linkedOn).toBe('2026-11-26')
+    expect(bad.mem.db.link.look.offColor).toBe('banana')
+  })
+})
+
+describe('AC-8554.4 처음 가져오기: 종일 메모 줄 색', () => {
+  it("AC-8554.4: 하루 종일 일정에서 온 메모는 그 일정 색(색 없음 = default), 시간 일정을 '종일 메모로' 넣은 웹앱 메모는 색을 비우고, 구글 일정 색은 그대로다", async () => {
+    const { app, mem, deps } = rig()
+    app.store.allDay('evmemo002', '2026-12-04', '2026-12-05', { summary: '원장님 세미나', colorId: '7' })
+    const p = await preview(deps)
+    const done = await applyImport(deps, p, { evfut0002: ['staff:s-won'], evfut0003: ['memo'] })
+    expect(done).toMatchObject({ ok: true, memos: 4 })
+
+    const memos = mem.db.allday.filter((r) => r.type === 'memo').sort((a, b) => (a.day < b.day ? -1 : 1))
+    expect(memos.map((r) => [r.day, r.memo, r.gEventId, r.gColor])).toEqual([
+      ['2026-11-29', '원장님 회의', null, null],
+      ['2026-12-01', '원장님 학회', 'evmemo001', 'default'],
+      ['2026-12-02', '원장님 학회', 'evmemo001', 'default'],
+      ['2026-12-04', '원장님 세미나', 'evmemo002', 'peacock'],
+    ])
+    const sent = mem.calls.filter((c) => c.fn === 'addAllDay' && (c.args[0] as { type: string }).type === 'memo').map((c) => c.args[0] as { gColor?: unknown })
+    expect(sent.every((r) => 'gColor' in r)).toBe(true)
+    expect(app.store.event('evmemo002')?.colorId).toBe('7')
+    expect(app.store.writes().map((c) => c.api)).toEqual(['Events.insert'])
   })
 })

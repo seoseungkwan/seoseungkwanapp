@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isYmd } from '@/lib/analytics/dates'
-import type { CalAllDay } from '@/lib/calendar/shapes'
 import { privacyProblem } from '@/lib/worklog/notes'
 import {
   CAL_COLOR_ID,
@@ -12,6 +11,7 @@ import {
   type ApptDraft,
   type ApptGoogle,
   type ApptStatus,
+  type CalAllDay,
   type CalAppt,
   type CalColor,
   type CalCountRow,
@@ -73,8 +73,8 @@ const APPT_COLUMNS =
 const COUNT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,orig_day,g_moved' // 이름·차트번호·메모 없음
 const SLOT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,start_min,len_min,chart' // 이름·메모 없음(stats-insights AC-6104.1)
 // part = 반차 휴무(직원 탭 휴가에서 트리거가 적음, spec staff AC-7616.1 — migration 20261121000000_staff.sql). leave_id는 읽지 않는다
-// g_* = 구글 일정 짝(종일 메모만, google-link design.md 7-2)
-const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name,part,g_event_id,g_updated,g_wait,g_wait_at'
+// g_* = 구글 일정 짝(종일 메모만, google-link design.md 7-2). g_color = 구글 일정 색(메모 줄만, design.md 21-13 — migration 20261127100000_google_link_allday_color.sql)
+const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name,part,g_event_id,g_updated,g_wait,g_wait_at,g_color'
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const PAGE_ROWS = 1000
 const EVENT_CHUNK = 100 // 구글 일정 id로 찾을 때 한 번에 묻는 수(주소 길이)
@@ -129,6 +129,8 @@ const isStatus = (value: unknown): value is ApptStatus => (STATUSES as readonly 
 const isAuto = (value: unknown): value is ApptAuto => value === null || value === 'came' || value === 'noshow'
 const isColor = (value: unknown): value is CalColor => (CAL_COLORS as readonly unknown[]).includes(value)
 const isKindColor = (value: unknown): value is KindColor => value === null || value === 'default' || isColor(value)
+// 종일 메모 구글 색(design.md 21-13): 11색 이름 또는 'default'(구글에서 색 없음). null은 따로 본다
+const isMemoColor = (value: unknown): value is CalColor | 'default' => value === 'default' || isColor(value)
 const isBool = (value: unknown): value is boolean => typeof value === 'boolean'
 // 구글 일정 id(design.md 7-1): 글자·숫자·_ 5~300자. 웹앱이 정하는 id는 'ssk' + 32자 16진수
 const isEventId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_]{5,300}$/.test(value)
@@ -527,6 +529,33 @@ export async function markApptSent(client: Client, id: string, sent: ApptSent, e
   return data.length > 0
 }
 
+/** 다시 알아보기가 쓰는 칸(google-link design.md 21-2): 종류 둘·시행자 셋·알아본 출처만 */
+export type ApptReread = Partial<Pick<ApptDraft, 'kindId' | 'kindName' | 'staffId' | 'staffName' | 'staffMark' | 'gHow'>>
+/** 읽을 때 본 구글 제목·g_updated(DB 글자 그대로, 없으면 null) */
+export type ApptRereadExpect = { gTitle: string; gUpdated: string | null }
+const REREAD_KEYS: readonly string[] = ['kindId', 'kindName', 'staffId', 'staffName', 'staffMark', 'gHow']
+
+/**
+ * 다시 알아본 종류·시행자를 적는다(조건 고치기, AC-8544.5): 그 id 줄의 g_wait가 없고 구글 제목·g_updated가 읽은 글자 그대로일 때만.
+ * g_updated는 DB가 준 글자를 그대로 견준다(Date를 거치지 않는다). 여섯 칸 밖 열쇠·빈 patch·틀린 값이면 보내지 않고 failed.
+ * 0줄(그사이 다른 PC가 고침)이면 거짓. g_wait·날·시작을 쓰지 않으니 트리거가 g_wait_at·처음 자리를 적지 않는다
+ */
+export async function rereadAppt(client: Client, id: string, patch: ApptReread, expect: ApptRereadExpect): Promise<boolean> {
+  const target = requireId(id)
+  if (!isRecord(patch) || !isRecord(expect)) throw failed()
+  if (Object.keys(patch).some((key) => !REREAD_KEYS.includes(key))) throw failed()
+  const { gTitle, gUpdated } = expect
+  if (!isText(gTitle, 0, G_TITLE_MAX) || !(gUpdated === null || isTimestamp(gUpdated))) throw failed()
+  const body = apptBody(patch)
+  if (body === 'blocked' || Object.keys(body).length === 0) throw failed()
+  const { data } = await send(() => {
+    const query = client.from(APPTS).update(body).eq('id', target).is('g_wait', null).eq('g_title', gTitle)
+    return (gUpdated === null ? query.is('g_updated', null) : query.eq('g_updated', gUpdated)).select('id')
+  })
+  if (!Array.isArray(data)) throw failed()
+  return data.length > 0
+}
+
 /**
  * 처음 가져오기·받기 넣기: 500줄씩 on conflict (hospital_id, g_event_id) do nothing. 줄마다 열두 칸 + 구글 칸 열두 칸(받지 않은 칸은 DB 기본값).
  * 구글 일정 id가 없거나 모양이 틀린 줄이 하나라도 있으면 아무것도 보내지 않고 failed. 이름·메모가 개인정보 모양인 줄은 빼고 센다(blocked)
@@ -567,7 +596,7 @@ export async function deleteAppt(client: Client, id: string): Promise<void> {
 // ── 종일 (calendar_allday) ──────────────────────────────────
 
 // 종일 줄: part가 null이거나 없으면 종일(돌려주는 줄에 part 칸을 두지 않는다 — 지금 모양 그대로), 'am'·'pm'은 휴무 줄만
-// 메모 줄은 구글 칸(g_event_id·g_updated·g_wait·g_wait_at)을 함께 옮긴다. 휴무 줄은 구글 칸을 보지 않는다(off 줄 짝은 gcal_off_days)
+// 메모 줄은 구글 칸(g_event_id·g_updated·g_wait·g_wait_at·g_color)을 함께 옮긴다. 휴무 줄은 구글 칸을 보지 않는다(off 줄 짝은 gcal_off_days)
 function toAllDay(row: unknown): CalAllDay | null {
   if (!isRecord(row)) return null
   const { id, day, type, memo, staff_id: staffId, staff_name: staffName, part } = row
@@ -575,16 +604,41 @@ function toAllDay(row: unknown): CalAllDay | null {
   const whole = part === null || part === undefined
   if (type === 'memo' && whole && isText(memo, 1, ALLDAY_MEMO_MAX) && staffId === null && staffName === null) {
     const { g_event_id: gEventId, g_updated: gUpdated, g_wait: gWait, g_wait_at: gWaitAt } = row
-    if (!(gEventId === null || isEventId(gEventId)) || !(gUpdated === null || isTimestamp(gUpdated)) || !isBool(gWait) || !(gWaitAt === null || isTimestamp(gWaitAt))) {
+    const gColor = memoColorOf(row.g_color)
+    if (
+      !(gEventId === null || isEventId(gEventId)) ||
+      !(gUpdated === null || isTimestamp(gUpdated)) ||
+      !isBool(gWait) ||
+      !(gWaitAt === null || isTimestamp(gWaitAt)) ||
+      gColor === undefined
+    ) {
       return null
     }
-    return { id, day, type, memo, staffId: null, staffName: null, gEventId: gEventId as string | null, gUpdated: gUpdated as string | null, gWait, gWaitAt: gWaitAt as string | null }
+    return {
+      id,
+      day,
+      type,
+      memo,
+      staffId: null,
+      staffName: null,
+      gEventId: gEventId as string | null,
+      gUpdated: gUpdated as string | null,
+      gWait,
+      gWaitAt: gWaitAt as string | null,
+      gColor,
+    }
   }
   if (type === 'off' && memo === null && isText(staffId, 1, CAL_ID_MAX) && isText(staffName, 1, CAL_LABEL_MAX)) {
     if (whole) return { id, day, type, memo: null, staffId, staffName }
     if (part === 'am' || part === 'pm') return { id, day, type, memo: null, staffId, staffName, part }
   }
   return null
+}
+
+/** 읽은 메모 줄 색: 칸이 없거나 null이면 null, 11색·'default'는 그대로, 그 밖이면 undefined(그 줄을 뺀다 — 다른 구글 칸과 같다) */
+function memoColorOf(value: unknown): CalAllDay['gColor'] {
+  if (value === undefined || value === null) return null
+  return isMemoColor(value) ? value : undefined
 }
 
 /** from~to 종일 줄, 날·넣은 차례. 모양이 틀린 줄은 뺀다 */
@@ -598,7 +652,7 @@ export async function listAllDay(client: Client, from: string, to: string): Prom
 
 /** 종일 한 줄 넣기: 메모(20자, 개인정보 모양이면 'blocked') 또는 시행자 휴무(종일). 다섯 칸을 늘 보낸다(쓰지 않는 칸은 null).
  * part·leave_id는 보내지 않는다(넣기 권한이 없고 직원 탭 휴가 트리거만 쓴다).
- * 메모 줄은 받은 구글 칸(gEventId·gUpdated·gWait)을 같은 넣기에 함께 보낸다(휴무 줄에는 보내지 않는다) */
+ * 메모 줄은 받은 구글 칸(gEventId·gUpdated·gWait·gColor)을 같은 넣기에 함께 보낸다(휴무 줄에는 보내지 않는다) */
 export async function addAllDay(client: Client, item: Omit<CalAllDay, 'id'>): Promise<CalAllDay | 'blocked'> {
   if (!isDay(item.day)) throw failed()
   let row: Record<string, unknown>
@@ -620,7 +674,7 @@ export async function addAllDay(client: Client, item: Omit<CalAllDay, 'id'>): Pr
 }
 
 /** 메모 줄 구글 칸(받은 것만). 값이 틀리면 failed */
-function memoGoogle(item: Pick<CalAllDay, 'gEventId' | 'gUpdated' | 'gWait'>): Record<string, unknown> {
+function memoGoogle(item: Pick<CalAllDay, 'gEventId' | 'gUpdated' | 'gWait' | 'gColor'>): Record<string, unknown> {
   const body: Record<string, unknown> = {}
   if (item.gEventId !== undefined) {
     if (!(item.gEventId === null || isEventId(item.gEventId))) throw failed()
@@ -634,7 +688,14 @@ function memoGoogle(item: Pick<CalAllDay, 'gEventId' | 'gUpdated' | 'gWait'>): R
     if (!isBool(item.gWait)) throw failed()
     body.g_wait = item.gWait
   }
+  if (item.gColor !== undefined) body.g_color = memoColorToSend(item.gColor)
   return body
+}
+
+/** 보낼 메모 줄 색: null·11색·'default'만, 그 밖이면 failed(보내지 않는다) */
+function memoColorToSend(value: unknown): CalColor | 'default' | null {
+  if (value !== null && !isMemoColor(value)) throw failed()
+  return value
 }
 
 /** 아직 구글로 못 보낸 종일 메모(g_wait 참): fromDay부터, 고친 때·id 차례로 모두 */
@@ -658,13 +719,14 @@ export async function markMemoSent(client: Client, id: string, expectWaitAt: str
 }
 
 /**
- * 구글에서 받은 종일 메모 바뀜(날짜·메모)을 그 메모 줄에 고치기로 적는다(지우고 다시 넣지 않는다 — 지움 트리거가 구글 지우기를 적지 않게).
- * 조건 고치기: g_updated가 null이거나 gUpdated보다 이르고 g_wait_at이 읽을 때 글 그대로일 때만. 맞는 줄이 없으면 null. 메모가 개인정보 모양이면 'blocked'
+ * 구글에서 받은 종일 메모 바뀜(날짜·메모·구글 일정 색)을 그 메모 줄에 고치기로 적는다(지우고 다시 넣지 않는다 — 지움 트리거가 구글 지우기를 적지 않게).
+ * 조건 고치기: g_updated가 null이거나 gUpdated보다 이르고 g_wait_at이 읽을 때 글 그대로일 때만. 맞는 줄이 없으면 null. 메모가 개인정보 모양이면 'blocked'.
+ * gColor(google-link AC-8554.3)는 받으면 같은 고치기에 g_color로 보낸다(null·11색·'default', 그 밖이면 failed)
  */
 export async function applyGoogleMemo(
   client: Client,
   id: string,
-  patch: { day?: string; memo?: string },
+  patch: { day?: string; memo?: string; gColor?: CalColor | 'default' | null },
   gUpdated: string,
   expectWaitAt: string | null,
 ): Promise<CalAllDay | null | 'blocked'> {
@@ -682,12 +744,39 @@ export async function applyGoogleMemo(
     if (!isText(memo, 1, ALLDAY_MEMO_MAX)) throw failed()
     body.memo = memo
   }
+  if (patch.gColor !== undefined) body.g_color = memoColorToSend(patch.gColor)
   body.g_updated = gUpdated
   const { data } = await send(() => {
     const query = client.from(ALLDAY).update(body).eq('id', target).eq('type', 'memo').or(olderThan(gUpdated))
     return (waitAt === null ? query.is('g_wait_at', null) : query.eq('g_wait_at', waitAt)).select(ALLDAY_COLUMNS)
   })
   return oneOrNone(data, toAllDay)
+}
+
+/**
+ * 종일 메모 색 채우기(google-link AC-8554.3·AC-8554.5): 그 id 줄의 g_color가 아직 비었을 때만 적는다.
+ * 1줄이면 참, 0줄(이미 색이 있음·줄이 없음)이면 거짓. 색은 11색·'default'만(그 밖·null이면 보내지 않고 failed).
+ * g_color만 고치므로 트리거가 g_wait·g_wait_at을 그대로 둔다
+ */
+export async function fillMemoColor(client: Client, id: string, color: CalColor | 'default'): Promise<boolean> {
+  const target = requireId(id)
+  if (!isMemoColor(color)) throw failed()
+  const { data } = await send(() => client.from(ALLDAY).update({ g_color: color }).eq('id', target).is('g_color', null).select('id'))
+  if (!Array.isArray(data)) throw failed()
+  return data.length === 1
+}
+
+/**
+ * 빈 색 찾기(google-link AC-8554.3·AC-8554.5): from~to 메모 가운데 구글 일정과 이어지고(g_event_id 있음) 보낼 것이 없고(g_wait 거짓)
+ * 색이 빈(g_color null) 줄이 하나라도 있으면 참. 한 줄만 읽는다(id 칸 하나). 기간이 틀리면 보내지 않고 failed
+ */
+export async function hasMemoColorGap(client: Client, from: string, to: string): Promise<boolean> {
+  const [start, end] = requirePeriod(from, to)
+  const { data } = await send(() =>
+    client.from(ALLDAY).select('id').eq('type', 'memo').not('g_event_id', 'is', null).eq('g_wait', false).is('g_color', null).gte('day', start).lte('day', end).limit(1),
+  )
+  if (!Array.isArray(data)) throw failed()
+  return data.length > 0
 }
 
 /** 종일 한 줄 지우기. id가 비면 보내지 않는다 */

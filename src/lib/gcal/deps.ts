@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { addDays, addMonthsToDay, todayInKorea } from '@/lib/analytics/dates'
+import { addDays, addMonthsToDay, isYmd, todayInKorea } from '@/lib/analytics/dates'
 import { mergeClinic } from '@/lib/calendar/clinic'
 import type { GKind, GStaff, OffPerson } from '@/lib/calendar/gshapes'
 import {
@@ -8,7 +8,9 @@ import {
   applyGoogleMemo,
   deleteAllDay,
   deleteAppt,
+  fillMemoColor,
   findApptsByEvents,
+  hasMemoColorGap,
   insertGoogleAppts,
   listAllDay,
   listAppts,
@@ -17,7 +19,10 @@ import {
   loadCalendarSettings,
   markApptSent,
   markMemoSent,
+  rereadAppt,
   updateAppt,
+  type ApptReread,
+  type ApptRereadExpect,
   type ApptSent,
 } from '@/lib/storage/calendar'
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
@@ -35,13 +40,14 @@ import {
   markGcalFail,
   markGcalOk,
   saveOffDay,
+  setGcalOffColor,
   setLinkedOn,
   upsertGcalFixes,
 } from '@/lib/storage/gcal'
 import { maskPrivate } from '@/lib/storage/maskPrivate'
 import { privacyProblem } from '@/lib/worklog/notes'
-import type { ApptDraft, CalAllDay, CalAppt } from '@/types/calendar'
-import type { FixGuess, GcalDelete, GcalFix, GcalFixInput, GcalLink, GcalOffDay, GcalOffDayInput, GcalState } from '@/types/gcal'
+import type { ApptDraft, CalAllDay, CalAppt, CalColor } from '@/types/calendar'
+import { G_COLORS, type FixGuess, type GcalDelete, type GcalFix, type GcalFixInput, type GcalLink, type GcalOffDay, type GcalOffDayInput, type GcalState, type GColor } from '@/types/gcal'
 import type { GcalAction, GcalCallLink, GcalReply } from './client'
 
 // 맞춤 엔진이 받는 것(spec google-link design.md 10-5): 구글 부르기(call) · 저장(store) · 지금 시각(now) · 병원 id.
@@ -49,6 +55,9 @@ import type { GcalAction, GcalCallLink, GcalReply } from './client'
 // 시각 글자(g_wait_at·wait_at)는 저장소가 준 글자 그대로 되돌려 보낸다 — Date로 바꾸지 않는다(마이크로초가 잘린다)
 
 export type GcalCaller = (link: GcalCallLink, action: GcalAction, body?: Record<string, unknown>) => Promise<GcalReply>
+
+/** 종일 메모 줄의 구글 일정 색: 11색 또는 'default'(구글에서 색 없음) — google-link design.md 21-13 */
+export type MemoColor = CalColor | 'default'
 
 /** 알아보기에 쓰는 병원 목록: 예약에 보이는 시행자(병원 정보) · 종류(예약 설정) · off 줄 사람(원장님·직원) */
 export type GcalParts = { staff: GStaff[]; kinds: GKind[]; people: OffPerson[] }
@@ -72,10 +81,15 @@ export interface GcalStore {
   deleteAppt(id: string): Promise<void>
   listAllDay(from: string, to: string): Promise<CalAllDay[]>
   addAllDay(item: Omit<CalAllDay, 'id'>): Promise<CalAllDay | 'blocked'>
-  applyMemo(id: string, patch: { day?: string; memo?: string }, gUpdated: string, expectWaitAt: string | null): Promise<CalAllDay | null | 'blocked'>
+  /** 구글 메모 바뀜(날짜·글·구글 일정 색 gColor — design.md 21-13) */
+  applyMemo(id: string, patch: { day?: string; memo?: string; gColor?: MemoColor | null }, gUpdated: string, expectWaitAt: string | null): Promise<CalAllDay | null | 'blocked'>
   deleteAllDay(id: string): Promise<void>
   listWaitingMemos(fromDay: string): Promise<CalAllDay[]>
   markMemoSent(id: string, expectWaitAt: string, gUpdated?: string): Promise<boolean>
+  /** 빈 색 찾기(design.md 21-13): from~to 메모 가운데 구글 일정과 이어지고·보낼 것 없고·색이 빈 줄이 있는가(한 줄 읽기) */
+  memoColorGap(from: string, to: string): Promise<boolean>
+  /** 종일 메모 색 채우기: 그 줄 g_color가 비었을 때만. 1줄이면 참 */
+  fillMemoColor(id: string, color: MemoColor): Promise<boolean>
   listFixes(state?: GcalFix['state']): Promise<GcalFix[]>
   upsertFixes(fixes: readonly GcalFixInput[]): Promise<void>
   deleteFix(id: string): Promise<void>
@@ -84,6 +98,10 @@ export interface GcalStore {
   listOffDays(from: string, to: string): Promise<GcalOffDay[]>
   listWaitingOffDays(): Promise<GcalOffDay[]>
   saveOffDay(off: GcalOffDayInput, expectWaitAt?: string | null): Promise<boolean>
+  /** 다시 알아보기(design.md 21-2): 종류·시행자·출처만, g_wait 없음·구글 제목·g_updated가 읽은 글자 그대로일 때만. 0줄이면 거짓 */
+  rereadAppt(id: string, patch: ApptReread, expect: ApptRereadExpect): Promise<boolean>
+  /** 휴무 줄 색만 구글 off 일정 색으로(design.md 21-5, 원장·데스크 모두). 바뀌었으면 참 */
+  setOffColor(color: GColor): Promise<boolean>
 }
 
 export type GcalDeps = {
@@ -169,6 +187,8 @@ export function makeGcalDeps({ client, hospitalId, call, now = () => new Date() 
     deleteAllDay: (id) => deleteAllDay(client, id),
     listWaitingMemos: (fromDay) => listWaitingMemos(client, fromDay),
     markMemoSent: (id, expectWaitAt, gUpdated) => markMemoSent(client, id, expectWaitAt, gUpdated),
+    memoColorGap: (from, to) => hasMemoColorGap(client, from, to),
+    fillMemoColor: (id, color) => fillMemoColor(client, id, color),
     listFixes: (state) => listGcalFixes(client, state),
     upsertFixes: (fixes) => upsertGcalFixes(client, fixes),
     deleteFix: (id) => deleteGcalFix(client, id),
@@ -177,13 +197,15 @@ export function makeGcalDeps({ client, hospitalId, call, now = () => new Date() 
     listOffDays: (from, to) => listOffDays(client, from, to),
     listWaitingOffDays: () => listWaitingOffDays(client),
     saveOffDay: (off, expectWaitAt) => saveOffDay(client, off, expectWaitAt),
+    rereadAppt: (id, patch, expect) => rereadAppt(client, id, patch, expect),
+    setOffColor: (color) => setGcalOffColor(client, color),
   }
   return { hospitalId, call, store, now }
 }
 
 // ── 시험·화면 시안용 메모리 저장(DB 흉내) ─────────────────────
 // DB가 하는 일을 흉내 낸다: 조건 고치기(g_wait_at·wait_at은 글자 그대로 같을 때만, g_updated는 더 이를 때만) · 유일(병원·g_event_id,
-// (일정, 날) 메모, (날, 사람) off) · 트리거(g_wait_at = DB 지금 시각(마이크로초 글자), 옮기면 처음 자리·도착 비움, 지우면 지움 줄(한국 오늘 − 1년부터),
+// (일정, 날) 메모, (날, 사람) off) · 다시 알아보기(g_wait 없음·구글 제목·g_updated 글자가 같을 때만) · 휴무 줄 색(look.offColor 한 칸) · 트리거(g_wait_at = DB 지금 시각(마이크로초 글자), 옮기면 처음 자리·도착 비움, 지우면 지움 줄(한국 오늘 − 1년부터),
 // 하루 종일 off 줄을 넣거나 지우면 그날 off 날 wait) · pulled_until 앞으로만 · 개인정보 모양 이름·메모는 'blocked'. 부른 함수는 calls에 남는다
 
 export type MemoryDelete = GcalDelete & { at: string }
@@ -225,6 +247,7 @@ const APPT_KEYS = [
   'gFrom',
   'gHow',
 ] as const
+const REREAD_KEYS: readonly string[] = ['kindId', 'kindName', 'staffId', 'staffName', 'staffMark', 'gHow']
 const EMPTY_GUESS: FixGuess = { chart: null, name: null, kindId: null, kindHow: null, staffId: null, staffHow: null, memo: null, word: null }
 
 const copy = <T>(v: T): T => (v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T))
@@ -330,6 +353,12 @@ export function createMemoryStore({ now, link, parts, state }: { now: () => Date
   }
 
   // ── 종일 트리거 ──
+  /** 종일 메모 색 제약(calendar_allday_g_color): null·11색·'default'만 */
+  function memoColor(color: unknown): MemoColor | null {
+    if (color === null) return null
+    if (color !== 'default' && !(G_COLORS as readonly unknown[]).includes(color)) throw new MemoryDbError('메모 색 아님')
+    return color as MemoColor
+  }
   function offWait(row: CalAllDay) {
     if (row.type !== 'off' || row.part || row.day < yearAgo()) return
     const at = stamp()
@@ -359,8 +388,10 @@ export function createMemoryStore({ now, link, parts, state }: { now: () => Date
         gUpdated: item.gUpdated ?? null,
         gWait,
         gWaitAt: item.gWaitAt !== undefined ? item.gWaitAt : gWait ? stamp() : null,
+        gColor: memoColor(item.gColor ?? null),
       }
     } else {
+      if (item.gColor !== undefined && item.gColor !== null) throw new MemoryDbError('off 줄 색')
       if (db.allday.some((r) => r.type === 'off' && r.day === item.day && r.staffId === item.staffId)) throw new MemoryDbError('같은 (날, 사람) off')
       row = { id: newId('d0000000'), day: item.day, type: 'off', memo: null, staffId: item.staffId, staffName: item.staffName, ...(item.part ? { part: item.part } : {}) }
     }
@@ -470,14 +501,17 @@ export function createMemoryStore({ now, link, parts, state }: { now: () => Date
       if (!row) return null
       const memo = patch.memo === undefined ? undefined : patch.memo.trim()
       if (memo !== undefined && privacyProblem(memo)) return 'blocked'
+      const color = patch.gColor === undefined ? undefined : memoColor(patch.gColor)
       if (!later(row.gUpdated ?? null, gUpdated) || (row.gWaitAt ?? null) !== expectWaitAt) return null
       const day = patch.day ?? row.day
       if (day !== row.day && db.allday.some((r) => r !== row && r.type === 'memo' && r.gEventId && r.gEventId === row.gEventId && r.day === day)) {
         throw new MemoryDbError('같은 (일정, 날) 메모')
       }
+      // 트리거(calendar_allday_gwait)는 날·글만 본다 — 색만 바뀌면 g_wait_at 그대로
       const changed = day !== row.day || (memo !== undefined && memo !== row.memo)
       row.day = day
       if (memo !== undefined) row.memo = memo
+      if (color !== undefined) row.gColor = color
       row.gUpdated = gUpdated
       if (!row.gWait) row.gWaitAt = null
       else if (changed) row.gWaitAt = stamp()
@@ -497,6 +531,19 @@ export function createMemoryStore({ now, link, parts, state }: { now: () => Date
       row.gWait = false
       row.gWaitAt = null
       if (gUpdated !== undefined) row.gUpdated = gUpdated
+      return true
+    },
+    memoColorGap: async (from, to) => {
+      if (!isYmd(from) || !isYmd(to) || from > to) throw new MemoryDbError('기간')
+      return db.allday.some((r) => r.type === 'memo' && !!r.gEventId && r.gWait === false && (r.gColor ?? null) === null && r.day >= from && r.day <= to)
+    },
+    fillMemoColor: async (id, color) => {
+      if (color === null) throw new MemoryDbError('메모 색 아님')
+      const next = memoColor(color)
+      const row = db.allday.find((r) => r.id === id)
+      if (!row || (row.gColor ?? null) !== null) return false
+      if (row.type !== 'memo') throw new MemoryDbError('off 줄 색')
+      row.gColor = next // 색만 고친다(트리거가 g_wait·g_wait_at 그대로)
       return true
     },
     listFixes: async (state) =>
@@ -545,6 +592,22 @@ export function createMemoryStore({ now, link, parts, state }: { now: () => Date
       }
       if (!found || found.waitAt !== expectWaitAt) return false
       Object.assign(found, body)
+      return true
+    },
+    rereadAppt: async (id, patch, expect) => {
+      const keys = Object.keys(patch)
+      if (!keys.length || keys.some((k) => !REREAD_KEYS.includes(k))) throw new MemoryDbError('다시 알아보기 칸')
+      staffTrio(patch)
+      const at = findAppt(id)
+      if (at < 0) return false
+      const row = db.appts[at]
+      if (row.gWait !== null || row.gTitle !== expect.gTitle || row.gUpdated !== expect.gUpdated) return false
+      db.appts[at] = apptUpdate(row, patch as Partial<CalAppt>)
+      return true
+    },
+    setOffColor: async (color) => {
+      if (!(G_COLORS as readonly unknown[]).includes(color)) throw new MemoryDbError('구글 11색 아님')
+      db.link.look = { ...db.link.look, offColor: color }
       return true
     },
   }

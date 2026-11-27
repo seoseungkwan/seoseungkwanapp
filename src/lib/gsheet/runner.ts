@@ -10,7 +10,8 @@ import { fillStatus, type FillDone } from './status'
 // 손 넣기([지금 넣기]·[덮어쓰기…], TASK-23)가 같이 쓴다. 도우미는 받은 call로만 부른다(통로를 쥐거나 빌리는 것은 부르는 쪽 몫).
 // 차례:
 //   1. sheet.status → 도우미 비밀 글자 표시(secretTag)가 서버 secret_tag와 같을 때만 넣는 PC. 아니면 sheet.fill을 부르지 않고 'viewer'
-//   2. 이 쪽에서 그날 처음 넣기 전에 sheet.months로 최근 13달 파일 목록을 받아 gsheet_months에(실패해도 넣기는 함, 다음 넣기 때 다시)
+//   2. 이 쪽에서 그날 이번 달 파일 id를 받기 전까지는 넣기 전마다 sheet.months로 최근 13달 파일 목록을 받아 gsheet_months에
+//      (실패·옛 코드·이번 달 없음이어도 넣기는 함, 다음 넣기 때 다시 — REQ-8546)
 //   3. fillStatus.start → sheet.fill {day, mode, auto, settings} — 손 넣기는 지문 무시(auto 거짓), 저절로(간격 확인)는 받은 auto
 //   4. gsheet_runs 한 줄(숫자·참거짓·오류 번호·칸 주소만) → 새 달 파일을 만들었으면 달 목록을 다시 받음 → fillStatus.finish
 // 코드 주소·함께 쓸 메일(sheet.status의 pinned)은 어느 명령 args·기록·달 목록에도 넣지 않는다 — 도우미는 자기 sheet.dat 것만 쓴다(ADR-052).
@@ -19,7 +20,7 @@ import { fillStatus, type FillDone } from './status'
 // sheet.status부터 sheet.fill 답까지 FILL_LIMIT_MS(120초)를 넘으면 E-GSHEET-TIMEOUT 실패로 적는다(답이 늦게 와도 버림).
 // 기록 counts 열쇠는 FillReply 칸 이름 그대로이고 notPut은 notPutNoName·notPutUnlinked·notPutNegative·notPutNoChart로 펼친다
 // (새 달 알림이 읽는 created·cleaned·ratioFixed·shareFailed 포함, AC-8513.5). 파일 id·판 글자는 기록에 넣지 않는다.
-// 그날 달 목록을 받았는지는 이 쪽 메모리에만 둔다(로그아웃·시험에서 resetRunner).
+// 그날 이번 달 파일 id를 받았는지는 이 쪽 메모리에만 둔다(로그아웃·시험에서 resetRunner).
 
 /** sheet.status부터 sheet.fill 답까지 기다리는 한도. 넘으면 실패로 적는다 */
 export const FILL_LIMIT_MS = 120_000
@@ -28,8 +29,6 @@ const MONTHS_ASKED = 13
 
 const TIMEOUT = 'E-GSHEET-TIMEOUT'
 const FAILED = 'E-GSHEET-FAILED'
-/** 옛 7판 구글 코드(months·hello를 모름) */
-const OLD_CODE = 'E-GSHEET-OLD'
 /** gsheet_runs.code와 같은 모양 */
 const CODE = /^E-[A-Z0-9-]{1,30}$/
 const PINNED = new Set<string>(GSHEET_PINNED_KEYS)
@@ -100,7 +99,7 @@ const SETTING_KEYS: Record<keyof GsheetSettings, true> = {
   evening: true,
 }
 
-// 그날 달 목록을 받은 한국 날짜(이 쪽 메모리). null이면 다음 넣기 전에 묻는다
+// 이번 달 파일 id가 든 달 목록을 받은 한국 날짜(이 쪽 메모리). 그날이 아니면 다음 넣기 전에 묻는다
 let monthsDay: string | null = null
 
 /** 그날 달 목록을 받았다는 표시를 지운다(로그아웃·시험) */
@@ -187,16 +186,20 @@ const isFiller = (helperTag: string | null, serverTag: string | null) => helperT
 /** 손 넣기는 지문을 무시한다(force). 그 밖은 계획이 정한 그대로(간격 확인만 참) */
 const autoOf = (job: FillJob) => job.via !== 'hand' && job.auto === true
 
-/** 최근 13달 파일 목록을 받아 파일이 있는 달만 적는다. 적었거나 옛 코드라 못 물으면 그날은 다시 묻지 않는다 */
+/**
+ * 최근 13달 파일 목록을 받아 파일이 있는 달만 적는다. 이번 달 파일 id가 든 답을 적은 날만 그날 다시 묻지 않는다(AC-8546.1).
+ * 이번 달이 없는 답·읽지 못한 답·옛 코드(E-GSHEET-OLD)·다른 오류는 잠그지 않는다 — 넣기 전마다 다시 묻는다(AC-8546.2)
+ */
 async function refreshMonths(deps: RunnerDeps, settings: GsheetSettings, today: string, race: Race): Promise<void> {
   try {
     const reply = readMonths(await race(deps.call('sheet.months', { settings, months: recentMonths(today) })))
     if (reply === null) return
     const found = reply.months.flatMap((m) => (m.fileId === null ? [] : [{ ym: m.ym, fileId: m.fileId, gids: m.gids }]))
     if (found.length > 0) await race(deps.store.upsertMonths(found))
-    monthsDay = today
-  } catch (error) {
-    if (errorCode(error) === OLD_CODE) monthsDay = today
+    const thisMonth = today.slice(0, 7)
+    if (found.some((m) => m.ym === thisMonth)) monthsDay = today
+  } catch {
+    // 다음 넣기 전에 다시 묻는다(옛 코드는 묻자마자 E-GSHEET-OLD라 오래 걸리지 않음)
   }
 }
 

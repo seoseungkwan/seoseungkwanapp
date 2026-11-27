@@ -341,8 +341,9 @@ describe('AC-8526.1 넣기 — 새 예약·종일 메모의 구글 칸', () => {
 
 describe('AC-8526.1·AC-8526.5 고치기·옮기기·취소·되돌리기 — g_wait', () => {
   it('AC-8526.1: 날짜·시작을 옮기면 move', () => {
-    expect(googlePatch(LINK, linked(), { day: '2026-11-19', start: 570 })).toEqual({ gWait: 'move' })
-    expect(googlePatch(LINK, linked(), { start: 600 })).toEqual({ gWait: 'move' })
+    // google-link AC-8545.2: 옮기는 쓰기에 g_moved 참도 싣는다
+    expect(googlePatch(LINK, linked(), { day: '2026-11-19', start: 570 })).toEqual({ gWait: 'move', gMoved: true })
+    expect(googlePatch(LINK, linked(), { start: 600 })).toEqual({ gWait: 'move', gMoved: true })
   })
 
   it('AC-8526.1: 칸(이름·차트번호·길이·메모·시행자·종류)을 고치면 edit, 구글 제목을 그대로 두던 예약은 g_keep_title = false', () => {
@@ -378,18 +379,46 @@ describe('AC-8526.1·AC-8526.5 고치기·옮기기·취소·되돌리기 — g_
     expect(googlePatch(LINK, linked({ gWait: 'new' }), { memo: '허리' })).toEqual({ gWait: 'new' })
     expect(googlePatch(LINK, linked({ gWait: 'move' }), { memo: '허리' })).toEqual({ gWait: 'move' })
     expect(googlePatch(LINK, linked({ gWait: 'edit' }), { status: 'cancel' })).toEqual({ gWait: 'edit' })
-    expect(googlePatch(LINK, linked({ gWait: 'cancel' }), { start: 600 })).toEqual({ gWait: 'move' })
+    expect(googlePatch(LINK, linked({ gWait: 'cancel' }), { start: 600 })).toEqual({ gWait: 'move', gMoved: true }) // google-link AC-8545.2
     expect(googlePatch(LINK, linked({ gWait: 'color' }), { status: 'cancel' })).toEqual({ gWait: 'cancel' })
   })
 
   it('AC-8526.1: 짝 없는(이은 날 앞에 넣은) 예약을 이은 날 이후로 고치면 새 예약처럼 ssk id·web·new', () => {
     const old = { ...appt('o1', '2026-11-12') }
-    expect(googlePatch(LINK, old, { day: '2026-11-20' })).toEqual({ gEventId: expect.stringMatching(SSK), gFrom: 'web', gWait: 'new' })
+    // google-link AC-8545.2: 짝 없는 줄도 옮기면 g_moved 참
+    expect(googlePatch(LINK, old, { day: '2026-11-20' })).toEqual({ gEventId: expect.stringMatching(SSK), gFrom: 'web', gWait: 'new', gMoved: true })
     expect(googlePatch(LINK, old, { memo: '허리' })).toEqual({})
   })
 
   it('AC-8526.1: 이은 병원이 아니면 아무것도 싣지 않는다', () => {
     expect(googlePatch(null, linked(), { start: 600 })).toEqual({})
     expect(googlePatch(null, linked(), { status: 'cancel' })).toEqual({})
+  })
+})
+
+describe("AC-8545.2 이은 병원의 '변경' = g_moved — 옮기면 참, 원래 자리로 되돌리면 거짓", () => {
+  it('AC-8545.2: 구글 짝 있는 예약을 옮기면 g_moved 참, 원래 자리(orig_day·orig_start)로 되돌리면 g_moved 거짓을 같은 쓰기에 싣는다', () => {
+    const movedOnce = linked({ day: '2026-11-19', start: 600, origDay: '2026-11-18', origStart: 570, gMoved: true })
+    expect(googlePatch(LINK, movedOnce, { day: '2026-11-18', start: 570 })).toEqual({ gWait: 'move', gMoved: false })
+    expect(googlePatch(LINK, movedOnce, { day: '2026-11-18', start: 600 })).toEqual({ gWait: 'move', gMoved: true })
+    expect(googlePatch(LINK, movedOnce, { day: '2026-11-20' })).toEqual({ gWait: 'move', gMoved: true })
+  })
+
+  it('AC-8545.2: 이은 날 앞 예약·구글 짝 없는 예약도 옮기면 g_moved를 싣는다(구글로 보내는 것은 없음)', () => {
+    const before = appt('o1', '2026-11-12')
+    expect(googlePatch(LINK, before, { day: '2026-11-13' })).toEqual({ gMoved: true })
+    expect(googlePatch(LINK, before, { start: 600 })).toEqual({ gMoved: true })
+    const back = { ...appt('o2', '2026-11-13'), origDay: '2026-11-12', origStart: 570 }
+    expect(googlePatch(LINK, back, { day: '2026-11-12', start: 570 })).toEqual({ gMoved: false })
+  })
+
+  it('AC-8545.2: 날짜·시작을 옮기지 않는 고치기·취소·도착은 g_moved를 싣지 않는다', () => {
+    expect(googlePatch(LINK, linked({ gMoved: true }), { memo: '허리' })).toEqual({ gWait: 'edit' })
+    expect(googlePatch(LINK, linked(), { status: 'cancel' })).toEqual({ gWait: 'cancel' })
+    expect(googlePatch(LINK, appt('o1', '2026-11-12'), { memo: '허리' })).toEqual({})
+  })
+
+  it('AC-8545.3: 잇지 않은 병원은 옮겨도 g_moved를 싣지 않는다(지금 그대로 orig_day로 변경)', () => {
+    expect(googlePatch(null, appt('o1', '2026-11-12'), { day: '2026-11-13' })).toEqual({})
   })
 })

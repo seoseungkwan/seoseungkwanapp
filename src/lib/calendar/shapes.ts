@@ -58,6 +58,8 @@ export type CalAllDay = {
   gUpdated?: string | null
   gWait?: boolean
   gWaitAt?: string | null
+  /** 메모 줄의 구글 일정 색(google-link REQ-8554). 'default' = 구글에서 색 없음, null = 웹앱에만 있음·아직 못 읽음 */
+  gColor?: CalColorName | 'default' | null
 }
 
 /** 비트 자체 예약(RsvInf) 칸. 보기만 한다 */

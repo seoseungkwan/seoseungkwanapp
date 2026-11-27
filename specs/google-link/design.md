@@ -491,3 +491,179 @@ export type GsheetRun = { at: string; day: string; via: 'auto'|'hand'|'evening'|
 - 의원 PC 확장이 0.4.x면 수납 넣기가 안 된다(`E-GSHEET-EXT` 안내) → 도우미 0.14.0과 확장 0.5.0을 한 묶음으로 설치(AC-8542.3).
 - 빌린 통로로 넣는 동안(길어야 60초) 그 화면의 새 비트 명령이 기다린다(9-2) — 보내는 중인 요청이 있으면 빌리지 않아 청구 입력과는 겹치지 않는다.
 - 그날 구글 off 일정이 둘 이상이면(사람이 구글에서 만듦) 첫째만 짝으로 고치고 나머지는 그대로 둔다(그 일정의 이름은 웹앱 휴무에 더해 읽지만 웹앱이 고치지 않음).
+
+## 21. 2차 고침 (2026-11-26 저녁 — REQ-8543~8552, tasks.md Phase 5·6)
+
+> 운영(f3c61781) 뒤 사용자가 써 보고 정한 것(`~/.claude/state/handoff/glink-round2.md` 결정 1~7) + 결정 8(휴무 줄 색) + 승인 시안 2차(notes-calendar '2차 고침' 칸, 2차-1~10, '확인할 것' 3, 사용자 "고치고 만들어"). **DB는 표·칸·정책 그대로**(새 migration은 휴무 줄 색 고치기 정의자 함수 하나 — 21-5). 화면 글은 notes '화면 글 › 2차 고침' 그대로. 예는 모두 지어낸 것(환자 이름·차트번호를 옮기지 않음).
+> 쉬운 말: **종류 낱말** = 종류 이름에서 길이·시행자 표시·숫자를 뗀 낱말(`도수 30분(호)` → `도수`). **다시 알아보기** = 이미 웹앱에 들어온 구글 예약의 저장된 구글 제목을 지금 설정으로 한 번 더 읽어 종류·시행자를 맞추는 것(구글은 부르지 않음).
+
+### 21-1. 종류 고르기 (REQ-8543, `lib/calendar/gtitle.ts` readTitle·parseTimed — TASK-25)
+- **종류 낱말 늘리기**: 종류마다 알아볼 글(`words`)·이름 각각에 더해 그 **바탕 낱말**(그 글에서 `\d+\s*[분타천]?`·`\([^\s()]\)`·빈칸을 모두 뺀 것, 두 글자 이상일 때만)을 낱말로 둔다. `도수 30분(호)` → `도수`, `체외충격파 2000` → `체외충격파`. 지금 기본 종류는 바탕 낱말 = 이름이라 낱말이 늘지 않는다(기본 종류 결과 그대로 — AC-8543.2).
+- ⑤ 찾기는 지금처럼 긴 낱말부터(한 글자 낱말은 숫자 바로 뒤만, 괄호 밖 먼저). 처음 맞은 **그 낱말 글**을 가진 종류가 모두 **후보**다. 후보가 하나면 그 종류(지금과 같음).
+- 후보가 여럿이면:
+  - ⓪ 제목(① 차트번호를 뗀 원문, 빈칸을 모두 뺌)에 후보 이름(빈칸을 모두 뺌)이 그대로 있으면 그 종류(여럿이면 긴 이름, 같으면 차례가 앞). 웹앱이 2차 꼴로 적은 제목(`도수 30분 (원)`)과 2차 전 꼴(`도수 30분(호) 30분 (원)`)이 제 종류로 돌아오게 한다.
+  - 아니면 **점수** = 후보 이름에 맞는 것의 수(0~3): ㉠ 표시 — ② 제목 표시, 없으면 색 짐작 표시(⑪ `canGuess`이고 `look.staffByColor`이고 일정 색을 쓰는 시행자가 꼭 한 명일 때 그 사람 표시. 점수에만 쓰고 시행자 정하기는 ⑧ 그대로)가 이름에 `({표시})`로 있음 ㉡ 길이 — 제목의 첫 `{N}분`(④가 버리기 전 원문에서), 없으면 구글 일정 길이(`eventTimes().len`)가 이름에 `(?<!\d){N}\s*분`으로 있음 ㉢ 타수 — 아래 타수가 이름에 `(?<!\d){S}(?!\d)`로 있음. 가장 높은 것, 같으면 종류 차례가 앞인 것.
+- **타수 S**(① 차트번호를 뗀 원문에서 한 번, 이 차례로 처음 맞는 것): `(?<!\d)(\d+)타` → 그 수 · `(?<!\d)(\d+)천(?![\p{L}\p{N}])` → 수×1000(`3천5백`·`3천원`은 아님) · 맨 숫자 `(?<![\p{L}\p{N}])(\d+)(?![\p{L}\p{N}])`는 **충격파 종류**(이름이나 알아볼 글에 '충격파', 또는 알아볼 글에 '타'가 든 종류)의 이름에 든 수와 같을 때만.
+- ⑤-1 종류 낱말이 없고 S가 있으면 후보 = 충격파 종류(점수 셈 같음, 출처 `title`) — ⑦ 남은 글 판단보다 먼저. 충격파 종류가 없으면 ⑨ 그대로.
+- **메모**: S로 읽은 글 조각(괄호 안·밖·표시 뒤 어디든)은 메모에서 `{S}타`로 바꾸고, 고른 종류 이름에 S가 있으면 메모에서 뺀다(조각 안 다른 글은 그대로). 기본 종류 `(3천` → 메모 `3000타`(시안 r04), '이 병원 꼴' `(3천` → 메모 없음.
+- **③ 바뀜**: 괄호 안이 아는 시행자 표시 한 글자뿐이면(② 끝 표시 앞의 `(호)`) 메모로 두지 않는다.
+- 종류 목록·알아볼 글 저장 값은 바꾸지 않는다. 순수 함수 그대로.
+- 시험 차림 '이 병원 꼴'(requirements 2차 머리): `look` = 지금 시험 LOOK에서 `noKind: 'fix'`·`noStaffKinds: []`·`staffByColor: true`·취소 토마토·변경 흑연·`offColor` 포도·`titleLen`·`titleMemo` 참.
+
+### 21-2. 다시 알아보기 셈·저장 (REQ-8544, 새 `lib/gcal/reread.ts` · `lib/storage/calendar.ts` · `lib/gcal/deps.ts` — TASK-26)
+```ts
+// lib/gcal/reread.ts
+export type RereadPatch = Partial<Pick<CalAppt, 'kindId' | 'kindName' | 'staffId' | 'staffName' | 'staffMark' | 'gHow'>>
+export type RereadExpect = { gTitle: string; gUpdated: string | null }
+export type RereadWrite = { id: string; expect: RereadExpect; patch: RereadPatch; kindChanged: boolean }
+export type RereadPlan = { read: number; unread: number; writes: RereadWrite[] }
+export function planReread(rows: readonly CalAppt[], ctx: ParseCtx): RereadPlan
+export type RereadResult =
+  | { ok: true; read: number; kindChanged: number; changed: number; unread: number; missed: number }
+  | { ok: false; why: 'not-linked' | 'failed' }
+export function runReread(deps: { store: Pick<GcalStore, 'loadLink' | 'loadParts' | 'listAppts' | 'rereadAppt'>; now: () => Date }): Promise<RereadResult>
+```
+- **대상**: `gFrom`이 `'import'`·`'pull'`, `gEventId`·`gTitle` 있음, `gKeepTitle` 참, `gWait` null. 웹앱에서 고친 예약은 `gKeepTitle`이 거짓이라 빠진다([고치기] 포함).
+- **다시 만든 일정**: `{ id: gEventId, status: 'confirmed', summary: gTitle, description: '', allDay: false, start: localStamp(day, start), end: localStamp(day, start + len), colorId: gColor ? G_COLOR_ID[gColor] : null, updated: gUpdated ?? '', recurring: false }` → `parseGoogleEvent(ev, ctx)`. ctx는 받기와 같다(`loadParts()`의 staff·kinds·people, `link.look`, `link.rules.arrival`, `link.linkedOn`). 저장된 `gColor`가 취소·변경 색이면 ⑪대로 색 짐작을 하지 않는다.
+- **결과 읽기**: `appt` → 그 종류·시행자·출처, `fix` → `guess`의 종류(`kindId`가 있을 때)·시행자(`staffId`가 있을 때), 그 밖(종일 꼴·예약 같지 않음) → 종류 없음.
+- **종류**: `gHow?.kind !== 'picked'`인데 새 종류가 없으면 그 줄은 unread — 종류·시행자 모두 쓰지 않는다(시행자 포함 전 값 그대로). `picked`가 아니고 새 종류가 지금 `kindId`와 다르면 `kindId`·`kindName`(+ `gHow`가 있으면 `kind` = 새 출처).
+- **시행자**: unread가 아닌 줄에서만 — `gHow?.staff !== 'picked'`이고 새 시행자(출처 `title`·`color`)가 있고 지금 `staffId`와 다르면 세 칸(+ `gHow.staff`). 비우지 않는다.
+- `gHow`가 null인 줄은 `gHow`를 새로 만들지 않는다. 메모·날·시각·구글 칸은 쓰지 않는다(사용자 결정 '종류·시행자').
+- **runReread**: `loadLink()`가 없거나 `linkedOn`이 없으면 not-linked. 오늘 = `todayInKorea(now())`, `listAppts(yearsAhead(오늘, -1), yearsAhead(오늘, 3))`(받기 끝과 같음) → `planReread` → 쓰기는 10줄씩 동시에 `rereadAppt` — 참이면 changed(+ kindChanged), 거짓·던짐이면 missed. 읽기 셋 가운데 하나라도 던지면 `{ ok: false, why: 'failed' }`. 구글(`call`)은 부르지 않는다.
+- **`rereadAppt(client, id, patch, expect): Promise<boolean>`**(`lib/storage/calendar.ts`): 열쇠는 위 여섯만(다른 열쇠·빈 patch → failed, 보내지 않음), 칸 검사는 지금 `updateAppt` 몸 만들기와 같은 검사(종류·시행자 글 길이·`cleanHow`). `update(body).eq('id', id).is('g_wait', null).eq('g_title', expect.gTitle)` + (`expect.gUpdated === null` ? `.is('g_updated', null)` : `.eq('g_updated', expect.gUpdated)`) + `.select('id')` → 1줄이면 참, 0줄이면 거짓. `g_updated`는 읽은 DB 글자 그대로 견준다(JS `Date`를 거치지 않음 — AC-8502.11과 같은 까닭). `g_wait`를 쓰지 않으니 트리거가 `g_wait_at`을 적지 않고, 날·시작을 안 고치니 `orig_*`도 그대로. 원장·데스크 고치기 권한 안(지금 RLS, DB 그대로).
+- **`GcalStore`에 둘 더함**: `rereadAppt(id, patch, expect): Promise<boolean>`, `setOffColor(color: GColor): Promise<boolean>`(21-5). `makeGcalDeps`는 저장 함수(`rereadAppt`·`setGcalOffColor`)로, `createMemoryStore`는 메모리 줄로(`rereadAppt`는 `g_wait`·`g_title`·`g_updated`가 다르면 거짓 — 같은 조건 흉내, `setOffColor`는 메모리 연결의 `look.offColor`만 바꿔 뒤의 `loadLink`가 새 색을 줌).
+- 시험은 TASK-25와 따로 돈다: 기본 종류로 '저장된 종류 도수 + 구글 제목 `9567 장연습 자보 30분 (원)`' → 자보도수처럼 지금 알아보기로도 결과가 정해지는 꼴만 쓴다.
+- 고쳐야 할 것 줄(`gcal_fixes`)은 다시 알아보지 않는다 — 판을 열 때마다 `fixParsed`가 지금 설정으로 다시 읽는다(지금 그대로).
+
+### 21-3. 이은 병원 '변경' = `g_moved` (REQ-8545 — TASK-27)
+- `lib/calendar/gpaint.ts` apptPaint ②: `appt.gMoved`만 본다(`origDay`·`origStart`는 보지 않음). apptPaint는 이은 병원만 쓴다(잇지 않은 병원은 `apptColor` 그대로).
+- `lib/calendar/gsync.ts` decideMapped: 취소가 아니면 `gMoved = isChange || (movedTime && !backToOrig)`(backToOrig = 받은 날·시작이 그 줄 `origDay`·`origStart`와 같음). `gWait 'color'` 조건은 지금 그대로(`movedTime && !isCancel && !isChange`) — 되돌림이면 push가 원래 색으로 칠한다.
+- `components/calendar/useCalendarData.ts` googlePatch: link가 있고 patch가 날·시작을 옮기면 모든 갈래(구글 짝 있음 · 이은 날 뒤 새 짝 · 이은 날 앞이나 짝 없음 → 지금 `{}`인 곳)에 `gMoved = !(새 날 === before.origDay && 새 시작 === before.origStart)`. `GoogleWrite`에 `'gMoved'`.
+- 화면: `rows/parts.tsx` `isMoved(appt, linked) = linked ? appt.gMoved : appt.origDay !== null`, `linkedApptLabel`의 변경 글은 `gMoved`일 때만(원래 자리가 있으면 ` · 변경 (원래 …)`, 없으면 ` · 변경`). `DetailPanel` — google이 있으면 '변경' 줄은 `gMoved`일 때만(원래 자리가 있으면 `원래 …`), 없으면 지금 그대로. `gcal/GcalBand` 못 보낸 줄의 '원래 … · 구글에서 {변경 색} 색으로'는 `gMoved`이고 `origStart`가 있을 때만. `lib/calendar/counts.ts` `monthCells(…, linked = false)`·`rateSummary(rows, linked = false)` — linked면 `gMoved === true`만 변경. `MonthGrid`·`SummaryLine`에 `linked?: boolean`, `CalendarScreen`이 `linked={g !== null}`. `gcalSettings/colors/StaffKinds.tsx` 미리 보기의 변경 예는 `gMoved: change`.
+- 바뀌지 않는 것: 통계 탭(`CalendarSection`·`calendarCounts`)·월간 보고·의원 비교(`rateSummary(rows)` 기본값), 잇지 않은 병원, DB.
+- 시험 차림만 고칠 곳(이은 병원 '변경' 예에 `gMoved: true` 더함): `rows/TimeGrid.test.tsx`의 이은 시험이 쓰는 옮긴 예약, `DetailPanel.test.tsx` 이은 변경 예, `gcal/GcalBand.test.tsx` 못 보낸 옮김 예, `gpaint.test.ts` 변경 예, `lib/gcal/push.test.ts` 옮김 보내기 예(변경 색 `'8'` 기대 그대로). 기대가 바뀌는 곳: `useCalendarData.test.ts` 옮김 기대에 `gMoved: true`, `gsync.test.ts` 구글 시각 옮김 기대에 `gMoved: true`. 고친 줄마다 `google-link AC-8545.x` 주석.
+
+### 21-4. 수납 달 목록 (REQ-8546, `lib/gsheet/runner.ts` — TASK-28)
+- 모듈 값은 지금처럼 `monthsDay`(그날 잠금) 하나. 달 목록 답에 이번 달 `today.slice(0, 7)`의 파일 id가 있을 때만 적는다. `E-GSHEET-OLD`(옛 코드)·읽지 못한 답(null)·다른 오류는 아무것도 적지 않는다 → 넣기 전마다 다시 묻는다(옛 코드는 묻자마자 `E-GSHEET-OLD`라 오래 걸리지 않음).
+- `afterFill`은 지금 그대로: 옛 코드 답(`oldCode` 참)은 파일 id만 적고, `reply.created`면 `monthsDay = null` 뒤 다시 묻는다. 넣기 답이 '바뀐 것 없음'이어도 따로 하는 일 없음(다음 넣기 때 다시 묻는다). `resetRunner()`가 `monthsDay`를 비운다(지금 그대로).
+- 지금 '새 달 파일' 시험은 차림만 고친다: 새 달 파일을 만든 뒤 받는 두 번째 달 목록 답에 그 달을 넣는다(파일을 만들었으니 실제로 있음). 지금 옛 코드 시험(AC-8513.5 '그날은 다시 묻지 않고')은 기대만 '두 번째 넣기 전에도 묻는다'로 바꾼다(2차 결정이 1차 기대를 바꿈).
+
+### 21-5. 휴무 줄 색 따라가기 (REQ-8547, `lib/gcal/pull.ts`·`importRead.ts`·`deps.ts` · `lib/storage/gcal.ts` · 새 migration — TASK-26)
+- 받기는 원장 PC·데스크 PC 어디서나 돈다. 데스크는 `gcal_links`를 고칠 권한이 없어(원장만 쓰기, 7-5) `saveGcalLook`으로는 못 맞춘다 → 좁은 DB 함수 하나로 `offColor`만 바꾼다.
+- **새 migration `supabase/migrations/20261127000000_google_link_offcolor.sql`**(앞 migration 파일은 고치지 않음, `20261126000000_google_link.sql`과 같은 머리 주석 꼴 — 무엇·실행·먼저·두 번·관문·명세 번호, LF, 두 번 붙여 넣어도 그대로):
+```sql
+create or replace function public.gcal_set_off_color(p_color text) returns boolean
+  language plpgsql security definer set search_path = ''
+as $$
+begin
+  if public.admin_view_hospital_id() is not null then return false; end if; -- 관리자 '다른 의원 보기' 중이면 아무것도 안 함
+  if p_color is null or p_color not in ('lavender', 'sage', 'grape', 'flamingo', 'banana', 'tangerine', 'peacock', 'graphite', 'blueberry', 'basil', 'tomato') then
+    raise exception 'gcal_set_off_color: 구글 11색이 아님' using errcode = '22023';
+  end if;
+  update public.gcal_links
+     set look = jsonb_set(look, '{offColor}', to_jsonb(p_color))
+   where hospital_id = public.my_clinic_hospital_id() and jsonb_typeof(look) = 'object';
+  return found;
+end $$;
+revoke all on function public.gcal_set_off_color(text) from public, anon, authenticated;
+grant execute on function public.gcal_set_off_color(text) to authenticated;
+```
+  `my_clinic_hospital_id()`는 원장·데스크 모두 자기 병원 하나를 준다(승인 전·다른 사람은 null → 0줄). 11색 이름은 `CAL_COLORS`와 같다(시험이 견줌). `updated_at`은 지금 트리거(`gcal_links_touch`)가 적는다. 표·칸·정책은 그대로다.
+- 시험: 새 `supabase/googleLinkOffColor.rls.test.ts` — `googleLink.rls.test.ts`와 같은 PGlite + Supabase 흉내·계정, 사슬 = 이 파일보다 앞 migration 모두(파일 이름 차례, `20261126000000_google_link.sql` 포함) → 이 파일 → 이 파일(파일이 없으면 시험마다 실패, `existsSync`). 원장·데스크 성공(그 병원 `look.offColor`만 바뀌고 다른 `look` 칸·`rules`·`secret` 그대로), 다른 병원 사용자가 불러도 이 병원 줄 그대로, anon은 실행 권한 없음, 보는 관리자(요청 머리)면 false·그대로, 11색 밖·null 거절, 정의자·`search_path` 빈 값·권한 표(public·anon 없음, authenticated 실행), 머리 주석·LF. `googleLink.rls.test.ts`는 고치지 않는다(사슬이 그 파일까지라 새 파일과 안 엮임).
+- `lib/storage/gcal.ts` `setGcalOffColor(client, color: GColor): Promise<boolean>`: `isColor`가 아니면 failed(보내지 않음), `client.rpc('gcal_set_off_color', { p_color: color })` → `data === true`.
+- 받기: `PullRun`의 하루 종일 갈래가 off로 알아본 일정마다 `{ updated: ev.updated, color: colorFromId(ev.colorId) }`를 견줘 `updated`가 가장 나중인 것을 들고 있다가, 받기가 끝난 뒤(성공 갈래, 결과를 만들기 전) 그 색이 null이 아니고 그 받기가 읽은 `link.look.offColor`와 다르면 `store.setOffColor(color)`. 실패(던짐·false)는 삼킨다(받기 결과 그대로 — 다음에 off 일정이 바뀌면 또 맞춤).
+- 처음 가져오기: `applyImport`도 off 목록(`offs`)으로 같은 셈을 하되 **off 줄을 적은 뒤, `pushWaiting` 전에** `setOffColor`를 부른다. `pushWaiting`은 연결을 다시 읽으므로(`loadLink`) 웹앱에만 있는 사람이 든 off 날(`wait: true`)을 보낼 때 새 색 `G_COLOR_ID[새 색]`으로 칠한다.
+- `GcalLook.offColor`는 구글 11색만(`checkGcalLook`의 `isColor`, 색판 '나머지는 11색', DB 함수도 11색만) → 색 없는 off 일정(캘린더 기본 색)은 바꾸지 않는다. `'default'`를 받게 하려면 저장 검사·색판·칠하기를 함께 바꿔야 해서 이번에는 하지 않는다.
+- 보내기(`push.ts`)는 그대로 `G_COLOR_ID[look.offColor]`. 예약 탭은 다음에 구글 연결을 읽을 때(탭을 다시 열 때) 새 색으로 그린다.
+- 이미 이은 병원은 구글 off 일정이 다음에 바뀔 때 맞춰진다. 바로 맞추려면 설정 › 시행자·종류 '휴무 줄 색'에서 한 번 고른다(사용자 안내 — tasks.md 사용자 단계).
+- 이 SQL을 붙이기 전에 새 사이트가 돌면 함수가 없어 `setOffColor`가 실패할 뿐 삼키므로 다른 일은 그대로다(그래도 SQL 먼저, 웹 다음).
+
+### 21-6. 겹쳐 적지 않기 (REQ-8548 — 제목 TASK-25, 칸 글 TASK-27)
+- `formatGoogleTitle`: `kind` = 지금 목록 이름(없으면 예약의 `kindName`). `mark`가 있고 `kind`가 `({한 글자})`로 끝나며 그 글자가 시행자 목록의 표시면 그 괄호(앞 빈칸 포함)를 뗀다 — 그 표시가 예약 시행자와 달라도 뗀다(끝에 실제 시행자 표시를 적으므로, 시안 '확인할 것' 3). 길이 조각은 `look.titleLen`이고 `kind`에 `(?<!\d){len}\s*분`이 없을 때만. 그다음 지금처럼 ` ({mark})` + 메모 + 도착 글.
+- 칸 글(`rows/ApptBlock.tsx` 종류 조각, `rows/parts.tsx` `apptLabel`·`linkedApptLabel` 머리, `rows/PhoneWeekList.tsx` 종류 줄): `kindName`이 `({staffMark})`로 끝나면 ` ({staffMark})`를 빼고, `kindName`에 `(?<!\d){len}\s*분`이 있으면 끝 `{len}분`을 뺀다. 종류 이름은 그대로 보인다(칸 글은 구글 제목처럼 괄호를 떼지 않음). 같은 Phase라 rows는 gtitle의 새 함수를 부르지 않고 `rows/parts.tsx`에 작은 함수를 따로 둔다.
+- 기본 종류는 이름에 길이·표시가 없어 그대로(AC-8548.3).
+
+### 21-7. 취소 칸 (REQ-8549 — TASK-27)
+- `rows/ApptBlock.tsx` 이은 병원 취소 칸: `${tone.fill} ${tone.on}`(`opacity-55`를 뺌), 글 조각은 지금처럼 가운데 줄. `rows/parts.tsx` `StatusMark` 취소 표시에 꽉 채운 칸 갈래: 흰 바탕(`bg-surface`) + `text-negative`(시안 `#B71C1C`는 앱 토큰이 아니라 가장 가까운 빨강 토큰). 잇지 않은 병원은 지금 그대로.
+- 글 넷: `DetailPanel` 도착 줄 취소 `why` — google이 있을 때만 `칸은 취소 색으로 남아요` · `gcal/labels.ts` `colorNote` — `…으로 바뀌고, 웹앱에도 그 색 칸으로 남아요. …` · `gcalSettings/rules/labels.ts` `gDeleteCancelSub` — `취소 색 칸으로 남아 …` · `CalendarScreen` 취소 알림 — `g`가 있을 때만 `예약을 취소했어요. 칸은 취소 색으로 남아요.`.
+- 안내 줄 취소 점(`CalendarLegend` Swatch)·자세히 색 막대는 지금도 흐림 없는 진한 색 — 고치지 않고 시험으로 확인만.
+
+### 21-8. 고쳐야 할 판 기간·한꺼번에 (REQ-8550·8551 — TASK-29, Phase 6)
+```ts
+// components/calendar/gcal/fixRange.ts (순수 + 브라우저 저장소 두 함수)
+export const FIX_RANGE_KEY = 'ssk-gcal-fix-range'
+export type FixRange = { from: string; to: string } // '' = 비움
+export function readFixRange(today: string): FixRange // 저장 값이 { from, to } 날짜 꼴('' 허용)이 아니거나 읽기가 던지면 { from: today, to: '' }
+export function writeFixRange(range: FixRange): void // try/catch, 실패해도 조용히
+export function rangeProblem(range: FixRange): 'no-from' | 'end-before' | null
+export function fixDay(fix: GcalFix, all: readonly GcalFix[]): string // 하루 종일 여러 날(같은 gEventId의 allDay 줄들)은 가장 이른 날
+export function inFixRange(fix: GcalFix, all: readonly GcalFix[], range: FixRange): boolean // 두 날 포함, to '' = 끝 없음
+export function dayWithYear(day: string, today: string): string // 올해가 아니면 'YYYY. ' + shortDay
+```
+- `FixPanel` 새 prop `onSkipAll(fixes: GcalFix[]): Promise<boolean>`. 상태: 기간(처음 `readFixRange(today)`, 바꿀 때마다 `writeFixRange`) · 초록 줄 수(기간을 바꾸면 없음) · 확인 창 열림.
+  - N = 받은 `fixes` 가운데 이 판에서 넣거나 빼지 않은 것, n = 그 가운데 기간에 드는 것. 판 제목 `fixTitle(n)` + 작은 글 `fixTotal(N)`(n ≠ N일 때). 작은 글은 `Drawer`(`components/calendar/AddPanel.tsx`)의 새 prop — 제목 옆 작은 글 `titleNote?: ReactNode`(안 주면 지금 그대로) — 로 그린다.
+  - 목록 = `shown` 가운데 기간에 드는 줄(하나씩 한 줄은 지금처럼 남음, 한꺼번에 뺀 줄은 `shown`에서 뺌). 판에 보이는 줄이 하나도 없으면(시안 그대로) 목록 자리에 빈 글 + (다른 기간에 남은 것이 있으면) 그 수. 기간 오류면 목록·빈 글·단추 없이 빨간 오류 글.
+  - 때 글·들어온 때 글·확인 창 기간 글의 날짜는 모두 `dayWithYear`(올해가 아니면 해를 붙임, 시안 `ymdw`).
+  - 확인 창: `role="alertdialog"`·`aria-modal`, 첫 초점 [취소], Esc는 창만 닫는다(판 `Drawer`의 Esc 닫기가 함께 돌지 않게 막음). 모양은 `gcalSettings/rules/Rules.tsx` 잇기 끊기 확인 창을 따른다. [가져오지 않기] → `onSkipAll(기간에 남은 줄)`(도는 동안 단추 막음), 참이면 초록 줄 수 = n, 그 줄들을 `shown`에서 뺀다.
+- `CalendarScreen` `skipAllFixes(list)`: `skipGcalFixes(client, ids)` → 알림 `bulkSkipDone(n)` → `gcal.reloadFixes()` → 참. 실패 → 알림 `PUT_FAILED` → 거짓. 띠 노란 단추·예약표 노란 칸은 지금처럼 `gcal.fixes`(전체)를 쓴다.
+- `lib/storage/gcal.ts` `skipGcalFixes(client, ids: readonly string[]): Promise<void>`: 모두 `requireId`(하나라도 틀리면 failed, 보내지 않음), 빈 목록은 보내지 않음, 100개씩 `update({ state: 'skip' }).in('id', chunk).eq('state', 'open')`.
+- 글(`gcal/labels.ts`, notes 그대로): `FIX_FROM` `시작` · `FIX_TO` `끝` · `FIX_TO_HINT` `비우면 앞으로 전부` · `FIX_RANGE_MEMO` `고른 기간은 이 PC에서 기억해요.` · `FIX_SKIP_ALL` `이 기간 모두 가져오지 않기` · `FIX_NO_FROM` `시작 날짜를 골라 주세요.` · `FIX_END_BEFORE` `끝 날짜는 시작 날짜보다 앞일 수 없어요.` · `fixTotal(n)` `· 전체 {n}개` · `FIX_EMPTY` `이 기간에는 고쳐야 할 구글 예약이 없어요.` · `fixElsewhere(n)` `다른 기간에 {n}개 남아 있어요.` · `skipAllAsk(n)` `{n}개를 가져오지 않을까요?` · `SKIP_ALL_KEEP` `구글 일정은 그대로예요.` · `skipAllRange(from, to)` `기간 {from} – {to}`(to가 비면 `기간 {from} – 앞으로 전부`) · `SKIP_ALL_CANCEL` `취소` · `SKIP_ALL_GO` `가져오지 않기` · `bulkSkipDone(n)` `{n}개를 가져오지 않기로 했어요. 구글에만 남아요.`. 두 날짜 칸 사이 `~`. 시안 전용 `… 아래로 {n}개 더 있어요`는 넣지 않는다.
+- 지금 `FixPanel.test.tsx`·`CalendarScreen.test.tsx` 차림의 고쳐야 할 것 날이 기본 기간(오늘부터) 밖이면, 그 시험은 저장소에 기간을 넣거나 기간을 골라 지나게 하고 그 줄에 `google-link AC-8550.1` 주석.
+
+### 21-9. 시행자·종류 화면 (REQ-8552 — TASK-30, Phase 6)
+- `colors/labels.ts`: `KIND.lead2`(설명 둘째 줄) · `KIND_EX.eventLen(n)` `구글 일정 {n}분` · `KIND_EX.noLen` `제목에 길이가 없으면 구글 일정 길이로 봐요` · `REREAD.title` `이미 들어온 예약` · `REREAD.owner` `원장 계정만 할 수 있어요` · `REREAD.lead` `구글 제목을 지금 설정으로 다시 읽어 종류·시행자를 맞춰요. 구글 일정은 바꾸지 않아요.` · `REREAD.hint` `저장한 설정으로 읽어요. 가져올 때 고르거나 [고치기]로 바꾼 종류·시행자는 그대로 둬요.` · `REREAD.button` `이미 들어온 예약 다시 알아보기` · `REREAD.busy` `다시 알아보는 중…` · `REREAD.done(read, kinds, unread)` `예약 {read}개를 다시 알아봤어요 · 종류가 바뀐 것 {kinds}개 · 못 알아본 것 {unread}개`(수는 세 자리마다 쉼표) · `REREAD.at(hm)` `({hm})` · `REREAD.kept` `못 알아본 예약은 전 종류·시행자 그대로 두었어요.`. 실패 글은 notes에 없어 `SAVE_TEXT.failed`·`SAVE_TEXT.offline`을 빌린다(이 파일 머리 주석의 '옛 글 빌림'과 같은 까닭).
+- 새 `colors/kindExamples.ts`(순수): `kindExamples(kinds, staff, look, today): KindExample[]`(최대 셋, 없으면 빈 목록 → 상자 없음). 첫째 줄은 차례만으로 정해져 보기가 되지 않으므로 '둘째'를 쓴다:
+  1. 이름에 `{N}분`과 끝 `({표시})`(시행자 목록 표시)가 함께 있는 종류 가운데 둘째(하나뿐이면 그것) K1 → 제목 `1234 홍길동 {N}분 {바탕 낱말} ({표시})`, 일정 길이 N분.
+  2. 같은 꼴이고 N이 K1과 다른 첫 종류 K2 → 제목 `1234 홍길동 {바탕 낱말} ({표시})`, 일정 길이 N2분, 꼬리 `구글 일정 {N2}분` + 작은 글 `제목에 길이가 없으면 구글 일정 길이로 봐요`.
+  3. 충격파 종류 가운데 이름에 1000의 배수가 든 것의 둘째(하나면 그것) K3 → 제목 `1234 홍길동({S/1000}천`.
+  결과 = `parseGoogleEvent`(오늘 10:00, 색 없음, 이은 날 = 오늘이라 '앞으로')가 고른 종류 이름(appt·fix guess의 종류). 종류를 못 고르면 그 줄을 뺀다. 차트번호·이름은 시안의 지어낸 값.
+- `StaffKinds.tsx`: 종류 칸 설명 둘째 줄(모든 모양), 보기 상자(`kindExamples(화면 종류, 화면 시행자, 화면 look, today)`), 맨 아래 '이미 들어온 예약' 칸(`mode === 'linked' && !readOnly`일 때만 — 데스크·보는 중·처음 잇기·잇지 않음은 없음). 단추 → `deps.reread()`(도는 동안 막음) → `ok`면 결과 줄(끝난 한국 시각 `HH:mm`) + 작은 글, 아니면 저장 알림과 같은 자리·모양으로 빌린 글(인터넷이 끊겼으면 offline — 저장 알림이 고르는 방법 그대로). 결과는 이 부품 상태(떠나면 사라짐).
+- `save.ts` `StaffKindsDeps`에 `reread(): Promise<RereadResult>`(타입은 `lib/gcal/reread`), `colorsDeps`가 `reread`를 받아 묶는다. `GcalSettingsScreen`은 이미 만드는 `makeGcalDeps` 묶음(`gcalDeps`)으로 `() => runReread(gcalDeps)`를 넘긴다.
+- '웹앱 → 구글 제목 꼴' 미리 보기는 코드 그대로(`formatGoogleTitle`이 21-6을 따름). 미리 보기 예를 고르는 차례(`SAMPLES`)는 지금 그대로라 시안의 '이 병원' 여섯 줄과 다른 줄이 나올 수 있다 — 겹쳐 적지 않는 것만 같다(시안과 다른 곳).
+- '종류 글이 없는 예약' 조사(`도수 30분(호)로 봐요`·`체외충격파 2000으로 봐요`)는 지금 `josa`로 이미 맞다 — 고치지 않고 시험으로 확인만.
+
+### 21-10. 앞 절과 달라지는 곳
+- 7절 DB: 표·칸·정책은 그대로, 정의자 함수 `gcal_set_off_color` 하나를 새 migration으로 더한다(데스크 PC 받기도 휴무 줄 색을 맞춤) → 21-5.
+- 13절 알아보는 차례: ③(아는 표시 한 글자 괄호는 메모 아님)·⑤(바탕 낱말·후보 고르기·타수 ⑤-1)·메모의 타수 글 → 21-1.
+- 2절 표·12-1 받기·12-2 보내기의 '변경': 이은 병원은 `g_moved`만(웹앱 옮김·구글 옮김 모두 `g_moved`를 적음) → 21-3.
+- 10-4 제목 꼴 `{차트번호} {이름} {종류} {길이}분 ({표시})`: 종류 이름 끝 표시는 떼고 든 길이는 다시 적지 않음, 칸 글도 겹침 뺌 → 21-6.
+- TASK-20 '취소 = 취소 색 + 흐림': 이은 병원은 흐림 없음, 바뀐 글 넷 → 21-7.
+- 11절 수납 달 목록 '그날 한 번': 이번 달 파일이 있는 답을 받은 날만 → 21-4.
+- 고쳐야 할 판: 기간·한꺼번에 가져오지 않기 → 21-8. 시행자·종류: 설명 줄·보기·다시 알아보기 → 21-9. 휴무 줄 색: 구글을 따라 저절로 → 21-5.
+
+### 21-12. 사진 확인에서 찾은 것 (REQ-8553 — TASK-31, Phase 7)
+- 종류 글: `gtitle.ts`의 알아볼 글 목록을 만들 때(`baseWord` 옆) 바탕 낱말이 `충격파`로 끝나고 그보다 길면 `충격파`를 그 종류 글에 더한다. 같은 글을 가진 종류 덩이·고르기(AC-8543.4)는 그대로라 `충격파`만 있으면 종류 차례 첫 것, `3천`이 있으면 타수로 고른다. `kindExamples.ts`는 바뀌지 않는다(보기 결과는 공용 `parseGoogleEvent`가 정함).
+- 까닭 글: `fixReasonText`가 `gColor`도 받는다(`Pick<GParsedFix, 'reason' | 'guess' | 'gColor'>`, 부르는 곳 FixPanel·ImportRows는 이미 `GParsedFix`를 넘김). no-staff-color만 `gColor`가 있으면 새 글.
+- 보기 상자: `StaffKinds.tsx` 보기 `ul`에 `list-none`(앱에 목록 점 초기화가 없음 — 다른 부품도 모두 붙여 씀).
+
+### 21-13. 종일 메모 구글 색 (REQ-8554 — TASK-32 Phase 8, TASK-33·34 Phase 9)
+- **새 migration `supabase/migrations/20261127100000_google_link_allday_color.sql`**(앞 migration은 고치지 않음, `20261127000000_google_link_offcolor.sql`과 같은 머리 주석 꼴 — 무엇·실행·먼저·두 번·관문·명세 번호, LF):
+```sql
+alter table public.calendar_allday add column if not exists g_color text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.calendar_allday'::regclass and conname = 'calendar_allday_g_color') then
+    alter table public.calendar_allday add constraint calendar_allday_g_color check (g_color is null or (type = 'memo' and g_color in ('lavender', 'sage', 'grape', 'flamingo', 'banana', 'tangerine', 'peacock', 'graphite', 'blueberry', 'basil', 'tomato', 'default')));
+  end if;
+end
+$$;
+grant insert (g_color), update (g_color) on table public.calendar_allday to authenticated;
+```
+  정책·트리거는 그대로(고치기 정책 '내 병원 종일 줄 고치기'·'데스크 종일 줄 고치기'가 줄을 정함, `calendar_allday_gwait`는 day·memo만 보므로 색만 고치면 `g_wait_at` 그대로). 관문: SQL 먼저, 사이트 다음(새 사이트는 `g_color`를 읽으므로 칸이 없으면 예약 탭 종일 줄 읽기가 실패한다).
+- 시험: 새 `supabase/googleLinkAlldayColor.rls.test.ts` — `googleLinkOffColor.rls.test.ts`와 같은 PGlite + Supabase 흉내·계정, 사슬 = 이 파일보다 앞 migration 모두(파일 이름 차례) → 이 파일 → 이 파일(파일이 없으면 시험마다 실패). 원장·데스크 자기 병원 메모 넣기(색 있음)·색 고치기 성공(`g_wait_at` 그대로), 다른 병원 사용자 고치기 0줄, anon 권한 없음, 11색·`default` 밖 글 거절, off 줄 색 거절, 칸 권한 표(넣기·고치기 authenticated), 머리 주석·LF.
+- `types/calendar.ts` `CalAllDay.gColor?: CalColor | 'default' | null`(메모 줄만, null = 웹앱에만 있음·아직 못 읽음). 예약 탭 부품이 쓰는 같은 모양 `lib/calendar/shapes.ts` `CalAllDay`에도 같은 칸(`GColor | 'default' | null`)을 더한다(TASK-34).
+- `lib/storage/calendar.ts`: `ALLDAY_COLUMNS`에 `g_color`, `toAllDay` 메모 줄 `gColor`(null·11색·`default`, 그 밖이면 그 줄을 뺌 — 다른 구글 칸과 같게), `memoGoogle`이 `gColor`를 받으면 `g_color`로(검사), `applyGoogleMemo` patch에 `gColor?`. 새 `fillMemoColor(client, id, color: CalColor | 'default'): Promise<boolean>` = `update({ g_color }).eq('id').is('g_color', null).select('id')` → 1줄이면 참. 새 `hasMemoColorGap(client, from, to): Promise<boolean>` = `select('id').eq('type', 'memo').not('g_event_id', 'is', null).eq('g_wait', false).is('g_color', null).gte('day').lte('day').limit(1)`.
+- `lib/gcal/deps.ts` `GcalStore`: `applyMemo` patch에 `gColor?`, 새 `memoColorGap(from, to)`·`fillMemoColor(id, color)` — 진짜는 위 저장 함수, `createMemoryStore`는 같은 조건을 흉내(off 줄 색·틀린 색은 `MemoryDbError`).
+- 받기(`pull.ts`): `syncMemo`에 `color = colorFromId(ev.colorId) ?? 'default'` — 새 줄 `addAllDay`에 `gColor`, 남는 날·옮긴 날 `applyMemo` patch에 `gColor`(그 줄 색과 다르면 바뀐 수 +1). `pullOnce` 성공 갈래 끝(`followOffColor` 뒤)에 `fillMemoColors(deps, link)`(받기가 이미 읽은 연결)를 부르고 던짐은 삼킨다. 새 `export async function fillMemoColors(deps, link): Promise<number>`: 모듈 안 `lastFillTry`(ms, 처음 null)가 있고 지금과 1시간이 안 지났으면 0(아무것도 안 읽음) → `today = todayInKorea(now)`, `from = yearsAhead(today, −1)`, 끝 날 = `addDays(yearsAhead(today, 3), −1)` → `memoColorGap(from, 끝 날)`이 거짓이면 0(구글 부르지 않음, `lastFillTry` 비움) → 참이면 `listAllDay(from, 끝 날)`에서 메모·`gEventId` 있음·`gWait` 거짓·`gColor` null 줄을 모음(없으면 — DB에는 있지만 읽기에서 빠진 줄 — `lastFillTry = 지금`, 0) → `call(link, 'list', { calendarId, from: 가장 이른 날, to: addDays(가장 늦은 날, 1), pageToken })`를 `MAX_PAGES`까지 읽어 일정 id → 색(없으면 `default`) 지도 → 모은 줄마다 `fillMemoColor(id, 지도 값 ?? 'default')`를 10줄씩 동시에(줄 실패는 삼킴) → 끝에 빈 색 줄이 남았으면(못 채운 줄이 있으면) `lastFillTry = 지금`, 다 채웠으면 비움 → 채운 수. 목록 읽기가 던지면 `lastFillTry = 지금` 하고 다시 던진다(받기가 삼킴). 시험용으로 `resetFillMemoColors()`를 내보낸다. 연결에 캘린더 id가 없으면 0.
+- 처음 가져오기(`importRead.ts` `applyImport`): 메모 `addAllDay`에 `gColor: own ? (colorFromId(ev.colorId) ?? 'default') : null`.
+- [예약표에 넣기](`components/calendar/gcal/fixApply.ts` 메모 갈래): `gColor: own ? (fix.gColor ?? 'default') : null`.
+- 보내기(`push.ts`): 메모를 보낸 뒤 `markMemoSent`가 참이면 `fillMemoColor(row.id, 'default')`(이미 색이 있으면 0줄 — 구글에서 온 메모 색은 그대로). 실패는 삼킨다.
+- 칠하기(`rows/parts.tsx` `dayChips` 이은 병원 메모 갈래): `gColor`가 11색이면 `CAL_TONES[gColor]`·말풍선 `{글} · 구글 일정 색 그대로`, 아니면 지금 그대로. 주 보기·폰 목록 모두 `dayChips`를 쓴다.
+- 휴무 한 칩은 지금처럼 `look.offColor`(21-5). 메모를 off 줄로 옮기지는 않는다(그 일정이 구글에서 바뀌면 지금 받기가 off로 읽어 옮긴다).
+
+### 21-11. 위험 / 확인할 것 (2차)
+- 2차 전에 이은 병원에서 웹앱으로 옮긴 예약(`orig_day` 있음·`g_moved` 거짓)은 웹앱 '변경'이 빠진다(구글은 흑연 그대로). 다음에 그 예약을 옮기거나 구글에서 고치면 맞춰진다. 처음 가져오기의 흑연 일정은 `g_moved` 참이라 그대로. 2차에는 표·칸을 바꾸지 않기로 해서(2차 migration은 휴무 줄 색 함수 하나 — 3차 21-13은 종일 줄 색 칸만 더함) 한꺼번에 되살리지 않는다.
+- 이미 이은 병원의 휴무 줄 색은 구글 off 일정이 바뀌어야 따라간다(21-5) → 설정에서 한 번 고르기 안내.
+- 다시 알아보기는 수천 줄을 브라우저가 적어 몇 분 걸릴 수 있고, 그사이 다른 PC가 고친 줄은 쓰지 않는다(missed — 화면에 수는 안 보임, 다시 누르면 됨).
+- 종류 이름의 표시와 다른 시행자를 고른 예약은 구글 제목 끝이 실제 시행자 표시라, 다음 받기·다시 알아보기 때 그 표시의 종류로 바뀔 수 있다(시안 '확인할 것' 3 — 시안대로).
+- 기본 종류 병원도 `{숫자}천` 제목은 이제 충격파 + 메모 `{수}타`로 읽는다(사용자 결정 2) — 지금 기대가 바뀌는 시험은 없음(확인함).

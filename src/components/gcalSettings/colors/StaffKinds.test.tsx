@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RoleProvider } from '@/components/shell/role'
+import { ViewingProvider } from '@/components/shell/viewing'
 import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { GcalStorageError } from '@/lib/storage/gcal'
 import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalKind, type CalStaff } from '@/types/calendar'
@@ -87,6 +88,7 @@ function fakeDeps(over: Partial<StaffKindsDeps> = {}) {
     listAppts: vi.fn<StaffKindsDeps['listAppts']>(async () => [] as CalAppt[]),
     markColor: vi.fn<StaffKindsDeps['markColor']>(async () => undefined),
     pushWaiting: vi.fn<StaffKindsDeps['pushWaiting']>(async () => undefined),
+    reread: vi.fn<StaffKindsDeps['reread']>(async () => ({ ok: true, read: 0, kindChanged: 0, changed: 0, unread: 0, missed: 0 }) as const),
   }
   return Object.assign(base, over) as typeof base
 }
@@ -98,6 +100,11 @@ type DrawOptions = {
   deps?: ReturnType<typeof fakeDeps>
   desk?: boolean
   band?: ReactNode
+  /** 종류(없으면 기본 종류) */
+  kinds?: CalKind[]
+  /** 관리자 '다른 의원 보기' */
+  viewing?: boolean
+  now?: () => Date
 }
 
 function draw(options: DrawOptions = {}) {
@@ -108,17 +115,19 @@ function draw(options: DrawOptions = {}) {
   const ui = (
     <StaffKinds
       profile={profile}
-      settings={{ kinds: KINDS, staff: options.staff ?? [] }}
+      settings={{ kinds: options.kinds ?? KINDS, staff: options.staff ?? [] }}
       link={link}
       deps={deps}
       band={options.band}
       today={TODAY}
+      now={options.now}
       onBack={calls.back}
       onNext={calls.next}
       onSaved={calls.saved}
     />
   )
-  render(options.desk ? <RoleProvider desk>{ui}</RoleProvider> : ui)
+  const roled = options.desk ? <RoleProvider desk>{ui}</RoleProvider> : ui
+  render(options.viewing ? <ViewingProvider viewing={{ hospitalId: 'h-view', name: '보기의원' }}>{roled}</ViewingProvider> : roled)
   return { deps, calls }
 }
 
@@ -696,5 +705,183 @@ describe('AC-8529.2: 저장', () => {
     await act(async () => release())
     await screen.findByText('설정을 저장했어요. 다른 PC에도 몇 초 안에 보여요.')
     expect(deps.saveLook).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── 2차 고침 (spec google-link REQ-8552, design.md 21-9 · 시안 calendar.html ?s=colors-reread · notes-calendar '2차 고침 › colors-reread') ─────
+// '이 병원 꼴'(design.md 21-1): 시행자 셋((호) 정호연 · (원) 박지원 · (현) 이수현), 종류 아홉(알아볼 글 = 이름, 고정 색 없음),
+// noKind 'fix' · noStaffKinds [] · 색 짐작 켬. 이름·차트번호는 시안의 지어낸 값이다
+const H_PROFILE: ClinicProfile = {
+  ...defaultProfile(),
+  staff: [person('ho', '정호연', '호', 'lavender'), person('won', '박지원', '원', 'banana'), person('hyun', '이수현', '현', 'flamingo'), person('kim', '김예시', '예', 'peacock', false)],
+}
+const hKind = (id: string, name: string, len: number): CalKind => ({ id, name, len, color: null, words: [name] })
+const H_KINDS: CalKind[] = [
+  hKind('d30ho', '도수 30분(호)', 30),
+  hKind('d30won', '도수 30분(원)', 30),
+  hKind('d30hyun', '도수 30분(현)', 30),
+  hKind('d50ho', '도수 50분(호)', 50),
+  hKind('d50won', '도수 50분(원)', 50),
+  hKind('d50hyun', '도수 50분(현)', 50),
+  hKind('s2000', '체외충격파 2000', 15),
+  hKind('s3000', '체외충격파 3000', 15),
+  hKind('s4000', '체외충격파 4000', 15),
+]
+const H_LOOK = { ...DEFAULT_GCAL_LOOK, noKind: 'fix', noStaffKinds: [], staffByColor: true }
+const H_LINKED: StaffKindsLink = { ...LINKED, look: H_LOOK }
+const drawClinic = (options: DrawOptions = {}) => draw({ link: H_LINKED, profile: H_PROFILE, kinds: H_KINDS, ...options })
+const LEAD2 = '종류 이름에 길이(30분)·시행자 표시((원))·타수(3000)가 들어 있으면 제목과 가장 많이 맞는 종류를 골라요. 3천은 3000타로 봐요.'
+const examples = () => screen.queryByRole('list', { name: '알아보기 보기' })
+const exampleLines = () => within(examples()!).getAllByRole('listitem').map((li) => li.textContent)
+const REREAD = '이미 들어온 예약 다시 알아보기'
+const rereadCard = () => (screen.queryByRole('heading', { name: '이미 들어온 예약' })?.closest('section') ?? null) as HTMLElement | null
+const AT_1438 = () => new Date('2026-11-26T14:38:20+09:00')
+type RereadReply = Awaited<ReturnType<StaffKindsDeps['reread']>>
+
+describe('AC-8552.1: 종류 설명 둘째 줄 — 처음 잇기·이은 뒤 모두', () => {
+  it('AC-8552.1: 처음 잇기(기본 종류)·이은 뒤(이 병원 꼴)·잇지 않은 병원 모두 종류 칸 설명 아래에 둘째 줄', () => {
+    draw()
+    expect([...card('종류').querySelectorAll('p')].map((p) => p.textContent)).toContain(LEAD2)
+    cleanup()
+    drawClinic()
+    expect([...card('종류').querySelectorAll('p')].map((p) => p.textContent)).toContain(LEAD2)
+    cleanup()
+    draw({ link: null })
+    expect([...card('종류').querySelectorAll('p')].map((p) => p.textContent)).toContain(LEAD2)
+  })
+})
+
+describe('AC-8552.2: 보기 상자 — 그 병원 종류 이름으로(결과 = 실제 알아보기)', () => {
+  it("AC-8552.2: '이 병원 꼴' 세 줄 — 30분 도수 (원) · 길이 없는 제목은 구글 일정 길이 + 작은 글 · (3천", () => {
+    drawClinic()
+    const box = examples()!
+    expect(card('종류').contains(box)).toBe(true)
+    expect(exampleLines()).toEqual([
+      '1234 홍길동 30분 도수 (원) → 도수 30분(원)',
+      '1234 홍길동 도수 (호) · 구글 일정 50분 → 도수 50분(호) 제목에 길이가 없으면 구글 일정 길이로 봐요',
+      '1234 홍길동(3천 → 체외충격파 3000',
+    ])
+    expect(within(box).getByText('도수 30분(원)').tagName).toBe('B')
+    expect(within(box).getByText('제목에 길이가 없으면 구글 일정 길이로 봐요')).toBeTruthy()
+  })
+
+  it('AC-8553.3: 보기 상자 줄 앞에 목록 점이 없다(ul list-none, 시안 colors-reread)', () => {
+    drawClinic()
+    expect(examples()!.className).toContain('list-none')
+  })
+
+  it('AC-8552.2: 이름에 길이·표시·타수가 하나도 없는 병원(기본 종류)은 상자가 없고, 저장 전 고친 종류 이름으로 바로 만든다', () => {
+    draw({ link: LINKED })
+    expect(examples()).toBeNull()
+    type(screen.getAllByRole('textbox', { name: '종류 이름' })[0]!, '도수 30분(호)')
+    expect(exampleLines()).toEqual(['1234 홍길동 30분 도수 (호) → 도수 30분(호)'])
+    type(screen.getAllByRole('textbox', { name: '종류 이름' })[0]!, '도수')
+    expect(examples()).toBeNull()
+  })
+
+  it('AC-8552.2: 데스크(보기만)도 상자는 보인다', () => {
+    drawClinic({ desk: true })
+    expect(exampleLines()).toHaveLength(3)
+  })
+})
+
+describe("AC-8552.3: 맨 아래 '이미 들어온 예약' 칸 — 이은 뒤 원장만", () => {
+  it('AC-8552.3: 제목·오른쪽 글·글·작은 글·단추(동기화 아이콘)가 저장 단추 줄 아래에 있다', () => {
+    drawClinic()
+    const box = rereadCard()!
+    expect(within(box).getByText('원장 계정만 할 수 있어요')).toBeTruthy()
+    expect(within(box).getByText('구글 제목을 지금 설정으로 다시 읽어 종류·시행자를 맞춰요. 구글 일정은 바꾸지 않아요.')).toBeTruthy()
+    expect(within(box).getByText('저장한 설정으로 읽어요. 가져올 때 고르거나 [고치기]로 바꾼 종류·시행자는 그대로 둬요.')).toBeTruthy()
+    const button = within(box).getByRole('button', { name: REREAD })
+    expect(button.textContent).toBe(REREAD)
+    expect(button.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
+    const save = screen.getByRole('button', { name: '저장' })
+    expect(save.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(box.contains(save)).toBe(false)
+  })
+
+  it("AC-8552.3: 데스크·관리자 '다른 의원 보기'·처음 잇기·잇지 않은 병원에는 이 칸이 없다", () => {
+    const cases: DrawOptions[] = [{ desk: true }, { viewing: true }, { link: { ...FIRST, look: H_LOOK } }, { link: null }]
+    for (const options of cases) {
+      drawClinic(options)
+      expect(rereadCard()).toBeNull()
+      expect(screen.queryByRole('button', { name: REREAD })).toBeNull()
+      expect(page()).not.toContain('이미 들어온 예약')
+      cleanup()
+    }
+  })
+})
+
+describe('AC-8552.4: [이미 들어온 예약 다시 알아보기]', () => {
+  it('AC-8552.4: 누르면 deps.reread() 한 번 · 도는 동안 `다시 알아보는 중…`(못 누름) · 끝나면 결과 줄(세 자리 쉼표 + 끝난 시각) + 작은 글', async () => {
+    let finish: (r: RereadReply) => void = () => {}
+    const deps = fakeDeps({ reread: vi.fn(() => new Promise<RereadReply>((resolve) => (finish = resolve))) })
+    drawClinic({ deps, now: AT_1438 })
+    fireEvent.click(screen.getByRole('button', { name: REREAD }))
+    const busy = within(rereadCard()!).getByRole('button', { name: '다시 알아보는 중…' }) as HTMLButtonElement
+    expect(busy.disabled).toBe(true)
+    fireEvent.click(busy)
+    expect(deps.reread).toHaveBeenCalledTimes(1)
+    expect(within(rereadCard()!).queryByRole('status')).toBeNull()
+    await act(async () => finish({ ok: true, read: 4358, kindChanged: 1962, changed: 2040, unread: 31, missed: 0 }))
+    const done = within(rereadCard()!).getByRole('status')
+    expect(done.textContent).toBe('예약 4,358개를 다시 알아봤어요 · 종류가 바뀐 것 1,962개 · 못 알아본 것 31개 (14:38)')
+    expect(within(done).getByText('(14:38)')).toBeTruthy()
+    expect(within(rereadCard()!).getByText('못 알아본 예약은 전 종류·시행자 그대로 두었어요.')).toBeTruthy()
+    expect((within(rereadCard()!).getByRole('button', { name: REREAD }) as HTMLButtonElement).disabled).toBe(false)
+    // 다시 알아보기는 deps.reread 하나만 부른다(설정 저장·구글 보내기 없음)
+    expect(deps.saveLook).not.toHaveBeenCalled()
+    expect(deps.pushWaiting).not.toHaveBeenCalled()
+    // 결과 줄은 그 화면에만 — 떠났다 오면 없다
+    cleanup()
+    drawClinic({ deps, now: AT_1438 })
+    expect(within(rereadCard()!).queryByRole('status')).toBeNull()
+    expect(page()).not.toContain('다시 알아봤어요')
+  })
+
+  it('AC-8552.4: 실패하면 저장 실패 글을 빌린다(던져도 같음), 인터넷이 끊겼으면 연결 글 — 결과 줄·작은 글은 없다', async () => {
+    const failed = fakeDeps({ reread: vi.fn(async (): Promise<RereadReply> => ({ ok: false, why: 'failed' })) })
+    drawClinic({ deps: failed, now: AT_1438 })
+    fireEvent.click(screen.getByRole('button', { name: REREAD }))
+    expect((await screen.findByRole('alert')).textContent).toBe('저장하지 못했어요. 잠시 뒤 다시 눌러 주세요.')
+    expect(page()).not.toContain('다시 알아봤어요')
+    expect(page()).not.toContain('못 알아본 예약은 전 종류·시행자 그대로 두었어요.')
+    cleanup()
+    const thrown = fakeDeps({ reread: vi.fn(async (): Promise<RereadReply> => Promise.reject(new Error('x'))) })
+    drawClinic({ deps: thrown })
+    fireEvent.click(screen.getByRole('button', { name: REREAD }))
+    expect((await screen.findByRole('alert')).textContent).toBe('저장하지 못했어요. 잠시 뒤 다시 눌러 주세요.')
+    expect((screen.getByRole('button', { name: REREAD }) as HTMLButtonElement).disabled).toBe(false)
+    cleanup()
+    const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    try {
+      const offline = fakeDeps({ reread: vi.fn(async (): Promise<RereadReply> => ({ ok: false, why: 'failed' })) })
+      drawClinic({ deps: offline })
+      fireEvent.click(screen.getByRole('button', { name: REREAD }))
+      expect((await screen.findByRole('alert')).textContent).toBe('인터넷 연결이 끊겨 저장하지 못했어요. 연결을 확인하고 다시 눌러 주세요.')
+    } finally {
+      online.mockRestore()
+    }
+  })
+})
+
+describe("AC-8552.5: '이 병원 꼴' 조사 · 제목 꼴 미리 보기 겹쳐 적지 않기", () => {
+  it("AC-8552.5: '종류 글이 없는 예약' 고르기 글 조사(`도수 30분(호)로 봐요`·`체외충격파 2000으로 봐요`)", () => {
+    drawClinic()
+    const noKind = screen.getByRole('combobox', { name: '종류 글이 없는 예약' }) as HTMLSelectElement
+    const options = [...noKind.options].map((o) => o.textContent)
+    expect(options).toContain('도수 30분(호)로 봐요')
+    expect(options).toContain('체외충격파 2000으로 봐요')
+    expect(noKind.value).toBe('fix')
+  })
+
+  it('AC-8552.5: 미리 보기 줄은 종류 이름의 길이·표시를 겹쳐 적지 않는다(`도수 30분(호)`·(호)·30분 → `1234 홍길동 도수 30분 (호)`)', () => {
+    drawClinic()
+    const chips = previewChips().map((c) => c.textContent ?? '')
+    expect(chips[1]).toBe('1234 홍길동 도수 30분 (호)')
+    for (const chip of chips.slice(1)) {
+      expect(chip).not.toMatch(/\(.\) \(.\)/) // 표시 두 번
+      expect(chip).not.toMatch(/(\d+)분\S* \1분/) // 길이 두 번
+    }
   })
 })

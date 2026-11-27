@@ -177,7 +177,8 @@ describe('AC-8526.3 취소·되돌리기·옮기기·지우기', () => {
   it('AC-8526.3: 날짜·시작을 옮기면 변경 색 + 새 시각, 가져온 제목은 칸을 고칠 때만(g_keep_title 거짓) 웹앱 꼴로 다시 쓴다', async () => {
     const { app, mem, deps } = rig()
     const appt = imported(mem, app)
-    const moved = (await mem.store.updateAppt(appt.id, { start: 660, gWait: 'move' })) as CalAppt
+    // google-link AC-8545.2: 웹앱에서 옮기면 같은 쓰기에 g_moved 참(이은 병원의 '변경' = g_moved)
+    const moved = (await mem.store.updateAppt(appt.id, { start: 660, gWait: 'move', gMoved: true })) as CalAppt
     expect(moved.origStart).toBe(600)
     await pushAppt(deps, moved)
     expect(app.store.event(IMPORTED)).toMatchObject({
@@ -358,5 +359,45 @@ describe('AC-8526.2 웹앱 종일 메모', () => {
     await pushWaiting(deps)
     expect(app.store.event(NEW_ID)).toMatchObject({ summary: '원장님 학회', start: { date: '2026-11-30' }, end: { date: '2026-12-01' } })
     expect(mem.db.allday.find((r) => r.id === memo.id)).toMatchObject({ gWait: false, gUpdated: app.store.event(NEW_ID)?.updated })
+  })
+})
+
+describe('AC-8554.4 보내기: 웹앱 메모를 구글로 보낸 뒤 색', () => {
+  it('AC-8554.4: 보낸 뒤 색이 비었으면 default를 채우고, 이미 색이 있는 메모(구글에서 온 메모)는 그대로 — 구글 일정 색은 보내지 않는다', async () => {
+    const { app, mem, deps } = rig()
+    const web = mem.seedAllDay({ day: '2026-11-30', type: 'memo', memo: '원장님 학회', gEventId: NEW_ID, gWait: true })
+    const ev = app.store.allDay('evmemo003', '2026-12-01', '2026-12-02', { summary: '회식', colorId: '3' })
+    const google = mem.seedAllDay({ day: '2026-12-01', type: 'memo', memo: '회식 장소 바뀜', gEventId: 'evmemo003', gUpdated: ev.updated, gWait: true, gColor: 'grape' })
+
+    expect(await pushWaiting(deps)).toEqual({ ok: true, sent: 2 })
+    expect(mem.calls.filter((c) => c.fn === 'fillMemoColor').map((c) => c.args)).toEqual([
+      [web.id, 'default'],
+      [google.id, 'default'],
+    ])
+    const row = (id: string) => mem.db.allday.find((r) => r.id === id)
+    expect(row(web.id)).toMatchObject({ gWait: false, gColor: 'default' })
+    expect(row(google.id)).toMatchObject({ gWait: false, gColor: 'grape', memo: '회식 장소 바뀜' })
+    expect(app.store.event('evmemo003')).toMatchObject({ summary: '회식 장소 바뀜', colorId: '3' })
+    for (const c of puts(app)) expect(c.resource?.colorId).toBeUndefined()
+  })
+
+  it('AC-8554.4: 보낸 표시가 0줄이면(그 사이 또 고침) 색을 채우지 않고, 색 채우기가 던져도 보내기 결과는 그대로다', async () => {
+    const again = rig()
+    again.mem.seedAllDay({ day: '2026-11-30', type: 'memo', memo: '원장님 학회', gEventId: NEW_ID, gWait: true })
+    const stale: GcalDeps = { ...again.deps, store: { ...again.mem.store, markMemoSent: async () => false } }
+    await pushWaiting(stale)
+    expect(again.mem.calls.map((c) => c.fn)).not.toContain('fillMemoColor')
+
+    const { mem, deps } = rig()
+    const web = mem.seedAllDay({ day: '2026-11-30', type: 'memo', memo: '원장님 학회', gEventId: NEW_ID, gWait: true })
+    const store = {
+      ...mem.store,
+      fillMemoColor: async () => {
+        throw new Error('칸 없음')
+      },
+    }
+    expect(await pushWaiting({ ...deps, store })).toEqual({ ok: true, sent: 1 })
+    expect(mem.db.allday.find((r) => r.id === web.id)).toMatchObject({ gWait: false, gColor: null })
+    expect(mem.db.state.failCode).toBeNull()
   })
 })

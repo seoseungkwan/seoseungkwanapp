@@ -47,7 +47,7 @@ const { rpc, CLIENT, gcal, profileStore, calendarStore, gcalCall, loop, pullOnce
     pushWaiting: vi.fn(async () => ({ ok: true, sent: 0 })),
     makeGcalDeps: vi.fn((_args: Record<string, unknown>) => DEPS),
     DEPS,
-    colorsDeps: vi.fn((_client: unknown, _push: () => Promise<unknown>) => COLORS_DEPS),
+    colorsDeps: vi.fn((_client: unknown, _push: () => Promise<unknown>, _reread?: () => Promise<unknown>) => COLORS_DEPS),
     COLORS_DEPS,
     parts: {
       GcalConnect: part('connect'),
@@ -66,7 +66,8 @@ vi.mock('@/lib/gcal/client', async (importOriginal) => ({ ...(await importOrigin
 vi.mock('@/lib/gcal/loop', () => loop)
 vi.mock('@/lib/gcal/pull', () => ({ pullOnce }))
 vi.mock('@/lib/gcal/push', () => ({ pushWaiting }))
-vi.mock('@/lib/gcal/deps', () => ({ makeGcalDeps }))
+// 진짜 deps 도움 함수(createMemoryStore·localStamp …)는 그대로 두고 makeGcalDeps만 바꾼다 — 다시 알아보기(lib/gcal/reread)가 진짜로 돈다
+vi.mock('@/lib/gcal/deps', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/gcal/deps')>()), makeGcalDeps }))
 vi.mock('@/components/gcalSettings/colors/save', () => ({ colorsDeps }))
 vi.mock('@/components/gcalSettings/connect/Connect', () => ({ GcalConnect: parts.GcalConnect }))
 vi.mock('@/components/gcalSettings/rules/Rules', () => ({ GcalRulesForm: parts.GcalRulesForm }))
@@ -74,6 +75,8 @@ vi.mock('@/components/gcalSettings/colors/StaffKinds', () => ({ StaffKinds: part
 vi.mock('@/components/gcalSettings/import/ImportPreview', () => ({ ImportPreview: parts.ImportPreview }))
 
 import { GcalCallError } from '@/lib/gcal/client'
+import { createMemoryStore, type GcalDeps } from '@/lib/gcal/deps'
+import { DEFAULT_CAL_SETTINGS } from '@/types/calendar'
 import { GcalSettingsScreen } from './GcalSettingsScreen'
 
 const base: GcalView = {
@@ -117,6 +120,7 @@ beforeEach(() => {
   profileStore.loadClinicProfile.mockReset().mockResolvedValue(PROFILE)
   calendarStore.loadCalendarSettings.mockReset().mockResolvedValue(CAL_SETTINGS)
   loop.activeGcalDeps.mockReturnValue(null)
+  makeGcalDeps.mockImplementation(() => DEPS)
 })
 afterEach(() => {
   cleanup()
@@ -385,5 +389,51 @@ describe('AC-8540.4 칸마다 잇는 것', () => {
     expect(client).toBe(CLIENT)
     await push()
     expect(pushWaiting).toHaveBeenCalledWith(DEPS)
+  })
+})
+
+describe('AC-8552.4 시행자·종류 [이미 들어온 예약 다시 알아보기] 묶음', () => {
+  it('AC-8552.4: 시행자·종류에 넘긴 reread는 그 화면 makeGcalDeps 묶음으로 runReread를 부른다 — 가짜 저장소, 구글 부르기 0번', async () => {
+    const now = () => new Date('2026-11-26T14:38:00+09:00')
+    const mem = createMemoryStore({
+      now,
+      link: { ...LINKED, secret: STORED_SECRET },
+      parts: { staff: [{ id: 'won', name: '박지원', mark: '원', color: 'banana' }], kinds: DEFAULT_CAL_SETTINGS.kinds, people: [{ id: 'won', name: '박지원' }] },
+    })
+    const call = vi.fn<GcalDeps['call']>(async () => {
+      throw new Error('다시 알아보기는 구글을 부르지 않는다')
+    })
+    const memDeps: GcalDeps = { hospitalId: HID, call, store: mem.store, now }
+    makeGcalDeps.mockImplementation(() => memDeps as never)
+    // 받기로 들어온 구글 예약(지어낸 값): 저장 종류 도수 + 구글 제목 '자보 … (원)' → 자보도수·박지원으로 다시 알아본다
+    const row = mem.seedAppt({
+      day: '2026-11-27',
+      start: 600,
+      len: 30,
+      name: '장연습',
+      chart: '9567',
+      staffId: null,
+      kindId: 'dosu',
+      kindName: '도수',
+      gEventId: 'evreread0001',
+      gTitle: '9567 장연습 자보 30분 (원)',
+      gUpdated: '2026-11-25T01:00:00.123456+00:00',
+      colorFrom: 'google',
+      gKeepTitle: true,
+      gFrom: 'pull',
+      gHow: { staff: 'none', kind: 'setting', memo: false, gStart: '10:00', gEnd: '10:30' },
+    })
+    gcal.loadGcalView.mockResolvedValue(LINKED)
+    renderScreen('colors')
+    await screen.findByTestId('colors')
+    expect(makeGcalDeps).toHaveBeenCalledWith({ client: CLIENT, hospitalId: HID, call: gcalCall })
+    const [client, , reread] = colorsDeps.mock.calls.at(-1)!
+    expect(client).toBe(CLIENT)
+    expect(typeof reread).toBe('function')
+    await expect(reread!()).resolves.toEqual({ ok: true, read: 1, kindChanged: 1, changed: 1, unread: 0, missed: 0 })
+    expect(mem.db.appts.find((a) => a.id === row.id)).toMatchObject({ kindId: 'jabo', kindName: '자보도수', staffId: 'won', gTitle: '9567 장연습 자보 30분 (원)' })
+    expect(mem.calls.some((c) => c.fn === 'rereadAppt')).toBe(true)
+    expect(call).not.toHaveBeenCalled()
+    expect(gcalCall).not.toHaveBeenCalled()
   })
 })

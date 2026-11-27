@@ -20,7 +20,7 @@ import {
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import { requestPull, sendAppt, syncNow } from '@/lib/gcal/loop'
 import { resetGcalStatus, setGcalStatus } from '@/lib/gcal/status'
-import { deleteGcalFix, listGcalFixes, loadGcalState, loadGcalView, loadOffNames, setArrivalProgress, setFixState } from '@/lib/storage/gcal'
+import { deleteGcalFix, listGcalFixes, loadGcalState, loadGcalView, loadOffNames, setArrivalProgress, setFixState, skipGcalFixes } from '@/lib/storage/gcal'
 import { DEFAULT_GCAL_LOOK, DEFAULT_GCAL_RULES, type GcalFix, type GcalView } from '@/types/gcal'
 import type { BridgeState } from '@/types/bridge'
 import type { CalAllDay } from '@/lib/calendar/shapes'
@@ -61,6 +61,7 @@ vi.mock('@/lib/storage/gcal', async (importOriginal) => ({
   listGcalFixes: vi.fn(),
   loadOffNames: vi.fn(),
   setFixState: vi.fn(),
+  skipGcalFixes: vi.fn(),
   deleteGcalFix: vi.fn(),
   saveOffDay: vi.fn(),
   setArrivalProgress: vi.fn(),
@@ -240,6 +241,8 @@ beforeEach(() => {
   vi.mocked(listGcalFixes).mockReset().mockResolvedValue([])
   vi.mocked(loadOffNames).mockReset().mockResolvedValue([])
   vi.mocked(setFixState).mockReset().mockResolvedValue(undefined)
+  vi.mocked(skipGcalFixes).mockReset().mockResolvedValue(undefined)
+  localStorage.clear() // 고쳐야 할 판이 기억한 기간(google-link AC-8550.1)
   vi.mocked(deleteGcalFix).mockReset().mockResolvedValue(undefined)
   vi.mocked(setArrivalProgress).mockReset().mockResolvedValue(undefined)
   vi.mocked(requestPull).mockReset()
@@ -1107,5 +1110,132 @@ describe('google-link 예약 탭', () => {
     await reply({ type: 'past', from: '2025-11-17', to: '2025-11-19', auto: [] })
     await waitFor(() => expect(setArrivalProgress).toHaveBeenCalledWith(CLIENT, '2025-11-16', true))
     expect(await screen.findByText('지난 예약 도착을 다 채웠어요.')).toBeTruthy()
+  })
+
+  // ── 2차 고침 (REQ-8545·REQ-8549): 이은 병원의 '변경' = g_moved · 취소 칸은 취소 색 ──
+  it("AC-8549.2: 이은 병원에서 [예약 취소]하면 알림이 '예약을 취소했어요. 칸은 취소 색으로 남아요.'다", async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, gEventId: PAIRED, gFrom: 'web' } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '예약 취소' }))
+    expect(await screen.findByText('예약을 취소했어요. 칸은 취소 색으로 남아요.')).toBeTruthy()
+    expect(screen.queryByText('예약을 취소했어요. 칸은 흐리게 남아요.')).toBeNull()
+  })
+
+  it("AC-8549.3: 잇지 않은 병원은 지금 그대로 '예약을 취소했어요. 칸은 흐리게 남아요.'다", async () => {
+    await open()
+    await waitFor(() => expect(loadGcalView).toHaveBeenCalledWith(CLIENT))
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '예약 취소' }))
+    expect(await screen.findByText('예약을 취소했어요. 칸은 흐리게 남아요.')).toBeTruthy()
+  })
+
+  it('AC-8549.1: 이은 병원 안내 줄의 취소 색 점은 흐림 없는 취소 색(토마토)이고, 취소 칸도 흐림 없이 토마토로 꽉 채운다', async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    const dots = [...document.querySelectorAll<HTMLElement>('[data-swatch="tomato"]')]
+    expect(dots.length).toBeGreaterThan(0)
+    for (const dot of dots) {
+      expect(dot.style.backgroundColor).toBe('var(--cal-tomato)')
+      expect(dot.className).not.toMatch(/opacity/)
+    }
+    const cancel = block(/^18842 문○○/)
+    expect(cancel.className).toContain('bg-cal-tomato')
+    expect(cancel.className).not.toMatch(/opacity-/)
+  })
+
+  it("AC-8545.1: 이은 병원은 처음 자리만 있고 g_moved가 거짓인 예약을 '변경'으로 그리거나 세지 않는다(칸·합계 줄)", async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    expect(within(block(/^30117 송○○ 주사 \(원\)/)).queryByText('변경')).toBeNull()
+    expect(items(screen.getByRole('button', { name: /이 주 합계/ }))).toEqual(['예약 4', '취소 1 (25.0%)', '변경 0 (0.0%)', '안 옴 1 (25.0%)'])
+  })
+
+  it("AC-8545.1: 이은 병원은 g_moved 참인 예약만 칸 '변경'·합계 줄·월 칸 '변경 N'으로 센다", async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a4' ? { ...a, gMoved: true } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    expect(within(block(/^30117 송○○ 주사 \(원\)/)).getByText('변경')).toBeTruthy()
+    expect(items(screen.getByRole('button', { name: /이 주 합계/ }))[2]).toBe('변경 1 (25.0%)')
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    const month = await screen.findByRole('region', { name: '월 보기' })
+    expect(within(month).getByRole('button', { name: /^11월 19일/ }).textContent).toContain('변경 1')
+  })
+
+  it("AC-8545.1: 이은 병원 월 보기는 처음 자리만 있는 예약(g_moved 거짓)을 '변경 N'에 세지 않는다", async () => {
+    linkGoogle()
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    const month = await screen.findByRole('region', { name: '월 보기' })
+    expect(within(month).getByRole('button', { name: /^11월 19일/ }).textContent).not.toContain('변경')
+  })
+
+  it('AC-8545.2: 이은 병원에서 [고치기]로 시작을 옮겨 저장하면 같은 쓰기에 g_moved 참을 싣는다', async () => {
+    linkGoogle()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, gEventId: PAIRED, gFrom: 'web' } : a))
+    await open()
+    await screen.findByRole('button', { name: '지금 맞추기' })
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '고치기' }))
+    const panel = dialog('예약 고치기')
+    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '1000' } })
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateAppt).mock.calls[0]![2]).toEqual(expect.objectContaining({ start: 600, gWait: 'move', gMoved: true }))
+  })
+
+  // ── 2차 고침 (REQ-8550·REQ-8551): 고쳐야 할 판 기간 · 이 기간 모두 가져오지 않기 (시안 ?s=fix-range·fix-skipall) ──
+  // 오늘 = 11/17. 판 기간 처음 값은 오늘 ~ 앞으로 전부라 11/10 줄(FIX_OLD)은 판에서 빠지고 띠 수에는 든다
+  const FIX_OLD: GcalFix = {
+    ...FIX,
+    id: 'f0',
+    gEventId: 'gevold001',
+    day: '2026-11-10',
+    start: 600,
+    len: 30,
+    gColor: 'flamingo',
+    gTitle: '1185 곽모의 체외충격 (현)',
+    reason: 'bad-kind',
+    guess: { chart: '1185', name: '곽모의', kindId: null, kindHow: null, staffId: null, staffHow: null, memo: null, word: '체외충격' },
+  }
+
+  it('AC-8550.2·AC-8551.2: 띠 노란 단추는 기간과 상관없는 전체 수, 판은 기간 수 · 전체 수. 한꺼번에 빼면 skipGcalFixes → 알림 → 다시 읽어 띠 수·노란 칸이 준다', async () => {
+    linkGoogle()
+    vi.mocked(listGcalFixes).mockResolvedValue([FIX_OLD, FIX])
+    await open()
+    fireEvent.click(await screen.findByRole('button', { name: '고쳐야 할 구글 예약 2개' }))
+    const panel = dialog('고쳐야 할 구글 예약 1개 · 전체 2개')
+    expect(document.querySelectorAll('[data-block="fix"]')).toHaveLength(1) // 11/19 노란 칸
+    vi.mocked(listGcalFixes).mockResolvedValue([FIX_OLD])
+    fireEvent.click(within(panel).getByRole('button', { name: '이 기간 모두 가져오지 않기' }))
+    fireEvent.click(within(screen.getByRole('alertdialog', { name: '1개를 가져오지 않을까요?' })).getByRole('button', { name: '가져오지 않기' }))
+    await waitFor(() => expect(skipGcalFixes).toHaveBeenCalledWith(CLIENT, ['f1']))
+    expect(skipGcalFixes).toHaveBeenCalledTimes(1)
+    expect(setFixState).not.toHaveBeenCalled()
+    await waitFor(() => expect(text(screen.getByRole('status'))).toBe('1개를 가져오지 않기로 했어요. 구글에만 남아요.'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '고쳐야 할 구글 예약 1개' })).toBeTruthy())
+    expect(document.querySelector('[data-block="fix"]')).toBeNull()
+    expect(dialog('고쳐야 할 구글 예약 0개 · 전체 1개')).toBeTruthy()
+  })
+
+  it("AC-8551.3: 한꺼번에 저장이 안 되면 알림 '넣지 못했어요. 잠시 뒤 다시 눌러 주세요.'이고 판·띠는 그대로", async () => {
+    linkGoogle()
+    vi.mocked(listGcalFixes).mockResolvedValue([FIX_OLD, FIX])
+    vi.mocked(skipGcalFixes).mockRejectedValue(new Error('failed'))
+    await open()
+    fireEvent.click(await screen.findByRole('button', { name: '고쳐야 할 구글 예약 2개' }))
+    fireEvent.click(within(dialog('고쳐야 할 구글 예약 1개 · 전체 2개')).getByRole('button', { name: '이 기간 모두 가져오지 않기' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '가져오지 않기' }))
+    expect(await screen.findByText('넣지 못했어요. 잠시 뒤 다시 눌러 주세요.')).toBeTruthy()
+    expect(document.querySelector('[data-fix="f1"]')).not.toBeNull()
+    expect(dialog('고쳐야 할 구글 예약 1개 · 전체 2개')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '고쳐야 할 구글 예약 2개' })).toBeTruthy()
+    expect(document.querySelectorAll('[data-block="fix"]')).toHaveLength(1)
   })
 })

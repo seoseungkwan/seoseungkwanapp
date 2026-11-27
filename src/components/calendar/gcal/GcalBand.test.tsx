@@ -57,7 +57,8 @@ const appt = (id: string, over: Partial<CalAppt>): CalAppt => ({
 // 시안 err: 새로 넣음 · 시간 바꿈(원래 10:00) · 취소(가져온 예약, 구글 제목 그대로)
 const PENDING: CalAppt[] = [
   appt('p1', {}),
-  appt('p2', { start: 660, chart: '3150', name: '박가상', staffId: 'won', staffName: '박지원', staffMark: '원', kindId: 'jabo', kindName: '자보도수', gWait: 'move', origDay: '2026-11-27', origStart: 600 }),
+  // google-link AC-8545.1: 웹앱에서 옮기면 같은 쓰기에 g_moved 참
+  appt('p2', { start: 660, chart: '3150', name: '박가상', staffId: 'won', staffName: '박지원', staffMark: '원', kindId: 'jabo', kindName: '자보도수', gWait: 'move', origDay: '2026-11-27', origStart: 600, gMoved: true }),
   appt('p3', {
     start: 990,
     chart: '5590',
@@ -201,5 +202,22 @@ describe('AC-8535 구글에 닿지 못함 (시안 ?s=err)', () => {
     draw({ fail: FAIL, waiting: 0, pending: [] })
     expect(screen.queryByRole('button', { name: '지금 맞추기' })).toBeNull()
     expect(text(band())).not.toContain('이어짐')
+  })
+})
+
+describe("AC-8545.1 못 보낸 줄의 '원래 …'는 g_moved일 때만", () => {
+  const FAIL = { since: '2026-11-26 05:29:03.5+00', code: 'E-GCAL-REACH', nextTryAt: '2026-11-26T05:38:00.000Z' }
+  const rows = () => Array.from(document.querySelectorAll('[data-gcal-pending] li')).map(text)
+
+  it("AC-8545.1: 처음 자리가 있어도 g_moved가 거짓이면(원래 자리로 되돌림) '· 원래 … · 구글에서 {변경 색} 색으로'를 붙이지 않는다", () => {
+    const back = appt('p4', { start: 600, chart: '3150', name: '박가상', staffId: 'won', staffName: '박지원', staffMark: '원', gWait: 'move', origDay: '2026-11-26', origStart: 660, gMoved: false })
+    draw({ fail: FAIL, waiting: 1, pending: [back] })
+    expect(rows()).toEqual(['11/26 (목) 10:00 시간 바꿈 3150 박가상 도수 30분 (원) 기다림'])
+  })
+
+  it("AC-8545.1: g_moved가 참이어도 처음 시각(orig_start)이 없으면 '원래 …'를 붙이지 않는다", () => {
+    const gOnly = appt('p5', { start: 600, chart: '3150', name: '박가상', staffId: 'won', staffName: '박지원', staffMark: '원', gWait: 'edit', gMoved: true })
+    draw({ fail: FAIL, waiting: 1, pending: [gOnly] })
+    expect(rows()).toEqual(['11/26 (목) 10:00 고침 3150 박가상 도수 30분 (원) 기다림'])
   })
 })

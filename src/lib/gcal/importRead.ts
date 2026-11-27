@@ -7,12 +7,13 @@ import type { ApptDraft, CalAllDay } from '@/types/calendar'
 import type { GcalFixInput } from '@/types/gcal'
 import { GcalCallError, readEvents, readNext, readNow, type GcalErrorCode } from './client'
 import { clip, maskText, type GcalDeps } from './deps'
-import { fixInputOf, newApptRow } from './pull'
+import { fixInputOf, followOffColor, newApptRow } from './pull'
 import { pushWaiting } from './push'
 
 // 처음 가져오기(spec google-link REQ-8527, design.md 12-3). 읽기(readImport)는 웹앱·구글 어느 쪽도 바꾸지 않는다.
 // 적기(applyImport): 예약(500줄씩, 같은 g_event_id는 건너뜀) → 종일 메모 → off 줄과 짝 → 고쳐야 할 것 → 웹앱에만 있던 오늘 뒤 예약 g_wait 'new'
-// → 이은 날 = 오늘 → 받아 온 끝 = 읽은 시각 → 보내기. 가져온 구글 일정의 제목·색은 바꾸지 않는다. 지난 예약은 도착을 비워 둔다
+// → 이은 날 = 오늘 → 받아 온 끝 = 읽은 시각 → 보내기. 가져온 구글 일정의 제목·색은 바꾸지 않는다. 지난 예약은 도착을 비워 둔다.
+// 휴무 줄 색(REQ-8547 AC-8547.2): off 줄을 적은 뒤·보내기 전에 받기와 같은 규칙으로 맞춘다 — 보내는 off 줄(웹앱에만 있는 사람이 든 날)이 새 색으로 칠해진다
 
 const MAX_PAGES = 200
 const ALLDAY_MEMO_MAX = 20
@@ -291,10 +292,11 @@ export async function applyImport(deps: GcalDeps, preview: ImportPreview, picks:
           memo,
           staffId: null,
           staffName: null,
-          // 하루 종일 일정이면 그 일정과 잇는다. 시간 일정을 '종일 메모로 넣기'면 웹앱에만 둔다
+          // 하루 종일 일정이면 그 일정과 잇는다(색도 그 일정 색 — AC-8554.4). 시간 일정을 '종일 메모로 넣기'면 웹앱에만 둔다(색 비움)
           gEventId: m.own ? m.ev.id : null,
           gUpdated: m.own ? m.ev.updated : null,
           gWait: false,
+          gColor: m.own ? (colorFromId(m.ev.colorId) ?? 'default') : null,
         })
         if (saved !== 'blocked') {
           existing = [...existing, saved]
@@ -321,6 +323,8 @@ export async function applyImport(deps: GcalDeps, preview: ImportPreview, picks:
         await store.saveOffDay({ day, gEventId: o.ev.id, gTitle: maskText(o.ev.summary, TITLE_MAX), gUpdated: o.ev.updated, wait: webOnly })
       }
     }
+    // pushWaiting이 연결을 다시 읽으므로 그 전에 맞춘다
+    await followOffColor(deps, offs.map((o) => o.ev), link.look.offColor)
 
     if (fixes.length) await store.upsertFixes(fixes)
 

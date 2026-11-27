@@ -186,13 +186,34 @@ describe('AC-8523.3 decideEvent — 구글 색이 취소 색·변경 색이 되�
 })
 
 describe('AC-8523.4 decideEvent — 구글에서 날짜·시작을 옮김', () => {
-  it("AC-8523.4: 웹앱에서 옮긴 것처럼 날짜·시작을 고치고 구글 색을 변경 색으로 다시 칠하라고 낸다(g_wait = 'color')", () => {
+  it("AC-8523.4·AC-8545.2: 웹앱에서 옮긴 것처럼 날짜·시작을 고치고 g_moved 참, 구글 색을 변경 색으로 다시 칠하라고 낸다(g_wait = 'color')", () => {
     expect(patchOf(decideEvent(ev({ start: '2026-11-27T11:00', end: '2026-11-27T11:30' }), mapped(), CTX))).toEqual({
       day: '2026-11-27',
       start: 660,
+      gMoved: true, // google-link AC-8545.2: 구글에서 날짜·시작을 옮기면 g_moved 참
       gWait: 'color',
       gUpdated: T('05:10'),
     })
+  })
+
+  it("AC-8545.2: 구글에서 원래 자리(orig_day·orig_start)로 되돌리면 g_moved 거짓, 다시 칠하기(g_wait 'color')는 그대로 낸다", () => {
+    const row = mapped({ day: '2026-11-27', start: 660, origDay: '2026-11-26', origStart: 600, gMoved: true })
+    expect(patchOf(decideEvent(ev(), row, CTX))).toEqual({ day: '2026-11-26', start: 600, gMoved: false, gWait: 'color', gUpdated: T('05:10') })
+  })
+
+  it('AC-8545.2: 원래 자리가 아닌 곳으로 또 옮기면 g_moved 참 그대로(바뀐 칸이 아니라 patch에 없음), 다시 칠하기를 낸다', () => {
+    const row = mapped({ day: '2026-11-27', start: 660, origDay: '2026-11-26', origStart: 600, gMoved: true })
+    expect(patchOf(decideEvent(ev({ start: '2026-11-28T09:00', end: '2026-11-28T09:30' }), row, CTX))).toEqual({
+      day: '2026-11-28',
+      start: 540,
+      gWait: 'color',
+      gUpdated: T('05:10'),
+    })
+  })
+
+  it('AC-8545.1: 처음 자리가 있는 예약도 구글에서 변경 색을 다른 색으로 바꾸면 g_moved 거짓', () => {
+    const row = mapped({ origDay: '2026-11-25', origStart: 600, gMoved: true })
+    expect(patchOf(decideEvent(ev({ colorId: ID.lavender }), row, CTX))).toEqual({ gMoved: false, gUpdated: T('05:10') })
   })
 
   it('AC-8523.4: 이미 변경 색이면 다시 칠할 것이 없다', () => {
@@ -317,7 +338,8 @@ describe('AC-8523.7 decideEvent — 이은 날 0시 전 일정은 아무것도 �
 describe('AC-8523.8 decideEvent — 제목이 그대로면 시간·색·지움만, 바뀌었는데 못 알아보면 칸은 그대로', () => {
   it('AC-8523.8: 제목이 그대로인 고친 일정은 시간·색만 반영한다(이름·종류·시행자·메모는 건드리지 않음)', () => {
     const p = patchOf(decideEvent(ev({ start: '2026-11-26T10:05', end: '2026-11-26T10:35', colorId: ID.tangerine }), mapped({ memo: '설명 칸 메모' }), CTX))
-    expect(p).toEqual({ start: 605, gWait: 'color', gColor: 'tangerine', colorFrom: 'google', gUpdated: T('05:10') })
+    // google-link AC-8545.2: 시작을 옮겼으니 g_moved 참
+    expect(p).toEqual({ start: 605, gMoved: true, gWait: 'color', gColor: 'tangerine', colorFrom: 'google', gUpdated: T('05:10') })
   })
 
   it("AC-8523.8: 제목이 바뀌었는데 알아보지 못하면 이름·종류·시행자는 그대로 두고 g_note '구글 제목을 알아보지 못해 이름·종류·시행자는 그대로 뒀어요'", () => {
@@ -370,7 +392,7 @@ describe('AC-8521.3 colorChangeTargets — 옛 색으로 칠해진 앞으로의 
     a('google', { colorFrom: 'google', gColor: 'tangerine' }),
     a('past', { day: '2026-11-25' }),
     a('cancel', { status: 'cancel' }),
-    a('moved', { origDay: '2026-11-24', origStart: 600 }),
+    a('moved', { origDay: '2026-11-24', origStart: 600, gMoved: true }), // google-link AC-8545.1: 이은 병원의 '변경'은 g_moved
     a('shock', { kindId: 'shock' }),
     a('won', { staffId: 'won' }),
   ]

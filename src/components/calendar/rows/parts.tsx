@@ -22,23 +22,44 @@ export const dateNum = (day: string) => Number(day.slice(8, 10))
 
 export const STATUS_TEXT: Record<ShownStatus, string> = { came: '왔음', noshow: '안 옴', cancel: '취소', none: '' }
 
-/** 예약 칸·줄의 전체 글(마우스 올림·화면 읽기). 시안 evHTML label */
-export function apptLabel(appt: CalAppt, shown: ShownStatus): string {
+/**
+ * 칸 글 종류 조각의 겹침 빼기(spec google-link AC-8548.2·AC-8548.3, design.md 21-6): 종류 이름이 그 예약 시행자 표시 `({표시})`로 끝나면 ` ({표시})`를
+ * 다시 적지 않고(mark null), 이름에 그 예약 길이 `{N}분`이 있으면 끝 `{N}분`을 다시 적지 않는다(len false). 종류 이름은 그대로 보인다.
+ * 지금 기본 종류(이름에 길이·표시 없음)는 지금과 같다. 같은 Phase의 lib/calendar/gtitle 새 함수는 부르지 않는다(rows 안에 따로 둠)
+ */
+export function kindBits(appt: Pick<CalAppt, 'kindName' | 'staffMark' | 'len'>): { mark: string | null; len: boolean } {
+  const mark = appt.staffMark === null || appt.kindName.endsWith(`(${appt.staffMark})`) ? null : appt.staffMark
+  // 이름 안의 `{숫자}분`(앞이 숫자가 아닌 온 수 — `(?<!\d){N}\s*분`과 같음) 가운데 그 예약 길이가 있으면 겹침
+  const lens = [...appt.kindName.matchAll(/(\d+)\s*분/g)].map((m) => Number(m[1]))
+  return { mark, len: !lens.includes(appt.len) }
+}
+
+/** 칸 글 머리: `차트번호 이름 종류 (표시) 시작–끝 길이분` + 도착(겹친 표시·길이는 뺌) */
+function labelHead(appt: CalAppt, shown: ShownStatus): string {
   // 시행자 없는 예약(시행자 null, google-link AC-8503.3)은 (표시) 없이
-  const head = [appt.chart, appt.name, appt.kindName, appt.staffMark === null ? '' : `(${appt.staffMark})`, `${hm(appt.start)}–${hm(appt.start + appt.len)}`, `${appt.len}분`]
-  const moved = appt.origDay !== null && appt.origStart !== null ? ` · 변경 (원래 ${slotLabel(appt.origDay, appt.origStart)})` : ''
-  return `${head.filter(Boolean).join(' ')}${STATUS_TEXT[shown] ? ` · ${STATUS_TEXT[shown]}` : ''}${moved}`
+  const bits = kindBits(appt)
+  const head = [appt.chart, appt.name, appt.kindName, bits.mark === null ? '' : `(${bits.mark})`, `${hm(appt.start)}–${hm(appt.start + appt.len)}`, bits.len ? `${appt.len}분` : '']
+  return `${head.filter(Boolean).join(' ')}${STATUS_TEXT[shown] ? ` · ${STATUS_TEXT[shown]}` : ''}`
+}
+
+const origText = (appt: Pick<CalAppt, 'origDay' | 'origStart'>) =>
+  appt.origDay !== null && appt.origStart !== null ? ` (원래 ${slotLabel(appt.origDay, appt.origStart)})` : null
+
+/** 예약 칸·줄의 전체 글(마우스 올림·화면 읽기). 시안 evHTML label. 잇지 않은 병원: 처음 자리가 있으면 ' · 변경 (원래 …)' */
+export function apptLabel(appt: CalAppt, shown: ShownStatus): string {
+  const orig = origText(appt)
+  return `${labelHead(appt, shown)}${orig === null ? '' : ` · 변경${orig}`}`
 }
 
 // ---------- 구글과 이은 병원(spec google-link REQ-8532, 예약표 prop RowsGoogle) ----------
 
-/** '변경' 꼬리표를 붙일 예약: 처음 자리가 있음(웹앱에서 옮김), 이은 병원은 구글에서 변경 색이 된 것(gMoved)도 */
-export const isMoved = (appt: Pick<CalAppt, 'origDay' | 'gMoved'>, linked: boolean) => appt.origDay !== null || (linked && appt.gMoved)
+/** '변경' 꼬리표를 붙일 예약: 잇지 않은 병원은 처음 자리가 있음(웹앱에서 옮김), 이은 병원은 g_moved만(google-link AC-8545.1 — 구글 색을 따름) */
+export const isMoved = (appt: Pick<CalAppt, 'origDay' | 'gMoved'>, linked: boolean) => (linked ? appt.gMoved : appt.origDay !== null)
 
-/** 이은 병원의 예약 칸·줄 전체 글: 지금 글 + 구글 변경 색만 받음 ' · 변경' + 못 보냄 ' · 구글에 아직 못 보냄'(시안 evHTML label) */
+/** 이은 병원의 예약 칸·줄 전체 글: 머리 + g_moved면 ' · 변경 (원래 …)'(처음 자리가 없으면 ' · 변경') + 못 보냄 ' · 구글에 아직 못 보냄'(시안 evHTML label) */
 export function linkedApptLabel(appt: CalAppt, shown: ShownStatus, waiting: boolean): string {
-  const gMovedOnly = appt.gMoved && appt.origDay === null ? ' · 변경' : ''
-  return `${apptLabel(appt, shown)}${gMovedOnly}${waiting ? ` · ${WAIT_TEXT}` : ''}`
+  const moved = appt.gMoved ? ` · 변경${origText(appt) ?? ''}` : ''
+  return `${labelHead(appt, shown)}${moved}${waiting ? ` · ${WAIT_TEXT}` : ''}`
 }
 
 const WAIT_TEXT = '구글에 아직 못 보냄'
@@ -77,7 +98,7 @@ const HALF_TEXT = { am: '오전', pm: '오후' } as const
 
 /**
  * 그날 종일 칩들. RowsGoogle이 없으면(잇지 않은 병원) 지금 그대로 항목마다 한 칩(allDayText·allDayChipClass).
- * 이은 병원(spec google-link AC-8532.3, 시안 adHTML): 메모 = 캘린더 기본 색 칩 → 하루 종일 휴무는 한 칩 `{이름}, {이름} {offWord}`(휴무 줄 색) →
+ * 이은 병원(spec google-link AC-8532.3, 시안 adHTML): 메모 = 구글 일정 색 칩(색 없음·모름 = 캘린더 기본 색, AC-8554.1) →하루 종일 휴무는 한 칩 `{이름}, {이름} {offWord}`(휴무 줄 색) →
  * 반차는 사람마다 흰 칩 `({표시}) {이름} {오전|오후} 반차`(시행자가 아닌 직원은 이름만). 이름 차례는 받은 차례
  */
 export function dayChips(
@@ -90,6 +111,9 @@ export function dayChips(
     .filter((it) => it.type === 'memo')
     .map((it) => {
       const text = it.memo ?? ''
+      // 3차(REQ-8554 AC-8554.1): 구글 일정 색이 있는 메모는 그 색 그대로, 'default'·모름(null)은 캘린더 기본 색
+      const color = it.gColor && it.gColor !== 'default' ? it.gColor : null
+      if (color) return { key: it.id, text, title: `${text} · 구글 일정 색 그대로`, cls: `${CAL_TONES[color].fill} ${CAL_TONES[color].on}` }
       return { key: it.id, text, title: `${text} · 캘린더 기본 색`, cls: `${CAL_TONES.default.fill} ${CAL_TONES.default.on}` }
     })
   const offs = items.filter((it) => it.type === 'off')
@@ -112,8 +136,9 @@ export function dayChips(
 /** 비트 예약 칸의 전체 글 */
 export const ghostLabel = (g: BitGhost) => ['비트 예약', hm(g.start), g.chart, g.name].filter(Boolean).join(' ') + ' · 보기만 해요'
 
-// 도착 표시(시안 기본값 10번): 초록 ✓ = 왔음, 주황 ! = 안 옴, 회색 '취소', 표시 없음 = 아직
-export function StatusMark({ status }: { status: ShownStatus }) {
+// 도착 표시(시안 기본값 10번): 초록 ✓ = 왔음, 주황 ! = 안 옴, 회색 '취소', 표시 없음 = 아직.
+// filled = 취소 색으로 꽉 채운 칸(구글과 이은 병원, google-link AC-8549.1): '취소'는 흰 바탕 + 빨강 글자(시안의 진한 빨강은 앱 토큰이 아니라 가장 가까운 text-negative)
+export function StatusMark({ status, filled = false }: { status: ShownStatus; filled?: boolean }) {
   if (status === 'came') {
     return (
       <span title="왔음" className="mr-0.5 inline-grid size-3.25 shrink-0 place-items-center rounded-full bg-positive align-middle text-surface">
@@ -132,7 +157,10 @@ export function StatusMark({ status }: { status: ShownStatus }) {
   }
   if (status === 'cancel') {
     return (
-      <span title="취소" className="mr-0.5 inline-block rounded-control bg-line px-1 align-middle text-caption leading-3.5 font-semibold text-ink-2 no-underline">
+      <span
+        title="취소"
+        className={`mr-0.5 inline-block rounded-control px-1 align-middle text-caption leading-3.5 font-semibold no-underline ${filled ? 'bg-surface text-negative' : 'bg-line text-ink-2'}`}
+      >
         취소
       </span>
     )

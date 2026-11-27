@@ -1,18 +1,22 @@
 import { addDays, compareYmd, todayInKorea } from '@/lib/analytics/dates'
 import { offScope } from '@/lib/calendar/goff'
-import type { FixGuess as ParsedGuess, GApptPatch, GEvent, GNewRow, GParsedFix, OffPerson, SyncCtx } from '@/lib/calendar/gshapes'
+import { colorFromId, type FixGuess as ParsedGuess, type GApptPatch, type GColor, type GEvent, type GNewRow, type GParsedFix, type OffPerson, type SyncCtx } from '@/lib/calendar/gshapes'
 import { decideEvent } from '@/lib/calendar/gsync'
 import type { ApptDraft, CalAllDay, CalAppt } from '@/types/calendar'
 import type { FixGuess, GcalFix, GcalFixInput, GcalLink, GcalOffDay } from '@/types/gcal'
 import { GcalCallError, readEvents, readNext, readNow, type GcalErrorCode } from './client'
-import { clip, dayStartIso, maskText, toMs, yearsAhead, type GcalDeps, type GcalParts } from './deps'
+import { clip, dayStartIso, maskText, toMs, yearsAhead, type GcalDeps, type GcalParts, type MemoColor } from './deps'
 
 // 구글 → 웹앱 받기(spec google-link REQ-8525, design.md 12-1). 판단은 lib/calendar/gsync decideEvent, 적기는 저장 함수(조건 고치기·유일 제약)만.
 // 두 PC가 함께 받아도 같은 결과: 넣기는 (병원, g_event_id) 겹치면 건너뛰고, 고치기는 g_updated가 더 이를 때·g_wait_at이 읽은 글자 그대로일 때만.
-// 구글 글(제목·메모·고쳐야 할 것·off 줄 제목)은 적기 전에 maskText(AC-8505.3)
+// 구글 글(제목·메모·고쳐야 할 것·off 줄 제목)은 적기 전에 maskText(AC-8505.3).
+// 휴무 줄 색(REQ-8547, design.md 21-5): off로 알아본 일정 가운데 updated가 가장 나중인 것의 색이 지금 휴무 줄 색과 다르면 받기 끝에 그 색으로(실패는 삼킴)
+// 종일 메모 색(REQ-8554, design.md 21-13): 메모 줄에 그 구글 일정 색(colorId 없음 = 'default')을 적고, 받기 끝에 이 고침 전 메모의 빈 색을 채운다(실패는 삼킴)
 
 const OVERLAP_MS = 60_000
 const MAX_PAGES = 200
+const FILL_WAIT_MS = 60 * 60_000 // 채우기가 던지거나 빈 색이 남으면 이 브라우저에서 1시간 건너뜀
+const FILL_BATCH = 10 // 빈 색 채우기를 한 번에 몇 줄씩
 const TITLE_MAX = 200
 const NAME_MAX = 20
 const MEMO_MAX = 100
@@ -48,6 +52,8 @@ export async function pullOnce(deps: GcalDeps): Promise<PullResult> {
     if (at) await store.advancePulled(at)
     const okAt = deps.now().toISOString()
     await store.markOk(okAt)
+    await followOffColor(deps, run.offEvents, link.look.offColor)
+    await fillMemoColors(deps, link).catch(() => undefined) // 칸이 아직 없거나(SQL 전) 구글 목록 실패 — 받기 결과 그대로
     return { ok: true, changed: run.changed, at: at ?? okAt, full }
   } catch (err) {
     if (err instanceof GcalCallError) {
@@ -55,6 +61,89 @@ export async function pullOnce(deps: GcalDeps): Promise<PullResult> {
       return { ok: false, code: err.code, off: false }
     }
     return { ok: false, code: null, off: false }
+  }
+}
+
+/** 휴무 줄 색으로 따를 색: off 일정 가운데 updated가 가장 나중인 것의 색. 그 색이 없거나(캘린더 기본 색) 지금 색과 같으면 null */
+export function offColorToFollow(events: readonly Pick<GEvent, 'updated' | 'colorId'>[], current: GColor): GColor | null {
+  let last: Pick<GEvent, 'updated' | 'colorId'> | null = null
+  for (const ev of events) {
+    if (last === null || (toMs(ev.updated) ?? -Infinity) > (toMs(last.updated) ?? -Infinity)) last = ev
+  }
+  const color = last === null ? null : colorFromId(last.colorId)
+  return color !== null && color !== current ? color : null
+}
+
+/** 휴무 줄 색 맞추기(받기·처음 가져오기 끝). 저장이 던지거나 거짓이어도 삼킨다 — 받기 결과 그대로, 다음에 off 일정이 바뀌면 또 맞춘다 */
+export async function followOffColor(deps: GcalDeps, events: readonly Pick<GEvent, 'updated' | 'colorId'>[], current: GColor): Promise<void> {
+  const color = offColorToFollow(events, current)
+  if (color === null) return
+  try {
+    await deps.store.setOffColor(color)
+  } catch {
+    // 함수가 아직 없거나(SQL 전) 저장 실패 — 휴무 줄 색만 그대로 둔다
+  }
+}
+
+/** 구글 일정 색 → 종일 메모 줄 색(색 없음 = 'default') */
+const memoColorOf = (ev: Pick<GEvent, 'colorId'>): MemoColor => colorFromId(ev.colorId) ?? 'default'
+
+/** 채우기를 마지막으로 그만둔 때(던짐·빈 색 남음, ms). 이 브라우저(모듈) 안에서만 */
+let lastFillTry: number | null = null
+
+/** 시험용: 채우기 기다림을 지운다 */
+export function resetFillMemoColors(): void {
+  lastFillTry = null
+}
+
+/**
+ * 이 고침 전에 들어온 종일 메모의 빈 색 채우기(AC-8554.5, design.md 21-13): 받기 성공 끝에 부른다.
+ * 빈 색 찾기(한국 오늘 − 1년 ~ 오늘 + 3년 − 1일)가 참일 때만 그 기간 종일 줄을 읽어 빈 색 메모 줄(구글 일정과 이어짐·보낼 것 없음·색 빔)을 모으고,
+ * 구글 목록을 [가장 이른 날, 가장 늦은 날 + 1일)만 쪽마다 읽어 줄마다 그 일정 색(색 없음·목록에 없음 = 'default')을 10줄씩 채운다(줄 실패는 삼킴).
+ * 던지거나 끝난 뒤에도 빈 색 줄이 남으면 1시간 동안 건너뛴다. 던짐은 다시 던진다(받기가 삼킴). 채운 줄 수
+ */
+export async function fillMemoColors(deps: GcalDeps, link: GcalLink): Promise<number> {
+  const { store } = deps
+  const startedAt = deps.now().getTime()
+  if (lastFillTry !== null && startedAt >= lastFillTry && startedAt - lastFillTry < FILL_WAIT_MS) return 0
+  const calendarId = link.calendarId
+  if (!calendarId) return 0
+  try {
+    const today = todayInKorea(deps.now())
+    const from = yearsAhead(today, -1)
+    const to = addDays(yearsAhead(today, 3), -1)
+    if (!(await store.memoColorGap(from, to))) {
+      lastFillTry = null
+      return 0
+    }
+    const gaps = (await store.listAllDay(from, to)).filter(
+      (r): r is CalAllDay & { gEventId: string } => r.type === 'memo' && !!r.gEventId && r.gWait === false && (r.gColor ?? null) === null,
+    )
+    if (!gaps.length) {
+      lastFillTry = deps.now().getTime() // DB에는 있지만 읽기에서 빠진 줄 — 받기마다 다시 묻지 않게
+      return 0
+    }
+    const days = gaps.map((r) => r.day).sort(compareYmd)
+    const colors = new Map<string, MemoColor>()
+    let token: string | null = null
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const body: Record<string, unknown> = { calendarId, from: days[0], to: addDays(days[days.length - 1], 1) }
+      if (token) body.pageToken = token
+      const reply = await deps.call(link, 'list', body)
+      for (const ev of readEvents(reply)) colors.set(ev.id, memoColorOf(ev))
+      token = readNext(reply)
+      if (!token) break
+    }
+    let filled = 0
+    for (let i = 0; i < gaps.length; i += FILL_BATCH) {
+      const done = await Promise.all(gaps.slice(i, i + FILL_BATCH).map((r) => store.fillMemoColor(r.id, colors.get(r.gEventId) ?? 'default').catch(() => false)))
+      filled += done.filter(Boolean).length
+    }
+    lastFillTry = filled < gaps.length ? deps.now().getTime() : null
+    return filled
+  } catch (err) {
+    lastFillTry = deps.now().getTime()
+    throw err
   }
 }
 
@@ -141,6 +230,8 @@ function apptPatch(patch: GApptPatch, mapped: CalAppt): Partial<ApptDraft> {
 /** 받기 한 번의 일: 쪽마다 짝을 찾아 판단하고 적는다. 종일 줄·off 날·고쳐야 할 것은 한 번 읽어 두고 고친 대로 고쳐 둔다 */
 export class PullRun {
   changed = 0
+  /** 이 받기가 off 줄로 알아본 하루 종일 일정(휴무 줄 색 따라가기) */
+  readonly offEvents: GEvent[] = []
   private readonly ctx: SyncCtx
   private readonly scope: OffPerson[]
   private allday: CalAllDay[] | null = null
@@ -371,6 +462,7 @@ export class PullRun {
       await this.dropFixes(ev.id)
       await this.syncMemo(ev, d.days, p.memo)
     } else if (p.type === 'off') {
+      this.offEvents.push(ev)
       await this.dropMemos(ev)
       await this.dropFixes(ev.id)
       await this.syncOff(ev, d.days, p.people)
@@ -408,26 +500,27 @@ export class PullRun {
     const { store } = this.deps
     const memo = maskText(text, ALLDAY_MEMO_MAX).trim()
     if (!memo) return
+    const color = memoColorOf(ev) // 구글 일정 색(AC-8554.4) — 새 줄·고친 줄 모두
     const rows = this.memoRows(ev.id)
     const keep = rows.filter((r) => days.includes(r.day))
     let gone = rows.filter((r) => !days.includes(r.day))
     let fresh = days.filter((d) => !rows.some((r) => r.day === d))
-    const write = async (row: CalAllDay, patch: { day?: string; memo: string }) => {
+    const write = async (row: CalAllDay, patch: { day?: string; memo: string; gColor: MemoColor }) => {
       const saved = await store.applyMemo(row.id, patch, ev.updated, row.gWaitAt ?? null)
       if (saved && saved !== 'blocked') {
         this.allday = (this.allday ?? []).map((r) => (r.id === row.id ? saved : r))
-        if (patch.day !== undefined || row.memo !== patch.memo) this.changed++
+        if (patch.day !== undefined || row.memo !== patch.memo || (row.gColor ?? null) !== patch.gColor) this.changed++
       }
     }
-    for (const row of keep) await write(row, { memo })
+    for (const row of keep) await write(row, { memo, gColor: color })
     if (!keep.length) {
       const moves = Math.min(gone.length, fresh.length)
-      for (let i = 0; i < moves; i++) await write(gone[i], { day: fresh[i], memo })
+      for (let i = 0; i < moves; i++) await write(gone[i], { day: fresh[i], memo, gColor: color })
       gone = gone.slice(moves)
       fresh = fresh.slice(moves)
     }
     for (const day of fresh) {
-      const saved = await store.addAllDay({ day, type: 'memo', memo, staffId: null, staffName: null, gEventId: ev.id, gUpdated: ev.updated, gWait: false })
+      const saved = await store.addAllDay({ day, type: 'memo', memo, staffId: null, staffName: null, gEventId: ev.id, gUpdated: ev.updated, gWait: false, gColor: color })
       if (saved !== 'blocked') {
         this.allday = [...(this.allday ?? []), saved]
         this.changed++

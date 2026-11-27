@@ -66,11 +66,11 @@ const fillReply = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const monthsReply = (fileId: string = FILE_ID) => ({
+const monthsReply = (fileId: string = FILE_ID, ym = '2026-11') => ({
   v: 1,
   version: '8',
   months: [
-    { ym: '2026-11', fileId, gids: { '1': 0, '26': 987654 } },
+    { ym, fileId, gids: { '1': 0, '26': 987654 } },
     { ym: '2026-10', fileId: null, gids: {} },
   ],
 })
@@ -530,7 +530,7 @@ describe('AC-8513.5: 달 파일 목록 · 새 달 파일 기록', () => {
     expect(t.store.upsertMonths).not.toHaveBeenCalled()
   })
 
-  it('AC-8513.5: 옛 7판 코드(달 묻기를 모름 E-GSHEET-OLD) → 그날은 다시 묻지 않고, 넣기 답 파일 id만 gid 없이 적는다', async () => {
+  it('AC-8513.5: 옛 7판 코드(달 묻기를 모름 E-GSHEET-OLD) → 그날도 넣기 전마다 다시 묻고, 넣기 답 파일 id만 gid 없이 적는다', async () => {
     const t = setup({
       'sheet.months': () => {
         throw coded('E-GSHEET-OLD')
@@ -539,7 +539,7 @@ describe('AC-8513.5: 달 파일 목록 · 새 달 파일 기록', () => {
     })
     const out = await runFill(t.deps, AUTO)
     await runFill(t.deps, AUTO)
-    expect(t.cmds()).toEqual(['sheet.status', 'sheet.months', 'sheet.fill', 'sheet.status', 'sheet.fill'])
+    expect(t.cmds()).toEqual(['sheet.status', 'sheet.months', 'sheet.fill', 'sheet.status', 'sheet.months', 'sheet.fill']) // google-link AC-8546.2
     expect(t.store.upsertMonths).toHaveBeenCalledWith([{ ym: '2026-11', fileId: FILE_ID, gids: {} }])
     expect(out).toMatchObject({ kind: 'ran', done: { outcome: 'warn' } })
   })
@@ -548,7 +548,7 @@ describe('AC-8513.5: 달 파일 목록 · 새 달 파일 기록', () => {
     let monthsAsked = 0
     let filled = 0
     const t = setup({
-      'sheet.months': () => (++monthsAsked === 1 ? monthsReply(FILE_ID) : monthsReply(NEW_FILE_ID)),
+      'sheet.months': () => (++monthsAsked === 1 ? monthsReply(FILE_ID) : monthsReply(NEW_FILE_ID, '2026-12')), // google-link AC-8546.1
       // 새 파일은 첫 넣기에서만 만든다
       'sheet.fill': () => fillReply({ created: ++filled === 1, cleaned: 9, ratioFixed: 128, shareFailed: 1, fileId: NEW_FILE_ID }),
     })
@@ -558,7 +558,7 @@ describe('AC-8513.5: 달 파일 목록 · 새 달 파일 기록', () => {
     expect(t.argsOf('sheet.months')[1]).toEqual({ settings: SETTINGS, months: recentMonths('2026-12-01') })
     const run = t.store.addRun.mock.calls[0][0] as { counts: Record<string, unknown> }
     expect(run.counts).toMatchObject({ created: true, cleaned: 9, ratioFixed: 128, shareFailed: 1 })
-    expect(t.store.upsertMonths).toHaveBeenLastCalledWith([{ ym: '2026-11', fileId: NEW_FILE_ID, gids: { '1': 0, '26': 987654 } }])
+    expect(t.store.upsertMonths).toHaveBeenLastCalledWith([{ ym: '2026-12', fileId: NEW_FILE_ID, gids: { '1': 0, '26': 987654 } }]) // google-link AC-8546.1
     // 다시 받은 뒤 같은 날 다음 넣기는 묻지 않는다
     await runFill(t.deps, { ...AUTO, day: '2026-12-01' })
     expect(t.cmds().slice(4)).toEqual(['sheet.status', 'sheet.fill'])
@@ -592,5 +592,115 @@ describe('AC-8513.5: 달 파일 목록 · 새 달 파일 기록', () => {
     t.store.upsertMonths.mockRejectedValueOnce(new Error('gsheet storage failed'))
     const out = await runFill(t.deps, AUTO)
     expect(out).toMatchObject({ kind: 'ran', saved: true, done: { outcome: 'ok' } })
+  })
+})
+
+describe('AC-8546: 달 목록은 이번 달 파일 id가 든 답을 받은 날만 잠근다', () => {
+  // 운영에서 옛 구글 코드일 때 저절로 넣기가 돌아 그날 달 목록이 잠기고, 새 코드로 바꾼 뒤에도 F5 전까지 '파일 없음'이던 일
+  const twice = async (t: ReturnType<typeof setup>) => {
+    await runFill(t.deps, AUTO)
+    await runFill(t.deps, AUTO)
+  }
+  const ASKED_TWICE = ['sheet.status', 'sheet.months', 'sheet.fill', 'sheet.status', 'sheet.months', 'sheet.fill']
+
+  it('AC-8546.1: 첫 달 목록 답에 이번 달 파일이 없음(지난달만) → 다음 넣기 전에 다시 묻고, 받은 달은 적는다', async () => {
+    const t = setup({ 'sheet.months': () => monthsReply(FILE_ID, '2026-10') })
+    await twice(t)
+    expect(t.cmds()).toEqual(ASKED_TWICE)
+    expect(t.store.upsertMonths).toHaveBeenCalledWith([{ ym: '2026-10', fileId: FILE_ID, gids: { '1': 0, '26': 987654 } }])
+  })
+
+  it('AC-8546.1: 이번 달 칸은 있지만 파일 id가 없음 → 다음 넣기 전에 다시 묻는다', async () => {
+    const t = setup({ 'sheet.months': () => ({ v: 1, version: '8', months: [{ ym: '2026-11', fileId: null, gids: {} }] }) })
+    await twice(t)
+    expect(t.cmds()).toEqual(ASKED_TWICE)
+    expect(t.store.upsertMonths).not.toHaveBeenCalled()
+  })
+
+  it('AC-8546.1: 이번 달이 없던 답 뒤 새 코드가 이번 달 파일 id를 주면 그때부터 그날은 다시 묻지 않는다', async () => {
+    let asked = 0
+    const t = setup({ 'sheet.months': () => (++asked === 1 ? monthsReply(FILE_ID, '2026-10') : monthsReply(NEW_FILE_ID)) })
+    await twice(t)
+    await runFill(t.deps, AUTO)
+    expect(t.cmds()).toEqual([...ASKED_TWICE, 'sheet.status', 'sheet.fill'])
+    expect(t.store.upsertMonths).toHaveBeenLastCalledWith([{ ym: '2026-11', fileId: NEW_FILE_ID, gids: { '1': 0, '26': 987654 } }])
+  })
+
+  it('AC-8546.1: 이번 달 파일 id가 든 답 → 그날은 다시 묻지 않는다', async () => {
+    const t = setup()
+    await twice(t)
+    expect(t.cmds()).toEqual(['sheet.status', 'sheet.months', 'sheet.fill', 'sheet.status', 'sheet.fill'])
+  })
+
+  it('AC-8546.2: 옛 코드(E-GSHEET-OLD) → 넣기마다 다시 묻고, 넣기는 그대로 되며 넣기 답 파일 id만 gid 없이 적는다', async () => {
+    const t = setup({
+      'sheet.months': () => {
+        throw coded('E-GSHEET-OLD')
+      },
+      'sheet.fill': () => fillReply({ oldCode: true, sheetGid: null }),
+    })
+    const outs = [await runFill(t.deps, AUTO), await runFill(t.deps, AUTO), await runFill(t.deps, HAND)]
+    expect(t.argsOf('sheet.months')).toHaveLength(3)
+    expect(t.argsOf('sheet.fill')).toHaveLength(3)
+    for (const out of outs) expect(out).toMatchObject({ kind: 'ran', done: { outcome: 'warn' } })
+    expect(t.store.upsertMonths.mock.calls).toEqual([
+      [[{ ym: '2026-11', fileId: FILE_ID, gids: {} }]],
+      [[{ ym: '2026-11', fileId: FILE_ID, gids: {} }]],
+      [[{ ym: '2026-11', fileId: FILE_ID, gids: {} }]],
+    ])
+  })
+
+  it('AC-8546.2: 옛 코드였다가 새 코드로 바꾸면 F5 없이 다음 넣기에서 이번 달 파일 id를 받아 적는다', async () => {
+    let newCode = false
+    const t = setup({
+      'sheet.months': () => {
+        if (!newCode) throw coded('E-GSHEET-OLD')
+        return monthsReply(NEW_FILE_ID)
+      },
+      'sheet.fill': () => fillReply({ oldCode: !newCode, sheetGid: newCode ? 987654 : null }),
+    })
+    await runFill(t.deps, AUTO)
+    newCode = true
+    await runFill(t.deps, HAND)
+    expect(t.cmds()).toEqual(ASKED_TWICE)
+    expect(t.store.upsertMonths).toHaveBeenLastCalledWith([{ ym: '2026-11', fileId: NEW_FILE_ID, gids: { '1': 0, '26': 987654 } }])
+  })
+
+  it.each([
+    ['읽지 못한 답', () => ({ ...monthsReply(), name: '홍길동' })],
+    [
+      '다른 오류',
+      () => {
+        throw coded('E-GSHEET-KEY')
+      },
+    ],
+    [
+      '번호 없는 오류',
+      () => {
+        throw new Error('boom')
+      },
+    ],
+  ])('AC-8546.2: %s → 잠그지 않아 다음 넣기 전에 다시 묻는다', async (_why, months) => {
+    const t = setup({ 'sheet.months': months })
+    await twice(t)
+    expect(t.cmds()).toEqual(ASKED_TWICE)
+  })
+
+  it("AC-8546.2: 넣기 답이 '바뀐 것 없음'이어도 따로 묻지 않고 다음 넣기 때 다시 묻는다", async () => {
+    const t = setup({
+      'sheet.months': () => monthsReply(FILE_ID, '2026-10'),
+      'sheet.fill': () => ({ v: 1, unchanged: true, rows: 12 }),
+    })
+    await twice(t)
+    expect(t.cmds()).toEqual(ASKED_TWICE)
+  })
+
+  it('AC-8546.3: resetRunner()가 그날 잠금을 푼다', async () => {
+    const t = setup()
+    await runFill(t.deps, AUTO)
+    await runFill(t.deps, AUTO)
+    resetRunner()
+    await runFill(t.deps, AUTO)
+    expect(t.cmds()).toEqual(['sheet.status', 'sheet.months', 'sheet.fill', 'sheet.status', 'sheet.fill', 'sheet.status', 'sheet.months', 'sheet.fill'])
   })
 })

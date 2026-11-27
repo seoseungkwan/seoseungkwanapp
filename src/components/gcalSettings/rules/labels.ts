@@ -35,7 +35,7 @@ export const RULES_TEXT = {
   gCancelSub: '다른 색으로 되돌리면 웹앱 취소도 풀려요.',
   gDeleteKey: '구글에서 일정을 지우면',
   gDeleteCancel: "웹앱에서는 '취소'로 바꿔요",
-  gDeleteCancelSub: '흐린 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).',
+  gDeleteCancelSub: '취소 색 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).',
   gDeleteDelete: '웹앱에서도 지워요',
   bothKey: '같은 예약을 양쪽에서 고치면',
   bothMain: '나중에 고친 쪽으로 맞춰요.',

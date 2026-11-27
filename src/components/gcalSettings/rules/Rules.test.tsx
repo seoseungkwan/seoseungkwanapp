@@ -45,7 +45,8 @@ const ROWS: [string, string[]][] = [
   ['구글에서 일정 색을 취소 색으로 바꾸면', ["웹앱에서도 '취소'로 바꿔요.", '다른 색으로 되돌리면 웹앱 취소도 풀려요.']],
   [
     '구글에서 일정을 지우면',
-    ["웹앱에서는 '취소'로 바꿔요", '흐린 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).', '웹앱에서도 지워요'],
+    // google-link AC-8549.2: '흐린 칸으로 남아 …' → '취소 색 칸으로 남아 …'(notes-calendar 'week 취소 칸 · 바뀐 글')
+    ["웹앱에서는 '취소'로 바꿔요", '취소 색 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).', '웹앱에서도 지워요'],
   ],
   ['같은 예약을 양쪽에서 고치면', ['나중에 고친 쪽으로 맞춰요.', "덮인 쪽 내용은 예약 자세히에 한 줄 남겨요(예: '구글에서 14:20에 고친 내용을 웹앱 내용으로 덮었어요')."]],
   ['웹앱에서 날짜·시작을 옮기면', ["'변경'으로 세고 구글 일정 색을 변경 색(흑연)으로 바꿔요."]],
@@ -113,6 +114,18 @@ const button = (name: string | RegExp) => screen.getByRole('button', { name }) a
 const pullButtons = () => within(screen.getByRole('group', { name: '받아 오는 간격' })).getAllByRole('button') as HTMLButtonElement[]
 const radio = (name: string) => screen.getByRole('radio', { name: new RegExp(`^${name}`) }) as HTMLInputElement
 const offAll = () => screen.getByRole('checkbox', { name: '예약 시행자가 아닌 직원(데스크 등)도 off 줄에 넣어요' }) as HTMLInputElement
+
+describe('AC-8549.2 맞춤 방법 — 구글에서 지우면 취소 색 칸', () => {
+  it("AC-8549.2: '구글에서 일정을 지우면' 첫 고르기 작은 글은 '취소 색 칸으로 남아 …'(흐린 칸 아님)", () => {
+    setup()
+    const row = within(card())
+      .getAllByRole('term')
+      .find((term) => term.textContent === '구글에서 일정을 지우면')!
+    const value = row.nextElementSibling as HTMLElement
+    expect(value.textContent).toContain('취소 색 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).')
+    expect(value.textContent).not.toContain('흐린 칸')
+  })
+})
 
 describe('AC-8531.1 맞춤 방법 화면 글', () => {
   it('AC-8531.1: 이어짐 띠와 [지금 맞추기][연결 시험 · 캘린더 바꾸기][잇기 끊기]가 notes 그대로다(마지막 맞춤은 DB 시각 글자를 한국 시각으로)', () => {

@@ -250,7 +250,8 @@ const CTX: RowsGoogle['ctx'] = {
 }
 const linked = (over: Partial<RowsGoogle> = {}): RowsGoogle => ({ ctx: CTX, fixes: [], waiting: new Set<string>(), ...over })
 const G_APPTS: CalAppt[] = [
-  ...APPTS,
+  // google-link AC-8545.1: 이은 병원에서 웹앱으로 옮긴 예약은 같은 쓰기에 g_moved 참을 싣는다
+  ...APPTS.map((a) => (a.id === 'a-moved' ? { ...a, gMoved: true } : a)),
   appt({ id: 'g-orange', start: 900, chart: '27750', name: '정모○', colorFrom: 'google', gColor: 'tangerine', gEventId: 'ev-1' }),
   appt({ id: 'g-moved', start: 990, chart: '39070', name: '백모○', colorFrom: 'google', gColor: 'graphite', gMoved: true, gEventId: 'ev-3' }),
   appt({ id: 'g-none', start: 1020, chart: '73450', name: '한예○', staffId: null, staffName: null, staffMark: null, colorFrom: 'google', gColor: 'banana' }),
@@ -308,5 +309,56 @@ describe('AC-8532.3: 폰 목록 종일 칩 — off 한 칩·반차 흰 칩·메�
     expect(screen.getByRole('button', { name: '주간 회의 13:00' }).className).toContain('bg-cal-default')
     fireEvent.click(off)
     expect(props.onAllDay).toHaveBeenLastCalledWith(TODAY)
+  })
+})
+
+// ---------- google-link 2차 고침(REQ-8545·8548): '변경' = g_moved · 종류 줄 겹침 빼기 ----------
+
+describe("AC-8545.1: 폰 목록 — 이은 병원의 '변경'은 g_moved만", () => {
+  it("AC-8545.1: 처음 자리가 있어도 g_moved가 거짓이면 '변경' 꼬리표가 없고 색 띠도 변경 색이 아니다", () => {
+    renderList({ appts: APPTS, google: linked() })
+    const moved = row(/^10231 김○○/)
+    expect(within(moved).queryByText('변경')).toBeNull()
+    expect(moved.querySelector('[data-bar]')!.className).toContain('bg-cal-blueberry')
+    expect(moved.getAttribute('aria-label')).toBe('10231 김○○ 도수 (가) 09:30–10:00 30분 · 왔음')
+  })
+
+  it("AC-8545.1: g_moved 참이면 '변경' 꼬리표·변경 색 띠·이름표 '· 변경 (원래 …)'", () => {
+    renderList({ appts: G_APPTS, google: linked() })
+    const moved = row(/^10231 김○○/)
+    expect(within(moved).getByText('변경')).toBeTruthy()
+    expect(moved.getAttribute('aria-label')).toBe('10231 김○○ 도수 (가) 09:30–10:00 30분 · 왔음 · 변경 (원래 11/18 (수) 15:00)')
+  })
+
+  it("AC-8545.3: 잇지 않은 병원은 지금 그대로 처음 자리가 있는 줄에 '변경' 꼬리표", () => {
+    renderList({ appts: APPTS })
+    expect(within(row(/^10231 김○○/)).getByText('변경')).toBeTruthy()
+  })
+})
+
+// 종류 이름에 길이·시행자 표시가 든 병원('이 병원 꼴'). 이름·차트번호는 지어낸 값
+const OWN = (over: Partial<CalAppt>) =>
+  appt({ id: 'own', start: 600, chart: '1234', name: '홍길동', staffId: 'ga', staffName: '정호연', staffMark: '호', kindId: 'dosu30ho', kindName: '도수 30분(호)', ...over })
+
+describe('AC-8548.2: 폰 주 목록 글은 종류 이름에 든 시행자 표시·길이를 겹쳐 적지 않는다', () => {
+  it('AC-8548.2: `도수 30분(호)`·(호) → 종류 줄 `도수 30분(호) 정호연`, 이름표 `1234 홍길동 도수 30분(호) 10:00–10:30`', () => {
+    renderList({ appts: [OWN({})] })
+    const line = row(/^1234 홍길동/)
+    expect(within(line).getByText('도수 30분(호) 정호연')).toBeTruthy()
+    expect(line.getAttribute('aria-label')).toBe('1234 홍길동 도수 30분(호) 10:00–10:30')
+  })
+
+  it('AC-8548.2: 시행자가 (원)이면 종류 줄 `도수 30분(호) (원) 박지원`', () => {
+    renderList({ appts: [OWN({ staffName: '박지원', staffMark: '원' })], google: linked() })
+    const line = row(/^1234 홍길동/)
+    expect(within(line).getByText('도수 30분(호) (원) 박지원')).toBeTruthy()
+    expect(line.getAttribute('aria-label')).toBe('1234 홍길동 도수 30분(호) (원) 10:00–10:30')
+  })
+
+  it('AC-8548.3: 지금 기본 종류는 지금 그대로 `도수 (호) 정호연`', () => {
+    renderList({ appts: [OWN({ kindId: 'dosu', kindName: '도수' })] })
+    const line = row(/^1234 홍길동/)
+    expect(within(line).getByText('도수 (호) 정호연')).toBeTruthy()
+    expect(line.getAttribute('aria-label')).toBe('1234 홍길동 도수 (호) 10:00–10:30 30분')
   })
 })

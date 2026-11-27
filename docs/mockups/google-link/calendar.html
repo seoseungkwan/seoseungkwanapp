@@ -7,6 +7,7 @@
 <!--
   예약 탭 ↔ 병원 구글 캘린더 양쪽 잇기(google-link) 클릭 시안. 결정·기본값·화면 글은 notes-calendar.md.
   ?s=connect · import · colors · rules · week(기본) · detail · fix · err · staff
+  2차 고침(2026-11-26, 승인 전): ?s=fix-range · fix-skipall · colors-reread, week의 취소 칸(진한 토마토, 흐리게 칠하지 않음)
   모양은 승인된 예약 탭 시안(docs/mockups/clinic-calendar)과 앱 토큰(src/app/globals.css :root) 그대로이고,
   예약 색만 구글 캘린더 일정 색 11가지(+ 캘린더 기본 색)로 바꿨다. PC 화면만 그린다(폰 전용 모양 없음).
   이름·차트번호·주소·비밀 글자는 모두 지어낸 값이다. 어디로도 보내지 않는다.
@@ -163,8 +164,9 @@ details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(
 .tk.nm { font-weight: 600; }
 .tk.len, .tk.memo { color: var(--muted); }
 .tk.tm { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.ev.st-cancel { opacity: .55; }
+/* 2차 고침: 취소 칸은 흐리게 칠하지 않는다 — 진한 취소 색(토마토 #D50000) 바탕 + 흰 글자 + 가운데 줄 + '취소' 표시 */
 .ev.st-cancel .tk { text-decoration: line-through; }
+.ev.st-cancel .mk.cancel { background: #fff; color: #B71C1C; }
 .ev.st-noshow { background: repeating-linear-gradient(135deg, var(--c) 0 6px, color-mix(in srgb, var(--c) 70%, white) 6px 12px); }
 .ev.ghost { background: repeating-linear-gradient(135deg, #EEF0F3 0 5px, #F9FAFB 5px 10px); box-shadow: none; outline: 1px dashed var(--faint); outline-offset: -1px; color: var(--muted); cursor: help; }
 .ev.ghost .gl { font-weight: 600; color: var(--ink-2); }
@@ -599,11 +601,33 @@ i.halfsw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
 .rsv { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--warning-soft); color: var(--warning); margin-left: 4px; }
 .gsync { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #F3E8FA; color: #6A1B9A; margin-left: 4px; }
 .tw { overflow-x: auto; }
+
+/* ───── 2차 고침 시안(2026-11-26, 승인 전) ───── */
+.mhead .ex.r2 { background: #FDE68A; color: #78350F; }
+.btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+.rng { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--canvas); }
+.rng .rr { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 8px; }
+.rng .inp { height: 36px; }
+.rng .tilde { padding-bottom: 7px; color: var(--muted); }
+.rng .rf { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; }
+.ferr { margin: 0; font-size: 12px; line-height: 18px; color: var(--negative); font-weight: 600; }
+.dwh h3 small { margin-left: 4px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.fxempty { display: grid; gap: 2px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--r); text-align: center; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.fxempty b { color: var(--ink); font-weight: 600; }
+.fxempty span { font-size: 12px; color: var(--muted); }
+.dlgscrim { position: fixed; inset: 0; z-index: 50; background: rgb(17 24 39 / 30%); }
+.dlg { position: fixed; z-index: 51; left: 50%; top: 26%; transform: translateX(-50%); width: 400px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: 0 12px 32px rgb(17 24 39 / 22%); padding: 20px; display: grid; gap: 6px; }
+.dlg h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.dlg p { margin: 0; font-size: 14px; line-height: 20px; color: var(--ink-2); }
+.dlg p.mut { font-size: 12px; line-height: 18px; color: var(--muted); }
+.dlg .dfoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.kex { margin: 0; padding: 8px 12px; list-style: none; display: grid; gap: 2px; border-radius: var(--r); background: var(--canvas); border: 1px solid var(--line); font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.kex b { color: var(--ink); }
 </style>
 </head>
 <body>
 <div class="mhead"><div class="mhead-in">
-  <div><b>구글 캘린더 잇기 시안</b><span class="ex fake">시안 · 가상 자료</span> <span class="mdesc">예약 탭을 병원 구글 캘린더 '2026 양지바른정형외과'와 양쪽으로 잇는 모습이에요. 환자·직원 이름, 차트번호, 코드 주소, 비밀 글자는 모두 지어낸 값이에요. 잇는 날은 11월 23일 (월) 아침, ⑤~⑨는 사흘 뒤 11월 26일 (목) 14:37로 정해 두었어요.</span></div>
+  <div><b>구글 캘린더 잇기 시안</b><span class="ex fake">시안 · 가상 자료</span><span class="ex r2">2차 고침 시안 · 2026-11-26 · 승인 전</span> <span class="mdesc">예약 탭을 병원 구글 캘린더 '2026 양지바른정형외과'와 양쪽으로 잇는 모습이에요. 환자·직원 이름, 차트번호, 코드 주소, 비밀 글자는 모두 지어낸 값이에요. 잇는 날은 11월 23일 (월) 아침, ⑤~⑨는 사흘 뒤 11월 26일 (목) 14:37로 정해 두었어요.</span></div>
   <div class="seg" id="seg"></div>
   <div class="mnote" id="mnote"></div>
 </div></div>
@@ -618,6 +642,7 @@ i.halfsw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
   <div id="layer"></div>
 </div>
 <div id="pop"></div>
+<div id="dlg"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -627,17 +652,22 @@ const STATES = [
   ['colors', '② 설정 · 시행자·종류 색', '시행자·종류마다 구글 캘린더 일정 색 11가지 가운데 하나를 골라요. 웹앱 예약 칸도 같은 색으로 그리고, 구글에서 온 예약은 제목 글과 이 색으로 시행자·종류를 알아봐요. 색 단추를 눌러 바꾸면 아래 미리 보기가 따라 바뀌어요.'],
   ['import', '③ 처음 가져오기 미리 보기', "지난 1년과 앞으로의 구글 일정을 웹앱 칸으로 알아본 표예요. 위 카드에 '지난 1년 · 앞으로'를 나눠 보이고, 아래 단추로 나눠 볼 수 있어요. 노란 칸은 알아보지 못한 곳이라 그 자리에서 골라요. [가져오기]를 누르기 전에는 웹앱도 구글도 바뀌지 않아요."],
   ['rules', '④ 설정 · 맞춤 방법', '웹앱과 구글을 어떻게 맞출지예요. 시안이 정한 기본값이 골라져 있고, 원장 계정이 바꿀 수 있어요.'],
-  ['week', '⑤ 예약 탭 주 보기 (이어짐)', "잇고 사흘 뒤 접수실 비트 PC 화면이에요. 위 띠에 이어진 캘린더와 마지막 맞춘 시각, 예약 칸은 구글과 같은 색, 하루 종일 줄의 보라 'off' 줄은 쉬는 직원이에요. 예약을 누르면 자세히가 열려요."],
+  ['week', '⑤ 예약 탭 주 보기 (이어짐)', "잇고 사흘 뒤 접수실 비트 PC 화면이에요. 위 띠에 이어진 캘린더와 마지막 맞춘 시각, 예약 칸은 구글과 같은 색, 하루 종일 줄의 보라 'off' 줄은 쉬는 직원이에요. 예약을 누르면 자세히가 열려요. 2차 고침: 취소한 예약은 흐리게 칠하지 않고 진한 토마토 칸에 흰 글자·가운데 줄이에요 — 11/26 (목) 10:00 (현) 이수현 줄에서 플라밍고 칸 바로 옆에 있어요."],
   ['detail', '⑥ 예약 자세히', '구글에서 온 예약은 구글 제목 원문과, 무엇을 어디서 알아봤는지(제목 글 · 구글 색 · 설정)를 보여요. 다른 칸을 누르면 웹앱에서 만든 예약도 볼 수 있어요.'],
   ['fix', '⑦ 고쳐야 할 구글 예약', '누군가 구글 캘린더에 넣은 예약 가운데 웹앱이 알아보지 못한 것이 생겼을 때예요. 띠의 노란 단추로 목록을 열고, 고르면 웹앱 예약이 돼요. 예약표에는 노란 빗금 칸으로 보여요.'],
   ['err', '⑧ 구글에 닿지 못함', '인터넷이 끊기거나 구글 코드가 멈춰 구글에 닿지 못할 때예요. 웹앱에는 저장되고, 구글로 보낼 것은 모아 두었다가 다시 닿으면 저절로 보내요. 칸의 주황 시계가 아직 못 보낸 예약이에요.'],
   ['staff', '⑨ 직원 탭 · 휴가 넣기', "직원 탭 › 휴가에서 휴가를 넣으면 예약 달력 '휴무'와 함께 구글 캘린더 그날 off 줄에 이름이 더해져요. [저장]을 눌러 보세요."],
+  ['fix-range', '⑩ 2차 · 고쳐야 할 것 기간', "고쳐야 할 구글 예약 판 맨 위에서 시작·끝 날짜를 골라 그 기간 것만 봐요. 끝을 비우면 앞으로 전부예요. 판 제목의 수는 그 기간 수, 옆 작은 글은 전체 수예요. 날짜를 바꿔 보세요(지난 1년이나 12월로)."],
+  ['fix-skipall', '⑪ 2차 · 이 기간 모두 가져오지 않기', "[이 기간 모두 가져오지 않기]를 누른 모습이에요. 확인 창에서 [가져오지 않기]를 누르면 그 기간 것을 한 번에 '가져오지 않기'로 하고, 예약표의 노란 칸도 없어져요. 구글 일정은 그대로예요."],
+  ['colors-reread', '⑫ 2차 · 이미 들어온 예약 다시 알아보기', "잇고 난 뒤의 설정 › 구글 캘린더 › 시행자·종류예요. 이 화면만 사용자 병원 모양(시행자 6명, 종류 9개: 도수 30분(호) … 체외충격파 4000, 이름은 지어냄)으로 그렸어요. 맨 아래 [이미 들어온 예약 다시 알아보기]를 눌러 보세요."],
 ]
 const Q = new URLSearchParams(location.search)
 let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'week'
-const SETTINGS_S = ['connect', 'colors', 'import', 'rules']
+const SETTINGS_S = ['connect', 'colors', 'import', 'rules', 'colors-reread']
 const FIRST = ['connect', 'colors', 'import'].includes(S) // 처음 잇는 날 아침
-const CAL_S = ['week', 'detail', 'fix', 'err'].includes(S)
+const RANGE = S === 'fix-range' || S === 'fix-skipall' // 2차 고침: 고쳐야 할 것 기간 고르기
+const LINKED_COLORS = S === 'colors-reread' // 2차 고침: 잇고 난 뒤 시행자·종류(사용자 병원 모양)
+const CAL_S = ['week', 'detail', 'fix', 'err'].includes(S) || RANGE
 const NOW = FIRST ? { date: '2026-11-23', min: { connect: 527, colors: 529, import: 532 }[S] } : { date: '2026-11-26', min: 877 }
 const SLOT = 20
 
@@ -723,6 +753,22 @@ const SET = {
   noKind: 'dosu', byColor: true, offWord: 'off', offGc: 'grape', cancelGc: 'tomato', changeGc: 'graphite', noStaffKinds: ['eswt'], withLen: true, memoInTitle: true,
   open: 540, close: 1140,
 }
+// 2차 고침(colors-reread만): 사용자 병원 모양 — 시행자 6명, 종류 이름에 길이·시행자 표시·타수를 합친 9개.
+// 알아볼 글은 지금 값 그대로(옛 판 migration이 이름을 그대로 넣음). 이름은 모두 지어냄
+if (LINKED_COLORS) {
+  SET.staff = [
+    { id: 'ho', name: '정호연', mark: '호', gc: 'lavender' },
+    { id: 'won', name: '박지원', mark: '원', gc: 'banana' },
+    { id: 'hyun', name: '이수현', mark: '현', gc: 'flamingo' },
+    { id: 'park', name: '박가온', mark: '박', gc: 'peacock' },
+    { id: 'sil', name: '김실아', mark: '실', gc: 'tangerine' },
+    { id: 'chung', name: '오충현', mark: '충', gc: 'blueberry' },
+  ]
+  const hk = (id, name, len, gc = null) => ({ id, name, words: name, len, gc })
+  SET.kinds = [hk('h1', '도수 30분(호)', 30), hk('h2', '도수 30분(원)', 30), hk('h3', '도수 30분(현)', 30), hk('h4', '도수 50분(호)', 50), hk('h5', '도수 50분(원)', 50), hk('h6', '도수 50분(현)', 50),
+    hk('h7', '체외충격파 2000', 15, 'sage'), hk('h8', '체외충격파 3000', 15, 'sage'), hk('h9', '체외충격파 4000', 15, 'sage')]
+  SET.noKind = 'h1'; SET.noStaffKinds = ['h7', 'h8', 'h9']
+}
 // 병원 정보 원장님·직원(지어낸 이름). staff = 예약 시행자 id (없으면 예약에 안 보이는 직원)
 const PEOPLE = [
   { id: 'jang', name: '원장님', role: '원장님', staff: 'jang' },
@@ -745,7 +791,10 @@ const staffLabel = id => { const s = staffOf(id); return `(${s.mark}) ${s.name}`
 // 웹앱 → 구글 제목 꼴: 차트번호 이름 종류 길이분 (시행자) 메모
 function gTitle(a, o = SET) {
   const k = kindOf(a.kind), s = staffOf(a.staff)
-  let t = [a.chart, a.name, k.name, o.withLen ? `${a.len}분` : ''].filter(Boolean).join(' ') + ` (${s.mark})`
+  // 2차 고침(시안이 정함, 확인할 것): 종류 이름 끝 괄호 표시((호))는 떼고 시행자 표시를 끝에 한 번만, 이름에 이미 'N분'이 있으면 길이를 다시 붙이지 않음
+  // (도수 30분(원) + (원) → '1234 홍길동 도수 30분 (원)'. 이렇게 안 하면 '도수 30분(원) 30분 (원)'이 된다)
+  const kn = k.name.replace(/\s*\([^()]*\)\s*$/, ''), hasLen = /\d+\s*분/.test(kn)
+  let t = [a.chart, a.name, kn, o.withLen && !hasLen ? `${a.len}분` : ''].filter(Boolean).join(' ') + ` (${s.mark})`
   if (o.memoInTitle && a.memo) t += ' ' + a.memo
   return t
 }
@@ -891,7 +940,7 @@ function dayData(date) {
   }
   // 손으로 둔 예약: 같은 시행자·시간의 만든 예약은 빼고 넣는다
   const fx = fixedFor(date)
-  for (const f of fx) dd.appts = dd.appts.filter(a => !(a.staff === f.staff && a.start < f.start + f.len && f.start < a.start + a.len))
+  for (const f of fx) dd.appts = dd.appts.filter(a => !((a.staff === f.staff || f.clear) && a.start < f.start + f.len && f.start < a.start + a.len))
   for (const f of fx) dd.appts.push(mkAppt({ ...f, date }))
   return dd
 }
@@ -917,6 +966,9 @@ function fixedFor(date) {
     out.push({ id: 'gown', start: 900, len: 30, staff: 'ho', kind: 'dosu', chart: '2775', name: '정모의', memo: '', rcpt: null, g: { from: 'google', title: '2775 정모의 도수 30분 (호)', gc: 'tangerine', at: '11/25 (수) 18:02 구글에서 들어옴', by: {} } })
     out.push({ id: 'gchg1', start: 990, len: 30, staff: 'won', kind: 'dosu', chart: '3907', name: '백모의', memo: '', rcpt: null, gchg: true, g: { from: 'google', title: '3907 백모의 도수 30분 (원)', gc: 'graphite', at: '11/23 (월) 08:55 처음 가져오기 · 11/26 (목) 13:10 구글에서 흑연으로 바뀜', by: {} } })
     out.push({ id: 'webone', start: 690, len: 30, staff: 'hyun', kind: 'jabo', chart: '2618', name: '방예시', memo: '자보 서류 확인', rcpt: 684, g: { from: 'web', at: '11/24 (화) 17:12 웹앱에서 넣음' } })
+    // 2차 고침: 취소 칸(진한 토마토)이 플라밍고((현) 이수현) 칸 바로 옆 — 10:00 예약을 취소하고 그 자리에 다른 환자를 잡음
+    out.push({ id: 'cx1', clear: true, start: 600, len: 30, staff: 'hyun', kind: 'dosu', chart: '5103', name: '구예시', memo: '', cancel: true, g: { from: 'google', title: '5103 구예시 도수 30분 (현)', gc: 'tomato', at: '11/23 (월) 08:55 처음 가져오기 · 11/26 (목) 09:12 웹앱에서 취소', by: {} } })
+    out.push({ id: 'cx2', start: 600, len: 30, staff: 'hyun', kind: 'dosu', chart: '6012', name: '임보기', memo: '', rcpt: 597, g: { from: 'google', title: '6012 임보기 도수 30분 (현)', gc: 'flamingo', at: '11/26 (목) 09:20 구글에서 들어옴', by: {} } })
     if (S === 'err') {
       out.push({ id: 'p1', start: 940, len: 30, staff: 'ho', kind: 'dosu', chart: '1290', name: '오가짜', pend: '새로 넣음', g: { from: 'web', at: '11/26 (목) 14:33 웹앱에서 넣음' } })
       out.push({ id: 'p3', start: 990, len: 30, staff: 'hyun', kind: 'dosu', chart: '5590', name: '신시안', cancel: true, pend: '취소', g: { from: 'google', title: '5590 신시안 도수 30분 (현)', at: '11/23 (월) 08:55 처음 가져오기', by: {} } })
@@ -928,8 +980,61 @@ function fixedFor(date) {
     if (S === 'err') out.push({ id: 'p2', start: 660, len: 30, staff: 'won', kind: 'jabo', chart: '3150', name: '박가상', pend: '시간 바꿈', orig: { date: '2026-11-27', start: 600 }, g: { from: 'web', at: '11/25 (수) 10:20 웹앱에서 넣음' } })
     if (S === 'fix') out.push({ id: 'f2', start: 600, len: 15, staff: null, kind: null, chart: '1185', name: '곽모의', gfix: { title: '1185 곽모의 체외충격 (현)', gc: 'flamingo' } })
   }
+  // 2차 고침: 기간 고르기 상태는 이번 주 고쳐야 할 것 12개를 노란 빗금 칸으로
+  if (RANGE) for (const f of FIXR.filter(x => x.d === date)) out.push({ id: f.id, start: f.s, len: f.e - f.s, staff: null, kind: null, chart: '', name: '', gfix: { title: f.title, gc: f.gc } })
   return out
 }
+
+/* ───────── 2차 고침: 고쳐야 할 구글 예약 기간 고르기 (fix-range · fix-skipall) ─────────
+   지어낸 고쳐야 할 것 323개: 이번 주(11/23~29) 12개는 손으로, 나머지 311개(지난 1년 290 · 11/30 뒤 21)는 만들어 둔다.
+   지난 1년 것은 종류를 못 알아본 것만(시행자 글 없는 지난 예약은 시행자 없이 가져오므로 고쳐야 할 것이 아님) */
+const hasB = w => { const c = w.charCodeAt(w.length - 1) - 0xAC00; return c >= 0 && c <= 11171 && c % 28 !== 0 }
+const WHY_ESWT = '시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요'
+const whyKind = w => `'${w}'${hasB(w) ? '을' : '를'} 종류로 알아보지 못했어요 (고르면 '${w}'${hasB(w) ? '은' : '는'} 메모로 남아요)`
+const ymdw = s => (s.slice(0, 4) === '2026' ? '' : s.slice(0, 4) + '. ') + mdw(s)
+function FX(id, d, s, len, gc, title, need, why, got, at) { return { id, d: D26(d), s, e: s + len, gc, title, need: [need], why, got, at, sel: {} } }
+const FIX_WEEK = [
+  FX('r01', '11-23', 555, 15, 'sage', '5521 최시안 (4000타)', 'staff', WHY_ESWT, '차트번호 5521 · 이름 최시안 · 종류 충격파 · 메모 4000타', '11/20 (금) 17:42'),
+  FX('r02', '11-23', 870, 30, 'lavender', '2214 서보기 도수 30분 (민)', 'staff', "'민'은 시행자 표시에 없어요", '차트번호 2214 · 이름 서보기 · 종류 도수', '11/21 (토) 09:05'),
+  FX('r03', '11-23', 930, 30, 'flamingo', '4471 배가상 체외 30분 (현)', 'kind', whyKind('체외'), '차트번호 4471 · 이름 배가상 · 시행자 (현) 이수현', '11/19 (목) 12:30'),
+  FX('r04', '11-24', 540, 15, 'sage', '8034 문보기(3천', 'staff', WHY_ESWT, '차트번호 8034 · 이름 문보기 · 종류 충격파 · 메모 3000타', '11/22 (일) 20:11'),
+  FX('r05', '11-24', 780, 30, 'cal', '9120 탁가상 도수 30분', 'staff', '시행자 글이 없고, 색도 캘린더 기본 색이에요', '차트번호 9120 · 이름 탁가상 · 종류 도수', '11/23 (월) 11:20'),
+  FX('r06', '11-25', 600, 15, 'sage', '3307 차가짜 충격파', 'staff', WHY_ESWT, '차트번호 3307 · 이름 차가짜 · 종류 충격파', '11/24 (화) 15:02'),
+  FX('r07', '11-25', 960, 15, 'sage', '4618 표예시(3천5백', 'staff', WHY_ESWT, '차트번호 4618 · 이름 표예시 · 종류 충격파 (세이지 색) · 메모 3천5백', '11/25 (수) 09:47'),
+  FX('r08', '11-26', 615, 15, 'sage', '1185 곽모의 (2000타)', 'staff', WHY_ESWT, '차트번호 1185 · 이름 곽모의 · 종류 충격파 · 메모 2000타', '11/25 (수) 18:30'),
+  FX('r09', '11-26', 960, 15, 'sage', '6402 윤모의 (4000타)', 'staff', WHY_ESWT, '차트번호 6402 · 이름 윤모의 · 종류 충격파 · 메모 4000타', '14:31'),
+  FX('r10', '11-27', 600, 15, 'flamingo', '1185 곽모의 체외충격 (현)', 'kind', whyKind('체외충격'), '차트번호 1185 · 이름 곽모의 · 시행자 (현) 이수현', '14:33'),
+  FX('r11', '11-27', 900, 50, 'lavender', '2093 국보기 도수 50분 (윤)', 'staff', "'윤'은 시행자 표시에 없어요", '차트번호 2093 · 이름 국보기 · 종류 도수', '10:12'),
+  FX('r12', '11-28', 630, 15, 'sage', '5876 모연습(3천', 'staff', WHY_ESWT, '차트번호 5876 · 이름 모연습 · 종류 충격파 · 메모 3000타', '11:58'),
+]
+function makeFixes() {
+  const r = rng('ssk-glink-fixes')
+  const pick = arr => arr[Math.floor(r() * arr.length)]
+  const out = [...FIX_WEEK]
+  const words = ['체외', '견인', '물치', '상담', '체외충격']
+  const marks = [['호', 'ho', 'lavender'], ['원', 'won', 'banana'], ['현', 'hyun', 'flamingo']]
+  for (let i = 0; i < 311; i++) {
+    const past = i < 290
+    let d
+    do { d = past ? addDays('2025-11-23', 1 + Math.floor(r() * 364)) : addDays('2026-11-30', Math.floor(r() * 63)) } while (dowOf(d) === 0)
+    const s = 540 + Math.floor(r() * 108) * 5
+    const c = String(1000 + Math.floor(r() * 8999)), n = pick(SUR) + pick(GIV)
+    let f
+    if (past || r() < .3) {
+      const w = pick(words), [m, id, gc] = pick(marks)
+      f = { gc, title: `${c} ${n} ${w} 30분 (${m})`, need: 'kind', why: whyKind(w), got: `차트번호 ${c} · 이름 ${n} · 시행자 (${m}) ${staffOf(id).name}`, len: 30 }
+    } else {
+      const t = pick([`${c} ${n}(3천`, `${c} ${n} (3000타)`, `${c} ${n} (4000타)`, `${c} ${n} 충격파`])
+      const memo = /3천|3000/.test(t) ? '3000타' : t.includes('4000') ? '4000타' : ''
+      f = { gc: 'sage', title: t, need: 'staff', why: WHY_ESWT, got: `차트번호 ${c} · 이름 ${n} · 종류 충격파${memo ? ' · 메모 ' + memo : ''}`, len: 15 }
+    }
+    const atD = past ? addDays(d, -Math.floor(r() * 6)) : pick(['2026-11-23', '2026-11-24', '2026-11-25'])
+    const at = `${ymdw(atD)} ${hm(540 + Math.floor(r() * 60) * 10)}`
+    out.push({ id: 'g' + i, d, s, e: s + f.len, gc: f.gc, title: f.title, need: [f.need], why: f.why, got: f.got, at, sel: {} })
+  }
+  return out.sort((a, b) => a.d.localeCompare(b.d) || a.s - b.s)
+}
+const FIXR = RANGE ? makeFixes() : []
 function findAppt(id) { for (const d in DATA) { const a = DATA[d].appts.find(x => x.id === id); if (a) return a } return null }
 function status(a) {
   if (a.cancel) return 'cancel'
@@ -938,9 +1043,11 @@ function status(a) {
   if (ended(a)) return 'noshow'
   return 'wait'
 }
-const UI = { layer: null, fixDone: {}, lastSync: '14:35', saved: false, errOpen: true }
+const UI = { layer: null, fixDone: {}, lastSync: '14:35', saved: false, errOpen: true,
+  range: { from: '2026-11-23', to: '2026-11-29' }, bulk: 0, dlg: null, reread: null } // 2차 고침: 기간 · 한꺼번에 뺀 수 · 확인 창 · 다시 알아보기
 if (S === 'detail') { WEEK.forEach(dayData); UI.layer = { type: 'detail', id: 'det' } }
-if (S === 'fix') { WEEK.forEach(dayData); UI.layer = { type: 'fix' } }
+if (S === 'fix' || RANGE) { WEEK.forEach(dayData); UI.layer = { type: 'fix' } }
+if (S === 'fix-skipall') UI.dlg = 'skipall'
 
 /* ───────── 그리기: 설정 › 구글 캘린더 ───────── */
 function settingsHead(sub) {
@@ -1004,7 +1111,7 @@ function connectHTML() {
 }
 
 /* 시행자·종류 */
-const CED = { open: { t: 's', i: 0 } } // 색판을 연 줄
+const CED = { open: LINKED_COLORS ? null : { t: 's', i: 0 } } // 색판을 연 줄
 function palHTML(val, forKind, extraCal) {
   let h = '<div class="gpal" role="group" aria-label="구글 색 고르기">'
   if (forKind) h += `<button class="wide2" data-act="gpal" data-c="" aria-pressed="${!val}"><i class="follow"></i>시행자 색 따름</button>`
@@ -1031,6 +1138,15 @@ function dupColorWarn() {
   if (SET.cancelGc === SET.changeGc) out.push(`취소 색과 변경 색이 같아요(${gName(SET.cancelGc)}). 구글에서 취소와 변경을 가려낼 수 없어요.`)
   return out.map(w => `<p class="warnl">${ICON.warn}<span>${esc(w)}</span></p>`).join('')
 }
+// '로/으로': 괄호·빈칸 앞 마지막 글자로(받침 있고 ㄹ이 아니면 '으로'). 숫자는 읽는 소리로(2000 = 이천 → 으로)
+function roJ(w) {
+  const ch = [...w.replace(/[\s()]+/g, '')].pop() || ''
+  if (/\d/.test(ch)) return '036'.includes(ch) ? '으로' : '로'
+  const c = ch.charCodeAt(0) - 0xAC00
+  if (c < 0 || c > 11171) return '로'
+  const b = c % 28
+  return b === 0 || b === 8 ? '로' : '으로'
+}
 function colorsHTML() {
   const lens = v => { let s = ''; for (let m = 5; m <= 120; m += 5) s += `<option value="${m}" ${m === v ? 'selected' : ''}>${m}분</option>`; return s }
   const staffRows = SET.staff.map((s, i) => {
@@ -1052,7 +1168,14 @@ function colorsHTML() {
       <td><button class="del" data-act="k-del" data-i="${i}">지우기</button></td></tr>
       ${open ? `<tr><td colspan="6" class="palrow">${palHTML(k.gc, true, true)}</td></tr>` : ''}`
   }).join('')
-  const ex = [
+  const ex = LINKED_COLORS ? [
+    { chart: '1234', name: '홍길동', kind: 'h1', staff: 'ho', len: 30, memo: '', at: '09:00' },
+    { chart: '2087', name: '이보기', kind: 'h5', staff: 'won', len: 50, memo: '', at: '09:30' },
+    { chart: '5521', name: '최시안', kind: 'h8', staff: 'chung', len: 15, memo: '', at: '10:00' },
+    { chart: '', name: '홍길순', kind: 'h3', staff: 'hyun', len: 30, memo: '', at: '10:30' },
+    { chart: '6603', name: '권샘플', kind: 'h1', staff: 'ho', len: 30, memo: '', at: '11:30', cancel: true },
+    { chart: '7781', name: '노예시', kind: 'h2', staff: 'won', len: 30, memo: '', at: '12:00', changed: true },
+  ] : [
     { chart: '1234', name: '홍길동', kind: 'dosu', staff: 'ho', len: 30, memo: '', at: '09:00' },
     { chart: '2087', name: '이보기', kind: 'jabo', staff: 'won', len: 30, memo: '', at: '09:30' },
     { chart: '5521', name: '최시안', kind: 'eswt', staff: 'hyun', len: 15, memo: '4000타', at: '10:00' },
@@ -1061,8 +1184,8 @@ function colorsHTML() {
     { chart: '6603', name: '권샘플', kind: 'dosu', staff: 'ho', len: 30, memo: '', at: '11:30', cancel: true },
     { chart: '7781', name: '노예시', kind: 'jabo', staff: 'won', len: 30, memo: '', at: '12:00', changed: true },
   ]
-  return `${settingsHead('colors')}${flowBar('colors')}
-  <div class="connected"><span><span class="dotok"></span><b>2026 양지바른정형외과</b>를 골랐어요 · 아직 가져오지 않았어요</span><span class="sp"></span><button class="btn text" data-act="go" data-s="connect">잇기로 돌아가기</button></div>
+  return `${settingsHead('colors')}${LINKED_COLORS ? linkedBand() : `${flowBar('colors')}
+  <div class="connected"><span><span class="dotok"></span><b>2026 양지바른정형외과</b>를 골랐어요 · 아직 가져오지 않았어요</span><span class="sp"></span><button class="btn text" data-act="go" data-s="connect">잇기로 돌아가기</button></div>`}
   <section class="card" aria-labelledby="h-st">
     <div class="card-h"><h2 id="h-st">시행자</h2><span class="hint">구글 제목 끝 괄호 한 글자와 일정 색으로 알아봐요</span></div>
     <p class="lead">병원 정보의 원장님·직원 가운데 '예약에 보이기'를 켠 사람이에요. 이름·표시를 여기서 고치면 병원 정보에도 같이 바뀌어요.</p>
@@ -1072,6 +1195,11 @@ function colorsHTML() {
   <section class="card" aria-labelledby="h-kd">
     <div class="card-h"><h2 id="h-kd">종류</h2><span class="hint">위에 있을수록 예약 더하기에서 앞에 보여요</span></div>
     <p class="lead">구글 제목에서 이 글을 찾으면 그 종류로 봐요. 쉼표로 나눠 여러 개 적어요. 긴 글부터 맞춰 봐요(자보도수 → 도수). '타'는 <b>4000타</b>처럼 숫자 뒤에 붙은 글만 봐요. 색이 '시행자 색 따름'이면 그 시행자 색으로 칠해요.</p>
+    <p class="lead">종류 이름에 길이(30분)·시행자 표시((원))·타수(3000)가 들어 있으면 제목과 가장 많이 맞는 종류를 골라요. 3천은 3000타로 봐요.</p>
+    ${LINKED_COLORS ? `<ul class="kex" aria-label="알아보기 보기">
+      <li><span class="num">1234 홍길동 30분 도수 (원)</span> → <b>도수 30분(원)</b></li>
+      <li><span class="num">1234 홍길동 도수 (호)</span> · 구글 일정 50분 → <b>도수 50분(호)</b> <span class="mut">제목에 길이가 없으면 구글 일정 길이로 봐요</span></li>
+      <li><span class="num">1234 홍길동(3천</span> → <b>체외충격파 3000</b></li></ul>` : ''}
     <div class="tw"><table class="tbl"><thead><tr><th>차례</th><th>이름</th><th>제목에서 알아볼 글</th><th>기본 길이</th><th>구글 색</th><th></th></tr></thead><tbody>${kindRows}</tbody></table></div>
     <div class="addline"><button class="btn" data-act="k-add">${ICON.plus}종류 더하기</button><span class="hint">지운 종류의 지난 예약은 그 이름 그대로 남아요</span></div>
   </section>
@@ -1089,7 +1217,7 @@ function colorsHTML() {
   <section class="card" aria-labelledby="h-no">
     <h2 id="h-no">구글 제목에 글이 없을 때</h2>
     <div class="optrow"><div class="k">종류 글이 없는 예약<small>예: <span class="num">6230 정샘플</span></small></div><div class="v">
-      <div class="rowx"><select class="sel" data-f="nokind" style="min-width:160px">${SET.kinds.map(k => `<option value="${k.id}" ${SET.noKind === k.id ? 'selected' : ''}>${esc(k.name)}로 봐요</option>`).join('')}<option value="" ${!SET.noKind ? 'selected' : ''}>고쳐야 함으로 두기</option></select></div>
+      <div class="rowx"><select class="sel" data-f="nokind" style="min-width:160px">${SET.kinds.map(k => `<option value="${k.id}" ${SET.noKind === k.id ? 'selected' : ''}>${esc(k.name)}${roJ(k.name)} 봐요</option>`).join('')}<option value="" ${!SET.noKind ? 'selected' : ''}>고쳐야 함으로 두기</option></select></div>
       <p class="hint">먼저 일정 색이 한 종류의 고정 색이면 그 종류로 보고(예: 초록 → 충격파), 아니면 여기서 고른 종류로 봐요.</p></div></div>
     <div class="optrow"><div class="k">시행자 글이 없는 예약<small>예: <span class="num">8456 윤모의 도수 30분</span></small></div><div class="v">
       <label class="chk"><input type="checkbox" data-f="bycolor" ${SET.byColor ? 'checked' : ''}>일정 색이 한 사람의 시행자 색이면 그 사람으로 봐요</label>
@@ -1118,7 +1246,23 @@ function colorsHTML() {
       </div>
     </div>
   </section>
-  <div class="ibar"><p>저장하면 웹앱 예약 칸 색이 바로 바뀌어요. 구글에서 따로 색을 고른 일정은 웹앱에서도 그 색 그대로예요. 나중에 색을 바꾸면 그 색이던 앞으로의 예약은 구글에서도 같이 바꿔요.</p><button class="btn" data-act="go" data-s="connect">← 잇기</button><button class="btn primary" data-act="go" data-s="import">저장하고 가져오기 미리 보기 →</button></div>`
+  <div class="ibar"><p>저장하면 웹앱 예약 칸 색이 바로 바뀌어요. 구글에서 따로 색을 고른 일정은 웹앱에서도 그 색 그대로예요. 나중에 색을 바꾸면 그 색이던 앞으로의 예약은 구글에서도 같이 바꿔요.</p>${LINKED_COLORS ? '<button class="btn primary" data-act="csave">저장</button>' : '<button class="btn" data-act="go" data-s="connect">← 잇기</button><button class="btn primary" data-act="go" data-s="import">저장하고 가져오기 미리 보기 →</button>'}</div>
+  ${LINKED_COLORS ? rereadHTML() : ''}`
+}
+// 2차 고침: 이미 들어온 예약 다시 알아보기(원장만 — 데스크·다른 의원 보기에는 이 칸이 없음)
+function rereadHTML() {
+  const R0 = UI.reread
+  const res = R0 === 'busy' ? '' : R0 ? `<p class="ok-l">${ICON.check}예약 ${fmt(4358)}개를 다시 알아봤어요 · 종류가 바뀐 것 ${fmt(1962)}개 · 못 알아본 것 ${fmt(31)}개 <span class="mut">(${R0})</span></p>` : ''
+  return `<section class="card" aria-labelledby="h-rr">
+    <div class="card-h"><h2 id="h-rr">이미 들어온 예약</h2><span class="hint">원장 계정만 할 수 있어요</span></div>
+    <p class="lead">구글 제목을 지금 설정으로 다시 읽어 종류·시행자를 맞춰요. 구글 일정은 바꾸지 않아요.</p>
+    <p class="hint">저장한 설정으로 읽어요. 가져올 때 고르거나 [고치기]로 바꾼 종류·시행자는 그대로 둬요.</p>
+    <div class="inrow" style="align-items:center"><button class="btn accent" data-act="reread" ${R0 === 'busy' ? 'disabled' : ''}>${ICON.sync}${R0 === 'busy' ? '다시 알아보는 중…' : '이미 들어온 예약 다시 알아보기'}</button>${res}</div>
+    ${R0 && R0 !== 'busy' ? '<p class="hint">못 알아본 예약은 전 종류·시행자 그대로 두었어요.</p>' : ''}
+  </section>`
+}
+function linkedBand() {
+  return `<div class="connected"><span><span class="dotok"></span>이어져 있어요 · <b>2026 양지바른정형외과</b> · 11/23 (월) 08:55부터 · 마지막 맞춤 ${UI.lastSync}</span><span class="sp"></span><button class="btn" data-act="syncnow">${ICON.sync}지금 맞추기</button><button class="btn" data-act="go" data-s="connect">연결 시험 · 캘린더 바꾸기</button><button class="btn danger" data-act="unlink">잇기 끊기</button></div>`
 }
 
 /* 가져오기 미리 보기 */
@@ -1244,7 +1388,7 @@ function ibarText(c) {
 function rulesHTML() {
   const rad = (name, val, opts) => opts.map(([v, t, sub]) => `<label class="rad"><input type="radio" name="${name}" data-f="rule" data-k="${name}" value="${v}" ${String(RULE[name]) === String(v) ? 'checked' : ''}><span>${t}${sub ? `<br><small>${sub}</small>` : ''}</span></label>`).join('')
   return `${settingsHead('rules')}
-  <div class="connected"><span><span class="dotok"></span>이어져 있어요 · <b>2026 양지바른정형외과</b> · 11/23 (월) 08:55부터 · 마지막 맞춤 ${UI.lastSync}</span><span class="sp"></span><button class="btn" data-act="syncnow">${ICON.sync}지금 맞추기</button><button class="btn" data-act="go" data-s="connect">연결 시험 · 캘린더 바꾸기</button><button class="btn danger" data-act="unlink">잇기 끊기</button></div>
+  ${linkedBand()}
   <section class="card" aria-labelledby="h-rl">
     <div class="card-h"><h2 id="h-rl">맞춤 방법</h2><span class="hint">골라져 있는 것이 기본값이에요</span></div>
     <div class="optrow"><div class="k">구글에서 받아 오기</div><div class="v">
@@ -1254,7 +1398,7 @@ function rulesHTML() {
     <div class="optrow"><div class="k">웹앱에서 [예약 취소]하면</div><div class="v"><p class="fixedv">구글 일정은 지우지 않고 색을 취소 색(${gName(SET.cancelGc)})으로 바꿔요. <span class="mut">[취소 되돌리기]하면 원래 색으로 돌려요. 취소 색은 설정 › 구글 캘린더 › 시행자·종류에서 바꿔요.</span></p></div></div>
     <div class="optrow"><div class="k">웹앱에서 [지우기]하면</div><div class="v"><p class="fixedv">구글에서도 지워요.</p></div></div>
     <div class="optrow"><div class="k">구글에서 일정 색을 취소 색으로 바꾸면</div><div class="v"><p class="fixedv">웹앱에서도 '취소'로 바꿔요. <span class="mut">다른 색으로 되돌리면 웹앱 취소도 풀려요.</span></p></div></div>
-    <div class="optrow"><div class="k">구글에서 일정을 지우면</div><div class="v">${rad('gDelete', RULE.gDelete, [['cancel', "웹앱에서는 '취소'로 바꿔요", '흐린 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).'], ['delete', '웹앱에서도 지워요']])}</div></div>
+    <div class="optrow"><div class="k">구글에서 일정을 지우면</div><div class="v">${rad('gDelete', RULE.gDelete, [['cancel', "웹앱에서는 '취소'로 바꿔요", '취소 색 칸으로 남아 취소 수에 들어가요. 실수로 지웠으면 [취소 되돌리기]로 구글에 다시 적어요(원래 색으로).'], ['delete', '웹앱에서도 지워요']])}</div></div>
     <div class="optrow"><div class="k">같은 예약을 양쪽에서 고치면</div><div class="v"><p class="fixedv">나중에 고친 쪽으로 맞춰요. <span class="mut">덮인 쪽 내용은 예약 자세히에 한 줄 남겨요(예: '구글에서 14:20에 고친 내용을 웹앱 내용으로 덮었어요').</span></p></div></div>
     <div class="optrow"><div class="k">웹앱에서 날짜·시작을 옮기면</div><div class="v"><p class="fixedv">'변경'으로 세고 구글 일정 색을 변경 색(${gName(SET.changeGc)})으로 바꿔요.</p></div></div>
     <div class="optrow"><div class="k">구글에서 날짜·시작을 옮기면</div><div class="v"><p class="fixedv">웹앱에서 옮긴 것처럼 '변경'으로 세고 처음 시간을 남겨요. <span class="mut">구글 일정 색도 변경 색으로 바꿔요.</span></p></div></div>
@@ -1282,9 +1426,10 @@ function bandHTML() {
         <div class="wbox">${ICON.warn}<div><b>구글 캘린더에 닿지 못했어요.</b> 인터넷이 되는지 확인해 주세요. 계속되면 설정 › 구글 캘린더에서 [연결 시험]을 눌러 보세요. <span class="mut">번호 E-GCAL-REACH</span></div></div></div>` : ''}`
   }
   const fixN = S === 'fix' ? Object.keys(UI.fixDone).length : 0
-  const fixLeft = S === 'fix' ? 2 - fixN : 0
+  // 띠 단추의 수는 기간과 상관없이 전체 남은 수(2차 고침)
+  const fixLeft = S === 'fix' ? 2 - fixN : RANGE ? FIXR.filter(f => !UI.fixDone[f.id]).length : 0
   return `<div class="gband"><span class="gi">${ICON.cal}<span>구글 캘린더 <b>2026 양지바른정형외과</b>와 이어짐 · 마지막 맞춤 <b id="lastsync">${UI.lastSync}</b> <span class="mut">· 2분마다 맞춰요</span></span></span>
-    ${fixLeft > 0 ? `<button class="fixb" data-act="openfix">${ICON.warn}고쳐야 할 구글 예약 ${fixLeft}개</button>` : ''}<span class="sp"></span>
+    ${fixLeft > 0 ? `<button class="fixb" data-act="openfix">${ICON.warn}고쳐야 할 구글 예약 ${fmt(fixLeft)}개</button>` : ''}<span class="sp"></span>
     <a class="extl" href="#" data-act="noop">구글 캘린더 열기 ${ICON.out}</a><button class="btn" data-act="syncnow">${ICON.sync}지금 맞추기</button></div>`
 }
 function toolbarHTML() {
@@ -1303,7 +1448,7 @@ function legendHTML() {
     <span class="lg"><b>색 (구글과 같음)</b>${colors}<span class="mut">도수·자보도수·주사·진료는 시행자 색 · 구글에서 온 예약은 그 일정 색 그대로</span></span>
     <span class="lg"><b>도착</b><span>${MK.came}왔음</span><span>${MK.noshow}안 옴</span><span>${MK.cancel}</span></span>
     <span class="lg"><b>변경</b><span>${MK.chg}</span></span>
-    ${S === 'err' ? `<span class="lg"><b>구글</b><span>${MK.gwait}아직 못 보냄</span></span>` : ''}${S === 'fix' ? '<span class="lg"><b>구글</b><span><i class="gh" style="background:repeating-linear-gradient(135deg,#FEF3C7 0 3px,#FFFBEB 3px 6px);outline-color:#D9A93A"></i>고쳐야 할 구글 예약</span></span>' : ''}
+    ${S === 'err' ? `<span class="lg"><b>구글</b><span>${MK.gwait}아직 못 보냄</span></span>` : ''}${S === 'fix' || RANGE ? '<span class="lg"><b>구글</b><span><i class="gh" style="background:repeating-linear-gradient(135deg,#FEF3C7 0 3px,#FFFBEB 3px 6px);outline-color:#D9A93A"></i>고쳐야 할 구글 예약</span></span>' : ''}
   </div>`
 }
 function lay(items) {
@@ -1368,8 +1513,8 @@ function gridHTML() {
 }
 
 /* 판 */
-function drawerHTML(title, body, foot) {
-  return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${title}"><div class="dwh"><h3>${title}</h3><button class="btn icon ghost" data-act="close" aria-label="닫기">${ICON.close}</button></div><div class="dwb">${body}</div><div class="dwf">${foot}</div></aside>`
+function drawerHTML(title, body, foot, small) {
+  return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${title}${small ? ' ' + small : ''}"><div class="dwh"><h3>${title}${small ? `<small>${small}</small>` : ''}</h3><button class="btn icon ghost" data-act="close" aria-label="닫기">${ICON.close}</button></div><div class="dwb">${body}</div><div class="dwf">${foot}</div></aside>`
 }
 function byText(by, key, a) {
   const v = by?.[key]
@@ -1381,7 +1526,7 @@ function detailDrawer(L) {
   const a = findAppt(L.id); if (!a) return ''
   const k = kindOf(a.kind), s = staffOf(a.staff), st = status(a), end = a.start + a.len
   const now = { came: `${MK.came}왔음`, noshow: `${MK.noshow}안 옴`, cancel: `${MK.cancel} 취소한 예약`, wait: '아직 (예약 시간 전)' }[st]
-  const why = a.cancel ? '칸은 흐리게 남아요' : a.rcpt != null ? `비트 접수 ${hm(a.rcpt)} · 자동` : ended(a) ? '예약 시간이 끝나도 비트 접수가 없어요 · 자동' : '비트 접수가 생기면 저절로 왔음이 돼요'
+  const why = a.cancel ? '칸은 취소 색으로 남아요' : a.rcpt != null ? `비트 접수 ${hm(a.rcpt)} · 자동` : ended(a) ? '예약 시간이 끝나도 비트 접수가 없어요 · 자동' : '비트 접수가 생기면 저절로 왔음이 돼요'
   const G = a.g || { from: 'web' }, fromG = G.from === 'google'
   const gnow = gTitle(a)
   const gsec = `<section class="gsec"><h4>구글 캘린더 <span class="from ${fromG ? '' : 'web'}">${fromG ? '구글에서 옴' : '웹앱에서 만듦 · 구글에 있음'}</span></h4>
@@ -1393,7 +1538,7 @@ function detailDrawer(L) {
       <dt>맞춤</dt><dd>${a.pend ? '<span style="color:var(--negative)">구글에 아직 못 보냈어요 · 다시 닿으면 보내요</span>' : `마지막 맞춤 ${UI.lastSync} · 구글과 같아요`}</dd>
     </dl>
     ${fromG ? `<p>[고치기]로 바꾸면 구글 제목이 <b style="color:var(--ink-2)">${esc(gnow)}</b>로 다시 적혀요. 시행자·종류를 바꾸면 색도 설정 색으로 바꿔요. 그 전에는 원문·색 그대로 둬요.</p>` : ''}
-    <p>[예약 취소]하면 구글 일정 색이 취소 색(${gName(SET.cancelGc)})으로 바뀌고, 웹앱에는 흐린 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${gName(SET.changeGc)})으로 바뀌어요. [지우기]는 둘 다에서 지워요.</p>
+    <p>[예약 취소]하면 구글 일정 색이 취소 색(${gName(SET.cancelGc)})으로 바뀌고, 웹앱에도 그 색 칸으로 남아요. [취소 되돌리기]하면 원래 색으로 돌려요. 날짜·시작을 옮기면 구글 일정 색이 변경 색(${gName(SET.changeGc)})으로 바뀌어요. [지우기]는 둘 다에서 지워요.</p>
     <a class="extl" href="#" data-act="noop">구글 캘린더에서 이 일정 열기 ${ICON.out}</a></section>`
   const body = `
     <div class="dtop" style="--c:${gHex(drawGc(a))}"><span class="bar"></span><div><div class="dname"><span class="ch">${a.chart || '차트번호 없음'}</span>${esc(a.name)}</div><div class="dsub">${esc(k.name)} · ${staffLabel(a.staff)}</div></div></div>
@@ -1409,19 +1554,54 @@ const FIXQ = [
   { id: 'f1', d: '2026-11-26', s: 960, e: 975, gc: 'sage', title: '6402 윤모의 (4000타)', got: '차트번호 6402 · 이름 윤모의 · 종류 충격파 (초록 색) · 메모 4000타', why: '시행자 글이 없어요. 충격파는 그때그때 하는 사람이 달라 색으로는 몰라요', need: ['staff'], at: '14:31', sel: {} },
   { id: 'f2', d: '2026-11-27', s: 600, e: 615, gc: 'flamingo', title: '1185 곽모의 체외충격 (현)', got: '차트번호 1185 · 이름 곽모의 · 시행자 (현) 이수현', why: "'체외충격'을 종류로 알아보지 못했어요 (고르면 '체외충격'은 메모로 남아요)", need: ['kind'], at: '14:33', sel: {} },
 ]
-function fixDrawer() {
-  const items = FIXQ.map(f => {
+function fixItemHTML(f) {
     const done = UI.fixDone[f.id]
-    if (done) return `<div class="fxi done"><div class="fh"><span class="gtitle">${gsw(f.gc)}<span>${esc(f.title)}</span></span><span class="stt ok">${done === 'skip' ? '가져오지 않음' : '✓ 넣었어요'}</span></div><p class="got">${done === 'skip' ? '구글에만 두고 웹앱은 건드리지 않아요.' : `${mdw(f.d)} ${hm(f.s)} 예약표에 넣었어요. 구글 제목은 그대로 둬요.`}</p></div>`
+    if (done) return `<div class="fxi done"><div class="fh"><span class="gtitle">${gsw(f.gc)}<span>${esc(f.title)}</span></span><span class="stt ok">${done === 'skip' ? '가져오지 않음' : '✓ 넣었어요'}</span></div><p class="got">${done === 'skip' ? '구글에만 두고 웹앱은 건드리지 않아요.' : `${ymdw(f.d)} ${hm(f.s)} 예약표에 넣었어요. 구글 제목은 그대로 둬요.`}</p></div>`
     const ok = f.need.every(n => f.sel[n])
     const pick = n => n === 'staff'
       ? `<div class="field"><span class="lb">시행자</span><div class="opts2">${SET.staff.map(s => `<button class="ob" data-act="fxsel" data-id="${f.id}" data-n="staff" data-v="${s.id}" aria-pressed="${f.sel.staff === s.id}">${gsw(s.gc)}${staffLabel(s.id)}</button>`).join('')}</div></div>`
       : `<div class="field"><span class="lb">종류</span><div class="opts2">${SET.kinds.map(k => `<button class="ob" data-act="fxsel" data-id="${f.id}" data-n="kind" data-v="${k.id}" aria-pressed="${f.sel.kind === k.id}">${esc(k.name)} <small>${k.len}분</small></button>`).join('')}</div></div>`
-    return `<div class="fxi"><div class="fh"><span class="gtitle">${gsw(f.gc)}<b>${esc(f.title)}</b></span><span class="when">${mdw(f.d)} ${hm(f.s)}–${hm(f.e)} · ${f.e - f.s}분</span></div>
+    return `<div class="fxi"><div class="fh"><span class="gtitle">${gsw(f.gc)}<b>${esc(f.title)}</b></span><span class="when">${ymdw(f.d)} ${hm(f.s)}–${hm(f.e)} · ${f.e - f.s}분</span></div>
       <p class="wy">${esc(f.why)}</p><p class="got">알아본 것: ${esc(f.got)} · 구글에서 ${f.at}에 들어옴</p>
       ${f.need.map(pick).join('')}
       <div class="fa"><button class="btn" data-act="fxskip" data-id="${f.id}">가져오지 않기</button><button class="btn primary" data-act="fxok" data-id="${f.id}" ${ok ? '' : 'disabled'}>예약표에 넣기</button></div></div>`
-  }).join('')
+}
+/* 2차 고침: 기간 고르기 판 */
+const rangeOk = () => !!UI.range.from && (!UI.range.to || UI.range.to >= UI.range.from)
+const inRange = f => f.d >= UI.range.from && (!UI.range.to || f.d <= UI.range.to)
+const rangeText = () => `${ymdw(UI.range.from)} – ${UI.range.to ? ymdw(UI.range.to) : '앞으로 전부'}`
+function fixRangeDrawer() {
+  const ok = rangeOk()
+  const inR = ok ? FIXR.filter(inRange) : []
+  const left = inR.filter(f => !UI.fixDone[f.id]).length
+  const shown = inR.filter(f => UI.fixDone[f.id] !== 'bulk') // 한꺼번에 뺀 것은 줄로 남기지 않는다
+  const total = FIXR.filter(f => !UI.fixDone[f.id]).length
+  const LIM = 20
+  const err = !UI.range.from ? '시작 날짜를 골라 주세요.' : !ok ? '끝 날짜는 시작 날짜보다 앞일 수 없어요.' : ''
+  const box = `<section class="rng" aria-label="기간 고르기">
+      <div class="rr"><div class="field"><label for="r-from">시작</label><input class="inp" id="r-from" type="date" data-f="rfrom" value="${UI.range.from}"></div><span class="tilde">~</span>
+        <div class="field"><label for="r-to">끝 <span class="hint">비우면 앞으로 전부</span></label><input class="inp" id="r-to" type="date" data-f="rto" value="${UI.range.to}"></div></div>
+      ${err ? `<p class="ferr" role="alert">${err}</p>` : ''}
+      <div class="rf"><span class="hint">고른 기간은 이 PC에서 기억해요.</span>${left ? '<button class="btn sm" data-act="rskipall">이 기간 모두 가져오지 않기</button>' : ''}</div></section>`
+  const bulk = UI.bulk ? `<div class="grpbox done">${ICON.check}<span>${fmt(UI.bulk)}개를 가져오지 않기로 했어요. 구글에만 남아요.</span></div>` : ''
+  const empty = ok && !shown.length ? `<div class="fxempty"><b>이 기간에는 고쳐야 할 구글 예약이 없어요.</b>${total ? `<span>다른 기간에 ${fmt(total)}개 남아 있어요.</span>` : ''}</div>` : ''
+  const more = shown.length > LIM ? `<p class="hint" style="text-align:center">… 아래로 ${fmt(shown.length - LIM)}개 더 있어요 (시안은 ${LIM}개까지만 그려요)</p>` : ''
+  const body = `${box}${bulk}
+    <p class="lead" style="margin:0">구글 캘린더에 새로 들어온 일정 가운데 웹앱이 알아보지 못한 거예요. 고르고 [예약표에 넣기]를 누르면 웹앱 예약이 돼요. 구글 일정은 그대로 둬요.</p>
+    ${empty}<div class="fxl">${shown.slice(0, LIM).map(fixItemHTML).join('')}</div>${more}
+    <div class="info"><p>${ICON.info}<span>고르지 않고 둬도 돼요. 예약표에 노란 빗금 칸으로 남고, 누가 구글에서 제목을 고치면 다시 알아봐요.</span></p><p>${ICON.info}<span>같은 꼴이 자주 나오면 설정 › 구글 캘린더 › 시행자·종류에서 '제목에서 알아볼 글'을 더해 주세요(예: 충격파에 '체외충격').</span></p></div>`
+  return drawerHTML(`고쳐야 할 구글 예약 ${fmt(left)}개`, body, `<button class="btn" data-act="close">닫기</button>`, total !== left ? `· 전체 ${fmt(total)}개` : '')
+}
+function dlgHTML() {
+  if (UI.dlg !== 'skipall') return ''
+  const n = FIXR.filter(f => inRange(f) && !UI.fixDone[f.id]).length
+  return `<div class="dlgscrim" data-act="dlgx"></div><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-d">
+    <h3 id="dlg-t">${fmt(n)}개를 가져오지 않을까요?</h3><p id="dlg-d">구글 일정은 그대로예요.</p><p class="mut">기간 ${rangeText()}</p>
+    <div class="dfoot"><button class="btn" data-act="dlgx" autofocus>취소</button><button class="btn primary" data-act="dlgok">가져오지 않기</button></div></div>`
+}
+function fixDrawer() {
+  if (RANGE) return fixRangeDrawer()
+  const items = FIXQ.map(fixItemHTML).join('')
   const left = FIXQ.length - Object.keys(UI.fixDone).length
   const body = `<p class="lead" style="margin:0">구글 캘린더에 새로 들어온 일정 가운데 웹앱이 알아보지 못한 거예요. 고르고 [예약표에 넣기]를 누르면 웹앱 예약이 돼요. 구글 일정은 그대로 둬요.</p>
     <div class="fxl">${items}</div>
@@ -1494,7 +1674,7 @@ function staffHTML() {
 function renderMain() {
   let h
   if (S === 'connect') h = connectHTML()
-  else if (S === 'colors') h = colorsHTML()
+  else if (S === 'colors' || S === 'colors-reread') h = colorsHTML()
   else if (S === 'import') h = importHTML()
   else if (S === 'rules') h = rulesHTML()
   else if (S === 'staff') h = staffHTML()
@@ -1504,6 +1684,7 @@ function renderMain() {
 }
 function renderLayer() {
   const L = UI.layer, el = $('#layer')
+  $('#dlg').innerHTML = dlgHTML()
   if (!L) { el.innerHTML = ''; return }
   const keep = el.querySelector('.dwb')?.scrollTop || 0
   el.innerHTML = L.type === 'detail' ? detailDrawer(L) : fixDrawer()
@@ -1550,7 +1731,17 @@ document.addEventListener('click', e => {
     case 'errtoggle': UI.errOpen = !UI.errOpen; renderMain(); break
     case 'appt': UI.layer = { type: 'detail', id: t.dataset.id }; renderLayer(); break
     case 'openfix': UI.layer = { type: 'fix' }; renderLayer(); break
-    case 'fxsel': { const f = FIXQ.find(x => x.id === t.dataset.id); f.sel[t.dataset.n] = t.dataset.v; renderLayer(); break }
+    case 'fxsel': { const f = (RANGE ? FIXR : FIXQ).find(x => x.id === t.dataset.id); f.sel[t.dataset.n] = t.dataset.v; renderLayer(); break }
+    case 'rskipall': UI.dlg = 'skipall'; renderLayer(); break
+    case 'dlgx': UI.dlg = null; renderLayer(); break
+    case 'dlgok': {
+      const ids = FIXR.filter(f => inRange(f) && !UI.fixDone[f.id]).map(f => f.id)
+      ids.forEach(id => { UI.fixDone[id] = 'bulk' })
+      UI.bulk = ids.length; UI.dlg = null; renderMain(); renderLayer()
+      toast(`${fmt(ids.length)}개를 가져오지 않기로 했어요. 구글에만 남아요.`); break
+    }
+    case 'reread': UI.reread = 'busy'; renderMain(); setTimeout(() => { UI.reread = hm(NOW.min + 1); renderMain() }, 700); break
+    case 'csave': toast('설정을 저장했어요. 다른 PC에도 몇 초 안에 보여요.'); break
     case 'fxok': case 'fxskip': { UI.fixDone[t.dataset.id] = act === 'fxok' ? 'ok' : 'skip'; renderMain(); renderLayer(); toast(act === 'fxok' ? '예약표에 넣었어요. 구글 제목은 그대로 둬요.' : '가져오지 않아요. 구글에만 남아요.'); break }
     case 'slot': if (!e.target.closest('.ev')) toast(S === 'err' ? '시안: 예약 더하기 판은 지금과 같아요. 저장하면 웹앱에 넣고, 구글에는 다시 닿으면 보내요.' : '시안: 예약 더하기 판은 지금과 같아요. 저장하면 바로 구글 캘린더에도 적혀요.'); break
     case 'add': toast(S === 'err' ? '웹앱에 저장했어요. 구글에는 다시 닿으면 보내요.' : '시안: 예약 더하기 판은 지금과 같아요. 저장하면 바로 구글 캘린더에도 적혀요.'); break
@@ -1563,6 +1754,7 @@ document.addEventListener('change', e => {
   const i = +t.dataset.i
   if (f === 'imp') { const x = IMP.find(y => y.id === t.dataset.id); x.pick = t.value || null; renderMain(); return }
   if (f === 'grp') { IMP_UI.grp[t.dataset.g] = t.value || null; IMP.filter(y => y.fix?.group === t.dataset.g).forEach(y => { y.pick = t.value || null }); renderMain(); return }
+  if (f === 'rfrom' || f === 'rto') { UI.range[f === 'rfrom' ? 'from' : 'to'] = t.value; UI.bulk = 0; renderLayer(); $('#' + (f === 'rfrom' ? 'r-from' : 'r-to'))?.focus(); return }
   if (f === 'k-len') SET.kinds[i].len = +t.value
   if (f === 'nokind') SET.noKind = t.value
   if (f === 'bycolor') SET.byColor = t.checked
@@ -1582,6 +1774,7 @@ document.addEventListener('input', e => {
 })
 document.addEventListener('focusout', e => { if (['s-name', 's-mark', 'k-name', 'offword'].includes(e.target.dataset?.f)) renderMain() })
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && UI.dlg) { UI.dlg = null; renderLayer(); return }
   if (e.key === 'Escape' && UI.layer) { UI.layer = null; renderLayer() }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.cp[data-act="pickcal"]')) { e.preventDefault(); e.target.click() }
 })

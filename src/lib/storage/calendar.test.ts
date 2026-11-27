@@ -11,7 +11,9 @@ import {
   checkCalendarSettings,
   deleteAllDay,
   deleteAppt,
+  fillMemoColor,
   findApptsByEvents,
+  hasMemoColorGap,
   insertGoogleAppts,
   listAllDay,
   listAppts,
@@ -24,6 +26,7 @@ import {
   markApptSent,
   markMemoSent,
   newGoogleEventId,
+  rereadAppt,
   saveCalendarSettings,
   setApptAuto,
   updateAppt,
@@ -49,7 +52,7 @@ const COUNT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,ori
 const SLOT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,start_min,len_min,chart'
 // part = 반차 휴무 'am'·'pm'(직원 탭 휴가에서 트리거가 적음, spec staff AC-7616.1). leave_id는 읽지 않는다
 // g_* = 구글 일정 짝(종일 메모만, google-link design.md 7-2). g_wait_at은 트리거만 적는다
-const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name,part,g_event_id,g_updated,g_wait,g_wait_at'
+const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name,part,g_event_id,g_updated,g_wait,g_wait_at,g_color' // google-link AC-8554.3
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const APPT_INSERT_KEYS = ['day', 'start_min', 'len_min', 'name', 'chart', 'staff_id', 'staff_name', 'staff_mark', 'kind_id', 'kind_name', 'memo', 'status']
 const ALLDAY_INSERT_KEYS = ['day', 'type', 'memo', 'staff_id', 'staff_name']
@@ -241,7 +244,7 @@ const SLOT_ROW = { day: DAY, staff_id: 'st-ga', staff_name: '가', kind_id: 'dos
 const SLOTTED: CalSlotRow = { day: DAY, staffId: 'st-ga', staffName: '가', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 900, len: 30, chart: '10231' }
 
 const MEMO_ROW = { id: ID, day: DAY, type: 'memo', memo: '원장님 학회', staff_id: null, staff_name: null, g_event_id: null, g_updated: null, g_wait: false, g_wait_at: null }
-const MEMO_DAY: CalAllDay = { id: ID, day: DAY, type: 'memo', memo: '원장님 학회', staffId: null, staffName: null, gEventId: null, gUpdated: null, gWait: false, gWaitAt: null }
+const MEMO_DAY: CalAllDay = { id: ID, day: DAY, type: 'memo', memo: '원장님 학회', staffId: null, staffName: null, gEventId: null, gUpdated: null, gWait: false, gWaitAt: null, gColor: null } // google-link AC-8554.3
 const OFF_ROW = { id: ID2, day: DAY, type: 'off', memo: null, staff_id: 'st-ga', staff_name: '가', g_event_id: null, g_updated: null, g_wait: false, g_wait_at: null }
 const OFF_DAY: CalAllDay = { id: ID2, day: DAY, type: 'off', memo: null, staffId: 'st-ga', staffName: '가' }
 
@@ -1485,6 +1488,98 @@ describe('AC-8503.3 markApptSent: 보낸 뒤 g_wait 비우기', () => {
   })
 })
 
+// 다시 알아보기 쓰기(google-link REQ-8544 AC-8544.5, design.md 21-2): 종류 둘·시행자 셋·g_how만, 읽은 구글 제목·g_updated 글자 그대로일 때만
+const DB_UPDATED = '2026-11-18T01:00:00.123456+00:00' // DB가 준 g_updated 글자(마이크로초) — Date를 거치지 않는다
+const READ_TITLE = '1500 가짜환자 자보 30분 (나)'
+const REREAD_EXPECT = { gTitle: READ_TITLE, gUpdated: DB_UPDATED }
+const REREAD_PATCH = { kindId: 'jabo', kindName: '자보도수', staffId: 'st-na', staffName: '나', staffMark: '나', gHow: { ...G_HOW, kind: 'title' as const } }
+const REREAD_BODY = { kind_id: 'jabo', kind_name: '자보도수', staff_id: 'st-na', staff_name: '나', staff_mark: '나', g_how: { ...G_HOW, kind: 'title' } }
+
+describe('AC-8544.5 rereadAppt: 다시 알아본 종류·시행자를 조건 고치기로 적기', () => {
+  it('AC-8544.5: 여섯 칸만 보내고 id·g_wait is null·g_title = 읽은 글·g_updated = 읽은 DB 글자 그대로를 조건으로 한다 → 1줄이면 참', async () => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    await expect(rereadAppt(client, ID2, REREAD_PATCH, REREAD_EXPECT)).resolves.toBe(true)
+    expect(calls).toEqual([
+      ['from', 'calendar_appts'],
+      ['update', REREAD_BODY],
+      ['eq', 'id', ID2],
+      ['is', 'g_wait', null],
+      ['eq', 'g_title', READ_TITLE],
+      ['eq', 'g_updated', DB_UPDATED],
+      ['select', 'id'],
+    ])
+  })
+
+  it('AC-8544.5: 읽은 g_updated가 없었으면 g_updated is null을 조건으로 한다', async () => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    await rereadAppt(client, ID2, { kindId: 'jabo', kindName: '자보도수' }, { gTitle: READ_TITLE, gUpdated: null })
+    expect(calls[1]).toEqual(['update', { kind_id: 'jabo', kind_name: '자보도수' }])
+    expect(calls[5]).toEqual(['is', 'g_updated', null])
+  })
+
+  it('AC-8544.5: 그사이 다른 PC가 고쳐 0줄이면 거짓이다(적지 않음)', async () => {
+    const { client } = fakeClient(okWith([]))
+    await expect(rereadAppt(client, ID2, REREAD_PATCH, REREAD_EXPECT)).resolves.toBe(false)
+  })
+
+  it.each<[string, unknown]>([
+    ['메모', { memo: '고침' }],
+    ['이름', { name: '가짜환자' }],
+    ['날짜', { day: DAY2 }],
+    ['시작', { start: 600 }],
+    ['상태', { status: 'cancel' }],
+    ['구글 제목', { gTitle: '새 제목' }],
+    ['구글 색', { gColor: 'tomato' }],
+    ['보낼 것', { gWait: 'edit' }],
+    ['구글 고친 때', { gUpdated: G_UPDATED }],
+    ['변경 표시', { gMoved: true }],
+    ['모르는 열쇠', { hospital_id: 'x' }],
+  ])('AC-8544.5: 여섯 칸 밖 열쇠(%s)가 있으면 보내지 않고 failed다', async (_name, extra) => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    const patch = { kindId: 'jabo', kindName: '자보도수', ...(extra as object) } as Parameters<typeof rereadAppt>[2]
+    expect((await caught(() => rereadAppt(client, ID2, patch, REREAD_EXPECT))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it.each<[string, string, unknown, unknown]>([
+    ['빈 patch', ID2, {}, REREAD_EXPECT],
+    ['undefined만 든 patch', ID2, { kindId: undefined }, REREAD_EXPECT],
+    ['시행자 세 칸 가운데 하나만', ID2, { staffId: 'st-na' }, REREAD_EXPECT],
+    ['종류 이름 11자', ID2, { kindId: 'jabo', kindName: '가'.repeat(11) }, REREAD_EXPECT],
+    ['종류 id 빈 글자', ID2, { kindId: '', kindName: '자보도수' }, REREAD_EXPECT],
+    ['g_how 모양 틀림', ID2, { gHow: { staff: 'x' } }, REREAD_EXPECT],
+    ['id 빈 글자', '', REREAD_PATCH, REREAD_EXPECT],
+    ['조건 없음', ID2, REREAD_PATCH, undefined],
+    ['읽은 제목이 글자가 아님', ID2, REREAD_PATCH, { gTitle: null, gUpdated: DB_UPDATED }],
+    ['읽은 제목 201자', ID2, REREAD_PATCH, { gTitle: '가'.repeat(201), gUpdated: DB_UPDATED }],
+    ['읽은 g_updated 글 틀림', ID2, REREAD_PATCH, { gTitle: READ_TITLE, gUpdated: '어제' }],
+    ['읽은 g_updated에 따옴표', ID2, REREAD_PATCH, { gTitle: READ_TITLE, gUpdated: '2026-11-18T01:00:00"Z' }],
+  ])('AC-8544.5: %s이면 보내지 않고 failed다', async (_name, id, patch, expectRead) => {
+    const { client, calls } = fakeClient(okWith([{ id: ID2 }]))
+    const run = () => rereadAppt(client, id, patch as Parameters<typeof rereadAppt>[2], expectRead as Parameters<typeof rereadAppt>[3])
+    expect((await caught(run)).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8544.5: 답이 목록이 아니면 failed다', async () => {
+    const { client } = fakeClient(okWith({ id: ID2 }))
+    expect((await caught(() => rereadAppt(client, ID2, REREAD_PATCH, REREAD_EXPECT))).kind).toBe('failed')
+  })
+
+  it('AC-8544.5: 진짜 클라이언트로도 PATCH ?id=eq·g_wait=is.null·g_title=eq.<읽은 글>·g_updated=eq.<DB 글 그대로>로 한 번 보낸다', async () => {
+    const fakeFetch = fetchReturning([{ id: ID2 }])
+    await expect(rereadAppt(realClient(fakeFetch), ID2, REREAD_PATCH, REREAD_EXPECT)).resolves.toBe(true)
+    const request = requestOf(fakeFetch)
+    expect(request.method).toBe('PATCH')
+    expect(request.url.searchParams.get('id')).toBe(`eq.${ID2}`)
+    expect(request.url.searchParams.get('g_wait')).toBe('is.null')
+    expect(request.url.searchParams.get('g_title')).toBe(`eq.${READ_TITLE}`)
+    expect(request.url.searchParams.get('g_updated')).toBe(`eq.${DB_UPDATED}`)
+    expect(request.url.searchParams.get('select')).toBe('id')
+    expect(request.body).toEqual(REREAD_BODY)
+  })
+})
+
 describe('AC-8503.3 insertGoogleAppts: 처음 가져오기·받기 넣기', () => {
   it('AC-8503.3: 500줄씩 on conflict (hospital_id, g_event_id) do nothing으로 넣는다. 줄마다 스물네 칸이 같은 차례다', async () => {
     const rows = many(501, (i) => ({ ...DRAFT, ...G_PART, gEventId: `event${String(i).padStart(4, '0')}` }))
@@ -1644,6 +1739,262 @@ describe('AC-8503.3 종일 메모 구글 칸', () => {
   })
 })
 
+// 종일 메모 구글 색(google-link REQ-8554 AC-8554.3, design.md 21-13): 메모 줄 g_color는 구글 11색·'default'(구글에서 색 없음)·null(웹앱에만 있음·아직 못 읽음)
+describe('AC-8554.3 종일 메모 구글 색', () => {
+  const G_MEMO_ROW = { ...MEMO_ROW, g_event_id: EVENT, g_updated: G_UPDATED, g_wait: false, g_wait_at: null }
+  const G_MEMO: CalAllDay = { ...MEMO_DAY, gEventId: EVENT, gUpdated: G_UPDATED }
+  const MEMO_ITEM: Omit<CalAllDay, 'id'> = { day: DAY, type: 'memo', memo: '원장님 학회', staffId: null, staffName: null, gEventId: EVENT, gWait: false }
+  const BAD_COLORS: [string, unknown][] = [
+    ['옛 색 이름', 'red'],
+    ['대문자', 'Grape'],
+    ['colorId 글', '3'],
+    ['빈 글자', ''],
+    ['앞뒤 빈칸', ' grape'],
+    ['숫자', 3],
+  ]
+
+  it("AC-8554.3: 읽은 메모 줄은 gColor를 함께 준다 — 11색·'default'는 그대로, null이거나 칸이 없으면 null. 휴무 줄은 지금 모양 그대로다", async () => {
+    const { client, calls } = fakeClient(
+      okWith([
+        { ...G_MEMO_ROW, g_color: 'grape' },
+        { ...G_MEMO_ROW, id: ID2, g_color: 'default' },
+        { ...G_MEMO_ROW, g_color: null },
+        G_MEMO_ROW,
+        { ...OFF_ROW, g_color: null },
+      ]),
+    )
+    await expect(listAllDay(client, DAY, DAY2)).resolves.toEqual([
+      { ...G_MEMO, gColor: 'grape' },
+      { ...G_MEMO, id: ID2, gColor: 'default' },
+      { ...G_MEMO, gColor: null },
+      { ...G_MEMO, gColor: null },
+      OFF_DAY,
+    ])
+    expect(calls[1]).toEqual(['select', ALLDAY_COLUMNS])
+    expect(ALLDAY_COLUMNS.split(',')).toContain('g_color')
+  })
+
+  it('AC-8554.3: 11색은 모두 그대로 읽는다', async () => {
+    const colors = ['lavender', 'sage', 'grape', 'flamingo', 'banana', 'tangerine', 'peacock', 'graphite', 'blueberry', 'basil', 'tomato'] as const
+    const { client } = fakeClient(okWith(colors.map((color) => ({ ...G_MEMO_ROW, g_color: color }))))
+    await expect(listAllDay(client, DAY, DAY2)).resolves.toEqual(colors.map((color) => ({ ...G_MEMO, gColor: color })))
+  })
+
+  it.each(BAD_COLORS)('AC-8554.3: 메모 줄 색이 틀리면(%s) 그 줄을 뺀다(다른 구글 칸과 같다)', async (_name, color) => {
+    const { client } = fakeClient(okWith([{ ...G_MEMO_ROW, g_color: color }, OFF_ROW]))
+    await expect(listAllDay(client, DAY, DAY2)).resolves.toEqual([OFF_DAY])
+    const waiting = fakeClient(okWith([{ ...G_MEMO_ROW, g_wait: true, g_wait_at: WAIT_AT, g_color: color }]))
+    await expect(listWaitingMemos(waiting.client, DAY)).resolves.toEqual([])
+  })
+
+  it.each<[string, CalAllDay['gColor']]>([
+    ['11색', 'grape'],
+    ['default', 'default'],
+    ['null', null],
+  ])('AC-8554.3: 메모 넣기는 받은 gColor(%s)를 g_color로 같은 넣기에 보내고 DB가 준 줄을 돌려준다', async (_name, color) => {
+    const { client, calls } = fakeClient(okWith({ ...G_MEMO_ROW, g_color: color }))
+    await expect(addAllDay(client, { ...MEMO_ITEM, gColor: color })).resolves.toEqual({ ...G_MEMO, gColor: color })
+    expect(calls).toEqual([
+      ['from', 'calendar_allday'],
+      ['insert', { day: DAY, type: 'memo', memo: '원장님 학회', staff_id: null, staff_name: null, g_event_id: EVENT, g_wait: false, g_color: color }],
+      ['select', ALLDAY_COLUMNS],
+      ['single'],
+    ])
+  })
+
+  it('AC-8554.3: gColor를 받지 않으면 g_color를 보내지 않는다(DB 기본값 null). 휴무 줄에는 색을 보내지 않는다', async () => {
+    const { client, calls } = fakeClient(okWith(G_MEMO_ROW))
+    await addAllDay(client, MEMO_ITEM)
+    expect(Object.keys(calls[1]?.[1] as object)).not.toContain('g_color')
+    const off = fakeClient(okWith(OFF_ROW))
+    await expect(addAllDay(off.client, { day: DAY, type: 'off', memo: null, staffId: 'st-ga', staffName: '가', gColor: 'grape' })).resolves.toEqual(OFF_DAY)
+    expect(off.calls[1]).toEqual(['insert', { day: DAY, type: 'off', memo: null, staff_id: 'st-ga', staff_name: '가' }])
+  })
+
+  it.each(BAD_COLORS)('AC-8554.3: 메모 넣기의 gColor가 틀리면(%s) 보내지 않고 failed다', async (_name, color) => {
+    const { client, calls } = fakeClient(okWith(G_MEMO_ROW))
+    expect((await caught(() => addAllDay(client, { ...MEMO_ITEM, gColor: color as CalAllDay['gColor'] }))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8554.3: 진짜 클라이언트로도 메모 넣기 몸통에 g_color가 같이 간다', async () => {
+    const fakeFetch = fetchReturning({ ...G_MEMO_ROW, g_color: 'grape' })
+    await expect(addAllDay(realClient(fakeFetch), { ...MEMO_ITEM, gColor: 'grape' })).resolves.toEqual({ ...G_MEMO, gColor: 'grape' })
+    const request = requestOf(fakeFetch)
+    expect(request.method).toBe('POST')
+    expect(request.url.searchParams.get('select')).toBe(ALLDAY_COLUMNS)
+    expect(request.body).toMatchObject({ g_color: 'grape' })
+  })
+
+  it.each<[string, CalAllDay['gColor']]>([
+    ['11색', 'tomato'],
+    ['default', 'default'],
+    ['null', null],
+  ])('AC-8554.3: applyGoogleMemo는 patch의 gColor(%s)를 g_color로 같은 조건 고치기에 보낸다(색만 바뀐 일정도)', async (_name, color) => {
+    const { client, calls } = fakeClient(okWith([{ ...G_MEMO_ROW, g_color: color }]))
+    await expect(applyGoogleMemo(client, ID, { gColor: color }, G_UPDATED, null)).resolves.toEqual({ ...G_MEMO, gColor: color })
+    expect(calls).toEqual([
+      ['from', 'calendar_allday'],
+      ['update', { g_color: color, g_updated: G_UPDATED }],
+      ['eq', 'id', ID],
+      ['eq', 'type', 'memo'],
+      ['or', `g_updated.is.null,g_updated.lt."${G_UPDATED}"`],
+      ['is', 'g_wait_at', null],
+      ['select', ALLDAY_COLUMNS],
+    ])
+    const both = fakeClient(okWith([{ ...G_MEMO_ROW, g_color: color }]))
+    await applyGoogleMemo(both.client, ID, { day: DAY2, memo: '학회', gColor: color }, G_UPDATED, WAIT_AT)
+    expect(both.calls[1]).toEqual(['update', { day: DAY2, memo: '학회', g_color: color, g_updated: G_UPDATED }])
+  })
+
+  it('AC-8554.3: applyGoogleMemo가 gColor를 받지 않으면 g_color를 보내지 않는다(지금 그대로)', async () => {
+    const { client, calls } = fakeClient(okWith([G_MEMO_ROW]))
+    await applyGoogleMemo(client, ID, { memo: '학회' }, G_UPDATED, null)
+    expect(calls[1]).toEqual(['update', { memo: '학회', g_updated: G_UPDATED }])
+  })
+
+  it.each(BAD_COLORS)('AC-8554.3: applyGoogleMemo의 gColor가 틀리면(%s) 보내지 않고 failed다', async (_name, color) => {
+    const { client, calls } = fakeClient(okWith([G_MEMO_ROW]))
+    expect((await caught(() => applyGoogleMemo(client, ID, { memo: '학회', gColor: color as CalAllDay['gColor'] }, G_UPDATED, null))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8554.3: fillMemoColor는 그 id 줄의 g_color가 아직 비었을 때만(is null) 색을 적는다 → 1줄이면 참, 0줄(이미 색이 있음)이면 거짓', async () => {
+    const { client, calls } = fakeClient(okWith([{ id: ID }]), okWith([]))
+    await expect(fillMemoColor(client, ID, 'grape')).resolves.toBe(true)
+    expect(calls).toEqual([
+      ['from', 'calendar_allday'],
+      ['update', { g_color: 'grape' }],
+      ['eq', 'id', ID],
+      ['is', 'g_color', null],
+      ['select', 'id'],
+    ])
+    await expect(fillMemoColor(client, ID, 'default')).resolves.toBe(false)
+    expect(calls[6]).toEqual(['update', { g_color: 'default' }])
+  })
+
+  it('AC-8554.3: 진짜 클라이언트로도 fillMemoColor는 id=eq·g_color=is.null 조건의 PATCH 하나이고 몸통은 g_color 하나다', async () => {
+    const fakeFetch = fetchReturning([{ id: ID }])
+    await expect(fillMemoColor(realClient(fakeFetch), ID, 'basil')).resolves.toBe(true)
+    const request = requestOf(fakeFetch)
+    expect(request.method).toBe('PATCH')
+    expect(request.url.searchParams.get('id')).toBe(`eq.${ID}`)
+    expect(request.url.searchParams.get('g_color')).toBe('is.null')
+    expect(request.url.searchParams.get('select')).toBe('id')
+    expect(request.body).toEqual({ g_color: 'basil' })
+  })
+
+  it.each<[string, string, unknown]>([
+    ['id 빈 글자', '', 'grape'],
+    ['색 null', ID, null],
+    ['색 없음', ID, undefined],
+    ...BAD_COLORS.map(([name, color]): [string, string, unknown] => [name, ID, color]),
+  ])('AC-8554.3: fillMemoColor에 %s이면 보내지 않고 failed다', async (_name, id, color) => {
+    const { client, calls } = fakeClient(okWith([{ id: ID }]))
+    expect((await caught(() => fillMemoColor(client, id, color as 'grape'))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8554.3: fillMemoColor 답이 목록이 아니면 failed다', async () => {
+    const { client } = fakeClient(okWith(null))
+    expect((await caught(() => fillMemoColor(client, ID, 'grape'))).kind).toBe('failed')
+  })
+
+  it('AC-8554.3: hasMemoColorGap은 기간 안 메모 가운데 구글 일정과 이어지고(g_event_id 있음) 보낼 것이 없고(g_wait 거짓) 색이 빈 줄이 있는지 한 줄만 읽는다', async () => {
+    const { client, calls } = fakeClient(okWith([{ id: ID }]), okWith([]))
+    await expect(hasMemoColorGap(client, DAY, DAY2)).resolves.toBe(true)
+    expect(calls).toEqual([
+      ['from', 'calendar_allday'],
+      ['select', 'id'],
+      ['eq', 'type', 'memo'],
+      ['not', 'g_event_id', 'is', null],
+      ['eq', 'g_wait', false],
+      ['is', 'g_color', null],
+      ['gte', 'day', DAY],
+      ['lte', 'day', DAY2],
+      ['limit', 1],
+    ])
+    await expect(hasMemoColorGap(client, DAY, DAY)).resolves.toBe(false)
+  })
+
+  it('AC-8554.3: 진짜 클라이언트로도 hasMemoColorGap은 GET 하나에 조건·limit=1만 묻는다', async () => {
+    const fakeFetch = fetchReturning([])
+    await expect(hasMemoColorGap(realClient(fakeFetch), DAY, DAY2)).resolves.toBe(false)
+    const request = requestOf(fakeFetch)
+    expect(request.method).toBe('GET')
+    expect(request.url.searchParams.get('select')).toBe('id')
+    expect(request.url.searchParams.get('type')).toBe('eq.memo')
+    expect(request.url.searchParams.get('g_event_id')).toBe('not.is.null')
+    expect(request.url.searchParams.get('g_wait')).toBe('eq.false')
+    expect(request.url.searchParams.get('g_color')).toBe('is.null')
+    expect(request.url.searchParams.getAll('day')).toEqual([`gte.${DAY}`, `lte.${DAY2}`])
+    expect(request.url.searchParams.get('limit')).toBe('1')
+  })
+
+  it.each<[string, unknown, unknown]>([
+    ['시작이 끝보다 늦음', DAY2, DAY],
+    ['날짜 글 틀림', 'x', DAY2],
+    ['없는 날', DAY, '2026-11-31'],
+    ['끝 없음', DAY, undefined],
+  ])('AC-8554.3: hasMemoColorGap 기간이 틀리면(%s) 보내지 않고 failed다', async (_name, from, to) => {
+    const { client, calls } = fakeClient(okWith([]))
+    expect((await caught(() => hasMemoColorGap(client, from as string, to as string))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-8554.3: hasMemoColorGap 답이 목록이 아니면 failed다', async () => {
+    const { client } = fakeClient(okWith(null))
+    expect((await caught(() => hasMemoColorGap(client, DAY, DAY2))).kind).toBe('failed')
+  })
+})
+
+// 새 함수 둘도 같은 실패 규칙(오프라인·응답 없음·실패 응답·던짐·진짜 클라이언트 끊김·DB 제약 거부, 오류에는 종류만)
+describe.each<[string, (client: Pick<SupabaseClient, 'from'>) => Promise<unknown>]>([
+  ['fillMemoColor', (c) => fillMemoColor(c, ID, 'grape')],
+  ['hasMemoColorGap', (c) => hasMemoColorGap(c, DAY, DAY2)],
+])('AC-8554.3 %s 실패', (_name, run) => {
+  it('AC-8554.3: 브라우저가 오프라인이면 부르지 않고 offline이다', async () => {
+    vi.stubGlobal('navigator', { onLine: false })
+    const { client, calls } = fakeClient()
+    expect((await caught(() => run(client))).kind).toBe('offline')
+    sentNothing(calls)
+  })
+
+  it('AC-8554.3: 응답 status가 0이면 offline, 400·403·500이면 failed이고 오류에는 종류만 있다', async () => {
+    const offline = await caught(() => run(fakeClient(failure(0)).client))
+    expect(offline.kind).toBe('offline')
+    expectNoSecret(offline)
+    for (const status of [400, 403, 500]) {
+      const error = await caught(() => run(fakeClient(failure(status)).client))
+      expect(error.kind, String(status)).toBe('failed')
+      expectNoSecret(error)
+    }
+  })
+
+  it('AC-8554.3: 클라이언트가 던지면 failed이고 원문이 없다', async () => {
+    const error = await caught(() => run(throwingClient))
+    expect(error.kind).toBe('failed')
+    expectNoSecret(error)
+  })
+
+  it('AC-8554.3: 진짜 클라이언트에서 연결이 끊기면 offline, DB 제약이 거부하면 failed이고 원문이 없다', async () => {
+    vi.useFakeTimers()
+    const cut = vi.fn<typeof fetch>(async () => {
+      throw new TypeError(SECRET)
+    })
+    const pending = caught(() => run(realClient(cut)))
+    await vi.runAllTimersAsync()
+    const offline = await pending
+    expect(offline.kind).toBe('offline')
+    expectNoSecret(offline)
+    vi.useRealTimers()
+    const body = JSON.stringify({ message: SECRET, details: SECRET, hint: SECRET, code: '23514' })
+    const refused = await caught(() => run(realClient(vi.fn<typeof fetch>(async () => new Response(body, { status: 400 })))))
+    expect(refused.kind).toBe('failed')
+    expectNoSecret(refused)
+  })
+})
+
 describe('AC-8503.3 newGoogleEventId', () => {
   it("AC-8503.3: 웹앱이 정하는 구글 일정 id는 'ssk' + 32자 16진수이고 부를 때마다 다르다", () => {
     const ids = new Set(many(20, () => newGoogleEventId()))
@@ -1694,6 +2045,7 @@ const ALL: [string, Run][] = [
   ['findApptsByEvents', (c) => findApptsByEvents(c, [EVENT])],
   ['applyGoogleAppt', (c) => applyGoogleAppt(c, ID, { status: 'cancel' }, G_UPDATED, WAIT_AT)],
   ['markApptSent', (c) => markApptSent(c, ID, { gUpdated: G_UPDATED }, WAIT_AT)],
+  ['rereadAppt', (c) => rereadAppt(c, ID, { kindId: 'jabo', kindName: '자보도수' }, { gTitle: '1500 가짜환자 자보', gUpdated: G_UPDATED })],
   ['insertGoogleAppts', (c) => insertGoogleAppts(c, [{ ...DRAFT, ...G_PART }])],
   ['listWaitingMemos', (c) => listWaitingMemos(c, DAY)],
   ['markMemoSent', (c) => markMemoSent(c, ID, WAIT_AT)],
