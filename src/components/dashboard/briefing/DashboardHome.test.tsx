@@ -946,7 +946,8 @@ describe('DashboardHome: 비트가 아닌 병원의 연결 전 (emr-choice AC-71
     noText(container, WAIT_LEAD)
   })
 
-  it.each(['bit', 'uisarang', 'egis', 'other'] as const)('AC-7103.2: 연결 뒤(report 있음)는 emr이 %s이어도 지금과 같다', (emr) => {
+  // 의사랑 연결 뒤는 지금 바로 묶음·기능 목차 연결 글을 숨긴다(uisarang-upload AC-8818.2·AC-8818.3, 아래 '의사랑 비트 전용 글 숨기기' 시험)
+  it.each(['bit', 'egis', 'other'] as const)('AC-7103.2: 연결 뒤(report 있음)는 emr이 %s이어도 지금과 같다', (emr) => {
     expect(markupOf(emr, report)).toBe(markupOf(undefined, report))
     const { container } = render(<DashboardHome today={TODAY} report={report} analysis={analysis} emr={emr} />)
     expect(screen.queryByRole('link', { name: CHANGE })).toBeNull()
@@ -1128,7 +1129,7 @@ describe('DashboardHome: 의사랑 시작 칸 (uisarang-upload AC-8811.1·AC-881
     expect(textOf(dateLineEl())).toBe('10월 31일 토요일 · 이번 달 마지막 날')
   })
 
-  it("AC-8811.1: 비트 연결 안내 줄('연결하면 바로 쓸 수 있어요')·빈 분석 칸(analysis)·연결 순서·폰 아래 단추·준비 중 글이 없고, 기능 목차(연결 먼저)는 그대로다", () => {
+  it("AC-8811.1·AC-8818.3: 비트 연결 안내 줄('연결하면 바로 쓸 수 있어요')·빈 분석 칸(analysis)·연결 순서·폰 아래 단추·준비 중 글이 없고, 기능 목차는 남되 머리 옆 글·'연결 먼저'가 없다", () => {
     const container = renderStart()
     const root = rootOf(container)
     expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['section', 'section'])
@@ -1136,7 +1137,8 @@ describe('DashboardHome: 의사랑 시작 칸 (uisarang-upload AC-8811.1·AC-881
     expect(root.children[1]).toBe(sectionNamed('기능 목차'))
     expect(screen.queryByRole('heading', { level: 2, name: ROW_TITLE })).toBeNull()
     expect(screen.queryByTestId('analysis')).toBeNull()
-    expect(within(sectionNamed('기능 목차')).getAllByText('연결 먼저')).toHaveLength(featureCount('connect-first'))
+    expect(within(sectionNamed('기능 목차')).queryAllByText('연결 먼저')).toHaveLength(0)
+    noText(sectionNamed('기능 목차'), INDEX_SIDE)
     for (const text of ['의사랑 연결은 준비하고 있어요', WAIT_LEAD, '연결 순서', '비트 PC 연결 시작', '비트 자료는 읽기만 해요', ANALYSIS_TEXT]) noText(container, text)
     expect(container.querySelector('details, .sticky, #dashboard-connect-start')).toBeNull()
     expect(brief().children).toHaveLength(1)
@@ -1189,5 +1191,93 @@ describe('DashboardHome: 의사랑 시작 칸 (uisarang-upload AC-8811.1·AC-881
     for (const emr of ['bit', 'uisarang', 'egis', 'other'] as const) {
       expect(markupOf(emr, report, { uisUpload: upload, readOnly: true })).toBe(markupOf(emr, report))
     }
+  })
+})
+
+// ── uisarang-upload: 의사랑 의원에서 비트 전용 글 숨기기 (REQ-8818 AC-8818.2·AC-8818.3·AC-8818.4, design.md §10-7) ──
+// 의사랑 연결 뒤(저장된 숫자 있음)는 분석 아래 바로 가기 자리(지금 바로 묶음)를 통째로 그리지 않고, 의사랑 두 갈래(연결 뒤 · 시작 칸)의 기능 목차는
+// 머리 옆 글과 connect-first 칸 상태 글자를 그리지 않는다. 비트·이지스·그 밖은 지금 그대로다. 새 화면 글은 없다
+describe('DashboardHome: 의사랑 비트 전용 글 숨기기 (uisarang-upload AC-8818.2·AC-8818.3·AC-8818.4)', () => {
+  const READY_TEXTS = ['지금 바로 쓸 수 있어요', '삭감 예방 사전점검', DESC, DESC_SUB, '사전점검 열기', '비트 PC 연결 다시 확인', '청구 탭']
+  const renderUis = (node: ReactNode | null, readOnly: boolean) =>
+    render(<DashboardHome today={TODAY} report={node} analysis={analysis} emr="uisarang" readOnly={readOnly} />).container
+  const markupOf = (emr: EmrKind | undefined, node: ReactNode | null) => renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} />)
+  const partsOf = (html: string) => {
+    const holder = document.createElement('div')
+    holder.innerHTML = html
+    return Array.from(holder.firstElementChild?.children ?? []).map((el) => el.outerHTML)
+  }
+  const index = () => sectionNamed('기능 목차')
+  // 칸마다 첫 줄(이름 + 상태)
+  const linesOf = () => within(screen.getByRole('list', { name: '기능' })).getAllByRole('link').map((a) => a.children[0] as HTMLElement)
+  // 의사랑 기능 목차(AC-8818.3): 머리는 h2 하나 · connect-first 칸 첫 줄은 이름 하나 · ready·soon 상태 글자 그대로 · 이름·주소·차례 그대로
+  const expectUisIndex = () => {
+    const h2 = within(index()).getByRole('heading', { level: 2, name: '기능 목차' })
+    expect(Array.from((h2.parentElement as HTMLElement).children)).toEqual([h2])
+    noText(index(), INDEX_SIDE)
+    noText(index(), '연결하면 쓸 수 있어요')
+    expect(within(index()).queryAllByText('연결 먼저')).toHaveLength(0)
+    const lines = linesOf()
+    expect(lines).toHaveLength(DASHBOARD_FEATURES.length)
+    DASHBOARD_FEATURES.forEach((feature, i) => {
+      const line = lines[i] as HTMLElement
+      expect(textOf(line.children[0]), feature.name).toBe(feature.name)
+      if (feature.status === 'connect-first') expect(line.children, feature.name).toHaveLength(1)
+      else expect(textOf(line.children[1]), feature.name).toBe(feature.status === 'ready' ? '사용 가능' : '준비 중')
+    })
+    expect(within(index()).queryAllByText('사용 가능')).toHaveLength(featureCount('ready'))
+    expect(within(screen.getByRole('list', { name: '기능' })).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(DASHBOARD_FEATURES.map((f) => f.href))
+  }
+
+  it.each([false, true])('AC-8818.2: 연결 뒤(보는 중 %s) — 분석 아래 바로 가기 자리의 지금 바로 쓸 수 있어요 묶음이 그 자리째 없다(브리핑 → 분석 → 기능 목차)', (readOnly) => {
+    const container = renderUis(report, readOnly)
+    expect(screen.queryByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '사전점검 열기' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 다시 확인' })).toBeNull()
+    // 기능 목차의 청구 칸 설명에도 '삭감 예방 사전점검'이 있어 묶음 글은 기능 목차 밖에서 본다
+    const outside = container.cloneNode(true) as HTMLElement
+    outside.querySelector('#dashboard-feature-index-title')?.closest('section')?.remove()
+    for (const text of READY_TEXTS) noText(outside, text)
+    for (const text of ['지금 바로 쓸 수 있어요', DESC, DESC_SUB, '사전점검 열기', '비트 PC 연결 다시 확인']) noText(container, text)
+    const root = rootOf(container)
+    expect(Array.from(root.children)).toEqual([brief(), screen.getByTestId('analysis'), index()])
+    // 연결 뒤의 다른 글은 그대로다: report 안 h1 하나, 연결 전 글 없음
+    expect(Array.from(container.querySelectorAll('h1')).map(textOf)).toEqual([REPORT_TEXT])
+    for (const text of [ROW_TITLE, H1, '쓰는 EMR 바꾸기']) noText(container, text)
+  })
+
+  it('AC-8818.2: 브리핑(날짜 줄·report)과 분석은 비트 의원 연결 뒤와 글자 하나까지 같고, 바로 가기 자리 하나만 빠진다', () => {
+    const uis = partsOf(markupOf('uisarang', report))
+    const bit = partsOf(markupOf('bit', report))
+    expect(bit).toHaveLength(4)
+    expect(uis).toHaveLength(3)
+    expect(uis.slice(0, 2)).toEqual(bit.slice(0, 2))
+    expect(bit[2]).toContain('지금 바로 쓸 수 있어요')
+  })
+
+  it.each([false, true])('AC-8818.3: 연결 뒤(보는 중 %s) — 기능 목차 머리 옆 글이 없고 connect-first 칸 상태 글자가 없으며 ready 칸 사용 가능 · 이름 · 주소 · 차례는 그대로다', (readOnly) => {
+    renderUis(report, readOnly)
+    expectUisIndex()
+  })
+
+  it.each([false, true])('AC-8818.3: 시작 칸(보는 중 %s)도 기능 목차 머리 옆 글·연결 먼저가 없고 ready 칸 사용 가능 · 이름 · 주소 · 차례는 그대로다', (readOnly) => {
+    renderUis(null, readOnly)
+    expectUisIndex()
+  })
+
+  it.each(['bit', 'egis', 'other', undefined] as const)('AC-8818.4: %s — 연결 뒤는 지금 바로 묶음([사전점검 열기]·[비트 PC 연결 다시 확인]) · 기능 목차 머리 옆 글 · 사용 가능이 지금 그대로다', (emr) => {
+    render(<DashboardHome today={TODAY} report={report} analysis={analysis} emr={emr} />)
+    expect(readyNow()).toBeTruthy()
+    expect(screen.getByRole('link', { name: '사전점검 열기' }).getAttribute('href')).toBe('/claim')
+    expect(screen.getByRole('link', { name: '비트 PC 연결 다시 확인' }).getAttribute('href')).toBe('/claim/setup')
+    expect(byText(index(), INDEX_SIDE, 'p')).toBeTruthy()
+    expect(within(index()).getAllByText('사용 가능')).toHaveLength(featureCount('ready') + featureCount('connect-first'))
+  })
+
+  it.each(['bit', 'egis', 'other', undefined] as const)("AC-8818.4: %s — 연결 전은 '연결하면 바로 쓸 수 있어요' 줄 · 기능 목차 머리 옆 글 · '연결 먼저'가 지금 그대로다", (emr) => {
+    render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr={emr} />)
+    expect(sectionNamed(ROW_TITLE)).toBeTruthy()
+    expect(byText(index(), INDEX_SIDE, 'p')).toBeTruthy()
+    expect(within(index()).getAllByText('연결 먼저')).toHaveLength(featureCount('connect-first'))
   })
 })

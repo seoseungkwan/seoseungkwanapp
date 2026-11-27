@@ -66,6 +66,8 @@ const UIS_REPORT_DESC = '저장된 숫자로 만든 보고 글 · 환자 이름�
 const BIT_REPORT_DESC = '비트 PC에서 불러온 숫자로 만든 보고 글 · 환자 이름은 쓰지 않아요'
 const OLD_HELPER = '도우미가 예전 판이라'
 const HELPER_90 = '90일초진은 새 도우미(0.7.0)가 있어야 보여요.'
+// 환자 카드 내원 구성의 옛 도우미 안내(REQ-8818 AC-8818.1) — 의사랑 날 줄은 first90이 없어 비트 길이면 늘 뜨는 글이다
+const MIX_OLD_NOTE = '지금은 재진에 90일초진이 들어 있어요. 새 도우미(0.7.0)로 다시 불러오면 따로 보여요.'
 // '셀 수 없음 안내' 표의 통계 탭 자리마다 까닭(requirements '화면 글자')
 const WHY = {
   revisit: '환자마다 다시 온 날을 알 수 없어요.',
@@ -220,6 +222,15 @@ describe('통계 틀 · 의사랑 의원 (AC-8812.2·AC-8812.3·AC-8812.4·AC-88
     expect(summary.textContent).not.toContain(HELPER_90)
   })
 
+  it('AC-8812.2·AC-8818.1: 환자 카드 내원 구성은 도넛·범례가 있고 옛 도우미 안내가 없다 — 통계 틀 어디에도 없다', () => {
+    drawSections()
+    const mix = sub(card('stats-patients'), '내원 구성')
+    expect(within(mix).getByRole('list', { name: '내원 구성' })).toBeTruthy()
+    expect(mix.querySelector('svg')).not.toBeNull()
+    expect(mix.textContent).not.toContain(MIX_OLD_NOTE)
+    expect(document.body.textContent).not.toContain(MIX_OLD_NOTE)
+  })
+
   it('AC-8812.2: 환자 카드 신환 재방문율 · 예약·전환 Block 전환 · 진료 운영 시간대별 접수·원장님별 자리에 그 안내가 있다', () => {
     drawSections()
     expect(textsIn(sub(card('stats-patients'), '신환 재방문율'))).toEqual([note(WHY.revisit)])
@@ -316,6 +327,14 @@ describe('통계 틀 · 비트 의원은 지금 그대로 (AC-8812.9)', () => {
   })
 })
 
+describe('통계 틀 · 비트 의원 내원 구성 안내는 지금 그대로 (AC-8818.1·AC-8818.4)', () => {
+  it('AC-8818.1·AC-8818.4: 같은 화면을 emr bit로 그리면 first90 없는 날이라 내원 구성 옛 도우미 안내가 있다', () => {
+    clinic.view = profileView('bit')
+    drawSections()
+    expect(sub(card('stats-patients'), '내원 구성').textContent).toContain(MIX_OLD_NOTE)
+  })
+})
+
 // ── 통계 화면(StatsScreen): 자료 줄 · 고르기 칸 자리 · 빈 글 (AC-8812.1·AC-8812.9) ──
 const SAVED_AT = { at: '2026-11-26T10:05:00Z', source: 'uisarang' as const } // 19:05
 type Read = Awaited<ReturnType<typeof readDays>>
@@ -358,6 +377,14 @@ describe('통계 화면 · 의사랑 의원 (AC-8812.1)', () => {
     expect(pickerShown()).toBe(false)
     expect(screen.queryByRole('button', { name: '비트에서 불러오기' })).toBeNull()
     expect(document.body.textContent).not.toContain('아직 올린 의사랑 엑셀이 없어요')
+  })
+
+  it('AC-8812.2·AC-8818.1: 저장된 의사랑 숫자로 그린 통계 탭 전체에 내원 구성 옛 도우미 안내가 없다', async () => {
+    screenReads(true)
+    drawScreen()
+    await shown()
+    await waitFor(() => expect(screen.getByRole('list', { name: '내원 구성' })).toBeTruthy())
+    expect(document.body.textContent).not.toContain(MIX_OLD_NOTE)
   })
 
   it('AC-8812.1: 저장된 숫자가 없으면 화면 글자 빈 글 둘이고 비트 빈 글은 없다', async () => {

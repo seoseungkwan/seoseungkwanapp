@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it } from 'vitest'
 import { statsRange, type StatsInput } from '@/components/stats/view'
 import type { DateRange } from '@/types/dates'
@@ -130,5 +131,48 @@ describe('AC-4417.1·AC-4417.2: 도넛 움직임', () => {
     expect(container.querySelector('svg')).toBe(svg)
     expect(Array.from(container.querySelectorAll('svg g > circle'))).toEqual(arcs)
     expect(legendRows().map((row) => row[2])).toEqual(['10건', '30건', '20건'])
+  })
+})
+
+// uisarang-upload REQ-8818(design.md §10-7): 의사랑 날 줄은 늘 first90이 없다 → 의사랑 의원(uis)이면 옛 도우미 안내 줄만 그리지 않는다. 도넛·범례·셈은 그대로
+describe('AC-8818.1: 의사랑 의원은 내원 구성 옛 도우미 안내가 없다', () => {
+  // 의사랑 날 줄 모양(first90 없음) — 신환 238 · 재진 2,170, 누적 2,408건
+  const NO90 = [day('2026-11-02', 100, 993), day('2026-11-10', 138, 1177)]
+
+  it('AC-8818.1: uis이면 first90 없는 날 줄이어도 옛 도우미 안내가 없고, 도넛(두 조각 · 가운데 글)·범례 두 줄은 그대로다', () => {
+    const { container } = render(<VisitMixSection input={inputOf(NO90)} uis />)
+    expect(screen.queryByText(OLD_NOTE)).toBeNull()
+    expect(container.textContent).not.toContain('새 도우미(0.7.0)')
+    expect(legendRows()).toEqual([
+      ['', '신환', '238건', '9.8%'],
+      ['', '재진', '2,170건', '90.1%'],
+    ])
+    expect(container.querySelectorAll('svg g > circle')).toHaveLength(2)
+    expect(Array.from(donutOf(container).lastElementChild!.children).map((line) => line.textContent)).toEqual(['누적 내원', '2,408건'])
+    expect(screen.getByRole('heading', { level: 2, name: '내원 구성' })).toBeTruthy()
+  })
+
+  it('AC-8818.1: uis이면 그린 글이 uis 없음에서 안내 줄 하나만 뺀 것과 같다', () => {
+    // 서버 그림끼리 견준다(그릴 때마다 머리 id(useId)가 처음부터 같다)
+    render(<VisitMixSection input={inputOf(NO90)} />)
+    const note = screen.getByText(OLD_NOTE).outerHTML
+    const plain = renderToStaticMarkup(<VisitMixSection input={inputOf(NO90)} />)
+    const uis = renderToStaticMarkup(<VisitMixSection input={inputOf(NO90)} uis />)
+    expect(plain).toContain(note)
+    expect(uis).toBe(plain.replace(note, ''))
+  })
+
+  it('AC-8818.1·AC-8818.4: uis를 주지 않거나 거짓이면 지금처럼 first90 없는 날이 있을 때 안내가 있다', () => {
+    const { rerender } = render(<VisitMixSection input={inputOf(NO90)} />)
+    expect(screen.getByText(OLD_NOTE)).toBeTruthy()
+    rerender(<VisitMixSection input={inputOf(NO90)} uis={false} />)
+    expect(screen.getByText(OLD_NOTE)).toBeTruthy()
+    rerender(<VisitMixSection input={inputOf(MIXED)} uis={false} />)
+    expect(screen.getByText(OLD_NOTE)).toBeTruthy()
+  })
+
+  it('AC-8818.1: uis이어도 이 기간에 줄이 없으면 그리지 않는다(지금 그대로)', () => {
+    const { container } = render(<VisitMixSection input={inputOf([day('2026-01-05', 1, 1)])} uis />)
+    expect(container.innerHTML).toBe('')
   })
 })

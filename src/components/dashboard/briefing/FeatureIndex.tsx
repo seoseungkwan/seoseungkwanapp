@@ -8,6 +8,8 @@ import { ARROW_MOVE, NOTE, PRESS, SECTION, SECTION_HEAD, SECTION_TITLE } from '.
 // 1줄 이름(준비 중만 ink-2, 올림 accent) + 오른쪽 상태 글자(small), 2줄 설명. 1024px 이상 3열 · 768~1023px 2열 · 폰 1열(칸 높이 56 이상).
 // 상태 글자: 청구(connect-first)는 연결 전 "연결 먼저"(ink-2 600 + 화살표) · 연결 뒤 "사용 가능", 설정·업무일지(ready)는 "사용 가능"(accent 500 + 화살표), 나머지는 "준비 중"(muted).
 // 같은 칸에 이름·설명이 있고 상태는 덧붙은 표시라 정보가 색에만 기대지 않는다(design.md '준비 중 탭도 보통 탭 모양')
+// 의사랑 의원(uis, uisarang-upload AC-8818.3·design.md §10-7)은 비트 연결로 정해지는 글을 말하지 않는다: 머리 옆 글과 connect-first 칸의 상태 글자를 그리지 않는다.
+// ready·soon 칸 글·칸 이름·설명·링크·차례는 그대로다. uis를 주지 않으면(비트·이지스·그 밖) 지금 그대로(AC-8818.4)
 const INDEX_TITLE_ID = 'dashboard-feature-index-title'
 const CELL = `group block border-t border-line pt-3 pb-4 no-underline max-md:min-h-14 max-md:py-3 ${PRESS} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`
 const STATUS_GO = 'inline-flex shrink-0 items-center gap-0.5 text-small'
@@ -36,16 +38,18 @@ function Status({ status, connected }: { status: FeatureStatus; connected: boole
   )
 }
 
-export function FeatureIndex({ connected }: { connected: boolean }) {
+export function FeatureIndex({ connected, uis = false }: { connected: boolean; uis?: boolean }) {
   return (
     <section aria-labelledby={INDEX_TITLE_ID} className={SECTION}>
       <div className={SECTION_HEAD}>
         <h2 id={INDEX_TITLE_ID} className={SECTION_TITLE}>
           기능 목차
         </h2>
-        <p className={NOTE}>
-          {total}개 가운데 {now}개는 지금, {afterConnect}개는 연결하면 쓸 수 있어요
-        </p>
+        {!uis && (
+          <p className={NOTE}>
+            {total}개 가운데 {now}개는 지금, {afterConnect}개는 연결하면 쓸 수 있어요
+          </p>
+        )}
       </div>
       <ul aria-label="기능" className="grid list-none gap-x-6 md:grid-cols-2 lg:grid-cols-3">
         {DASHBOARD_FEATURES.map((feature) => (
@@ -57,7 +61,7 @@ export function FeatureIndex({ connected }: { connected: boolean }) {
                 >
                   {feature.name}
                 </span>
-                <Status status={feature.status} connected={connected} />
+                {!(uis && feature.status === 'connect-first') && <Status status={feature.status} connected={connected} />}
               </span>
               <span className="mt-0.5 block text-small text-muted">{feature.desc}</span>
             </Link>

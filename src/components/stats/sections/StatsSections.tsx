@@ -223,7 +223,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
         </StatsCard>
       )}
       <StatsCard id={PATIENTS_ID} title={PATIENTS} desc={cardRangeText(input.range, lastDayOf(input.range, revenue))}>
-        <PatientTrendSection input={input} saved={saved} />
+        <PatientTrendSection input={input} saved={saved} uis={uis} />
         {uis ? <UisNoteSection title="신환 재방문율" why={UIS_WHY.revisit} /> : <RevisitSection input={input} saved={saved} />}
         {uis ? (
           <UisAgeSection periods={periods} input={input} />

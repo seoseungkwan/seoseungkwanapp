@@ -17,12 +17,13 @@ import { StickyConnect } from './StickyConnect'
 //   report 있음 = 연결 뒤(dashboard-ux AC-2707.2): 한 칸 브리핑(날짜 줄·report, h1은 report 안) → analysis → 바로 가기(지금 바로 묶음) → 기능 목차
 //   쓰는 EMR이 비트가 아니고 연결 전(emr-choice AC-7103.1, design.md 4절, 시안 docs/mockups/emr-choice/index.html ②): 큰 문장 자리에 준비 중 안내 · [쓰는 EMR 바꾸기].
 //   연결 순서·폰 아래 단추·안심 줄은 없고, 그 아래 '지금 바로' 줄·analysis·기능 목차는 다른 탭 단추처럼 그대로다. 연결 뒤는 emr과 상관없이 그대로(AC-7103.2)
+//   — 의사랑만 예외(uisarang-upload AC-8818.2·AC-8818.3, design.md §10-7): 연결 뒤 바로 가기 자리(지금 바로 묶음)를 그리지 않고, 기능 목차에 uis를 넘긴다(머리 옆 글·connect-first 상태 글자 숨김)
 // notice(contacts AC-6507.1, 무상 수리 알림)는 받은 그대로 '맨 위 줄 바로 아래'에 둔다: 연결 뒤는 브리핑 칸의 report(머리 줄과 그 아래 오류 상자, 또는 읽는 중·실패 블록) 다음,
 //   연결 전(비트·비트 아닌 EMR)은 날짜 줄 다음·큰 문장 앞. 무엇을 그릴지(0줄이면 null)는 넘기는 쪽이 정한다
 // locationNotice(location AC-7915.2, 새 경쟁 의원 알림 — 관리자만)는 notice 바로 다음에 둔다(같은 네 자리, notice가 없으면 그 자리). 무엇을 그릴지는 넘기는 쪽이 정한다
 // 의사랑 의원 연결 전 = 저장된 숫자 없음(uisarang-upload AC-8811.1·AC-8811.6, design.md §10-2, 시안 docs/mockups/uisarang-upload ?s=dash-empty): 준비 중 안내 대신 시작 칸
 //   (날짜 줄 → h1 → 안내 → 올리기 칸 자리 uisUpload → [쓰는 EMR 바꾸기]). 비트 연결 글인 '연결하면 바로 쓸 수 있어요' 줄과 빈 analysis('비트 PC 연결 전')는 그리지 않고
-//   기능 목차는 그대로다. 보는 중(readOnly)이면 '아직 올린 의사랑 엑셀이 없어요' 글만(올리기 칸·단추 없음). 올리기 칸이 무엇을 그리는지는 넘기는 쪽(BitDashboard ← LiveDashboard)이 정한다
+//   기능 목차는 uis로 그린다(AC-8818.3). 보는 중(readOnly)이면 '아직 올린 의사랑 엑셀이 없어요' 글만(올리기 칸·단추 없음). 올리기 칸이 무엇을 그리는지는 넘기는 쪽(BitDashboard ← LiveDashboard)이 정한다
 // analysis(오늘 하루 분석 + 기간별 흐름)는 갈래 라 몫이라 무엇이 오는지 모르고 받은 그대로 둔다. 무엇을 넘길지는 페이지 조립(TASK-9)이 정한다.
 // 바탕은 앱 틀이 늘 흰색 한 장이다(ui-90 AC-404.1) — 뿌리에 바탕 표시를 달지 않는다
 export type DashboardHomeProps = {
@@ -161,7 +162,8 @@ export function DashboardHome({
   const connected = report != null
   if (connected) {
     // 연결 뒤(dashboard-ux AC-2707.2): 머리 줄(report) → 분석(일별 현황 · AI 요약 · 기간별 흐름, analysis) → 바로 가기(삭감 예방 사전점검) → 기능 목차.
-    // 지금 바로 묶음은 브리핑 오른쪽 칸에서 맨 아래 바로 가기 자리로 옮겼다(글 그대로)
+    // 지금 바로 묶음은 브리핑 오른쪽 칸에서 맨 아래 바로 가기 자리로 옮겼다(글 그대로). 의사랑은 바로 가기 자리째 없다(AC-8818.2 — 사전점검은 비트 PC 몫)
+    const uis = emr === 'uisarang'
     return (
       <div className="pt-2 pb-4 max-md:pt-1 max-md:pb-0">
         <section aria-label="오늘 브리핑">
@@ -174,12 +176,14 @@ export function DashboardHome({
           </div>
         </section>
         {analysis}
-        <div className="mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4">
-          <div className="max-w-130">
-            <ReadyNowSide />
+        {!uis && (
+          <div className="mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4">
+            <div className="max-w-130">
+              <ReadyNowSide />
+            </div>
           </div>
-        </div>
-        <FeatureIndex connected />
+        )}
+        <FeatureIndex connected uis={uis} />
       </div>
     )
   }
@@ -195,7 +199,7 @@ export function DashboardHome({
             <UisStart upload={uisUpload} readOnly={readOnly} />
           </div>
         </section>
-        <FeatureIndex connected={false} />
+        <FeatureIndex connected={false} uis />
       </div>
     )
   }

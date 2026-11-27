@@ -31,6 +31,7 @@ import { VisitMixSection } from './VisitMixSection'
 // 막대는 90일초진을 아는 기간이면 신환·90일초진·재진 세 갈래, 아니면 신환·재진(90일초진 포함) 두 갈래다(view.ts visitTrend).
 // 칸을 누르면(PC는 올리기도) 아래 줄(role="status")에 그 칸 숫자가 나온다. 고른 칸은 이 칸의 React 상태뿐이다.
 // 고른 기간(stats-period AC-1704.3)은 칸이 range.bucket이고 빈 칸(blank)이 있다: 자료 없는 칸은 [자세히] 표의 숫자가 '–', 앞으로 올 달은 표에 없다
+// uis(의사랑 의원, uisarang-upload AC-8818.1)는 내원 구성 칸에 넘기기만 한다(옛 도우미 안내 줄 숨김). 막대 칸은 그대로
 
 const TITLE: Record<TrendBucket, string> = { day: '일별 내원', week: '주별 내원', month: '월별 내원' }
 const UNIT = '건'
@@ -107,7 +108,7 @@ function pickText(bucket: BarBucket, series: readonly BarSeries[], unit: TrendBu
   return [`${head} 내원 ${formatCount(values.reduce((all, value) => all + value, 0))}건`, ...parts].join(' · ')
 }
 
-export function PatientTrendSection({ input, saved, className = '' }: { input: StatsInput; saved: boolean; className?: string }) {
+export function PatientTrendSection({ input, saved, className = '', uis = false }: { input: StatsInput; saved: boolean; className?: string; uis?: boolean }) {
   const [picked, setPicked] = useState<string | null>(null)
   const trend = visitTrend(input)
   const unit = unitOf(input.range)
@@ -130,7 +131,7 @@ export function PatientTrendSection({ input, saved, className = '' }: { input: S
   }
   return (
     <div className={`grid min-w-0 gap-6 min-[1100px]:grid-cols-[minmax(280px,4fr)_8fr] min-[1100px]:gap-8 ${className}`}>
-      <VisitMixSection input={input} />
+      <VisitMixSection input={input} uis={uis} />
       <DetailToggle table={tableOf(buckets, series, unit)}>
         {({ button, panel }) => (
           <Section title={TITLE[unit]} action={button}>

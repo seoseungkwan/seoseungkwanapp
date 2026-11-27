@@ -186,7 +186,7 @@ describe('AC-8811.1: 의사랑 · 저장 숫자 없음 — 시작 칸', () => {
     expect(readBitDays).not.toHaveBeenCalled()
   })
 
-  it("AC-8811.1: 그 아래 비트 연결 안내 줄('연결하면 바로 쓸 수 있어요')과 빈 분석 칸('비트 PC 연결 전')이 없고 기능 목차는 그대로다", () => {
+  it("AC-8811.1·AC-8818.3: 그 아래 비트 연결 안내 줄('연결하면 바로 쓸 수 있어요')과 빈 분석 칸('비트 PC 연결 전')이 없고, 기능 목차(h2)는 남되 머리 옆 글·'연결 먼저'가 없다", () => {
     notBitPc()
     draw()
     expect(screen.queryByRole('heading', { level: 2, name: '연결하면 바로 쓸 수 있어요' })).toBeNull()
@@ -197,7 +197,10 @@ describe('AC-8811.1: 의사랑 · 저장 숫자 없음 — 시작 칸', () => {
     expect(screen.queryByRole('link', { name: '비트 PC 연결 시작' })).toBeNull()
     expect(screen.queryByRole('link', { name: '비트 PC 연결부터' })).toBeNull()
     const index = screen.getByRole('heading', { level: 2, name: '기능 목차' })
-    expect(within(index.closest('section')!).getAllByText('연결 먼저').length).toBeGreaterThan(0)
+    expect(within(index.closest('section')!).queryAllByText('연결 먼저')).toHaveLength(0)
+    expect(Array.from(index.parentElement!.children)).toEqual([index])
+    expect(textOf(index.closest('section'))).not.toMatch(/개 가운데|연결하면 쓸 수 있어요/)
+    expect(within(index.closest('section')!).getByRole('link', { name: /^통계/ }).getAttribute('href')).toBe('/stats')
     expectOrder(link(CHANGE), index)
   })
 
@@ -272,6 +275,22 @@ describe('AC-8811.2: 의사랑 · 저장된 숫자 있음 — 머리 줄', () =>
       expect(html).toContain(CHIP)
       expect(html).not.toContain('비트')
     }
+  })
+})
+
+describe('AC-8818.2·AC-8818.3: 의사랑 · 저장된 숫자 있음 — 비트 전용 글 숨기기', () => {
+  it('AC-8818.2·AC-8818.3: 비트 PC여도 지금 바로 쓸 수 있어요 묶음([사전점검 열기]·[비트 PC 연결 다시 확인])이 없고, 기능 목차는 기간별 흐름 다음에 머리 옆 글·연결 먼저 없이 있다', async () => {
+    onBitPc()
+    draw(SAVED_UIS, { savedAt: SAVED_AT, savedRefresh: refresh() })
+    await act(async () => {})
+    expect(screen.queryByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '사전점검 열기' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 다시 확인' })).toBeNull()
+    noText('청구 점검은 비트 PC의 크롬에서 열려요.')
+    const index = screen.getByRole('heading', { level: 2, name: '기능 목차' })
+    expect(Array.from(index.parentElement!.children)).toEqual([index])
+    expect(within(index.closest('section')!).queryAllByText('연결 먼저')).toHaveLength(0)
+    expectOrder(flow(), index)
   })
 })
 
