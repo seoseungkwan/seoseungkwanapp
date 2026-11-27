@@ -1,6 +1,6 @@
 # 설계: 의사랑 엑셀 올리기
 
-> 기능 ID: `uisarang-upload` · 요구사항은 `requirements.md`(REQ-8801~8817), 작업은 `tasks.md`. 화면 글자는 requirements.md '화면 글자'가 기준이고 시안 `docs/mockups/uisarang-upload/`와 한 글자도 다르지 않다.
+> 기능 ID: `uisarang-upload` · 요구사항은 `requirements.md`(REQ-8801~8818), 작업은 `tasks.md`. 화면 글자는 requirements.md '화면 글자'가 기준이고 시안 `docs/mockups/uisarang-upload/`와 한 글자도 다르지 않다.
 > PC 화면만(사용자 규칙 2026-11-21). 새 화면 코드에 폰 폭 클래스(`max-md:` 등)를 쓰지 않는다.
 
 ## 1. 조사로 안 것
@@ -405,6 +405,12 @@ export type UisReportRaw = {
 - `MonthlyReport.tsx`: 새 key 셋은 지금 `items` 칸 그림 그대로(새 모양 없음).
 - `useReportReads(month, today, { revision, withGoal, uis })`: `uis` 참이면 같은 열쇠·같은 늦은 답 버리기로 고른 달 범위(1일 ~ `salesEnd`)의 `readUisPeriods('rx')`·`readUisPeriods('age')`·`readCoverage`를 함께 읽어 `uis: ReportRead<UisReportData>`로 준다. 실패면 지금 월간 보고서 실패 카드 길(번호 `E-UIS-READ-FAILED`).
 - `ReportSection.tsx` `MonthlyReportSection`: `StatsSections`가 TASK-4에서 넘기는 `uis` prop(`MonthlyReportProps.uis?: boolean`)을 받아 `useReportReads`에 넘기고 `monthlyReport` 입력 `uis`를 채운다. `StatsSections.tsx`는 TASK-9에서 고치지 않는다. 비트는 `uis` 거짓이라 읽기·칸이 지금 그대로(AC-8817.6).
+
+### 10-7. 비트 전용 글 숨기기 (TASK-10, 화면 확인 뒤 더함)
+- 통계 탭 `내원 구성`: `VisitMixSection({ input, uis = false })` — 옛 도우미 안내 줄을 `{!uis && !mix.known && …}`로 그린다(`mix.known`은 `view.ts` `knowsFirst90`, 의사랑 날 줄은 `first90`이 없어 늘 거짓). `PatientTrendSection`이 `uis?: boolean`(기본 거짓)을 받아 `VisitMixSection`에 넘기고, `StatsSections`의 환자 카드가 이미 가진 `uis`를 `<PatientTrendSection … uis={uis} />`로 넘긴다. 도넛·범례·셈(`visitMix`)은 그대로. 비트는 `uis`를 넘기지 않아 지금 그대로(AC-8818.1·AC-8818.4).
+- 대시보드 연결 뒤(저장된 숫자 있음): `DashboardHome`이 `emr === 'uisarang'`이면 분석 아래 바로 가기 자리(`ReadyNowSide`를 감싼 위 줄 있는 칸)를 통째로 그리지 않는다(AC-8818.2). `ReadyNow.tsx`는 고치지 않는다. 병원 정보를 읽는 동안은 `emr`이 `bit`라 잠깐 보일 수 있다(지금 EMR 판정 규칙 그대로 — 판정되면 사라짐).
+- 기능 목차: `FeatureIndex({ connected, uis = false })`. `uis` 참이면 (1) 머리 옆 `NOTE` 글(`{total}개 가운데 {now}개는 지금, {afterConnect}개는 연결하면 쓸 수 있어요`)을 그리지 않고, (2) `status === 'connect-first'` 칸의 `Status`를 그리지 않는다(`연결 먼저`·`사용 가능` 둘 다 — 이 넷은 비트 연결 여부로 상태가 정해지는데 의사랑에서는 통계만 올리기로 쓰고 나머지는 비트가 있어야 해 한 글자로 맞게 말할 수 없다. 가장 단순한 한 규칙: 의사랑이면 비트 연결로 정해지는 상태는 말하지 않는다). `ready`·`soon` 칸 글·칸 이름·설명·링크는 그대로. `DashboardHome`은 의사랑의 두 갈래(연결 뒤 · 시작 칸)에서 `uis`를 넘기고, 비트·이지스·그 밖 갈래는 넘기지 않는다(AC-8818.3·AC-8818.4). `features.ts`(목차 자료)는 고치지 않는다.
+- 새 화면 글은 없다(숨기기만). 시안 `?s=dash-data`·`?s=dash-empty`에는 이 두 묶음이 그려져 있지 않아 시안과 어긋나지 않는다.
 
 ## 11. 오류
 - `lib/errors.ts`에 requirements '오류 번호' 표 열다섯 줄을 글자 그대로, `types/errors.ts` 합집합에 같은 번호. 끝 마침표 없음(지금 E-PARSE- 글과 같게).
