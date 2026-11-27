@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type DragEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
 import type { UisUploadLook } from '@/components/dashboard/live/BitDashboard'
+import { ReadSpin } from '@/components/dashboard/live/ReadStatus'
 import { useDesk } from '@/components/shell/role'
 import { useReadOnly } from '@/components/shell/viewing'
 import { ds } from '@/components/ui/classes'
@@ -79,7 +80,7 @@ function WorkLine({ upload }: { upload: UisUploadView }) {
   if (!upload.busy) return null
   return (
     <p role="status" className="flex items-center gap-2.5 rounded-control bg-surface px-4 py-3 text-body text-ink-2">
-      <span className="bit-read-spin shrink-0" aria-hidden="true" />
+      <ReadSpin />
       {upload.phase === 'reading' ? uisReadingText(upload.count) : UIS_SAVING}
     </p>
   )

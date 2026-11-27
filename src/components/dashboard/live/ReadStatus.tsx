@@ -121,6 +121,11 @@ function uploadedText(savedAt: string | null, lastDay: string | null): string | 
 /** 저장 숫자 새로고침(dashboard-ux AC-2701.7·AC-2701.8): LiveDashboard가 저장 숫자를 다시 읽는 중인지·실패했는지와 누름 */
 export type SavedRefresh = { refreshing: boolean; failed: boolean; onRefresh(): void }
 
+/** 도는 표시 하나. .bit-read-* 클래스는 이 파일에만 둔다(AC-601.17) — 의사랑 올리기 칸(uisarang-upload)의 읽는 중 줄도 이것을 빌려 쓴다 */
+export function ReadSpin() {
+  return <span aria-hidden="true" className="bit-read-spin shrink-0" />
+}
+
 /** 머리 줄 읽기 단추 하나: 읽는 동안 도는 표시와 바뀐 글, 막힘 */
 function ReadButton({ label, busyLabel, busy, disabled, onClick }: { label: string; busyLabel: string; busy: boolean; disabled: boolean; onClick(): void }) {
   return (

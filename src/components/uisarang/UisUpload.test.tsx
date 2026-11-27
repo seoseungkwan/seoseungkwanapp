@@ -306,4 +306,9 @@ describe('AC-8815.3: 올리기 칸 코드의 울타리', () => {
   it('PC 화면만: 폰 폭 클래스(max-md: 등)를 쓰지 않는다', () => {
     for (const name of sources()) expect(code(name), name).not.toMatch(/\b(?:max-)?(?:sm|md):/)
   })
+
+  it('AC-8810.2: 읽는 중 줄의 도는 표시는 대시보드 ReadStatus의 ReadSpin을 빌려 쓰고 .bit-read-* 클래스를 직접 쓰지 않는다(AC-601.17)', () => {
+    for (const name of sources()) expect(code(name), name).not.toMatch(/bit-read/)
+    expect(importsOf('UisUpload.tsx')).toContain('@/components/dashboard/live/ReadStatus')
+  })
 })

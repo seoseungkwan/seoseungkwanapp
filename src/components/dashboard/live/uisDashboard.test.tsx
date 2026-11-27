@@ -13,7 +13,7 @@ import { ds } from '@/components/ui/classes'
 import type { DayPayload } from '@/types/payload'
 import { BitDashboard } from './BitDashboard'
 import type { SavedRefresh } from './ReadStatus'
-import { StatusHeader } from './ReadStatus'
+import { ReadSpin, StatusHeader } from './ReadStatus'
 import { readBitDays, type ReadResult } from './readBitDays'
 
 // 대시보드 의사랑 모양 (uisarang-upload REQ-8811, design.md §10-2, 시안 docs/mockups/uisarang-upload ?s=dash-empty·dash-missing·dash-ok·dash-data).
@@ -520,5 +520,11 @@ describe('AC-8811.9: 병원 정보를 읽는 동안 시작한 비트 읽기 → 
     judgeUis(rerender, NONE)
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([START_H1])
     expect(reads).toHaveLength(1)
+  })
+})
+
+describe('AC-601.17: ReadStatus의 도는 표시 ReadSpin (의사랑 올리기 칸이 빌려 씀)', () => {
+  it('AC-601.17: ReadSpin은 aria-hidden 도는 표시 .bit-read-spin 하나를 그린다', () => {
+    expect(renderToStaticMarkup(<ReadSpin />)).toBe('<span aria-hidden="true" class="bit-read-spin shrink-0"></span>')
   })
 })
