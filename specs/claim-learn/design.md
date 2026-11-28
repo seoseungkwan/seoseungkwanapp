@@ -1,6 +1,6 @@
 # 설계: 청구 메모 학습·청구 탭 흐름 다듬기 (claim-learn)
 
-> 요구사항: `requirements.md` (REQ-9301~9317). 시안·화면 글: `docs/mockups/claim-learn/` (`notes.md` '화면 글').
+> 요구사항: `requirements.md` (REQ-9301~9318). 시안·화면 글: `docs/mockups/claim-learn/` (`notes.md` '화면 글').
 > 바탕: 운영 판 3d761090 + 도우미 0.14.1 갈래 e263e9ba(병원 고르기 창)를 합친 `feat-claim-learn`. 도우미 0.15.0, 확장 0.5.0 그대로, 새 서버 표 없음.
 
 ## 1. 큰 그림
@@ -96,11 +96,42 @@ export function styleChange(old: string, next: string, phrases: Phrases): StyleC
 export type StyleChange = { field: 'sideStyle' | 'siteNames' | 'fixedPhrases' | 'levelSep'; label: string; from: string; to: string; patch: Partial<Phrases> }
 ```
 
-- Worker 메시지(화면 → Worker) `{ type: 'learnDraft'; visitKey }` → Worker가 엔진 글(학습 덧씌우기 **전**)과 지금 고친 글로 `diffLines`, 그 진료의 시술 코드·다른 코드·부위·진료의·`forbidden`·`slotWords`를 담아 `{ type: 'learnDraft'; visitKey; diffs; codes; withCodes; regions; doctor; forbidden; words }`로 답한다. 환자 자료 구역 안 일이라 Worker가 한다.
-- 학습 창 보기 부분(`components/claim/rows/LearnDialog.tsx`)은 네트워크 없이 그리고, [저장] 때 `LearnRule[]`(줄마다 하나, 조건은 같이)를 위(`components/claim/memo/MemoPanel.tsx`)로 올린다. 위가 `saveLearned`를 부른다.
+- Worker 메시지(화면 → Worker) `{ type: 'learnDraft'; visitKey }` → Worker가 보이던 글(엔진 + 학습)과 지금 고친 글로 `diffLines`(줄마다 바탕 엔진 줄은 5-1절 `origins`), 그 진료의 시술 코드·다른 코드·부위·진료의·`forbidden`·`slotWords`를 담아 `{ type: 'learnDraft'; visitKey; diffs; codes; withCodes; regions; doctor; forbidden; words }`로 답한다. 환자 자료 구역 안 일이라 Worker가 한다.
+- 학습 창은 '저절로 학습' 띠의 [조건 바꾸기]로 연다(5-1절). 학습 창 보기 부분(`components/claim/rows/LearnDialog.tsx`)은 네트워크 없이 그리고, [저장] 때 `LearnRule[]`(줄마다 하나, 조건은 같이)를 위(`components/claim/memo/MemoPanel.tsx`)로 올린다. 위가 `saveLearned`를 부른다.
 - 줄 틀: replace·remove의 `from` = `toPattern(old)`, add의 `after` = `toPattern(before)`(앞 줄 없으면 '').
 - 모양 고침(AC-9303): `styleChange`가 알아보는 것은 넷뿐이다 — 좌우 표기(`sideStyle`: Rt/Lt/both ↔ 우측/좌측/양측 ↔ Right/Left/Both 바꿈만 다름), 부위 영어 표기(`siteNames` 값 하나만 다름), 고정 문구(`fixedPhrases` 글 하나만 다름), 레벨 사이 글자(`levelSep`: 레벨 사이 `,`·`-`·`/`만 다름). [모든 메모에] → `patch`만 설정에 얹어 저장(설정 화면 저장과 같은 merge 길), 그 줄은 학습에서 뺀다.
 - 저장 성공이면 Worker에 `{ type: 'settings', … }`(지금 설정 갱신 길)로 새 phrases를 주고 메모를 다시 만든다.
+
+### 5-1. 저절로 학습 (REQ-9301, 사용자 저녁 목표)
+
+```ts
+// src/lib/precheck/memo/learn.ts 에 더함 (TASK-5)
+export type LineOrigin = { line: string; engine: string | null; rule: string | null } // 보이는 줄 하나: 바탕 엔진 줄(더한 줄이면 null)·쓴 학습 id
+export function applyLearned(...): { text: string; used: string[]; origins: LineOrigin[] } // origins를 더함, text·used는 그대로
+export function autoTemplate(next: string, slots: Slots, words): string // 새 문장에서 그 진료 값(slots)과 같은 좌우·레벨·부위 글자를 {좌우}·{레벨}·{부위}로
+export function autoLearn(input: { shown: string; edited: string; origins: LineOrigin[]; when: LearnWhen; slotsOf(engineLine: string): Slots; words; phrases: Phrases; rules: LearnRule[]; forbidden: string[] }):
+  { add: Omit<LearnRule, 'id' | 'made'>[]; update: { id: string; to: string }[]; style: StyleChange[]; personal: number }
+```
+
+- Worker: `editMemo`를 받아 고친 글을 저장한 **뒤**, 보이던 글(엔진 + 학습)과 고친 글로 `autoLearn`을 부르고 결과가 비어 있지 않으면 `{ type: 'learnAuto'; visitKey; add; update; style; personal }`를 화면에 보낸다. 보이던 글은 그 진료의 마지막 `fullText` + `applyLearned` 결과다.
+- `autoLearn` 규칙:
+  - `diffLines(shown, edited)`의 줄마다 `origins`로 바탕 엔진 줄을 찾는다.
+  - replace·remove의 `from` = `toPattern(엔진 줄)`.
+  - add의 `after` = `toPattern(앞 줄의 엔진 줄 또는 앞 줄)`.
+  - 문장 `to` = `autoTemplate(새 줄, slotsOf(엔진 줄))`. add는 앞 줄의 값을 쓴다.
+  - 옛 줄(보이던 줄)에 `\[[^\]]*확인\]`이 있으면 그 줄은 건너뛴다.
+  - `styleChange`가 잡히는 줄은 학습하지 않고 `style`에 넣는다.
+  - `personalHit(to·from·after, forbidden)`이면 건너뛰고 `personal`을 센다.
+  - 바탕 줄이 학습이 쓴 줄(`origins.rule`)이고 그 학습의 `from`·`when`이 새 것과 같으면 `update`(그 학습 `to` 바꿈, 남은 확인 3)로, 아니면 `add`로 한다.
+  - `when` = 처방 코드(그 진료 시술 코드) + 부위(그 진료 부위)이고 나머지 칸은 비운다. `on: true`, `left: 3`, `name` = 조건 이름.
+- 화면(`memo/useLearned.ts`): `learnAuto`를 받으면 id·만든 날을 붙여 `saveLearned`(더하기·바꾸기 한 번에)를 부르고, 바꾸기 전 학습을 기억해 두었다가 [이번만 고친 거예요]에서 되돌린다(`revertLearned`: 더한 것은 지우고 바꾼 것은 옛 문장·남은 확인으로). 띠는 상세가 그 진료일 때만 보이고 다른 사람을 고르면 사라진다(학습은 남음).
+- [조건 바꾸기]는 5절 학습 창을 그 학습들로 연다. [저장]은 그 학습들을 창에서 고른 것으로 바꾼다(`saveLearned` 바꾸기).
+- 저장 함수: `saveLearned(sb, { add, update, remove })` 하나로 서버 값을 다시 읽어 `learned`만 바꿔 쓴다. 설정 줄이 없으면 `startHospitalSettings(neutralPhrases() + learned)`.
+
+### 5-2. 손 간 정도 (REQ-9318)
+
+- Worker가 메모 보기를 보낼 때 `handStats: { need: number; learned: number; edited: number }`를 함께 보낸다. need = 메모 필요 진료 수, learned = `used`가 하나 이상인 진료 수, edited = 고친 글(`work.saved`)이 있는 진료 수. 불러온 기간 기준이다.
+- 메모 단계 도구 줄이 notes '손 간 정도' 글로 그린다(need 0이면 없음).
 
 ## 6. 확인 필요·남은 확인
 

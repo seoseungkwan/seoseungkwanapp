@@ -133,7 +133,7 @@ h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
 <!-- ───────── memo ───────── -->
 <div class="state" data-s="memo"><div class="page">
   <div class="steps"><span><b>1</b>날짜 고르기</span><span><b>2</b>점검 결과</span><span class="on"><b>3</b>메모 확인</span></div>
-  <div class="toolbar"><span><b style="color:var(--ink)">11/24 (월) – 11/27 (목)</b> · 메모 필요 42명 · 입력할 사람 18명</span><span class="sp"></span><button class="btn">처음 학습</button><button class="btn go">비트에 입력 (18명)</button></div>
+  <div class="toolbar"><span><b style="color:var(--ink)">11/24 (월) – 11/27 (목)</b> · 메모 필요 42명 · 입력할 사람 18명</span><span class="tag blue" style="height:24px;font-size:12px">이 기간 메모 42건 · 학습이 쓴 메모 12건 · 사람이 고친 메모 3건 (7%)</span><span class="sp"></span><button class="btn">처음 학습</button><button class="btn go">비트에 입력 (18명)</button></div>
   <div class="split">
     <div class="list">
       <div class="ghead"><span>미완료</span><span class="small">18명</span></div>
@@ -158,7 +158,11 @@ h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
             <div class="mline"><span class="hole">[좌우 확인] <button class="btn">Rt</button><button class="btn">Lt</button><button class="btn">both</button></span> L4,5 MBB 시행 (C-arm guide 하에)</div>
             <div class="mline"><span class="hole">[부위 확인] <button class="btn">wrist</button><button class="btn">finger</button><button class="btn">직접 쓰기</button></span> 건초내주사 시행 트리암시놀론 10mg</div>
           </div>
-          <div class="rowx"><button class="btn">메모 고치기</button><button class="btn">학습하기</button></div>
+          <div class="rowx"><button class="btn">메모 고치기</button></div>
+          <div class="card" style="padding:10px 12px;display:grid;gap:6px">
+            <div class="small" style="font-weight:600">메모를 고쳐 저장하면 (예)</div>
+            <div class="band blue" style="padding:6px 10px;flex-wrap:wrap">학습했어요. 다음에 같은 처방·부위면 이렇게 써요. 처음 3번은 ‘확인 필요’로 보여 드려요. <span class="sp"></span><button class="btn sm">이번만 고친 거예요</button><button class="btn sm">조건 바꾸기</button></div>
+          </div>
           <div class="box"><div class="lbl">비트 메모</div><span class="small">비어 있어요</span></div>
           <div class="card" style="padding:10px 12px;display:grid;gap:6px">
             <div class="small" style="font-weight:600">다른 사람을 고르면 (예)</div>
@@ -178,7 +182,7 @@ h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
 <!-- ───────── learn ───────── -->
 <div class="state" data-s="learn"><div class="page" style="height:1260px;background:var(--canvas)"></div>
   <div class="dim"><div class="modal">
-    <header><h2>학습하기 — 다음에도 이렇게 쓸까요?</h2><p class="small" style="margin:4px 0 8px">고친 줄을 학습해 두면, 조건이 맞는 다음 진료에 저절로 이렇게 나와요.</p></header>
+    <header><h2>학습 고치기 — 다음에도 이렇게 쓸까요?</h2><p class="small" style="margin:4px 0 8px">고친 줄을 학습해 두면, 조건이 맞는 다음 진료에 저절로 이렇게 나와요.</p></header>
     <section>
       <h3>고친 줄</h3>
       <div class="diff">
@@ -205,14 +209,13 @@ h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
     <section>
       <h3>학습할 문장</h3>
       <div class="small">바꿈 · 처방 LA358</div>
-      <div class="area"><span class="lit">Rt</span> <span class="lit">L4,5</span> 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div>
+      <div class="area"><span class="tok">{좌우}</span> <span class="tok">{레벨}</span> 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div>
       <div class="rowx"><button class="btn sm">{좌우}</button><button class="btn sm">{레벨}</button><button class="btn sm">{부위}</button><span class="small">환자마다 다른 칸은 단추로 바꿔 두세요. 다음 진료의 값이 들어가요.</span></div>
-      <div class="band warn" style="flex-wrap:wrap">‘Rt’가 글자 그대로 있어요. 다른 환자에게도 ‘Rt’로 나와요. <button class="btn sm">{좌우}로 바꾸기</button></div>
-      <div class="band warn" style="flex-wrap:wrap">‘L4,5’가 글자 그대로 있어요. 다른 환자에게도 ‘L4,5’로 나와요. <button class="btn sm">{레벨}로 바꾸기</button></div>
+      <div class="small">‘Rt’·‘L4,5’는 프로그램이 저절로 {좌우}·{레벨}로 바꿨어요. 저절로 못 바꾼 글자가 남았을 때만 아래 같은 노란 안내가 나와요.</div>
+      <div class="band warn" style="flex-wrap:wrap">‘knee’가 글자 그대로 있어요. 다른 환자에게도 ‘knee’로 나와요. <button class="btn sm">{부위}로 바꾸기</button></div>
       <div class="small">더함 · 처방 LA358</div>
       <div class="area">시술 후 30분 관찰함</div>
-      <div class="small">바꾼 뒤 모양: <span class="tok">{좌우}</span> <span class="tok">{레벨}</span> 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div>
-    </section>
+          </section>
     <footer><span class="small" style="margin-right:auto">조건을 다 끄면 ‘조건을 하나 이상 골라 주세요.’가 나오고 [저장]이 막혀요.</span><button class="btn">취소</button><button class="btn pri">저장</button></footer>
   </div></div>
 </div>
@@ -272,7 +275,7 @@ h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
     <tr><td>KK062 · 손목 (C-arm)</td><td>줄 뺌</td><td>처방 KK062 · 부위 손목 · 차트 말 ‘C-arm’</td><td class="small">(빼는 줄)</td><td>0</td><td>11/27</td><td class="rowx"><span class="toggle"><i></i>꺼짐</span><button class="btn sm">고치기</button><button class="btn sm">지우기</button></td></tr>
   </table>
   <div class="grid2">
-    <div class="card" style="display:grid;gap:6px"><div class="small" style="font-weight:600">학습이 없을 때</div><span>아직 학습이 없어요. 청구 메모를 고친 뒤 [학습하기]를 누르거나, 청구 화면에서 [처음 학습]을 해 보세요.</span></div>
+    <div class="card" style="display:grid;gap:6px"><div class="small" style="font-weight:600">학습이 없을 때</div><span>아직 학습이 없어요. 청구 메모를 고쳐 저장하면 저절로 학습해요. 청구 화면에서 [처음 학습]을 해 보세요.</span></div>
     <div class="card" style="display:grid;gap:6px"><div class="small" style="font-weight:600">‘시술별 문구와 약’ 탭 새 칸</div><b style="color:var(--ink);font-size:13px">건초내주사로 알아볼 차트 말</b><input class="input" value="건초, tendon sheath, trigger finger, 방아쇠, quervain, tenosyn, TS, STI, TSI"><span class="small">차트 줄에 이 말이 있으면 건초내주사 부위로 봐요. 쉼표로 나눠 적어요.</span></div>
   </div>
   <div class="card" style="display:grid;gap:8px;max-width:420px"><b style="color:var(--ink)">‘LA358 · 허리’ 학습을 지울까요?</b><div class="rowx"><button class="btn" style="border-color:var(--negative);color:var(--negative)">지우기</button><button class="btn">취소</button></div></div>
@@ -336,6 +339,9 @@ h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
     <div class="err"><b>학습을 저장하지 못했어요</b><span>잠시 뒤 다시 저장해 주세요.</span><span class="code">E-LEARN-SAVE</span></div>
   </div>
   <div class="band ok">학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.</div>
+  <div class="band gray" style="background:var(--canvas);color:var(--ink-2);border:1px solid var(--line)">이번 고침만 저장했어요. 학습은 하지 않았어요.</div>
+  <div class="band warn">전화번호·주민번호 같은 글이 있는 줄 1개는 학습하지 않았어요.</div>
+  <div class="err"><b>학습을 저장하지 못했어요</b><span>잠시 뒤 다시 저장해 주세요.</span><span class="code">E-LEARN-SAVE</span><div class="rowx"><button class="btn">다시 저장</button></div></div>
 </div></div>
 
 </div></div>
