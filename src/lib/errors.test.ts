@@ -4,7 +4,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ErrorCode } from '@/types/errors'
 import type { UisRefuseCode } from '@/types/uisarang'
 import { STAFF_ERROR_CODES } from '@/types/staff'
-import { CLAIM_FLOW_CODES, CLAIM_FLOW_ERRORS, ERRORS, errorInfo, isErrorCode } from './errors'
+import { ERRORS, errorInfo, isErrorCode } from './errors'
 
 // ErrorCode에 번호를 더하거나 빼면 이 목록도 같이 고쳐야 타입 검사가 통과한다
 const ALL_CODES = [
@@ -257,10 +257,7 @@ describe('AC-9315.1 도우미가 일하는 중에 멈춤', () => {
       fix: '[다시 불러오기]를 눌러 주세요. 또 멈추면 이 번호를 알려 주세요.',
     })
     expect(isErrorCode('E-HELPER-STOPPED')).toBe(true)
-    // types/errors.ts 밖 번호라 ERRORS(ErrorCode 목록 그대로) 옆 CLAIM_FLOW_ERRORS에 따로 있다
-    expect(CLAIM_FLOW_CODES).toEqual(['E-HELPER-STOPPED'])
-    expect(Object.keys(CLAIM_FLOW_ERRORS)).toEqual([...CLAIM_FLOW_CODES])
-    expect(Object.keys(ERRORS)).not.toContain('E-HELPER-STOPPED')
+    expect(Object.keys(ERRORS)).toContain('E-HELPER-STOPPED')
   })
 
   it('AC-9315.1: 글은 다른 번호와 같은 말 규칙이다("니다."로 끝나지 않고 "병원"이 없다)', () => {
