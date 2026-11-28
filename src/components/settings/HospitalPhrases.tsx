@@ -7,7 +7,7 @@ import { WriteOnly } from '@/components/shell/viewing'
 import { useRxCatalog } from '@/components/stats/useRxCatalog'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
-import { fieldPlace, neutralPhrases, overLearnLimit, validatePhrases, type LearnRule, type PhraseDiffRow, type PhraseError, type Phrases, type PhraseTab } from '@/lib/precheck/memo'
+import { fieldPlace, neutralPhrases, overLearnLimit, personalHit, validatePhrases, type LearnRule, type PhraseDiffRow, type PhraseError, type Phrases, type PhraseTab } from '@/lib/precheck/memo'
 import { readHospitalSettings, startHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { buildCodeRows } from './codeCatalog'
@@ -39,6 +39,8 @@ import { ReadOnlyFields } from './ReadOnlyFields'
 // 쓸 때는 내가 고친·지운 학습만 그때 읽은 학습 목록에 얹는다(다른 PC가 더한 학습·센 남은 확인은 남는다). 학습이 한도를 넘으면 쓰지 않고 학습 묶음을 연다(AC-9304.3).
 // 주소로 열기(AC-9306.2, open): 읽기가 끝나면 그 묶음을 열고, 칸(why.ts fieldPlace의 칸 이름과 같은 이름표)으로 내려가 2초 강조한다.
 // 학습이면 학습 묶음의 그 학습 줄, 칸을 못 찾거나 칸이 없으면 묶음으로만 내려간다. 주소 값은 SettingsPage의 phraseOpenOf가 정해진 키만 골라 준다
+// 학습의 글 칸(이름·줄 틀·새 문장·앞 줄 틀·차트에 쓴 말)에 전화·주민번호·메일 모양이 있으면(AC-9301.5) [저장]은 바뀐 부분 표로 가지 않고
+// 학습 묶음의 그 학습 줄을 강조하며 E-LEARN-PERSONAL 오류 칸이다(이 화면에는 진료가 없어 환자 이름·차트번호 목록 없이 글 모양만 본다)
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'blocked' } | { kind: 'ready' }
 type Tab = PhraseTab
@@ -103,6 +105,12 @@ function withLearnedChanges(now: readonly LearnRule[] | undefined, before: reado
   })
   const added = after.filter((rule) => !was.has(rule.id) && !kept.some((other) => other.id === rule.id))
   return [...kept, ...added]
+}
+
+/** 글 칸에 개인정보 모양(전화·주민번호·메일, AC-9301.5)이 든 첫 학습의 번호. 없으면 null */
+function personalLearn(learned: readonly LearnRule[] | undefined): string | null {
+  const hit = (learned ?? []).find((rule) => [rule.name, rule.from, rule.to, rule.after, ...rule.when.chartWords].some((value) => personalHit(value, [])))
+  return hit ? hit.id : null
 }
 
 /** withPhraseChanges(원래 칸만 얹는다)에 차트 줄임말 표·학습 목록을 더한다: before → after로 고쳤으면 내 표, 아니면 now의 표 그대로(다른 PC가 적은 줄이 남는다) */
@@ -185,6 +193,8 @@ export function HospitalPhrases({ open = null }: { open?: PhraseOpen | null } = 
   const [flashLearn, setFlashLearn] = useState<string | null>(null)
   /** 저장이 학습 한도로 막혔다(AC-9304.3) */
   const [limitHit, setLimitHit] = useState(false)
+  /** 저장이 학습의 개인정보 모양으로 막혔다(AC-9301.5) */
+  const [personal, setPersonal] = useState(false)
 
   const read = useCallback(async () => {
     setLoad({ kind: 'loading' })
@@ -248,12 +258,14 @@ export function HospitalPhrases({ open = null }: { open?: PhraseOpen | null } = 
   const recentRows = useMemo(() => (saved && catalog.state === 'ready' ? buildCodeRows(catalog.days, saved, today, 'recent') : []), [saved, catalog.state, catalog.days, today])
   const newCodes = draft ? undecidedCodes(recentRows, draft).length : 0
 
-  /** 묶음이 고친 값. 열려 있던 비교 표는 옛 값이라 닫는다 */
+  /** 묶음이 고친 값. 열려 있던 비교 표는 옛 값이라 닫고, 학습 줄 강조는 끝낸다(다시 막히면 다시 강조한다) */
   const update = (next: Phrases) => {
     setSavedNote(false)
     setNothing(false)
     setConfirm(null)
     setLimitHit(false)
+    setPersonal(false)
+    setFlashLearn(null)
     setDraft(next)
   }
 
@@ -295,6 +307,16 @@ export function HospitalPhrases({ open = null }: { open?: PhraseOpen | null } = 
       pickTab('learn')
       return
     }
+    const leak = personalLearn(draft.learned)
+    if (leak) {
+      // 개인정보 모양이 든 학습(AC-9301.5): 쓰지 않고 학습 묶음의 그 줄을 강조하며 E-LEARN-PERSONAL 오류 칸을 보인다
+      setConfirm(null)
+      setPersonal(true)
+      pickTab('learn')
+      setFlashLearn(leak)
+      return
+    }
+    setPersonal(false)
     const checked = validatePhrases(draft)
     if (!checked.ok) {
       setErrors(checked.errors)
@@ -437,6 +459,7 @@ export function HospitalPhrases({ open = null }: { open?: PhraseOpen | null } = 
               <ErrorList errors={unplaced} />
             </div>
           )}
+          {personal && <ErrorCard code="E-LEARN-PERSONAL" />}
           {saveFailed && <ErrorCard code="E-SETTINGS-FAILED" />}
           <WriteOnly>
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">

@@ -705,6 +705,60 @@ describe('AC-9304 학습 탭', () => {
     expect(screen.queryByRole('region', { name: '바뀐 부분' })).toBeNull()
     expect(db.upserts).toEqual([])
   })
+
+  /** E-LEARN-PERSONAL 오류 카드(글은 notes '화면 글' 그대로) */
+  const personalCard = () => screen.queryAllByRole('alert').find((card) => within(card).queryByText('오류 번호 E-LEARN-PERSONAL')) ?? null
+
+  it('AC-9301.5·AC-9304.2: 학습 이름에 전화번호 같은 글을 넣고 [저장]하면 바뀐 부분 표로 가지 않고 학습 탭의 그 줄을 강조하며 E-LEARN-PERSONAL 오류 카드다. 지우면 저장된다', async () => {
+    const user = userEvent.setup()
+    db.row = { phrases: withLearned([RULE, ADDED]), dx_links: [] }
+    render(<HospitalPhrases />)
+    await screen.findByRole('tablist', { name: '병원 문구 묶음' })
+    await openTab(user, '학습')
+    await user.click(screen.getByRole('button', { name: '학습 2 고치기' }))
+    await user.type(screen.getByRole('textbox', { name: '이름' }), ' 010-1234-5678')
+    await openTab(user, '기본')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(screen.getByRole('tab', { name: '학습' }).getAttribute('aria-selected')).toBe('true')
+    const card = personalCard()
+    expect(card).toBeTruthy()
+    expect(within(card!).getByText('학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요')).toBeTruthy()
+    expect(within(card!).getByText('그 글을 지우고 다시 저장해 주세요.')).toBeTruthy()
+    const row = within(screen.getByRole('table', { name: '학습 목록' })).getAllByRole('row')[2]
+    await waitFor(() => expect(row.classList.contains('bg-accent-soft')).toBe(true))
+    expect(screen.queryByRole('region', { name: '바뀐 부분' })).toBeNull()
+    expect(db.upserts).toEqual([])
+
+    await user.click(screen.getByRole('button', { name: '학습 2 고치기' }))
+    const name = screen.getByRole('textbox', { name: '이름' })
+    await user.clear(name)
+    await user.type(name, '허리 관찰')
+    expect(personalCard()).toBeNull()
+    await saveAndConfirm(user)
+    await waitFor(() => expect(db.upserts).toHaveLength(1))
+    expect(savedPhrases().learned).toEqual([RULE, { ...ADDED, name: '허리 관찰' }])
+  })
+
+  it.each([
+    ['이름', { ...ADDED, name: 'LA358 · 홍 010-1234-5678' }],
+    ['줄 틀(from)', { ...RULE, id: ADDED.id, from: '{좌우} {레벨} MBB 시행 a@b.co' }],
+    ['새 문장(to)', { ...ADDED, to: '{좌우} {레벨} MBB 시행 900101-1234567' }],
+    ['앞 줄 틀(after)', { ...ADDED, after: '연락 02-123-4567' }],
+    ['차트에 쓴 말', { ...ADDED, when: { ...RULE.when, chartWords: ['C-arm', '010-9876-5432'] } }],
+  ] as [string, LearnRule][])('AC-9301.5·AC-9304.2: 학습의 %s에 개인정보 모양이 있으면 [저장]해도 저장·비교 표로 가지 않고 학습 탭의 그 줄과 E-LEARN-PERSONAL 오류 카드다', async (_label, second) => {
+    const user = userEvent.setup()
+    db.row = { phrases: withLearned([RULE, second]), dx_links: [] }
+    render(<HospitalPhrases />)
+    await screen.findByRole('tablist', { name: '병원 문구 묶음' })
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(screen.getByRole('tab', { name: '학습' }).getAttribute('aria-selected')).toBe('true')
+    expect(personalCard()).toBeTruthy()
+    const row = within(screen.getByRole('table', { name: '학습 목록' })).getAllByRole('row')[2]
+    await waitFor(() => expect(row.classList.contains('bg-accent-soft')).toBe(true))
+    expect(screen.queryByRole('region', { name: '바뀐 부분' })).toBeNull()
+    expect(screen.queryByText('바뀐 것이 없어요')).toBeNull()
+    expect(db.upserts).toEqual([])
+  })
 })
 
 describe('AC-9306.2 주소로 탭·칸 열기', () => {

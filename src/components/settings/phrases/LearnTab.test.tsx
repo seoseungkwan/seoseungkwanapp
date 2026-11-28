@@ -185,6 +185,18 @@ describe('AC-9306.2 주소로 학습 열기', () => {
     expect(bodyRows()[2].classList.contains('bg-accent-soft')).toBe(false)
   })
 
+  it('AC-9306.2: 강조하는 2초 안에 강조할 학습이 비면(다른 고침) 강조도 바로 끝나 남지 않는다', () => {
+    vi.useFakeTimers()
+    const view = render(<Harness flashId="l0000abcf" />)
+    expect(bodyRows()[2].classList.contains('bg-accent-soft')).toBe(true)
+    view.rerender(<Harness flashId={null} />)
+    expect(bodyRows()[2].classList.contains('bg-accent-soft')).toBe(false)
+    view.rerender(<Harness flashId="l0000abcf" />)
+    expect(bodyRows()[2].classList.contains('bg-accent-soft')).toBe(true)
+    act(() => vi.advanceTimersByTime(2000))
+    expect(bodyRows()[2].classList.contains('bg-accent-soft')).toBe(false)
+  })
+
   it('AC-9306.2: 없는 학습 번호면 내려가지 않는다', () => {
     render(<Harness flashId="l9999ffff" />)
     expect(scrolled).not.toHaveBeenCalled()

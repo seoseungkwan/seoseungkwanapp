@@ -64,14 +64,17 @@ export function LearnTab({ draft, errors, onChange, flashId = null, limit = fals
   const over = limit || overLearnLimit(draft)
   const target = list.find((rule) => rule.id === asking) ?? null
 
-  // 주소로 연 학습(AC-9306.2): 그 줄로 내려가 2초 강조
+  // 주소로 연 학습(AC-9306.2)·저장이 막힌 학습(AC-9301.5): 그 줄로 내려가 2초 강조. 2초 안에 강조할 학습이 바뀌거나 비면 강조도 바로 끝낸다
   useEffect(() => {
     const row = flashId ? rows.current[flashId] : null
     if (!flashId || !row) return
     row.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
     setLit(flashId)
     const timer = setTimeout(() => setLit(null), FLASH_MS)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      setLit(null)
+    }
   }, [flashId])
 
   const withList = (next: LearnRule[]) => onChange({ ...draft, learned: next })

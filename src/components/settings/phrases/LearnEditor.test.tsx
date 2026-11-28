@@ -176,6 +176,28 @@ describe('AC-9301.4 학습할 문장', () => {
     expect(screen.getByText('그 글을 지우고 다시 저장해 주세요.')).toBeTruthy()
   })
 
+  it('AC-9301.5: 개인정보 모양이 없으면 E-LEARN-PERSONAL 글이 없다', () => {
+    render(<Harness chips={CHIPS} />)
+    expect(screen.queryByText('학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요')).toBeNull()
+  })
+
+  it('AC-9301.5: 이름 칸에 전화번호 같은 글이 있으면 그 칸 아래 E-LEARN-PERSONAL 글이 보인다', () => {
+    render(<Harness start={{ ...RULE, name: 'LA358 · 010-1234-5678' }} />)
+    expect(screen.getByText('학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요')).toBeTruthy()
+    expect(screen.getByText('그 글을 지우고 다시 저장해 주세요.')).toBeTruthy()
+  })
+
+  it('AC-9301.5: 차트에 쓴 말에 메일 같은 글을 적으면 E-LEARN-PERSONAL 글이 보이고, 지우면 없어진다', async () => {
+    const user = userEvent.setup()
+    render(<Harness chips={CHIPS} />)
+    const field = screen.getByRole('textbox', { name: '차트에 쓴 말' })
+    await user.type(field, 'C-arm, a@b.co')
+    expect(screen.getByText('학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요')).toBeTruthy()
+    await user.clear(field)
+    await user.type(field, 'C-arm')
+    expect(screen.queryByText('학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요')).toBeNull()
+  })
+
   it('AC-9304.2: 줄 뺌 학습은 문장 칸이 없고 이름·조건만 고친다', () => {
     render(<Harness start={{ ...RULE, kind: 'remove', to: '' }} />)
     expect(screen.queryByRole('textbox', { name: '학습할 문장' })).toBeNull()
