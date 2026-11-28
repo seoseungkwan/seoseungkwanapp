@@ -104,7 +104,7 @@ const DESK_EMAIL = 'desk1@fake.test'
 const WRITES = [saveClinicProfile, uploadLogo, removeLogo, writeRuleSettings, writeHospitalSettings, startHospitalSettings, saveCashFloatSetting, addDeskMember, removeDeskMember, saveTabAccess]
 /** 보는 중에도 눌리는 단추(읽기, 첫 화면): 없다 — 설치 파일 칸은 [자료실 열기] 링크 하나다(library AC-8109.1). 병원 문구 묶음 단추는 탭(role=tab)이다 */
 const READ_BUTTONS: string[] = []
-const PHRASE_TABS = ['기본', '시술별 문구와 약', '처방코드', '표기 규칙', '사유 문장', '차트 줄임말', '메모 시험']
+const PHRASE_TABS = ['기본', '시술별 문구와 약', '처방코드', '표기 규칙', '사유 문장', '차트 줄임말', '메모 시험', '학습']
 /** 보는 중에도 열린 칸(읽기): 점검 규칙 찾기·거르기 */
 const READ_FIELDS = ['규칙 찾기', '묶음', '등급']
 
@@ -169,7 +169,7 @@ describe('AC-8011.3: 보는 중 설정', () => {
     expect(readTabAccess).not.toHaveBeenCalled()
   })
 
-  it('AC-8011.3·AC-8109.1: 쓰기 단추가 하나도 없다 — 눌리는 것은 병원 문구 묶음 탭뿐이다(설치 파일 칸은 [자료실 열기] 링크)', async () => {
+  it('AC-8011.3·AC-8109.1·AC-9304.1: 쓰기 단추가 하나도 없다 — 눌리는 것은 병원 문구 묶음 탭뿐이다(끝에 학습 탭, 설치 파일 칸은 [자료실 열기] 링크)', async () => {
     await open(VIEWING)
     expect(enabledButtons().sort()).toEqual([...READ_BUTTONS].sort())
     const tabs = within(screen.getByRole('tablist', { name: '병원 문구 묶음' })).getAllByRole('tab')

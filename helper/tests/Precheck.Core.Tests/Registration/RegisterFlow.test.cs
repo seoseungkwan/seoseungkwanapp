@@ -728,4 +728,19 @@ public class RegisterFlowTests
             Assert.Contains("work-2026-10.dat", Files(rig));
         }
     }
+
+    [Fact(DisplayName = "AC-9317.3 작업 파일 암호는 RegistrationStore의 internal 읽기(Protector)로 받는다 — RegisterFlow는 이름으로 찾는 리플렉션 필드를 두지 않는다")]
+    public void AC9317_3_ProtectorReadIsInternal()
+    {
+        const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+        Assert.DoesNotContain(typeof(RegisterFlow).GetFields(any), field => typeof(System.Reflection.MemberInfo).IsAssignableFrom(field.FieldType));
+
+        var read = typeof(RegistrationStore).GetProperty("Protector", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(read);
+        Assert.Equal(typeof(Precheck.Core.Store.IProtector), read!.PropertyType);
+        Assert.True(read.GetMethod!.IsAssembly); // internal: 밖(웹·확장 쪽 코드)에는 내놓지 않는다
+        Assert.Null(read.SetMethod);
+        using var rig = new Rig();
+        Assert.Same(rig.Protector, read.GetValue(rig.Store));
+    }
 }

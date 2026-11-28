@@ -40,11 +40,11 @@ describe('REQ-9319 관절강 주사(KK090) 부위', () => {
     expect(lineWith(memo(lines, [rx('KK090'), rx('LA247')]), 'IA injection')).toEqual(['◈IA injection of - knee'])
   })
 
-  it('AC-9319.3: 한 줄에 IA 부위가 둘이면(빗금) 둘로 세어 수량 1이면 [부위 확인], 수량 2면 둘 다 쓴다', () => {
+  it('AC-9319.3 AC-9319.7: 한 줄에 IA 부위가 둘이면(빗금) 둘로 세어 수량 1이면 [부위 확인], 수량 2면 둘 다 쓰고 수량 both는 붙이지 않는다', () => {
     const lines = ['Rt knee IA / Lt shoulder IA']
     expect(memo(lines, [rx('KK090')])).toBe('◈IA injection of - [부위 확인]')
     expect(holes(lines, [rx('KK090')])).toEqual([{ code: 'KK090', choices: ['knee', 'shoulder'] }])
-    expect(memo(lines, [rx('KK090', 2)])).toBe('◈IA both injection of - knee, shoulder')
+    expect(memo(lines, [rx('KK090', 2)])).toBe('◈IA injection of - knee, shoulder')
     expect(memo(lines, [rx('KK090', 2)], iaSide())).toBe('◈IA injection of - Rt knee, Lt shoulder')
   })
 
@@ -98,21 +98,78 @@ describe('REQ-9319 관절강 주사(KK090) 부위', () => {
     expect(holes(lines, [rx('KK090')])).toEqual([{ code: 'KK090', choices: ['knee', 'shoulder'] }])
   })
 
-  it('AC-9319.3: 부위 수가 수량 이하면 모두 쓰고, 좌우가 꺼져 있으면 모든 부위에서 좌우를 뗀다', () => {
-    expect(memo(['Rt knee IA', 'Lt shoulder IA'], [rx('KK090', 2)])).toBe('◈IA both injection of - knee, shoulder')
+  it('AC-9319.3 AC-9319.7: 부위 수가 수량 이하면 모두 쓰고, 좌우가 꺼져 있으면 모든 부위에서 좌우를 떼며 수량 both는 붙이지 않는다', () => {
+    expect(memo(['Rt knee IA', 'Lt shoulder IA'], [rx('KK090', 2)])).toBe('◈IA injection of - knee, shoulder')
     expect(memo(['Rt knee IA', 'Lt shoulder IA'], [rx('KK090', 2)], iaSide())).toBe('◈IA injection of - Rt knee, Lt shoulder')
   })
 
-  it('AC-9319.3: 부위 수가 수량보다 많으면 수량만큼 [부위 확인]이고 수량보다 많은 부위를 쓰지 않는다', () => {
+  it('AC-9319.3 AC-9319.7: 부위 수가 수량보다 많으면 수량만큼 [부위 확인]이고 수량보다 많은 부위를 쓰지 않는다(빈칸 둘에 수량 both를 붙이지 않는다)', () => {
     const lines = ['Rt knee pain', 'Lt shoulder pain', 'Rt elbow pain']
-    expect(memo(lines, [rx('KK090', 2)])).toBe('◈IA both injection of - [부위 확인], [부위 확인]')
+    expect(memo(lines, [rx('KK090', 2)])).toBe('◈IA injection of - [부위 확인], [부위 확인]')
     expect(holes(lines, [rx('KK090', 2)])).toEqual([{ code: 'KK090', choices: ['knee', 'shoulder', 'elbow'] }])
   })
 
-  it('AC-9319.3: 수량이 없거나 0이면 1로, 소수는 내려 센다', () => {
+  it('AC-9319.3: 수량이 없거나 0이면 1로, 소수는 올려 센다', () => {
     for (const qty of [null, 0]) expect(memo(['Rt knee pain', 'Rt shoulder pain'], [rx('KK090', qty)])).toBe('◈IA injection of - [부위 확인]')
-    expect(memo(['Rt knee pain', 'Lt shoulder pain'], [rx('KK090', 2.5)])).toBe('◈IA both injection of - knee, shoulder')
-    expect(memo(['Rt knee pain', 'Lt shoulder pain', 'Rt elbow pain'], [rx('KK090', 2.5)])).toBe('◈IA both injection of - [부위 확인], [부위 확인]')
+    expect(memo(['Rt knee pain', 'Lt shoulder pain'], [rx('KK090', 2.5)])).toBe('◈IA injection of - knee, shoulder')
+    expect(memo(['Rt knee pain', 'Lt shoulder pain', 'Rt elbow pain'], [rx('KK090', 2.5)])).toBe('◈IA injection of - knee, shoulder, elbow')
+  })
+
+  it('AC-9319.3: 한도는 소수 올림이다 — 0.5→1·1.5→2·2.5→3·3→3', () => {
+    const two = ['Rt knee pain', 'Lt shoulder pain']
+    const three = ['Rt knee pain', 'Lt shoulder pain', 'Rt elbow pain']
+    const four = ['Rt knee pain', 'Lt shoulder pain', 'Rt elbow pain', 'Lt ankle pain']
+    // 0.5 → 1
+    expect(memo(['Rt knee pain'], [rx('KK090', 0.5)])).toBe('◈IA injection of - knee')
+    expect(memo(two, [rx('KK090', 0.5)])).toBe('◈IA injection of - [부위 확인]')
+    // 1.5 → 2
+    expect(memo(two, [rx('KK090', 1.5)])).toBe('◈IA injection of - knee, shoulder')
+    expect(holes(two, [rx('KK090', 1.5)])).toEqual([])
+    expect(memo(three, [rx('KK090', 1.5)])).toBe('◈IA injection of - [부위 확인], [부위 확인]')
+    // 2.5 → 3, 3 → 3
+    for (const qty of [2.5, 3]) {
+      expect(memo(three, [rx('KK090', qty)])).toBe('◈IA injection of - knee, shoulder, elbow')
+      expect(memo(four, [rx('KK090', qty)])).toBe('◈IA injection of - [부위 확인], [부위 확인], [부위 확인]')
+      expect(holes(four, [rx('KK090', qty)])).toEqual([{ code: 'KK090', choices: ['knee', 'shoulder', 'elbow', 'ankle'] }])
+    }
+  })
+
+  it("AC-9319.7: 고른 부위가 둘 이상(elbow·knee)이고 수량 2면 수량 both를 붙이지 않는다 — 좌우 켬이면 차트 좌우(10월 'both elbow, both knee' → 'Lt elbow, Lt knee')", () => {
+    const lines = ['Lt elbow pain', 'Lt knee pain', 'Lt elbow IA', 'Lt knee IA']
+    expect(memo(lines, [rx('KK090', 2)])).toBe('◈IA injection of - elbow, knee')
+    expect(memo(lines, [rx('KK090', 2)], iaSide())).toBe('◈IA injection of - Lt elbow, Lt knee')
+    expect(holes(lines, [rx('KK090', 2)], iaSide())).toEqual([])
+  })
+
+  it('AC-9319.7: 좌우 켬이어도 차트에 좌우가 없으면 좌우 없이 쓰고 수량 both를 붙이지 않는다', () => {
+    expect(memo(['elbow IA', 'knee IA'], [rx('KK090', 2)], iaSide())).toBe('◈IA injection of - elbow, knee')
+  })
+
+  it('AC-9319.7: 수량 규칙이 IA를 양측으로 쓰지 않는 병원이어도 두 부위 줄에는 수량으로 - both를 붙이지 않는다', () => {
+    const p = ourClinicPhrases()
+    p.TPL.sideByCode = { ...(p.TPL.sideByCode || {}), KK090: 'keep' }
+    p.TPL.iaEtc = 'IA injection of{좌우} {부위}'
+    // 부위 하나는 지금 그대로(차트 좌우를 떼지 않는 병원)
+    expect(memo(['Rt knee IA'], [rx('KK090', 2)], p)).toBe('◈IA injection of - both Rt knee')
+    expect(memo(['Rt knee IA', 'Lt shoulder IA'], [rx('KK090', 2)], p)).toBe('◈IA injection of Rt knee, Lt shoulder')
+  })
+
+  it('AC-9319.5 AC-9319.7: 부위가 하나면 수량 2의 both는 지금처럼 붙는다', () => {
+    expect(memo(['Rt knee IA'], [rx('KK090', 2)])).toBe('◈IA both injection of - knee')
+    expect(memo(['Rt knee IA'], [rx('KK090', 2)], iaSide())).toBe('◈IA injection of - Rt knee')
+  })
+
+  it("AC-9319.6: IA·건초내주사 줄에 좌우 넣기를 켜면 고른 부위의 차트 조각 좌우를 붙인다(차트 'Rt shoulder IA', 수량 1 → 'Rt shoulder')", () => {
+    expect(memo(['Rt shoulder IA'], [rx('KK090')], iaSide())).toBe('◈IA injection of - Rt shoulder')
+    expect(memo(['Rt shoulder IA'], [rx('KK090')])).toBe('◈IA injection of - shoulder')
+    // 조각마다 그 조각의 좌우: 한 줄에 다른 좌우가 섞여도 IA 말이 든 조각의 좌우다
+    expect(lineWith(memo(['Lt knee pain, Rt shoulder IA'], [rx('KK090')], iaSide()), 'IA injection')).toEqual(['◈IA injection of - Rt shoulder'])
+    // IA 줄에 좌우가 없으면 그 부위 줄의 좌우
+    expect(memo(['Lt shoulder pain', 'shoulder IA'], [rx('KK090')], iaSide())).toBe('◈IA injection of - Lt shoulder')
+  })
+
+  it('AC-9319.6: 연골주사 날 일반 IA 줄도 좌우 켬이면 그 IA 조각의 좌우를 붙인다', () => {
+    expect(memo(['Rt knee 아라간 2차', 'Lt knee IA triam'], [rx('KK090', 2), rx('A49'), rx('A21')], iaSide())).toBe('◈우측 슬관절 강내 연골주사 2회차\n\n◈IA injection of - Lt knee(triam)')
   })
 
   it('AC-9319.4: 어느 차례에도 부위가 없으면 지금처럼 [부위 확인]이고 후보는 없다', () => {

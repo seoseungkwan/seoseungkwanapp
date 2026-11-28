@@ -147,11 +147,11 @@ describe('/claim 자리', () => {
   })
 
   it.each(['no-helper', 'update-helper', 'update-extension', 'disconnected'] as const)(
-    'AC-006.1·AC-413.3: 확장은 있는데 %s이면 비트 PC 연결(/claim/setup)로 보낸다',
+    'AC-006.1·AC-413.3·AC-9313.1: 확장은 있는데 %s이면 비트 PC 연결(/claim/setup?from=claim&why=그 상태)로 보낸다',
     (state) => {
       withState(state)
       render(<ClaimPage />)
-      expect(replace).toHaveBeenCalledExactlyOnceWith('/claim/setup')
+      expect(replace).toHaveBeenCalledExactlyOnceWith(`/claim/setup?from=claim&why=${state}`)
     },
   )
 
@@ -224,10 +224,10 @@ describe('/claim 자리', () => {
     expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-RULES-LOAD-FAILED')
   })
 
-  it('AC-006.1·AC-006.6·AC-413.3: hello가 오류 번호로 끝나 연결 중에 멈췄으면(helloError) 비트 PC 연결로 보낸다(거기서 번호와 [다시 확인])', () => {
+  it('AC-006.1·AC-006.6·AC-413.3·AC-9313.1: hello가 오류 번호로 끝나 연결 중에 멈췄으면(helloError) 비트 PC 연결(why=disconnected)로 보낸다(거기서 번호와 [다시 확인])', () => {
     withState('connecting', 'E-BRIDGE-BAD-REPLY')
     render(<ClaimPage />)
-    expect(replace).toHaveBeenCalledExactlyOnceWith('/claim/setup')
+    expect(replace).toHaveBeenCalledExactlyOnceWith('/claim/setup?from=claim&why=disconnected')
   })
 
   it('AC-006.1·AC-413.3: 연결을 확인하는 동안(connecting)은 보내지도 다른 화면을 그리지도 않고 h1 "청구"만', () => {

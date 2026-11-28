@@ -31,6 +31,9 @@ public sealed class RegistrationStore
 
     public string FilePath => Path.Combine(directory, FileName);
 
+    /// <summary>등록 파일을 푸는 암호. 같은 폴더의 작업 저장 파일(WorkStore)도 같은 암호를 쓴다(claim-learn AC-9317.3, RegisterFlow). 도우미 밖에는 내놓지 않는다.</summary>
+    internal IProtector Protector => protector;
+
     public string BackupPath => FilePath + ".bak";
 
     /// <summary>

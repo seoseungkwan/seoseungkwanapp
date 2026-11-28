@@ -472,8 +472,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return template.includes('{시술}') ? template.replace('{시술}', '{시술}{약제}') : `${template}{약제}`
   }
 
-  /** siteSide: {부위}에 붙은 차트 좌우를 떼지 않는다(memoRules.iaSide, AC-3003.1). 그 좌우가 있으면 수량 양측을 더 붙이지 않는다 */
-  function renderQuantityProcedure(procedure: unknown, template0: unknown, vars: Record<string, unknown>, qmap: QuantityMap | null | undefined, renderer: Renderer = fill, exactCode?: unknown, siteSide = false): string {
+  /**
+   * siteSide: {부위}에 붙은 차트 좌우를 떼지 않는다(memoRules.iaSide, AC-3003.1). 그 좌우가 있으면 수량 양측을 더 붙이지 않는다.
+   * manySites: {부위}에 고른 부위(또는 빈칸)가 둘 이상이다. 수량은 부위 수라 양측 근거가 아니므로 수량 양측(both)을 붙이지 않는다(claim-learn AC-9319.7)
+   */
+  function renderQuantityProcedure(procedure: unknown, template0: unknown, vars: Record<string, unknown>, qmap: QuantityMap | null | undefined, renderer: Renderer = fill, exactCode?: unknown, siteSide = false, manySites = false): string {
     const allMatches = matchingRules(procedure, qmap, exactCode)
     const matches = allMatches.filter((rule) => !rule.preserve)
     const values = { ...vars }
@@ -493,7 +496,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       const others = segProcNames(text(procedure)).filter((name) => !matches.some((rule) => rule.names.some((alias) => alias.toUpperCase() === name.toUpperCase())))
       if (!others.length) {
         const sides = new Set(matches.map((rule) => rule.side))
-        values['좌우'] = matches.some((rule) => rule.procedureType === 'level') ? '' : sides.size === 1 ? [...sides][0] : ''
+        values['좌우'] = manySites || matches.some((rule) => rule.procedureType === 'level') ? '' : sides.size === 1 ? [...sides][0] : ''
         if (values['부위'] && !siteSide) values['부위'] = text(values['부위']).replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '')
       }
     }
@@ -511,7 +514,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     }
     const rendered = renderer(shaped, values)
     const sitedSide = siteSide && sideTokens(values['부위']).length > 0
-    let output = quantitySideText(rendered, qmap, exactCode, !markers.length && !sitedSide)
+    const quantitySide = !markers.length && !sitedSide && !manySites
+    let output = quantitySideText(rendered, qmap, exactCode, quantitySide)
     const counts = (value: string) => {
       const found: Record<string, number> = {}
       for (const word of text(value).match(/\b(?:both|Rt|Lt)\b/gi) || []) {
@@ -526,7 +530,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (markers.length) output = output.replace(/(^|[^A-Za-z가-힣])(?:\b(?:both|Rt|Lt|right|left)\b|양측|양쪽|우측|좌측)(?=$|[^A-Za-z가-힣])/gi, '$1')
     for (const [marker, value] of markers) output = output.split(marker).join(value)
     output = output.replace(/\s{2,}/g, ' ')
-    if (!markers.length && !sitedSide && output.trim() && matches.length && matches.every((rule) => rule.side === 'both') && !/\bboth\b|양측/i.test(output)) output += ' both'
+    if (quantitySide && output.trim() && matches.length && matches.every((rule) => rule.side === 'both') && !/\bboth\b|양측/i.test(output)) output += ' both'
     return output.trim()
   }
 
@@ -1179,11 +1183,12 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
    * only = 그 시술 부위로 읽는 부위, finger = 손가락을 말하는 줄은 손 부위이고 손 자리에 손가락 글을 쓴다, bare = 렌더가 {부위}의 좌우를 떼는 줄이라 모든 부위에서 뗀다
    */
   type SiteRule = { code: string; words: RegExp | null; prefer: RegExp | null; dx: RegExp | null; only: readonly string[] | null; finger: boolean; bare: boolean }
-  type SitePick = { text: string; choices: string[] }
+  /** many = 쓴 부위(또는 빈칸) 자리가 둘 이상이라 수량 양측을 붙이지 않는 줄(AC-9319.7) */
+  type SitePick = { text: string; choices: string[]; many: boolean }
   /** 빈칸이 난 줄의 후보와 그 줄(글의 줄 차례를 찾으려고) */
   type SiteHole = SiteChoice & { line: string }
-  /** 부위 수 한도: 처방 수량, 없거나 1보다 작으면 1, 소수는 내린다(AC-9308.3·AC-9319.3) */
-  const siteLimit = (qty: unknown) => (typeof qty === 'number' && Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1)
+  /** 부위 수 한도: 처방 수량, 없거나 1보다 작으면 1, 소수는 올린다(0.5→1·1.5→2·2.5→3·3→3, AC-9308.3·AC-9319.3) */
+  const siteLimit = (qty: unknown) => (typeof qty === 'number' && Number.isFinite(qty) && qty >= 1 ? Math.ceil(qty) : 1)
   /** 렌더(renderQuantityProcedure)가 {부위} 앞 좌우를 떼는 줄인가: 차트 좌우를 쓰지 않고(siteSide 끔) 시술 이름이 모두 수량 규칙에 맞을 때 */
   function stripsSiteSide(name: unknown, qmap: QuantityMap | null | undefined, code: unknown, siteSide: boolean): boolean {
     if (siteSide) return false
@@ -1195,7 +1200,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
    * 부위가 하나라도 나온 첫 차례만 쓴다. 차트 줄은 조각(괄호 밖 쉼표·빗금·쌍반점·더하기)마다 나온 부위를 모두 읽고, (1)은 시술 말이 든 조각만 본다(한 줄의 첫 부위 하나로 보지 않는다).
    * 부위 하나 = (좌우, 부위)이고 both 또는 그 부위 조각에 우측·좌측이 함께 있으면 양측 = 둘, 좌우 모름은 하나로 센다. 센 수가 처방 수량(siteLimit) 이하면 모두 쓰고,
    * 많으면 수량만큼 [부위 확인]이고 choices = 그 차례 부위들이다. 어느 차례에도 없으면 [부위 확인], choices = []. 수량보다 많은 부위는 쓰지 않는다.
-   * 좌우는 그 부위 조각의 좌우, 없으면 원본 siteOf처럼(sideAt) 붙이고, bare면 모든 부위에서 뗀다
+   * 좌우는 그 부위 조각의 좌우, 없으면 원본 siteOf처럼(sideAt) 붙이고, bare면 모든 부위에서 뗀다.
+   * 쓴 자리(부위 또는 [부위 확인])가 둘 이상이면 many이고, 그 줄은 수량 양측(both)을 붙이지 않는다(AC-9319.7)
    */
   function pickSites(v: Pick<MemoVisit, 'items' | 'dx'>, rule: SiteRule, qty: unknown): SitePick {
     const items = v.items || []
@@ -1233,7 +1239,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     let found: Piece[] = []
     for (const tier of tiers) if ((found = tier()).some((piece) => piece.rgs.length)) break
     const rgs = [...new Set(found.flatMap((piece) => piece.rgs))]
-    if (!rgs.length) return { text: MISS_SITE, choices: [] }
+    if (!rgs.length) return { text: MISS_SITE, choices: [], many: false }
     const finger = rule.finger ? (pool.concat(items).map(fingerOf).find(Boolean) ?? null) : null
     const sideFor = (rg: string) => {
       const sides = new Set(found.filter((piece) => piece.rgs.includes(rg)).map((piece) => piece.sd).filter((sd): sd is string => !!sd))
@@ -1246,8 +1252,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       return { label: rule.bare ? site.replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '') : site, count: side === SIDE_EN['양측'] ? 2 : 1 }
     })
     const limit = siteLimit(qty)
-    if (units.reduce((sum, unit) => sum + unit.count, 0) <= limit) return { text: units.map((unit) => unit.label).join(', '), choices: [] }
-    return { text: Array<string>(limit).fill(MISS_SITE).join(', '), choices: units.map((unit) => unit.label) }
+    if (units.reduce((sum, unit) => sum + unit.count, 0) <= limit) return { text: units.map((unit) => unit.label).join(', '), choices: [], many: units.length > 1 }
+    return { text: Array<string>(limit).fill(MISS_SITE).join(', '), choices: units.map((unit) => unit.label), many: limit > 1 }
   }
   /** 이번 fullText 글에서 빈칸이 난 줄의 후보. 마지막 fullText의 것은 lastSiteHoles에 남는다 */
   let siteHoles: SiteHole[] = []
@@ -1256,7 +1262,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   function noteHole(line: string, code: string, pick: SitePick) {
     if (line && pick.text.includes(MISS_SITE)) siteHoles.push({ code: upper(code), choices: pick.choices, line })
   }
-  const tsRule = (v: MemoVisit, a: RxAddition): SiteRule => ({ code: 'KK062', words: TS_RE, prefer: null, dx: /^M65/i, only: null, finger: true, bare: stripsSiteSide(a.name, v.rxQty, a.code, iaSide()) })
+  /** 건초내주사(KK062) 부위 규칙(design.md 9-1절 표): 관절·손·발만 부위다. 상지·경추·요추·흉곽 말만 있는 차례는 부위 없는 차례다(AC-9319.8), 손가락은 손 */
+  const tsRule = (v: MemoVisit, a: RxAddition): SiteRule => ({ code: 'KK062', words: TS_RE, prefer: null, dx: /^M65/i, only: IA_REGIONS, finger: true, bare: stripsSiteSide(a.name, v.rxQty, a.code, iaSide()) })
   const tsQty = (v: MemoVisit, a: RxAddition) => a.qty ?? v.rxQty?.[upper(a.name).trim()] ?? null
   /** 건초내주사 줄 [부위 확인] 자리의 후보(AC-9308.2, siteChoices의 KK062 몫). 빈칸이 없거나 그 줄이 없으면 빈 목록 */
   function tsHoleChoices(visit: Visit | MemoVisit): string[] {
@@ -1530,7 +1537,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const site = pickSites({ items: chart, dx: v.dx }, iaRule(name, one, ia.code, iaSide()), 1)
     const slot = slotDrugs(plan, 'KK090')
     const drugs = [...new Set(slot.map((item) => item.name))]
-    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: '', 부위: site.text }, one, fill, ia.code, iaSide())
+    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: '', 부위: site.text }, one, fill, ia.code, iaSide(), site.many)
     placeSlot(line, tpl, slot)
     noteHole(line, ia.code, site)
     return line ? [markOf() + line] : []
@@ -1550,8 +1557,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const name = cm(ia.code)?.n || 'IA'
     const site = pickSites(v, iaRule(name, v.rxQty, ia.code, !raw && iaSide()), ia.qty ?? v.rxQty?.[upper(name).trim()] ?? null)
     const qty = ia.qty ?? 0
-    const iaVars = { 좌우: qty >= 2 ? ' - both' : '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: ia.qty || '', 부위: site.text }
-    const line = renderQuantityProcedure(name, tpl, iaVars, v.rxQty, fill, ia.code, !raw && iaSide())
+    // 부위가 둘 이상이면 수량은 부위 수라 양측 근거가 아니다(AC-9319.7)
+    const iaVars = { 좌우: qty >= 2 && !site.many ? ' - both' : '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: ia.qty || '', 부위: site.text }
+    const line = renderQuantityProcedure(name, tpl, iaVars, v.rxQty, fill, ia.code, !raw && iaSide(), site.many)
     placeSlot(line, tpl, slot)
     if (!raw) noteHole(line, ia.code, site)
     return line ? [markOf() + line] : []
@@ -1599,7 +1607,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
         if (upper(a.code) === 'KK062' && TPL.ts) {
           const site = pickSites(v, tsRule(v, a), tsQty(v, a))
           const slot = slotDrugs(drugPlan(v), 'KK062')
-          const line = renderQuantityProcedure(a.name, TPL.ts, { 부위: site.text, 좌우: '', 약제: formatDrugs(slot) }, v.rxQty, fill, a.code, iaSide())
+          const line = renderQuantityProcedure(a.name, TPL.ts, { 부위: site.text, 좌우: '', 약제: formatDrugs(slot) }, v.rxQty, fill, a.code, iaSide(), site.many)
           placeSlot(line, TPL.ts, slot)
           noteHole(line, a.code, site)
           return procLine(markOf() + line, tags)

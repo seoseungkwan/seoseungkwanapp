@@ -63,9 +63,9 @@ describe('REQ-9308 건초내주사 부위는 처방 수량만큼', () => {
     expect(memo(['Rt shoulder pain', 'Rt wrist TS'], [rx('KK062', 3)], [dx('M6596', '무릎 건초염')])).toBe('◈wrist 건초내주사 both 시행')
   })
 
-  it('AC-9308.3: 수량 2면 같은 차례의 두 부위(건초 말 줄 둘, 또는 건초염 진단 둘)를 쉼표로 넣는다', () => {
-    expect(memo(['Lt knee pain', 'Rt wrist TS', 'Lt knee TS'], [rx('KK062', 2)])).toBe('◈wrist, knee 건초내주사 both 시행')
-    expect(memo(['Lt knee pain', 'Rt shoulder pain', 'Rt wrist pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염'), dx('M6581', '어깨 건초염')])).toBe('◈knee, shoulder 건초내주사 both 시행')
+  it('AC-9308.3 AC-9319.7: 수량 2면 같은 차례의 두 부위(건초 말 줄 둘, 또는 건초염 진단 둘)를 쉼표로 넣고 수량 both는 붙이지 않는다', () => {
+    expect(memo(['Lt knee pain', 'Rt wrist TS', 'Lt knee TS'], [rx('KK062', 2)])).toBe('◈wrist, knee 건초내주사 시행')
+    expect(memo(['Lt knee pain', 'Rt shoulder pain', 'Rt wrist pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염'), dx('M6581', '어깨 건초염')])).toBe('◈knee, shoulder 건초내주사 시행')
   })
 
   it('AC-9308.3: 수량이 없거나 0이면 1로 본다', () => {
@@ -105,6 +105,64 @@ describe('REQ-9308 건초내주사 부위는 처방 수량만큼', () => {
     expect(memo(['Rt shoulder pain', 'Rt wrist TSIX'], [rx('KK062')], [], withWords('TSI'))).toBe('◈[부위 확인] 건초내주사 시행')
     // 칸에서 TS를 빼면 TS 줄은 더 잡지 않는다
     expect(memo(['Rt shoulder pain', 'Rt wrist TS'], [rx('KK062')], [], withWords('TSI'))).toBe('◈[부위 확인] 건초내주사 시행')
+  })
+})
+
+describe('REQ-9319 건초내주사 줄 — 좌우·두 부위·넓은 부위·소수 수량', () => {
+  it("AC-9319.7: 고른 부위가 둘(elbow·knee)이고 수량 2면 수량 both를 붙이지 않고, 좌우 켬이면 차트 좌우를 쓴다(10월 'both elbow, both knee' → 'Lt elbow, Lt knee')", () => {
+    const lines = ['Lt elbow TS', 'Lt knee TS']
+    expect(memo(lines, [rx('KK062', 2)])).toBe('◈elbow, knee 건초내주사 시행')
+    expect(memo(lines, [rx('KK062', 2)], [], iaSide())).toBe('◈Lt elbow, Lt knee 건초내주사 시행')
+    expect(memo(['elbow TS', 'knee TS'], [rx('KK062', 2)], [], iaSide())).toBe('◈elbow, knee 건초내주사 시행')
+    expect(choices(lines, [rx('KK062', 2)])).toEqual([])
+  })
+
+  it('AC-9319.7: 빈칸이 둘이면 수량 both를 붙이지 않는다', () => {
+    const lines = ['Rt elbow TS', 'Lt knee TS', 'Rt wrist TS']
+    expect(memo(lines, [rx('KK062', 2)])).toBe('◈[부위 확인], [부위 확인] 건초내주사 시행')
+    expect(choices(lines, [rx('KK062', 2)])).toEqual(['elbow', 'knee', 'wrist'])
+  })
+
+  it('AC-9319.5 AC-9319.7: 부위가 하나면 수량 2의 both는 지금처럼 붙는다', () => {
+    expect(memo(['Rt wrist TS'], [rx('KK062', 2)])).toBe('◈wrist 건초내주사 both 시행')
+    expect(memo(['both wrist TS'], [rx('KK062', 2)], [], iaSide())).toBe('◈Both wrist 건초내주사 시행')
+  })
+
+  it("AC-9319.6: 좌우 켬이면 건초내주사 줄에 그 부위 조각의 차트 좌우를 붙인다(차트 'Rt shoulder TS', 수량 1 → 'Rt shoulder')", () => {
+    expect(memo(['Rt shoulder TS'], [rx('KK062')], [], iaSide())).toBe('◈Rt shoulder 건초내주사 시행')
+    expect(memo(['Rt shoulder TS'], [rx('KK062')])).toBe('◈shoulder 건초내주사 시행')
+    expect(memo(['Rt knee pain, Lt wrist TS'], [rx('KK062')], [], iaSide())).toBe('◈Lt wrist 건초내주사 시행')
+  })
+
+  it('AC-9319.8: 건초 말 줄의 부위가 요추·경추·흉곽·상지뿐이면 부위가 없는 차례로 보고 다음 차례로 간다', () => {
+    for (const line of ['L-spine TS', 'C-spine TS', 'chest TS', 'Rt 액, 액하 TS']) {
+      expect(memo([line, 'Rt wrist pain'], [rx('KK062')]), line).toBe('◈wrist 건초내주사 시행')
+      expect(memo([line], [rx('KK062')]), line).toBe('◈[부위 확인] 건초내주사 시행')
+      expect(choices([line], [rx('KK062')]), line).toEqual([])
+    }
+  })
+
+  it('AC-9319.8: 건초 말 줄에 넓은 부위와 관절이 함께 있으면 관절만 부위로 본다', () => {
+    expect(memo(['lumbar TS, Rt wrist TS'], [rx('KK062')])).toBe('◈wrist 건초내주사 시행')
+  })
+
+  it('AC-9319.8: 건초염 진단(M65)이 넓은 부위면 그 차례도 건너뛴다', () => {
+    expect(memo(['Rt wrist pain'], [rx('KK062')], [dx('M6588', '요추 건초염')])).toBe('◈wrist 건초내주사 시행')
+  })
+
+  it('AC-9319.8: 후보 단추에도 넓은 부위는 없다', () => {
+    const lines = ['L-spine pain', 'Rt shoulder pain', 'Lt knee pain']
+    expect(memo(lines, [rx('KK062')])).toBe('◈[부위 확인] 건초내주사 시행')
+    expect(choices(lines, [rx('KK062')])).toEqual(['shoulder', 'knee'])
+  })
+
+  it('AC-9319.8: 손가락은 손으로 친다', () => {
+    expect(memo(['Rt 3rd finger trigger finger', 'L-spine pain'], [rx('KK062')])).toBe('◈3rd finger 건초내주사 시행')
+  })
+
+  it('AC-9319.3: 건초내주사 한도도 소수 올림이다(1.5 → 2)', () => {
+    expect(memo(['Rt wrist TS', 'Lt knee TS'], [rx('KK062', 1.5)])).toBe('◈wrist, knee 건초내주사 시행')
+    expect(memo(['Rt wrist TS', 'Lt knee TS'], [rx('KK062', 0.5)])).toBe('◈[부위 확인] 건초내주사 시행')
   })
 })
 

@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Precheck.Core.Bit;
 using Precheck.Core.Store;
 
@@ -90,18 +89,13 @@ public static class RegisterFlow
         return true;
     }
 
-    // RegistrationStore가 등록 파일을 푸는 암호. 작업 저장 파일(WorkStore)도 같은 폴더·같은 암호를 쓴다(도우미 HelperStore).
-    // RegistrationStore는 이 값을 밖에 내놓지 않고 claim-learn TASK-2 범위에 RegistrationStore.cs·BitServices.cs가 없어 여기서만 이름으로 읽는다.
-    private static readonly FieldInfo? RegistrationProtector =
-        typeof(RegistrationStore).GetField("protector", BindingFlags.Instance | BindingFlags.NonPublic);
-
     /// <summary>
-    /// 작업 저장 폴더와 암호(claim-learn AC-9317.3): 등록 파일과 같은 폴더(RegistrationStore.FilePath의 폴더), 같은 암호.
-    /// 암호를 읽지 못하면 E-STORE-FAILED(파일을 하나도 건드리기 전, 등록하지 않음).
+    /// 작업 저장 폴더와 암호(claim-learn AC-9317.3): 등록 파일과 같은 폴더(RegistrationStore.FilePath의 폴더), 같은 암호(RegistrationStore.Protector,
+    /// 도우미 HelperStore처럼 작업 저장 파일도 등록 파일과 같은 암호를 쓴다). 폴더를 얻지 못하면 E-STORE-FAILED(파일을 하나도 건드리기 전, 등록하지 않음).
     /// </summary>
     private static (IStoreFolder Folder, IProtector Protector) WorkFiles(RegistrationStore store)
     {
-        var protector = RegistrationProtector?.GetValue(store) as IProtector ?? throw new BitException(BitErrors.StoreFailed);
+        var protector = store.Protector;
         var directory = Path.GetDirectoryName(store.FilePath);
         if (string.IsNullOrEmpty(directory)) throw new BitException(BitErrors.StoreFailed);
         return (new StoreFolder(directory!), protector);
