@@ -53,18 +53,19 @@ describe('REQ-9308 건초내주사 부위는 처방 수량만큼', () => {
     expect(choices(lines, [rx('KK062')])).toEqual(['wrist', '3rd finger'])
   })
 
-  it('AC-9308.2: 앞 차례(건초 말 줄)를 채우고 남은 자리의 다음 차례(진단 둘)가 많으면 그 자리만 [부위 확인]이다', () => {
+  it('AC-9308.2 AC-9319.2: 건초 말 줄에서 부위가 나오면 수량이 남아도 다음 차례(건초염 진단)로 채우지 않는다', () => {
     const out = memo(['Rt wrist TS', 'Lt knee pain', 'Rt shoulder pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염'), dx('M6581', '어깨 건초염')])
-    expect(out).toBe('◈wrist, [부위 확인] 건초내주사 both 시행')
-    expect(choices(['Rt wrist TS', 'Lt knee pain', 'Rt shoulder pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염'), dx('M6581', '어깨 건초염')])).toEqual(['knee', 'shoulder'])
+    expect(out).toBe('◈wrist 건초내주사 both 시행')
+    expect(choices(['Rt wrist TS', 'Lt knee pain', 'Rt shoulder pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염'), dx('M6581', '어깨 건초염')])).toEqual([])
   })
 
-  it('AC-9308.2: 건초 말 줄·건초염 진단으로 부위를 찾으면 수량이 남아도 그 밖 부위는 넣지 않는다', () => {
-    expect(memo(['Rt shoulder pain', 'Rt wrist TS'], [rx('KK062', 3)], [dx('M6596', '무릎 건초염')])).toBe('◈wrist, knee 건초내주사 both 시행')
+  it('AC-9308.2 AC-9319.2: 건초 말 줄로 부위를 찾으면 수량이 남아도 건초염 진단·그 밖 부위는 넣지 않는다', () => {
+    expect(memo(['Rt shoulder pain', 'Rt wrist TS'], [rx('KK062', 3)], [dx('M6596', '무릎 건초염')])).toBe('◈wrist 건초내주사 both 시행')
   })
 
-  it('AC-9308.3: 수량 2면 건초 말 줄 부위 다음에 건초염 진단 부위를 쉼표로 넣는다', () => {
-    expect(memo(['Lt knee pain', 'Rt wrist TS'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염')])).toBe('◈wrist, knee 건초내주사 both 시행')
+  it('AC-9308.3: 수량 2면 같은 차례의 두 부위(건초 말 줄 둘, 또는 건초염 진단 둘)를 쉼표로 넣는다', () => {
+    expect(memo(['Lt knee pain', 'Rt wrist TS', 'Lt knee TS'], [rx('KK062', 2)])).toBe('◈wrist, knee 건초내주사 both 시행')
+    expect(memo(['Lt knee pain', 'Rt shoulder pain', 'Rt wrist pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염'), dx('M6581', '어깨 건초염')])).toBe('◈knee, shoulder 건초내주사 both 시행')
   })
 
   it('AC-9308.3: 수량이 없거나 0이면 1로 본다', () => {
@@ -76,7 +77,7 @@ describe('REQ-9308 건초내주사 부위는 처방 수량만큼', () => {
 
   it('AC-9308.3: 좌우는 지금 규칙대로 부위마다 붙인다(IA·건초내주사 줄 좌우 켬)', () => {
     expect(memo(['Rt wrist TS'], [rx('KK062')], [], iaSide())).toBe('◈Rt wrist 건초내주사 시행')
-    expect(memo(['Rt wrist TS', 'Lt knee pain'], [rx('KK062', 2)], [dx('M6596', '무릎 건초염')], iaSide())).toBe('◈Rt wrist, Lt knee 건초내주사 시행')
+    expect(memo(['Rt wrist TS', 'Lt knee TS'], [rx('KK062', 2)], [], iaSide())).toBe('◈Rt wrist, Lt knee 건초내주사 시행')
   })
 
   it('AC-9308.3: 손가락 글은 지금처럼 손 부위 자리에 쓴다', () => {
