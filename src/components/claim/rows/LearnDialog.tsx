@@ -100,63 +100,67 @@ export function LearnDialog({
 
   const shownError = personal ? 'E-LEARN-PERSONAL' : error
   return (
-    <div className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-ink/36 p-4 pt-8" onKeyDown={(event) => event.key === 'Escape' && onCancel()}>
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={`${ds.layer} flex w-215 max-w-full flex-col`}>
-        <header className="flex flex-col gap-1 border-b border-line px-5 pt-4 pb-2">
+    // 창은 화면 높이를 넘지 않는다(max-h-full): 머리와 [취소]·[저장] 줄(저장 실패 안내 포함)은 늘 보이고 가운데 내용만 세로로 스크롤된다(시안 ?s=learn)
+    <div className="fixed inset-0 z-30 flex items-start justify-center bg-ink/36 p-4 pt-8" onKeyDown={(event) => event.key === 'Escape' && onCancel()}>
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={`${ds.layer} flex max-h-full w-215 max-w-full flex-col`}>
+        <header className="flex shrink-0 flex-col gap-1 border-b border-line px-5 pt-4 pb-2">
           <h2 id={titleId} className="text-subtitle font-semibold text-ink">
             학습 고치기 — 다음에도 이렇게 쓸까요?
           </h2>
           <p className={ds.help}>고친 줄을 학습해 두면, 조건이 맞는 다음 진료에 저절로 이렇게 나와요.</p>
         </header>
-        <section className="flex flex-col gap-3 border-b border-line px-5 py-3">
-          <h3 className="text-body font-semibold text-ink">고친 줄</h3>
-          <div role="group" aria-label="고친 줄" className="grid grid-cols-[1.5rem_3.25rem_minmax(0,1fr)] items-start gap-x-2 gap-y-3">
-            {lines.map((line, index) => (
-              <div key={index} className="contents">
-                <input type="checkbox" aria-label={`${index + 1}번째 고친 줄 학습하기`} className="mt-1 size-4 accent-accent" checked={picks[index].on} onChange={(event) => pick(index, { on: event.target.checked })} />
-                <span className={ds.chip.accent}>{TAG[line.kind]}</span>
-                <div className="flex min-w-0 flex-col gap-0.5 text-small">
-                  {line.kind !== 'add' && <span className="break-words text-muted line-through">{line.old}</span>}
-                  {line.kind !== 'remove' && <span className="break-words text-ink">{line.new}</span>}
-                  <span className={ds.help}>{codes}</span>
-                  {line.skip === 'style' && line.style && (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-control bg-accent-soft px-3 py-1.5 text-small text-ink">
-                      <span>{styleQuestion(line.style)}</span>
-                      <span className="flex-1" />
-                      <button type="button" aria-pressed={picks[index].style === 'all'} className={ds.button.primarySmall} onClick={() => pick(index, { style: 'all' })}>
-                        모든 메모에
-                      </button>
-                      <button type="button" aria-pressed={picks[index].style === 'line'} className={ds.button.secondarySmall} onClick={() => pick(index, { style: 'line' })}>
-                        이 학습만
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="border-b border-line px-5 py-3">
-          <LearnConditions
-            when={when}
-            chips={{ codes: draft.codes, regions: draft.regions, withCodes: draft.withCodes, doctors: draft.doctors.map((doctor) => ({ code: doctor.code, name: doctor.name ?? doctor.code })), names }}
-            onChange={setWhen}
-          />
-        </section>
-        {lines.some(learnable) && (
+        {/* 마지막 칸의 아랫줄은 단추 줄 윗줄과 겹치지 않게 뺀다 */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [&>section:last-child]:border-b-0">
           <section className="flex flex-col gap-3 border-b border-line px-5 py-3">
-            <h3 className="text-body font-semibold text-ink">학습할 문장</h3>
-            {lines.map((line, index) =>
-              learnable(line, index) ? <LearnSentence key={index} label={`학습할 문장 ${index + 1}`} caption={`${TAG[line.kind]} · ${codes}`} value={picks[index].text} words={draft.words} onChange={(text) => pick(index, { text })} /> : null,
-            )}
+            <h3 className="text-body font-semibold text-ink">고친 줄</h3>
+            <div role="group" aria-label="고친 줄" className="grid grid-cols-[1.5rem_3.25rem_minmax(0,1fr)] items-start gap-x-2 gap-y-3">
+              {lines.map((line, index) => (
+                <div key={index} className="contents">
+                  <input type="checkbox" aria-label={`${index + 1}번째 고친 줄 학습하기`} className="mt-1 size-4 accent-accent" checked={picks[index].on} onChange={(event) => pick(index, { on: event.target.checked })} />
+                  <span className={ds.chip.accent}>{TAG[line.kind]}</span>
+                  <div className="flex min-w-0 flex-col gap-0.5 text-small">
+                    {line.kind !== 'add' && <span className="break-words text-muted line-through">{line.old}</span>}
+                    {line.kind !== 'remove' && <span className="break-words text-ink">{line.new}</span>}
+                    <span className={ds.help}>{codes}</span>
+                    {line.skip === 'style' && line.style && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-control bg-accent-soft px-3 py-1.5 text-small text-ink">
+                        <span>{styleQuestion(line.style)}</span>
+                        <span className="flex-1" />
+                        <button type="button" aria-pressed={picks[index].style === 'all'} className={ds.button.primarySmall} onClick={() => pick(index, { style: 'all' })}>
+                          모든 메모에
+                        </button>
+                        <button type="button" aria-pressed={picks[index].style === 'line'} className={ds.button.secondarySmall} onClick={() => pick(index, { style: 'line' })}>
+                          이 학습만
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
-        )}
+          <section className="border-b border-line px-5 py-3">
+            <LearnConditions
+              when={when}
+              chips={{ codes: draft.codes, regions: draft.regions, withCodes: draft.withCodes, doctors: draft.doctors.map((doctor) => ({ code: doctor.code, name: doctor.name ?? doctor.code })), names }}
+              onChange={setWhen}
+            />
+          </section>
+          {lines.some(learnable) && (
+            <section className="flex flex-col gap-3 border-b border-line px-5 py-3">
+              <h3 className="text-body font-semibold text-ink">학습할 문장</h3>
+              {lines.map((line, index) =>
+                learnable(line, index) ? <LearnSentence key={index} label={`학습할 문장 ${index + 1}`} caption={`${TAG[line.kind]} · ${codes}`} value={picks[index].text} words={draft.words} onChange={(text) => pick(index, { text })} /> : null,
+              )}
+            </section>
+          )}
+        </div>
         {shownError && (
-          <div className="px-5 pt-3">
+          <div className="shrink-0 px-5 pt-3">
             <ErrorCard code={shownError} />
           </div>
         )}
-        <footer className="flex flex-wrap justify-end gap-2 px-5 py-3">
+        <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line px-5 py-3">
           <button type="button" className={ds.button.secondary} onClick={onCancel}>
             취소
           </button>

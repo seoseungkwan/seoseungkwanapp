@@ -383,8 +383,9 @@ export function MemoDetail(props: {
           </div>
 
           {/* 같은 크기 두 칸: 한 줄에 우리 메모 | 비트 메모 카드, 그 아래 줄에 우리 메모 칸의 알림 글(AC-3105.3).
-              lg 이상은 세로로 우리 메모 → 알림 글 → 비트 메모 카드(order)이고 두 칸이 남은 높이를 반씩 쓴다(AC-4803.3) */}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2">
+              lg 이상은 세로로 우리 메모 → 알림 글 → 비트 메모 카드(order)이고 두 칸이 남은 높이를 반씩 쓴다(AC-4803.3).
+              아래에 띠가 있으면 반씩 나누지 않고 내용 높이대로 한 줄씩 쌓는다(lg:grid-cols-1): 띠가 두 칸을 덮지 않고 글도 칸 안에서 잘리지 않으며, 넘치면 ① 칸이 세로로 스크롤된다(claim-learn AC-9301.1) */}
+          <div className={bands ? 'grid grid-cols-2 gap-x-3 gap-y-1 lg:grid-cols-1 lg:gap-2' : 'grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2'}>
             <div role="group" aria-label="우리 메모" className="flex min-h-28 min-w-0 flex-col gap-1 rounded-control border border-line bg-canvas px-3 py-2 lg:-order-2 lg:min-h-24 lg:flex-1 lg:overflow-y-auto">
               <b className="text-small font-semibold text-ink">우리 메모</b>
               {editing ? (
@@ -404,8 +405,9 @@ export function MemoDetail(props: {
               </div>
             )}
           </div>
+          {/* 띠는 흐름 안에서 차례로 쌓이고 줄지 않는다(shrink-0). 넘치면 ① 칸이 스크롤된다 */}
           {bands && (
-            <div className="flex flex-col gap-2">
+            <div className="flex shrink-0 flex-col gap-2">
               {learnBand}
               {checking.length > 0 && <p className={`${band} bg-warning-soft text-warning`}>{`새 학습이 쓰인 메모예요. 맞으면 그대로 복사·입력하세요. (남은 확인 ${leftMost}번)`}</p>}
               {twice && <p className={`${band} bg-negative-soft text-negative`}>이 환자는 이날 두 번 진료했어요. 그날 처방이 두 메모에 똑같이 들어가니 맞는지 봐 주세요.</p>}

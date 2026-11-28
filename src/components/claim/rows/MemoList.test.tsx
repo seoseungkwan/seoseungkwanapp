@@ -409,4 +409,24 @@ describe('AC-9307.1·AC-9302.6·AC-9309.1 목록 줄의 학습 표시', () => {
     show([group('mark', [left('K', { unfinished: true, holes: 1 })])])
     expect(lineOf('K').textContent).toBe('가상환자K11/2 (월)9011빈칸 1')
   })
+
+  it("AC-9302.6·AC-9309.1: 272px 목록(lg)에서 꼬리표가 많으면 꼬리표 묶음이 이름 묶음 아래 둘째 줄로 감겨 잘리지 않는다('새 메모' 뒤 '확인 필요'·'학습: {이름}'·'하루 두 번'). lg 미만 class는 그대로다", () => {
+    const learned = [{ id: 'l0000a001', name: 'LA358 · 허리', left: 2 }]
+    show([group('batch', [row('A', { learned, sameDay: 2 })])])
+    const line = lineOf('A')
+    const classes = (el: Element) => el.className.split(/\s+/)
+    const nameBox = within(line).getByText('가상환자A').parentElement!
+    const tagBox = within(line).getByText('하루 두 번').parentElement!
+    // 이름 묶음과 꼬리표 묶음을 함께 감싸는 줄: lg에서 남은 폭을 쓰고 넘치면 줄을 바꾼다. lg 미만은 상자가 없다(contents)
+    const wrap = tagBox.parentElement!
+    expect(wrap).not.toBe(line)
+    expect(nameBox.parentElement).toBe(wrap)
+    expect(nameBox.nextElementSibling).toBe(tagBox)
+    expect(wrap.parentElement).toBe(line)
+    expect(classes(wrap)).toEqual(expect.arrayContaining(['contents', 'lg:flex', 'lg:min-w-0', 'lg:flex-1', 'lg:flex-wrap']))
+    expect(classes(wrap).filter((name) => !name.startsWith('lg:'))).toEqual(['contents'])
+    // 꼬리표 묶음은 lg에서 줄 폭보다 길면 줄어들고 안에서 꼬리표끼리 줄을 바꾼다(잘리지 않음)
+    expect(classes(tagBox)).toEqual(expect.arrayContaining(['flex-wrap', 'lg:min-w-0', 'lg:shrink']))
+    expect(line.textContent).toBe('1가상환자A11/2 (월)9001새 메모확인 필요학습: LA358 · 허리하루 두 번')
+  })
 })

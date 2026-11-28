@@ -124,13 +124,17 @@ export function MemoList(props: {
                     <li key={row.key}>
                       <button type="button" ref={on ? selected : undefined} aria-current={on ? 'true' : 'false'} className={`${rowButton} ${on ? rowOn : rowOff}`} onClick={() => onPick(row.key)}>
                         <span className={`w-5 shrink-0 text-right text-caption tabular-nums ${small}`}>{group.id === 'batch' ? row.no : null}</span>
-                        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 lg:flex-none">
-                          <span className={`whitespace-nowrap text-body text-ink ${on ? 'font-semibold' : 'font-medium'}`}>{row.name}</span>
-                          <span className={`whitespace-nowrap text-caption ${small}`}>{dayLabel(row.date)}</span>
-                          <span className={`whitespace-nowrap text-caption ${small}`}>{row.chart}</span>
-                        </span>
-                        <span className="flex shrink-0 flex-wrap justify-end gap-1 lg:justify-start">
-                          <RowTags row={row} group={group.id} failed={failed.has(row.key)} />
+                        {/* lg(목록 272px)에서는 이름 묶음과 꼬리표 묶음을 한 줄 상자로 감싸 꼬리표가 넘치면 이름 아래 둘째 줄로 감긴다(claim-learn: '확인 필요'·'학습: {이름}'·'하루 두 번'이 잘리지 않게).
+                            lg 미만은 상자가 없어(contents) 지금 모양 그대로다 */}
+                        <span className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-wrap lg:items-center lg:gap-x-2 lg:gap-y-1">
+                          <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 lg:flex-none">
+                            <span className={`whitespace-nowrap text-body text-ink ${on ? 'font-semibold' : 'font-medium'}`}>{row.name}</span>
+                            <span className={`whitespace-nowrap text-caption ${small}`}>{dayLabel(row.date)}</span>
+                            <span className={`whitespace-nowrap text-caption ${small}`}>{row.chart}</span>
+                          </span>
+                          <span className="flex shrink-0 flex-wrap justify-end gap-1 lg:min-w-0 lg:shrink lg:justify-start">
+                            <RowTags row={row} group={group.id} failed={failed.has(row.key)} />
+                          </span>
                         </span>
                       </button>
                     </li>

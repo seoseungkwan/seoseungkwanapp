@@ -135,6 +135,32 @@ describe('AC-9301.4·AC-9301.5 학습할 문장과 저장', () => {
     await user.click(within(dialog()).getByRole('button', { name: '취소' }))
     expect(on.onCancel).toHaveBeenCalledTimes(1)
   })
+
+  it('AC-9301.5·AC-9301.6: 창은 화면 높이를 넘지 않고 가운데 내용(고친 줄·조건·문장)만 세로로 스크롤되며, [취소]·[저장] 줄과 저장 실패 안내는 스크롤 칸 밖 맨 아래에 늘 보인다(시안 ?s=learn)', () => {
+    const classes = (element: Element) => (element.getAttribute('class') ?? '').split(/\s+/)
+    open({ error: 'E-LEARN-SAVE' })
+    const box = dialog()
+    expect(classes(box)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'max-h-full']))
+    const scroll = [...box.children].find((element) => classes(element).includes('overflow-y-auto'))!
+    expect(scroll).toBeTruthy()
+    expect(classes(scroll)).toEqual(expect.arrayContaining(['min-h-0', 'flex-1']))
+    expect(scroll.contains(lines())).toBe(true)
+    expect(scroll.contains(within(box).getByText('학습할 문장'))).toBe(true)
+    const footer = box.lastElementChild!
+    expect(footer.tagName).toBe('FOOTER')
+    expect(classes(footer)).toContain('shrink-0')
+    expect(footer.contains(save())).toBe(true)
+    expect(footer.contains(within(box).getByRole('button', { name: '취소' }))).toBe(true)
+    expect(scroll.contains(save())).toBe(false)
+    // 저장 실패 안내는 스크롤 칸과 단추 줄 사이(문장 칸의 노란 안내와 섞이지 않게 그 칸 안에서만 찾는다)
+    const errorBox = footer.previousElementSibling!
+    expect(errorBox).not.toBe(scroll)
+    expect(scroll.nextElementSibling).toBe(errorBox)
+    expect(within(errorBox as HTMLElement).getByText('오류 번호 E-LEARN-SAVE')).toBeTruthy()
+    expect(classes(errorBox)).toContain('shrink-0')
+    expect(box.firstElementChild!.tagName).toBe('HEADER')
+    expect(classes(box.firstElementChild!)).toContain('shrink-0')
+  })
 })
 
 describe('AC-9303 모양 고침 물음', () => {

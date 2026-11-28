@@ -911,6 +911,33 @@ describe('claim-learn 메모 상세', () => {
     expect(memos.parentElement!.contains(band)).toBe(true)
   })
 
+  it('AC-9301.1·AC-9302.6·AC-9309.1: 띠 묶음은 ① 칸 흐름 안에 차례로 쌓이고(absolute·fixed 아님, 줄지 않음) 띠가 있으면 메모 두 칸 묶음이 lg에서 내용보다 줄지 않아 띠가 두 칸을 덮지 않는다. 넘치면 ① 칸이 세로로 스크롤된다', () => {
+    const classes = (element: Element) => (element.getAttribute('class') ?? '').split(/\s+/)
+    show({ row: row({ sameDay: 2, learned: [{ id: 'l0000a001', name: 'LA358 · 허리', left: 2 }] }), learnBand: <div role="status">가짜 학습 띠</div> })
+    const memos = screen.getByRole('group', { name: '우리 메모' }).parentElement!
+    const side = memos.parentElement!
+    const bands = screen.getByText('가짜 학습 띠').parentElement!
+    expect(bands.parentElement).toBe(side)
+    expect(memos.nextElementSibling).toBe(bands)
+    expect(side.lastElementChild).toBe(bands)
+    expect([...bands.children].map((element) => element.textContent)).toEqual([
+      '가짜 학습 띠',
+      '새 학습이 쓰인 메모예요. 맞으면 그대로 복사·입력하세요. (남은 확인 2번)',
+      '이 환자는 이날 두 번 진료했어요. 그날 처방이 두 메모에 똑같이 들어가니 맞는지 봐 주세요.',
+    ])
+    for (const element of [side, memos, bands, ...bands.querySelectorAll('*')]) expect(classes(element).some((name) => /(^|:)(absolute|fixed|sticky)$/.test(name))).toBe(false)
+    expect(classes(bands)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'shrink-0']))
+    // 띠가 있으면 두 칸은 남은 높이를 반씩 나누지 않고(lg:flex-1·lg:min-h-0 없음) 내용 높이대로 한 줄씩 쌓인다(lg:grid-cols-1): 우리 메모 글이 칸 안에서 잘리지 않는다
+    expect(classes(memos)).not.toContain('lg:min-h-0')
+    expect(classes(memos)).not.toContain('lg:flex-1')
+    expect(classes(memos)).toEqual(expect.arrayContaining(['grid', 'grid-cols-2', 'lg:grid-cols-1']))
+    expect(classes(side)).toEqual(expect.arrayContaining(['lg:min-h-0', 'lg:overflow-y-auto']))
+    // 띠가 없으면 두 칸이 남은 높이를 반씩 쓰는 모양 그대로(AC-4803.3)
+    cleanup()
+    show()
+    expect(classes(screen.getByRole('group', { name: '우리 메모' }).parentElement!)).toContain('lg:min-h-0')
+  })
+
   it("AC-9314.1: 설정 바뀜(stale)이면 상태 줄이 '[다시 점검]을 누른 뒤에 눌러 주세요.'다([비트에 입력] 옆 글과 같다)", () => {
     show({ status: 'stale', copyDisabled: true })
     expect(statusLine().textContent).toBe('[다시 점검]을 누른 뒤에 눌러 주세요.')
