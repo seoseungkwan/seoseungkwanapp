@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { addDays, todayInKorea } from '@/lib/analytics/dates'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { errorInfo } from '@/lib/errors'
 import type { ErrorCode } from '@/types/errors'
@@ -16,6 +17,10 @@ import { ClaimScreen } from '../ClaimScreen'
 const db = vi.hoisted(() => ({ hospital: null as unknown, failSettings: false, reads: 0, gate: null as Promise<void> | null }))
 /** 메모 보기를 번호로 거절한다(Worker의 ok:false) */
 const memoAnswer = { fail: null as ErrorCode | null }
+
+/** 학습 저장 함수(claim-learn TASK-5)는 가짜다: 부른 값만 본다. 그 밖의 설정 읽기·쓰기는 진짜 함수가 아래 가짜 supabase를 쓴다 */
+const learnStore = vi.hoisted(() => ({ saveLearned: vi.fn(), revertLearned: vi.fn(), tickLearned: vi.fn(), addLearnKinds: vi.fn() }))
+vi.mock('@/lib/storage/claimSettings', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/storage/claimSettings')>()), ...learnStore }))
 
 vi.mock('@/lib/supabase/browser', () => ({
   supabaseBrowser: () => ({
@@ -209,6 +214,11 @@ function fakeClipboard() {
 }
 
 beforeEach(() => {
+  for (const fn of Object.values(learnStore)) fn.mockReset()
+  learnStore.saveLearned.mockResolvedValue({ ok: true, phrases: {}, added: ['l0000a001'], before: [] })
+  learnStore.revertLearned.mockResolvedValue({ ok: true, phrases: {}, added: [], before: [] })
+  learnStore.tickLearned.mockResolvedValue('ok')
+  learnStore.addLearnKinds.mockResolvedValue('ok')
   db.hospital = null
   db.failSettings = false
   db.reads = 0
@@ -1085,7 +1095,7 @@ describe('AC-018.3 [비트에 입력]', () => {
       })
       await screen.findByRole('button', { name: '다시 점검' })
     }
-    expect(screen.getByText(text)).toBeTruthy()
+    expect(within(toolbar()).getByText(text)).toBeTruthy()
     expect(inputButton().disabled).toBe(true)
     void user
   })
@@ -1749,5 +1759,183 @@ describe('AC-9315.1 일하는 중에 도우미가 멈춤', () => {
     await user.click(await screen.findByRole('button', { name: '다시 불러오기' }))
     expect(reconnect).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(worker.of('loadStart').length).toBe(loads + 1))
+  })
+})
+
+// ── 청구 메모 학습(claim-learn TASK-6, 시안 ?s=memo·learn·why·first·default·errors, notes '화면 글' 그대로) ──────────
+
+describe('claim-learn 메모 단계', () => {
+  const WHEN = { codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [] }
+  const AUTO = { name: 'LA358 · 허리', kind: 'replace' as const, from: '우리 메모 a', to: '우리 메모 a더', after: '', when: WHEN, on: true, left: 3 }
+  const learnAuto = (over: Partial<Extract<PrecheckToScreen, { type: 'learnAuto' }>> = {}): PrecheckToScreen => ({ type: 'learnAuto', visitKey: 'a', add: [AUTO], update: [], style: [], personal: 0, ...over })
+  const band = () => within(detail()).getByRole('region', { name: '저절로 학습' })
+  const LEARNED = '학습했어요. 다음에 같은 처방·부위면 이렇게 써요. 처음 3번은 ‘확인 필요’로 보여 드려요.'
+
+  /** 가상환자a의 메모를 고쳐 저장하고 Worker가 저절로 학습을 알린다 */
+  async function editAndLearn(over: Partial<Extract<PrecheckToScreen, { type: 'learnAuto' }>> = {}) {
+    const made = await toMemo(live(memoView()))
+    await made.user.click(within(detail()).getByRole('button', { name: '메모 고치기' }))
+    await made.user.type(screen.getByRole('textbox', { name: '가상환자a 우리 메모 고치기' }), '더')
+    await made.user.tab()
+    await waitFor(() => expect(made.worker.of('editMemo')).toHaveLength(1))
+    await act(async () => made.worker.emit(learnAuto(over)))
+    return made
+  }
+
+  it('AC-9301.1: 고쳐 저장하면 [학습하기] 없이 Worker가 알린 학습을 저장하고 메모 칸 아래 저절로 학습 띠와 [이번만 고친 거예요]·[조건 바꾸기]가 보인다. 저장 뒤 메모를 다시 만든다', async () => {
+    const { worker } = await editAndLearn()
+    expect(screen.queryByRole('button', { name: '학습하기' })).toBeNull()
+    await waitFor(() => expect(within(band()).getByText(LEARNED)).toBeTruthy())
+    expect(learnStore.saveLearned).toHaveBeenCalledWith(expect.anything(), { add: [AUTO], update: [] })
+    expect(within(band()).getByRole('button', { name: '이번만 고친 거예요' })).toBeTruthy()
+    expect(within(band()).getByRole('button', { name: '조건 바꾸기' })).toBeTruthy()
+    await waitFor(() => expect(worker.of('check')).toHaveLength(2))
+  })
+
+  it("AC-9301.5: 개인정보라 학습하지 않은 줄이 있으면 띠에 '전화번호·주민번호 같은 글이 있는 줄 {n}개는 학습하지 않았어요.'가 붙는다", async () => {
+    await editAndLearn({ personal: 2 })
+    await waitFor(() => expect(within(band()).getByText('전화번호·주민번호 같은 글이 있는 줄 2개는 학습하지 않았어요.')).toBeTruthy())
+  })
+
+  it('AC-9301.2: [이번만 고친 거예요]는 방금 학습만 되돌리고(고친 메모는 그대로) 띠가 이번만 글로 바뀐다', async () => {
+    const { user } = await editAndLearn()
+    await user.click(await within(band()).findByRole('button', { name: '이번만 고친 거예요' }))
+    expect(learnStore.revertLearned).toHaveBeenCalledWith(expect.anything(), { added: ['l0000a001'], before: [] })
+    await waitFor(() => expect(within(band()).getByText('이번 고침만 저장했어요. 학습은 하지 않았어요.')).toBeTruthy())
+    expect(ourMemo()).toBe('우리 메모 a더')
+  })
+
+  it("AC-9301.2·AC-9301.5: [조건 바꾸기]는 학습 창을 열고, [저장]이 되면 창이 닫히고 '학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.'다", async () => {
+    const { user, worker } = await editAndLearn()
+    await user.click(await within(band()).findByRole('button', { name: '조건 바꾸기' }))
+    expect(worker.of('learnDraft')).toEqual([{ type: 'learnDraft', visitKey: 'a' }])
+    const diff = { kind: 'replace' as const, old: '우리 메모 a', new: '우리 메모 a더', before: '', from: '우리 메모 a', to: '우리 메모 a더', after: '', update: 'l0000a001', skip: null, style: null }
+    await act(async () => worker.emit({ type: 'learnDraft', visitKey: 'a', ok: true, diffs: [diff], codes: ['LA358'], withCodes: [], regions: ['lumbar'], doctors: [], forbidden: ['가상환자a', '9a'], words: { side: ['Rt'], site: ['knee'], mark: '◈' } }))
+    const dialog = screen.getByRole('dialog', { name: '학습 고치기 — 다음에도 이렇게 쓸까요?' })
+    learnStore.saveLearned.mockResolvedValueOnce({ ok: true, phrases: {}, added: ['l0000a005'], before: [] })
+    await user.click(within(dialog).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(learnStore.saveLearned).toHaveBeenLastCalledWith(expect.anything(), { remove: ['l0000a001'], add: [{ ...AUTO }], update: [] })
+    expect(within(band()).getByText('학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.')).toBeTruthy()
+  })
+
+  it('AC-9301.6: 저절로 학습 저장이 실패하면 띠에 E-LEARN-SAVE 안내와 [다시 저장]이 있고, 누르면 다시 저장한다', async () => {
+    learnStore.saveLearned.mockResolvedValueOnce({ ok: false, code: 'E-LEARN-SAVE', limit: false })
+    const { user } = await editAndLearn()
+    await waitFor(() => expect(within(band()).getByText('오류 번호 E-LEARN-SAVE')).toBeTruthy())
+    await user.click(within(band()).getByRole('button', { name: '다시 저장' }))
+    await waitFor(() => expect(within(band()).getByText(LEARNED)).toBeTruthy())
+    expect(learnStore.saveLearned).toHaveBeenCalledTimes(2)
+  })
+
+  it('design.md 5-1: 띠는 상세가 그 진료일 때만 보이고 다른 사람을 고르면 사라진다', async () => {
+    const { user } = await editAndLearn()
+    await waitFor(() => expect(within(band()).getByText(LEARNED)).toBeTruthy())
+    await user.click(rowOf('가상환자b'))
+    expect(within(detail()).queryByRole('region', { name: '저절로 학습' })).toBeNull()
+    await user.click(rowOf('가상환자a'))
+    expect(within(detail()).queryByRole('region', { name: '저절로 학습' })).toBeNull()
+  })
+
+  it('AC-9303.1: 모양 고침이면 띠에 전체에 적용 물음과 [모든 메모에]·[이 학습만]이 있다', async () => {
+    const style = { field: 'sideStyle' as const, label: '좌우 표기', from: 'Lt', to: '좌측', patch: {} }
+    await editAndLearn({ add: [], style: [style] })
+    expect(within(band()).getByText('이 고침은 모든 메모의 좌우 표기예요. 모든 메모에서 ‘Lt’을 ‘좌측’으로 바꿀까요?')).toBeTruthy()
+    expect(within(band()).getByRole('button', { name: '모든 메모에' })).toBeTruthy()
+    expect(within(band()).getByRole('button', { name: '이 학습만' })).toBeTruthy()
+    expect(within(band()).queryByText(LEARNED)).toBeNull()
+  })
+
+  it('AC-9302.7: learnUsed를 받으면 남은 확인을 바꾼다', async () => {
+    const { worker } = await toMemo()
+    await act(async () => worker.emit({ type: 'learnUsed', ids: ['l0000a001'], how: 'done' }))
+    expect(learnStore.tickLearned).toHaveBeenCalledWith(expect.anything(), ['l0000a001'], 'done')
+  })
+
+  it('AC-9307.3: 빈칸 후보 단추를 누르면 그 빈칸을 채운 글이 [메모 고치기] 저장과 같은 길(editMemo)로 간다', async () => {
+    const holed = row('h', { text: '◈[좌우 확인] 가상시술 시행', unfinished: true, holes: 1, holeChoices: [{ hole: '[좌우 확인]', choices: ['Rt', 'Lt', 'both'] }], chip: null })
+    const { user, worker } = await toMemo(live(memoView({ targets: { ...memoView().targets, left: [{ reason: 'mark', rows: [holed] }] } })))
+    expect(rowNames()[0]).toBe('가상환자h')
+    expect(shown()).toBe('가상환자h')
+    await user.click(within(within(detail()).getByRole('group', { name: '빈칸 1 [좌우 확인]' })).getByRole('button', { name: 'Rt' }))
+    await waitFor(() => expect(worker.of('editMemo')).toEqual([{ type: 'editMemo', visitKey: 'h', text: '◈Rt 가상시술 시행' }]))
+  })
+
+  it("AC-9310.1: 병원 문구가 없어 기본 문구로 만든 메모면 메모 단계 위에 '기본 문구' 띠와 [처음 학습]·[병원 문구 설정]이 있고 복사는 그대로 된다", async () => {
+    await toMemo(memoView({ defaultPhrases: true }))
+    const info = screen.getByText('아직 우리 병원 문구가 없어 기본 문구로 만들었어요. 처음 학습을 하면 우리 병원 메모 모양에 맞춰져요.').parentElement!
+    expect(info.compareDocumentPosition(toolbar()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(info).getByRole('button', { name: '처음 학습' })).toBeTruthy()
+    expect(within(info).getByRole('link', { name: '병원 문구 설정' }).getAttribute('href')).toBe('/settings?ptab=basic')
+    expect(copyButton().disabled).toBe(false)
+    cleanup()
+    await toMemo()
+    expect(screen.queryByText(/아직 우리 병원 문구가 없어/)).toBeNull()
+  })
+
+  it("AC-9318.1: 도구 줄에 '이 기간 메모 {n}건 · 학습이 쓴 메모 {m}건 · 사람이 고친 메모 {k}건 ({p}%)'가 있고 n이 0이면 없다", async () => {
+    await toMemo(memoView({ handStats: { need: 42, learned: 12, edited: 3 } }))
+    expect(within(toolbar()).getByText('이 기간 메모 42건 · 학습이 쓴 메모 12건 · 사람이 고친 메모 3건 (7%)')).toBeTruthy()
+    cleanup()
+    await toMemo(memoView({ handStats: { need: 0, learned: 0, edited: 0 } }))
+    expect(within(toolbar()).queryByText(/이 기간 메모/)).toBeNull()
+  })
+
+  it('AC-9314.1: 설정 바뀜 띠가 떠 있으면 [복사(완료)]도 막히고 [비트에 입력]과 같은 안내가 보이며 C 키로도 복사하지 않는다', async () => {
+    db.hospital = { phrases: {}, dx_links: [] }
+    const clip = fakeClipboard()
+    await toMemo()
+    db.hospital = { phrases: { changed: true }, dx_links: [] }
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await screen.findByRole('button', { name: '다시 점검' })
+    expect(copyButton().disabled).toBe(true)
+    expect(statusLine().textContent).toBe('[다시 점검]을 누른 뒤에 눌러 주세요.')
+    pressKey({ key: 'c', code: 'KeyC' })
+    await settle()
+    expect(clip.writes).toEqual([])
+  })
+
+  it('AC-9306.1: 상세 머리 [왜 이렇게?]를 누르면 메모 줄마다 출처 표가 보이고 다시 누르면 닫힌다', async () => {
+    const { user } = await toMemo()
+    await user.click(within(detail()).getByRole('button', { name: '왜 이렇게?' }))
+    const table = within(detail()).getByRole('region', { name: '이 메모가 이렇게 나온 까닭' })
+    expect(within(table).getByRole('cell', { name: '우리 메모 a' })).toBeTruthy()
+    expect(within(table).getByText('출처 모름')).toBeTruthy()
+    await user.click(within(detail()).getByRole('button', { name: '왜 이렇게?' }))
+    expect(within(detail()).queryByRole('region', { name: '이 메모가 이렇게 나온 까닭' })).toBeNull()
+  })
+
+  const KIND = { key: 'LA358|lumbar', name: 'LA358 · 허리', count: 2, done: false, example: { visitKey: 'b', chart: ['가상 증상 b'], rx: [{ code: 'LA358', name: '가상시술 가', qty: 1 }], memo: '우리 메모 b' } }
+
+  it('AC-9305.1·AC-9305.2: 도구 줄 [처음 학습]은 Worker에 종류를 묻고 처음 학습 칸을 보인다. [맞아요]는 그 종류 열쇠를 저장하고, [고치기]는 그 예시 진료를 골라 고치기 칸을 연다', async () => {
+    const { user, worker } = await toMemo(memoView({ targets: { ...memoView().targets, batch: [row('a'), row('b'), row('c')] } }))
+    await user.click(within(toolbar()).getByRole('button', { name: '처음 학습' }))
+    expect(worker.of('firstLearn')).toEqual([{ type: 'firstLearn' }])
+    await act(async () => worker.emit({ type: 'firstLearn', total: 3, kinds: [KIND, { ...KIND, key: 'KK090|knee', name: 'KK090 · 무릎', count: 1, example: { ...KIND.example, visitKey: 'c', memo: '우리 메모 c' } }] }))
+    const first = screen.getByRole('region', { name: '처음 학습' })
+    expect(within(first).getByRole('heading', { level: 3 }).textContent).toBe('LA358 · 허리 · 진료 2건')
+    await user.click(within(first).getByRole('button', { name: '맞아요' }))
+    expect(learnStore.addLearnKinds).toHaveBeenCalledWith(expect.anything(), ['LA358|lumbar'])
+    expect(within(first).getByText('확인한 종류가 불러온 진료의 66%예요 (1 / 2 종류)')).toBeTruthy()
+    await user.click(within(first).getByRole('button', { name: '고치기' }))
+    expect(screen.queryByRole('region', { name: '처음 학습' })).toBeNull()
+    expect(shown()).toBe('가상환자c')
+    expect(screen.getByRole('textbox', { name: '가상환자c 우리 메모 고치기' })).toBeTruthy()
+  })
+
+  it("AC-9305.4: 불러온 기간이 7일보다 짧으면 '한 달 불러오기' 글과 [지난 30일 불러오기]가 있고, 누르면 오늘−29일~오늘을 불러온 뒤 처음 학습을 연다", async () => {
+    const { user, worker, link } = await toMemo()
+    await user.click(within(toolbar()).getByRole('button', { name: '처음 학습' }))
+    await act(async () => worker.emit({ type: 'firstLearn', total: 2, kinds: [KIND] }))
+    const first = screen.getByRole('region', { name: '처음 학습' })
+    expect(within(first).getByText('처음 학습은 한 달쯤 불러온 진료로 하면 좋아요. 지금 불러온 기간이 짧아요.')).toBeTruthy()
+    await user.click(within(first).getByRole('button', { name: '지난 30일 불러오기' }))
+    const today = todayInKorea()
+    await waitFor(() => expect(link.stream.mock.calls.filter(([cmd]) => cmd === 'claim.memos').at(-1)?.[1]).toEqual({ from: addDays(today, -29), to: today }))
+    await waitFor(() => expect(worker.of('firstLearn')).toHaveLength(2))
+    await act(async () => worker.emit({ type: 'firstLearn', total: 2, kinds: [KIND] }))
+    expect(within(screen.getByRole('region', { name: '처음 학습' })).queryByRole('button', { name: '지난 30일 불러오기' })).toBeNull()
   })
 })

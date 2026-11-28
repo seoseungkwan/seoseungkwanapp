@@ -258,9 +258,13 @@ export type VisitMemo = {
   learned?: LearnedTag[]
   /** 메모 글의 [… 확인] 빈칸 수(claim-learn AC-9307.1). 1 이상일 때만 칸이 있다 */
   holes?: number
+  /** 빈칸마다 후보 글(claim-learn AC-9307.2, design.md 10절). 글의 빈칸 차례로 holes 개수만큼이고 holes가 있을 때만 칸이 있다 */
+  holeChoices?: HoleChoice[]
   /** 같은 차트번호·같은 날 진료 수(claim-learn AC-9309.1). 2 이상일 때만 칸이 있다 */
   sameDay?: number
 }
+/** 빈칸 하나의 후보(AC-9307.2): hole = 빈칸 글('[좌우 확인]'·'[부위 확인]'…), choices = 후보 단추 글([좌우 확인]은 병원 좌우 표기 셋, [부위 확인]은 엔진 siteChoices의 그 줄 후보, 그 밖은 빈 목록) */
+export type HoleChoice = { hole: string; choices: string[] }
 /** 메모에 쓰인 학습 하나(claim-learn AC-9302.6): 번호·이름·남은 확인 */
 export type LearnedTag = { id: string; name: string; left: number }
 /** 입력 묶음 줄. replaces는 지금 쥔 비트 메모이고 비교가 다름이 아니면 칸이 없다(AC-016.3·AC-037.1) */

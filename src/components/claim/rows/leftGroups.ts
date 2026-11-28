@@ -14,7 +14,10 @@ export const LEFT_GROUPS: Record<LeftReason, { name: string; why: string }> = {
   held: { name: '지난번 건너뜀', why: '지난 입력에서 건너뛴 뒤 메모가 그대로예요. 메모를 고치거나 [다시 하기]를 눌러 주세요.' },
 }
 
-/** 왼쪽 목록에서 입력할 사람 묶음 다음의 차례(AC-3101.2): 확인 필요 → 다른 메모 있음 → 직접 입력 → 지난번 건너뜀 → 비트 메모를 읽지 못함 → 이미 입력됨 → 메모 없음 */
+/**
+ * 왼쪽 목록에서 입력할 사람 묶음 다음의 차례(AC-3101.2): 확인 필요 → 다른 메모 있음 → 직접 입력 → 지난번 건너뜀 → 비트 메모를 읽지 못함 → 이미 입력됨 → 메모 없음.
+ * 빈칸([… 확인]) 있는 사람이 있으면 확인 필요 묶음만 입력할 사람 앞(맨 위)으로 간다(claim-learn AC-9307.1, memoSplit.allGroups)
+ */
 export const LIST_ORDER: readonly LeftReason[] = ['mark', 'diff', 'manual', 'held', 'unread', 'done', 'nomemo']
 
 /** 입력할 사람 묶음의 이름(목록 머리·상세 머리의 '{묶음 이름} i / n') */

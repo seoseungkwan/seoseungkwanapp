@@ -173,6 +173,8 @@ export function ClaimScreen({
   /** 메모 칸이 비트 메모를 읽는 중(AC-9315.1의 일하는 중) */
   const [bitReading, setBitReading] = useState(false)
   const [focusMemo, setFocusMemo] = useState<string | null>(null)
+  /** 처음 학습 [지난 30일 불러오기] 뒤 메모 칸을 열면 처음 학습을 연다(claim-learn AC-9305.4) */
+  const [firstNext, setFirstNext] = useState(false)
   const flushDrafts = useRef<(() => void) | null>(null)
   /** 띠의 [자료 불러오기]처럼 메모 칸에서 불렀으면 메모 칸으로 돌아온다(AC-018.16) */
   const afterLoad = useRef<ClaimPage>('result')
@@ -362,9 +364,10 @@ export function ClaimScreen({
       setSettingsStale(false)
       setExcelError(null)
       setRun({ kind: 'idle' })
-      // [다시 점검]은 메모 칸에 머문다
-      setPage((now) => (now === 'memo' ? 'memo' : afterLoad.current))
+      // [다시 점검]은 메모 칸에 머문다. 갈 단계는 지금 읽어 둔다: setPage의 함수는 다음 그리기 때 불려 그때는 afterLoad가 이미 'result'다(메모 칸에서 부른 불러오기가 메모 칸으로 돌아오게, AC-018.16·AC-9305.4)
+      const nextPage = afterLoad.current
       afterLoad.current = 'result'
+      setPage((now) => (now === 'memo' ? 'memo' : nextPage))
     },
     [channel],
   )
@@ -645,6 +648,18 @@ export function ClaimScreen({
           savedMode={savedMode}
           onModeChange={onModeChange}
           helperVersion={helperVersion}
+          phrases={result.used?.phrases ?? null}
+          onLearned={() => void recheck(result)}
+          onLoadMonth={() => {
+            // 처음 학습은 한 달쯤 불러온 진료로(AC-9305.4): 오늘−29일~오늘을 지금 [자료 불러오기]로 불러온 뒤 처음 학습을 다시 연다
+            const today = todayInKorea()
+            const range = { from: addDays(today, -29), to: today }
+            setPeriod(range)
+            setFirstNext(true)
+            void load(range, 'memo')
+          }}
+          openFirst={firstNext}
+          onFirstOpened={() => setFirstNext(false)}
         />
       )}
     </div>

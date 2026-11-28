@@ -23,11 +23,15 @@ const SHOWS: readonly (readonly [Show, string])[] = [
 ]
 
 /**
- * 목록 줄과 상세 머리에 같이 쓰는 상태 표(AC-3101.3·AC-3105.1). 차례: 복사 못 함 → 완료 → (확인 필요 | 메모 바꿈 | 새 메모 가운데 하나).
- * 메모 바꿈·새 메모는 입력할 사람 묶음에만 붙는다. [뒤에 붙이기]를 고른 사람은 메모 바꿈 대신 '메모 뒤에 붙임'이다(clinic-profile AC-6611.1, 상세 머리와 같은 조건)
+ * 목록 줄과 상세 머리에 같이 쓰는 상태 표(AC-3101.3·AC-3105.1). 차례: 복사 못 함 → 완료 → (빈칸 n | 확인 필요 | 메모 바꿈 | 새 메모 가운데 하나) → 학습 표시 → 하루 두 번.
+ * 메모 바꿈·새 메모는 입력할 사람 묶음에만 붙는다. [뒤에 붙이기]를 고른 사람은 메모 바꿈 대신 '메모 뒤에 붙임'이다(clinic-profile AC-6611.1, 상세 머리와 같은 조건).
+ * claim-learn: 빈칸([… 확인]) 있는 메모는 '! 확인 필요' 대신 '빈칸 {n}'(AC-9307.1). 학습이 쓰인 메모는 남은 확인이 있으면 '확인 필요'(노랑)와 첫 학습 이름 꼬리표,
+ * 없으면 꼬리표만(AC-9302.6). 같은 차트·같은 날 진료가 둘 이상이면 '하루 두 번'(빨강, AC-9309.1)
  */
 export function RowTags({ row, group, failed }: { row: TargetRow; group: ListGroup['id']; failed: boolean }) {
   const batch = group === 'batch'
+  const holes = row.holes ?? 0
+  const learned = row.learned ?? []
   return (
     <>
       {failed && (
@@ -42,7 +46,9 @@ export function RowTags({ row, group, failed }: { row: TargetRow; group: ListGro
           완료
         </span>
       )}
-      {row.unfinished ? (
+      {holes > 0 ? (
+        <span className={ds.chip.warning}>빈칸 {holes}</span>
+      ) : row.unfinished ? (
         <span className={ds.chip.warning}>! 확인 필요</span>
       ) : batch && row.appended !== undefined ? (
         <span className={ds.chip.accent}>{APPEND_NAME}</span>
@@ -51,6 +57,9 @@ export function RowTags({ row, group, failed }: { row: TargetRow; group: ListGro
       ) : batch && row.chip === '새 메모' ? (
         <span className={ds.chip.neutral}>새 메모</span>
       ) : null}
+      {learned.some((tag) => tag.left > 0) && <span className={ds.chip.warning}>확인 필요</span>}
+      {learned.length > 0 && <span className={ds.chip.neutral}>학습: {learned[0].name}</span>}
+      {row.sameDay > 1 && <span className={ds.chip.negative}>하루 두 번</span>}
     </>
   )
 }

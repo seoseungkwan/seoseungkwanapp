@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Icon } from '@/components/common/Icon'
+import { ds } from '@/components/ui/classes'
 import type { MemoTableRow, TargetRow } from '@/types/precheck'
 import { APPEND_NAME, LEFT_GROUPS, LIST_ORDER } from './leftGroups'
 import { MemoDetail, type CopyStatus } from './MemoDetail'
@@ -813,5 +814,106 @@ describe('AC-3107.3 환자 줄 울타리', () => {
     const first = show({ status: 'copied', row: row({ done: true }) }).view.container.innerHTML
     cleanup()
     expect(show({ status: 'copied', row: row({ done: true }) }).view.container.innerHTML).toBe(first)
+  })
+})
+
+// 청구 메모 학습(claim-learn, 시안 ?s=memo, notes '메모 단계' 글 그대로): 빈칸 자리 후보 단추 · [왜 이렇게?] · 학습 확인 필요 노란 줄 · 하루 두 번 · 저절로 학습 띠 자리 · 설정 바뀜 때 복사 막기
+describe('claim-learn 메모 상세', () => {
+  const HOLED = '◈가상 첫 줄\n◈[좌우 확인] L4,5 가상시술 시행\n◈[부위 확인] 가상주사 시행'
+  const holed = (over: Partial<TargetRow> = {}) =>
+    row({
+      text: HOLED,
+      unfinished: true,
+      holes: 2,
+      holeChoices: [
+        { hole: '[좌우 확인]', choices: ['Rt', 'Lt', 'both'] },
+        { hole: '[부위 확인]', choices: ['wrist', 'finger'] },
+      ],
+      chip: null,
+      ...over,
+    })
+  const memoBox = () => screen.getByRole('group', { name: '우리 메모' })
+  const hole = (name: string) => within(memoBox()).getByRole('group', { name })
+
+  it('AC-9307.2: 빈칸 자리에 [좌우 확인]은 [Rt][Lt][both], [부위 확인]은 부위 단추와 [직접 쓰기]가 있다. 글은 그대로 보인다', () => {
+    show({ group: 'mark', groupName: '확인 필요', row: holed(), status: 'mark' })
+    expect(memoBox().textContent).toContain('가상 첫 줄')
+    expect(within(hole('빈칸 1 [좌우 확인]')).getAllByRole('button').map((item) => item.textContent)).toEqual(['Rt', 'Lt', 'both'])
+    expect(within(hole('빈칸 2 [부위 확인]')).getAllByRole('button').map((item) => item.textContent)).toEqual(['wrist', 'finger', '직접 쓰기'])
+    expect(hole('빈칸 1 [좌우 확인]').textContent).toContain('[좌우 확인]')
+  })
+
+  it('AC-9307.3: 후보 단추를 누르면 그 빈칸만 그 글로 바꾼 메모를 알린다. [직접 쓰기]는 메모 고치기 칸을 연다', async () => {
+    const user = userEvent.setup()
+    const { on } = show({ group: 'mark', groupName: '확인 필요', row: holed(), status: 'mark', onFill: vi.fn() })
+    await user.click(within(hole('빈칸 1 [좌우 확인]')).getByRole('button', { name: 'Lt' }))
+    expect(on.onFill).toHaveBeenCalledWith('◈가상 첫 줄\n◈Lt L4,5 가상시술 시행\n◈[부위 확인] 가상주사 시행')
+    await user.click(within(hole('빈칸 2 [부위 확인]')).getByRole('button', { name: 'wrist' }))
+    expect(on.onFill).toHaveBeenLastCalledWith('◈가상 첫 줄\n◈[좌우 확인] L4,5 가상시술 시행\n◈wrist 가상주사 시행')
+    await user.click(within(hole('빈칸 2 [부위 확인]')).getByRole('button', { name: '직접 쓰기' }))
+    expect(on.onEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-9307.2: 입력 중이거나 후보가 지금 글의 빈칸과 맞지 않으면(고친 글이 아직 오지 않음) 빈칸 표시만 있고 단추가 없다', () => {
+    show({ group: 'mark', groupName: '확인 필요', row: holed(), status: 'locked', locked: true, onFill: vi.fn() })
+    expect(within(memoBox()).queryAllByRole('button')).toEqual([])
+    expect(hole('빈칸 1 [좌우 확인]').textContent).toBe('[좌우 확인]')
+    cleanup()
+    show({ group: 'mark', groupName: '확인 필요', row: holed({ text: '◈Lt L4,5 가상시술 시행\n◈[부위 확인] 가상주사 시행' }), status: 'mark', onFill: vi.fn() })
+    expect(within(memoBox()).queryAllByRole('button')).toEqual([])
+    expect(hole('빈칸 1 [부위 확인]')).toBeTruthy()
+  })
+
+  it('AC-9306.1: 머리에 [왜 이렇게?]가 있고 누르면 알린다. 열려 있으면 aria-pressed이고 넘겨받은 출처 표가 증상·처방 칸 자리에 보인다', async () => {
+    const user = userEvent.setup()
+    const first = show({ onWhy: vi.fn() })
+    await user.click(button('왜 이렇게?'))
+    expect(first.on.onWhy).toHaveBeenCalledTimes(1)
+    expect(button('왜 이렇게?').getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByRole('region', { name: '증상 · 차트 원문' })).toBeTruthy()
+    cleanup()
+    show({ onWhy: vi.fn(), why: <section aria-label="가짜 출처 표">가짜 출처</section> })
+    expect(button('왜 이렇게?').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('region', { name: '가짜 출처 표' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '증상 · 차트 원문' })).toBeNull()
+    cleanup()
+    show()
+    expect(screen.queryByRole('button', { name: '왜 이렇게?' })).toBeNull()
+  })
+
+  it("AC-9302.6: 남은 확인이 1 이상인 학습이 쓰인 메모는 머리에 '확인 필요'·'학습: {이름}'이 있고 노란 줄에 남은 확인 수가 있다. 0이면 꼬리표만 있다", () => {
+    show({ row: row({ learned: [{ id: 'l0000a001', name: 'LA358 · 허리', left: 2 }] }) })
+    const tags = [...screen.getByRole('heading', { name: '가상환자A' }).parentElement!.children].slice(1).map((tag) => tag.textContent)
+    expect(tags).toEqual(['새 메모', '확인 필요', '학습: LA358 · 허리'])
+    const line = screen.getByText('새 학습이 쓰인 메모예요. 맞으면 그대로 복사·입력하세요. (남은 확인 2번)')
+    expect(line.className).toContain('bg-warning-soft')
+    cleanup()
+    show({ row: row({ learned: [{ id: 'l0000a001', name: 'LA358 · 허리', left: 0 }] }) })
+    expect(screen.queryByText(/새 학습이 쓰인 메모예요/)).toBeNull()
+    expect(screen.getByText('학습: LA358 · 허리')).toBeTruthy()
+  })
+
+  it("AC-9309.1: 같은 날 두 번 진료한 사람은 머리에 '하루 두 번'(빨강)과 빨간 안내 글이 있다. 한 번이면 없다", () => {
+    show({ row: row({ sameDay: 2 }) })
+    expect(screen.getByText('하루 두 번').className).toBe(ds.chip.negative)
+    expect(screen.getByText('이 환자는 이날 두 번 진료했어요. 그날 처방이 두 메모에 똑같이 들어가니 맞는지 봐 주세요.').className).toContain('bg-negative-soft')
+    cleanup()
+    show()
+    expect(screen.queryByText('하루 두 번')).toBeNull()
+    expect(screen.queryByText(/이날 두 번 진료했어요/)).toBeNull()
+  })
+
+  it('AC-9301.1: 넘겨받은 저절로 학습 띠는 ① 칸의 메모 칸 아래에 있다', () => {
+    show({ learnBand: <div role="status">가짜 학습 띠</div> })
+    const band = screen.getByText('가짜 학습 띠')
+    const memos = screen.getByRole('group', { name: '우리 메모' }).parentElement!
+    expect(memos.compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(memos.parentElement!.contains(band)).toBe(true)
+  })
+
+  it("AC-9314.1: 설정 바뀜(stale)이면 상태 줄이 '[다시 점검]을 누른 뒤에 눌러 주세요.'다([비트에 입력] 옆 글과 같다)", () => {
+    show({ status: 'stale', copyDisabled: true })
+    expect(statusLine().textContent).toBe('[다시 점검]을 누른 뒤에 눌러 주세요.')
+    expect(copyButton().disabled).toBe(true)
   })
 })

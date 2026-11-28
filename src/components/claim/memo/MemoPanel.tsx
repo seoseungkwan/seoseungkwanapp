@@ -3,18 +3,24 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { Icon } from '@/components/common/Icon'
+import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
+import { diffDays } from '@/lib/analytics/dates'
 import { compareVersions } from '@/lib/bridge/handshake'
 import { APPEND_HELPER } from '@/lib/bridge/versions'
 import { errorInfo } from '@/lib/errors'
+import { explainLines, matchPattern, neutralPhrases, slotWords, validatePhrases, type WhyLine } from '@/lib/precheck/memo'
 import type { DateRange } from '@/types/dates'
-import type { InputResultView, InputSelection, InputWhat, MemoScreenView, TargetRow } from '@/types/precheck'
+import type { HandStats, InputResultView, InputSelection, InputWhat, MemoScreenView, TargetRow } from '@/types/precheck'
 import { ClaimError, SetupLink } from '../ClaimError'
 import { runInputExcel, whileWorking, type ClaimChannel, type ClaimStream, type MemoViewAnswer } from '../claimLoad'
 import { BitMemoCard } from '../rows/BitMemoCard'
+import { FirstLearn } from '../rows/FirstLearn'
+import { LearnDialog, styleQuestion } from '../rows/LearnDialog'
 import { MemoDetail } from '../rows/MemoDetail'
 import { MemoList, type Show } from '../rows/MemoList'
 import { StuckBand } from '../rows/StuckBand'
+import { WhyTable } from '../rows/WhyTable'
 import type { UseBridge } from '../useBridge'
 import { BitMemoButton, useBitMemo } from './BitMemoButton'
 import { copyText } from './copyMemo'
@@ -23,6 +29,7 @@ import { InputResults } from './InputResults'
 import { canCopy, copyStatus, keepOrFirst, listGroups, neighbor, positionOf, showCounts } from './memoSplit'
 import { useFitHeight } from './useFitHeight'
 import { useMemoDrafts } from './useMemoDrafts'
+import { useLearned, type LearnBand } from './useLearned'
 import { useSplitKeys } from './useSplitKeys'
 
 // 3~5단계 메모 칸(REQ-018, memo-split 승인 시안 4): 위 도구 줄(요약 · [비트 메모 전체 불러오기] · [비트에 입력 (N명)] · 입력 방식 한 줄) + 두 칸(왼쪽 환자 목록 | 오른쪽 고른 환자 상세)
@@ -32,6 +39,8 @@ import { useSplitKeys } from './useSplitKeys'
 // 설정 변경 띠와 기관기호 안내는 ClaimScreen이 화면 맨 위에 둔다(design.md 6-5, AC-018.17). 다른 탭에 다녀오면 비트 메모 읽기 상태와 입력 결과를 ClaimChannel에 맡겨 둔 것으로 되살린다
 // claim-learn(AC-9314.2·AC-9315.1): 입력 결과의 [날짜 목록으로]는 onDates. 비트 메모 읽기·입력 중에 도우미가 사라지면(E-HELPER-MISSING) E-HELPER-STOPPED 안내와
 // [다시 불러오기](onReload)·[비트 PC 연결 확인]을 그 자리에 보이고, 받은 입력 결과는 그대로 둔다. 비트 메모를 읽는 동안은 onBitReading으로 위에 알린다(일하는 중)
+// claim-learn(시안 ?s=memo·learn·why·first·default): 고쳐 저장하면 [학습하기] 없이 저절로 학습 띠(useLearned가 저장, 된 뒤 onLearned로 다시 점검) · [조건 바꾸기] 학습 창 ·
+// 빈칸 후보 단추(고친 글과 같은 길) · [왜 이렇게?] 출처 표 · 도구 줄 [처음 학습]·손 간 정도 · 기본 문구 띠 · 설정 바뀜 띠가 떠 있으면 [복사(완료)]도 막음(AC-9314.1)
 
 export type InputStage = 'pick' | 'wait' | 'run' | 'result'
 
@@ -41,6 +50,11 @@ const WAIT_NOTE = '[취소]를 누르거나 창을 닫거나 5분이 지나면 �
 /** 메모 표가 없어져 끝은 '환자 목록에 보여요.'다(AC-3107.1) */
 const LEAVE_NOTE = '다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 환자 목록에 보여요.'
 const BAND = 'flex flex-col gap-1 rounded-control bg-warning-soft px-4 py-3'
+/** 저절로 학습 띠(notes '저절로 학습'): 파란 띠 · '이번만'은 회색 · 개인정보 줄은 노란 덧붙임 */
+const LEARN_BLUE = 'flex flex-wrap items-center gap-2 rounded-control bg-accent-soft px-3 py-1.5 text-small text-ink'
+const LEARNED_TEXT = '학습했어요. 다음에 같은 처방·부위면 이렇게 써요. 처음 3번은 ‘확인 필요’로 보여 드려요.'
+/** 처음 학습 '한 달 불러오기'(AC-9305.4): 불러온 기간이 이 날 수보다 짧으면 */
+const MONTH_HINT_DAYS = 7
 /** 보일 사람이 없을 때 왼쪽 글(AC-3101.7). 조건 안내가 있으면 그 글이 먼저다 */
 const EMPTY: Record<Show, string> = { all: '이 조건에 맞는 진료가 없어요.', todo: '모두 완료했어요.', done: '완료한 환자가 없어요.' }
 /**
@@ -81,6 +95,90 @@ export type MemoPanelProps = {
   onDates?(): void
   /** 비트 메모를 읽는 중인가(AC-9315.1의 일하는 중). ClaimScreen이 위로 알린다 */
   onBitReading?(reading: boolean): void
+  /** 점검에 쓴 병원 문구([왜 이렇게?] 출처 찾기, claim-learn AC-9306.1). 없으면(줄 없음) 기본 문구로 본다 */
+  phrases?: unknown
+  /** 학습·모양 고침을 저장했다(AC-9301.1). ClaimScreen이 새 설정으로 다시 점검한다 */
+  onLearned?(): void
+  /** 처음 학습 [지난 30일 불러오기](AC-9305.4). ClaimScreen이 오늘−29일~오늘을 불러온 뒤 openFirst로 처음 학습을 다시 연다 */
+  onLoadMonth?(): void
+  /** 이 칸을 열면서 처음 학습을 연다(한 달을 불러온 뒤, AC-9305.4) */
+  openFirst?: boolean
+  onFirstOpened?(): void
+}
+
+/** 손 간 정도(claim-learn AC-9318.1, notes 글): p = k ÷ n 반올림 정수. n이 0이면 없다 */
+function handText(stats: HandStats | undefined): string | null {
+  if (!stats || stats.need <= 0) return null
+  return `이 기간 메모 ${stats.need}건 · 학습이 쓴 메모 ${stats.learned}건 · 사람이 고친 메모 ${stats.edited}건 (${Math.round((stats.edited * 100) / stats.need)}%)`
+}
+
+/**
+ * 메모 줄마다 출처(AC-9306.1, design.md 8절). 학습이 쓴 줄은 그 진료에 쓰인 학습(learned 꼬리표)의 문장 틀과 줄 전체가 맞는 줄이다.
+ * 병원 문구가 검사를 지나지 못하거나 없으면 기본 문구로 본다(메모 엔진과 같다)
+ */
+function whyLinesOf(row: TargetRow, phrases: unknown): WhyLine[] {
+  const checked = phrases === null || phrases === undefined ? null : validatePhrases(phrases)
+  const base = checked?.ok ? checked.value : neutralPhrases()
+  const words = slotWords(base)
+  const rules = Array.isArray(base.learned) ? base.learned : []
+  const lines = row.text.split('\n').filter((line) => line.trim())
+  const used = (row.learned ?? []).flatMap((tag) => {
+    const rule = rules.find((item) => item.id === tag.id)
+    if (!rule || rule.kind === 'remove' || !rule.to.trim()) return []
+    return lines.filter((line) => matchPattern(rule.to, line, words) !== null).map((line) => ({ id: tag.id, name: tag.name, line }))
+  })
+  const visit = { rx: row.rxRows.map((item) => ({ code: item.code, name: item.name, qty: item.qty, benefit: item.benefit, pay: '' })), lines: row.chartLines.map((line) => line.text) }
+  return explainLines(row.text, used, visit, base)
+}
+
+/** 저절로 학습 띠(AC-9301.1·AC-9301.2·AC-9301.5·AC-9301.6·AC-9303.1, notes '저절로 학습' 글 그대로). 상세의 메모 칸 아래에 선다 */
+function LearnBandView({ band, onOnce, onConditions, onRetry, onStyleAll, onStyleLine }: { band: LearnBand; onOnce(): void; onConditions(): void; onRetry(): void; onStyleAll(index: number): void; onStyleLine(index: number): void }) {
+  if (band.phase === 'saving') return null
+  return (
+    <div role="region" aria-label="저절로 학습" className="flex flex-col gap-1.5">
+      {band.phase === 'learned' && (
+        <div className={LEARN_BLUE}>
+          <p>{LEARNED_TEXT}</p>
+          <span className="flex-1" />
+          <button type="button" className={ds.button.secondarySmall} onClick={onOnce}>
+            이번만 고친 거예요
+          </button>
+          <button type="button" className={ds.button.secondarySmall} onClick={onConditions}>
+            조건 바꾸기
+          </button>
+        </div>
+      )}
+      {band.phase === 'once' && <p className="rounded-control bg-canvas px-3 py-1.5 text-small text-ink-2">이번 고침만 저장했어요. 학습은 하지 않았어요.</p>}
+      {band.phase === 'saved' && <p className={LEARN_BLUE}>학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.</p>}
+      {band.phase === 'failed' && (
+        <div className="flex flex-col items-start gap-1.5">
+          <ErrorCard code={band.code} />
+          <button type="button" className={ds.button.primarySmall} onClick={onRetry}>
+            다시 저장
+          </button>
+        </div>
+      )}
+      {'personal' in band && band.personal > 0 && <p className="rounded-control bg-warning-soft px-3 py-1.5 text-small text-warning">{`전화번호·주민번호 같은 글이 있는 줄 ${band.personal}개는 학습하지 않았어요.`}</p>}
+      {'styles' in band &&
+        band.styles.map((item, index) =>
+          item.state === 'ask' || item.state === 'failed' ? (
+            <div key={index} className="flex flex-col gap-1.5">
+              <div className={LEARN_BLUE}>
+                <p>{styleQuestion(item.change)}</p>
+                <span className="flex-1" />
+                <button type="button" className={ds.button.primarySmall} onClick={() => onStyleAll(index)}>
+                  모든 메모에
+                </button>
+                <button type="button" className={ds.button.secondarySmall} onClick={() => onStyleLine(index)}>
+                  이 학습만
+                </button>
+              </div>
+              {item.state === 'failed' && <ErrorCard code="E-LEARN-SAVE" />}
+            </div>
+          ) : null,
+        )}
+    </div>
+  )
 }
 
 /**
@@ -126,7 +224,9 @@ export function MemoPanel(props: MemoPanelProps) {
   return <Panel {...props} />
 }
 
-function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, settingsStale, storeStuck, onStoreStuck, checkFresh, onLoadRange, onReload, onStage, flushRef, focusKey, savedMode, onModeChange, helperVersion, onDates, onBitReading }: MemoPanelProps) {
+function Panel(props: MemoPanelProps) {
+  const { channel, stream, onProgress, load, check, visible, loadedAt, settingsStale, storeStuck, onStoreStuck, checkFresh, onLoadRange, onReload, onStage, flushRef, focusKey, savedMode, onModeChange, helperVersion, onDates, onBitReading } = props
+  const { phrases, onLearned, onLoadMonth, openFirst = false, onFirstOpened } = props
   const kept = useRef(channel.keptMemo())
   const [selection, setSelection] = useState<InputSelection>(() => defaultSelection(visible, savedMode))
   const [view, setView] = useState<MemoScreenView | null>(null)
@@ -164,6 +264,28 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   const modeTouched = useRef(false)
   /** [뒤에 붙이기]는 도우미가 appends를 알 때만(APPEND_HELPER 이상, AC-6611.1). 판을 모르거나 읽을 수 없으면 옛 판으로 본다 */
   const canAppend = helperVersion !== undefined && compareVersions(helperVersion, APPEND_HELPER) >= 0
+  // 청구 메모 학습(claim-learn): 저장은 useLearned가 하고, 된 뒤 ClaimScreen이 다시 점검한다(onLearned)
+  const onLearnedRef = useRef(onLearned)
+  onLearnedRef.current = onLearned
+  const learned = useLearned({ worker: channel.worker, onSaved: () => onLearnedRef.current?.() })
+  const [whyOpen, setWhyOpen] = useState(false)
+  const [firstOpen, setFirstOpen] = useState(false)
+  /** 이 칸을 연 뒤 [맞아요]로 확인한 처음 학습 종류(AC-9305.2) */
+  const [confirmedKinds, setConfirmedKinds] = useState<ReadonlySet<string>>(() => new Set())
+  const { askFirst } = learned
+  /** [처음 학습](AC-9305.1): Worker에 종류를 묻고 처음 학습 칸을 연다 */
+  const openFirstLearn = useCallback(() => {
+    askFirst()
+    setFirstOpen(true)
+  }, [askFirst])
+  // 한 달을 불러온 뒤 처음 학습을 다시 연다(AC-9305.4)
+  const firstAsked = useRef(false)
+  useEffect(() => {
+    if (!openFirst || firstAsked.current) return
+    firstAsked.current = true
+    openFirstLearn()
+    onFirstOpened?.()
+  }, [openFirst, openFirstLearn, onFirstOpened])
 
   // 저장된 방식이 이 칸이 열린 뒤에 왔으면(읽기가 늦음) 아직 고르지 않았을 때만 그 방식으로 바꾼다(AC-6610.1)
   useEffect(() => {
@@ -351,6 +473,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
     setJustCopied(null)
     setReopened(null)
     setEditing(null)
+    learned.clearBand() // 다른 사람을 고르면 띠는 사라진다(학습은 남는다, design.md 5-1절)
   }
 
   // 새 목록이 와서 고른 사람이 바뀌면(없어져 맨 위로) 그 사람을 고른 것으로 둔다. 보기를 바꾼 뒤 남은 사람은 머물 사람이 된다
@@ -398,7 +521,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
    */
   const copy = async () => {
     const row = shownRow
-    if (row === null || copyingRef.current || locked || storeStuck || editing === row.key) return
+    if (row === null || copyingRef.current || locked || storeStuck || settingsStale || editing === row.key) return
     const key = row.key
     const text = textOf(row)
     if (!canCopy({ ...row, text })) return
@@ -423,7 +546,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
     }
   }
 
-  useSplitKeys({ enabled: stage === 'pick' && !dialog && view !== null, onMove: move, onCopy: () => void copy() })
+  useSplitKeys({ enabled: stage === 'pick' && !dialog && learned.dialog === null && view !== null, onMove: move, onCopy: () => void copy() })
 
   const batch = targets?.batch ?? []
   const marks = targets?.left.find((group) => group.reason === 'mark')?.rows ?? []
@@ -497,10 +620,10 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
         canNext={neighbor(groups, key, 1) !== null}
         onPrev={() => move(-1)}
         onNext={() => move(1)}
-        status={copyStatus({ row, editing: isEditing, failed: failed.has(key), reopened: reopened === key, justCopied: justCopied === key, locked, storeStuck })}
+        status={copyStatus({ row, editing: isEditing, failed: failed.has(key), reopened: reopened === key, justCopied: justCopied === key, locked, storeStuck, stale: settingsStale })}
         copying={copying === key}
         failed={failed.has(key)}
-        copyDisabled={isEditing || locked || storeStuck || copying !== null || !canCopy(row)}
+        copyDisabled={isEditing || locked || storeStuck || settingsStale || copying !== null || !canCopy(row)}
         undoDisabled={locked || storeStuck}
         editing={isEditing}
         locked={locked}
@@ -535,14 +658,55 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
           void refreshRef.current()
         }}
         onHeldRetry={() => void start('held')}
+        onFill={(text) => {
+          // 빈칸 후보 단추(AC-9307.3): [메모 고치기] 저장과 같은 길(고친 글)로 보낸다
+          if (locked || text === before) return
+          drafts.change(key, text)
+          drafts.flush(key)
+          setJustCopied(null)
+          if (row.done) setReopened(key)
+        }}
+        onWhy={() => setWhyOpen((now) => !now)}
+        why={whyOpen ? <WhyTable lines={whyLinesOf(row, phrases)} /> : undefined}
+        learnBand={
+          learned.band && learned.band.visitKey === key ? (
+            <LearnBandView
+              band={learned.band}
+              onOnce={() => void learned.once()}
+              onConditions={() => learned.openDialog(key)}
+              onRetry={() => void learned.retry()}
+              onStyleAll={(index) => void learned.styleAll(index)}
+              onStyleLine={(index) => learned.styleLine(index)}
+            />
+          ) : undefined
+        }
       />
     )
   })()
+
+  const hand = handText(view.handStats)
+  const first = firstOpen ? learned.first : null
+  /** 학습 창 칩의 함께 한 다른 시술 이름: 그 진료 처방의 짧은 이름(없으면 처방명) */
+  const dialogRow = learned.dialog ? (groups.flatMap((group) => group.rows).find((item) => item.key === learned.dialog!.draft.visitKey) ?? null) : null
+  const dialogNames = Object.fromEntries((dialogRow?.rxRows ?? []).map((item) => [item.code, item.short.trim() || item.name]))
 
   return (
     // data-wide-page(claim-memo-fit AC-4801.1): 이 칸이 있는 동안 앱 틀(AppShell·TabBar)이 1024px 이상에서 1280 폭 제한을 푼다
     <div data-wide-page="" className="flex flex-col gap-3">
       {viewFailed}
+      {view.defaultPhrases && (
+        // 병원 문구가 없어 기본 문구로 만들었다(AC-9310.1): 잠그지 않고 메모 단계 위에 파란 띠
+        <div role="status" className="flex flex-wrap items-center gap-2 rounded-control bg-accent-soft px-4 py-3">
+          <p className="text-small text-ink">아직 우리 병원 문구가 없어 기본 문구로 만들었어요. 처음 학습을 하면 우리 병원 메모 모양에 맞춰져요.</p>
+          <span className="flex-1" />
+          <button type="button" className={ds.button.primarySmall} disabled={locked} onClick={openFirstLearn}>
+            처음 학습
+          </button>
+          <Link href="/settings?ptab=basic" className={ds.button.secondarySmall}>
+            병원 문구 설정
+          </Link>
+        </div>
+      )}
       {noAsk && (
         <div role="status" className={BAND}>
           <b className="text-small font-semibold text-ink">묻지 않기 켜짐: PC 확인 창 없이 바로 시작해요</b>
@@ -620,11 +784,17 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
                 </span>{' '}
                 · 빠지는 사람 {leftCount}명
               </p>
+              {hand && <span className={`${ds.chip.accent} self-center`}>{hand}</span>}
               <span className="flex-1" />
               {/* 단추 아래 선은 예전 입력 방식 칸 안에서 나누던 것이라 도구 줄에서는 뺀다 */}
               <div className="min-w-0 *:border-b-0 *:pb-0">
                 <BitMemoButton state={bit.state} blocked={locked} onRead={bit.read} />
               </div>
+              {stage === 'pick' && (
+                <button type="button" className={ds.button.secondary} onClick={openFirstLearn}>
+                  처음 학습
+                </button>
+              )}
               {stage === 'pick' && (
                 <button type="button" className={ds.button.secondary} disabled={storeStuck || stuck !== null || settingsStale || reading} aria-disabled={batchCount === 0 || undefined} onClick={press}>
                   비트에 입력 ({batchCount}명)
@@ -639,6 +809,29 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
             )}
             <InputMode visible={visible} selection={selection} onSelection={changeSelection} problem={targets.problem} chips={targets.chips} typedOverChip={targets.typedOverChip} locked={locked} />
           </section>
+          {first && (
+            <FirstLearn
+              total={first.total}
+              kinds={first.kinds}
+              confirmed={confirmedKinds}
+              short={first.total === 0 || diffDays(visible.from, visible.to) + 1 < MONTH_HINT_DAYS}
+              onRight={(kind) => {
+                learned.confirmKinds([kind.key])
+                setConfirmedKinds((now) => new Set(now).add(kind.key))
+              }}
+              onFix={(kind) => {
+                // 그 예시 진료를 골라 고치기 칸을 연다. 고쳐 저장하면 저절로 학습 띠(AC-9305.2)
+                setFirstOpen(false)
+                pick(kind.example.visitKey)
+                setEditing(kind.example.visitKey)
+              }}
+              onStop={() => {
+                setFirstOpen(false)
+                learned.closeFirst()
+              }}
+              onLoadMonth={() => onLoadMonth?.()}
+            />
+          )}
           {/* 두 칸(AC-3101.1): lg(64rem) 이상 나란히(왼쪽 272px, claim-memo-fit AC-4802.1)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
           <div ref={splitRef} className={SPLIT} style={fitHeight === undefined ? undefined : { height: fitHeight }}>
             <div className="flex min-h-0 min-w-0 flex-col border-line max-lg:max-h-[40dvh] max-lg:border-b lg:border-r">
@@ -651,6 +844,17 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
             </section>
           </div>
         </>
+      )}
+      {learned.dialog && (
+        <LearnDialog
+          key={learned.dialog.draft.visitKey}
+          draft={learned.dialog.draft}
+          saving={learned.dialog.saving}
+          error={learned.dialog.error}
+          names={dialogNames}
+          onCancel={learned.closeDialog}
+          onSave={(save) => void learned.saveDialog(save)}
+        />
       )}
       {dialog && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-ink/36 p-4" onKeyDown={(event) => event.key === 'Escape' && setDialog(false)}>

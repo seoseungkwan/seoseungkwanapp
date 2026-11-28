@@ -4781,3 +4781,62 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
   })
 })
+
+describe('AC-9307.2 빈칸 후보: 메모 보기의 빈칸마다 후보 글(holeChoices)', { timeout: 60_000 }, () => {
+  const MEMO_MONTH = FAKE('claim-month-memo.json')
+  const DAY = { from: '2026-10-12', to: '2026-10-12' }
+  const SELECT: InputSelection = { mode: 'date', from: DAY.from, to: DAY.to, typed: '', chip: '', kind: 'range', day: DAY.from, rangeFrom: DAY.from, rangeTo: DAY.to }
+  const settingsOf = (phrases: Phrases): CheckSettings => ({ rules: { schema: 1, off: [], on: [], grade: [] }, phrases, dxLinks: [] })
+  const memosJson = JSON.stringify({ version: 1, period: DAY, truncated: false, invalidRows: 0, rows: [] } satisfies ClaimMemosJson)
+  const storeJson = JSON.stringify({ months: { '2026-10': { drafts: {}, done: {}, journal: {} } } } satisfies StoreLoadJson)
+  /** 가짜 달의 m06(차트 900021)을 건초내주사(KK062) 1개와 세 부위 증상으로 바꾼다: 부위가 수량보다 많아 [부위 확인]이 난다(AC-9319.3) */
+  const TS_MONTH = (() => {
+    const raw = JSON.parse(MEMO_MONTH) as { s83: Record<string, string>[]; s47: Record<string, string>[]; history: Record<string, unknown>[]; counts: { s83: number } }
+    const base = raw.s83.find((row) => row['내원번호'] === 'm06')!
+    raw.s83 = [...raw.s83.filter((row) => row['내원번호'] !== 'm06'), ...['Rt shoulder pain', 'Lt knee pain', 'Rt wrist pain'].map((증상) => ({ ...base, 증상 }))]
+    raw.counts.s83 = raw.s83.length
+    for (const row of raw.s47) if (row['차트번호'] === '900021' && row['처방일자'] === '20261012') Object.assign(row, { 처방코드: 'KK062', 처방명칭: 'KK062', 수량: '1' })
+    for (const row of raw.history) if (row.v === 'm06') row.c = ['KK062']
+    return JSON.stringify(raw)
+  })()
+
+  async function viewWith(phrases: Phrases, month = MEMO_MONTH): Promise<MemoScreenView> {
+    const posts: PrecheckToScreen[] = []
+    const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables, toPort: () => {} })
+    await loadInto(jobs, 'month', month, 1)
+    await stream(jobs, 'memos', memosJson)
+    await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos', load: 1 } satisfies PrecheckFromScreen)
+    await stream(jobs, 'store', storeJson)
+    await jobs.fromScreen({ type: 'loadPart', part: 'store', id: 'store', load: 1 } satisfies PrecheckFromScreen)
+    await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: DAY, settings: settingsOf(phrases) } satisfies PrecheckFromScreen)
+    await jobs.fromScreen({ type: 'memoView', ask: 1, selection: SELECT } satisfies PrecheckFromScreen)
+    const answer = posts.find((m) => m.type === 'memoView' && m.ask === 1)
+    if (answer?.type !== 'memoView' || !answer.ok) throw new Error('memoView 답이 없다')
+    return answer.view
+  }
+  const rowIn = (view: MemoScreenView, key: string) => view.table.find((row) => row.key === key)!
+  const targetIn = (view: MemoScreenView, key: string) => [...view.targets.batch, ...view.targets.left.flatMap((group) => group.rows)].find((row) => row.key === key)!
+
+  it('AC-9307.2: [좌우 확인]의 후보는 병원 좌우 표기 셋이다(기본 Rt·Lt·both, 한글 표기면 우측·좌측·양측). 목록 줄과 메모 표 줄에 같이 실린다', async () => {
+    const plain = await viewWith(ourClinicPhrases())
+    expect(rowIn(plain, 'm10').text).toContain('[좌우 확인]')
+    expect(rowIn(plain, 'm10').holes).toBe(1)
+    expect(rowIn(plain, 'm10').holeChoices).toEqual([{ hole: '[좌우 확인]', choices: ['Rt', 'Lt', 'both'] }])
+    expect(targetIn(plain, 'm10').holeChoices).toEqual([{ hole: '[좌우 확인]', choices: ['Rt', 'Lt', 'both'] }])
+    const korean = ourClinicPhrases()
+    korean.TPL = { ...korean.TPL, sideStyle: 'ko' }
+    expect(rowIn(await viewWith(korean), 'm10').holeChoices).toEqual([{ hole: '[좌우 확인]', choices: ['우측', '좌측', '양측'] }])
+  })
+
+  it('AC-9307.2·AC-9319.3: [부위 확인]의 후보는 엔진 siteChoices의 그 줄 후보다', async () => {
+    const view = await viewWith(ourClinicPhrases(), TS_MONTH)
+    expect(rowIn(view, 'm06').text).toContain('[부위 확인]')
+    expect(rowIn(view, 'm06').holeChoices).toEqual([{ hole: '[부위 확인]', choices: ['shoulder', 'knee', 'wrist'] }])
+  })
+
+  it('AC-9307.2: 빈칸이 없는 메모에는 후보 칸이 없다', async () => {
+    const view = await viewWith(ourClinicPhrases())
+    const plain = view.table.find((row) => !row.holes)!
+    expect(plain).not.toHaveProperty('holeChoices')
+  })
+})
