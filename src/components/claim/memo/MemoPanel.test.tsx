@@ -1819,6 +1819,24 @@ describe('claim-learn 메모 단계', () => {
     expect(within(band()).getByText('학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.')).toBeTruthy()
   })
 
+  it("AC-9301.1·AC-9301.5: 저절로 학습 띠는 파란 띠(시안 band blue, notes '띠(파란)')이고, 학습 창 [저장] 뒤 '학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.'는 초록 성공 알림(시안 band ok)이다", async () => {
+    const { user, worker } = await editAndLearn()
+    const learnedLine = await within(band()).findByText(LEARNED)
+    const blue = learnedLine.parentElement!.getAttribute('class') ?? ''
+    expect(blue).toContain('bg-accent-soft')
+    expect(blue).not.toContain('positive')
+    await user.click(within(band()).getByRole('button', { name: '조건 바꾸기' }))
+    const diff = { kind: 'replace' as const, old: '우리 메모 a', new: '우리 메모 a더', before: '', from: '우리 메모 a', to: '우리 메모 a더', after: '', update: 'l0000a001', skip: null, style: null }
+    await act(async () => worker.emit({ type: 'learnDraft', visitKey: 'a', ok: true, diffs: [diff], codes: ['LA358'], withCodes: [], regions: ['lumbar'], doctors: [], forbidden: ['가상환자a', '9a'], words: { side: ['Rt'], site: ['knee'], mark: '◈' } }))
+    learnStore.saveLearned.mockResolvedValueOnce({ ok: true, phrases: {}, added: ['l0000a005'], before: [] })
+    await user.click(within(screen.getByRole('dialog', { name: '학습 고치기 — 다음에도 이렇게 쓸까요?' })).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    const saved = within(band()).getByText('학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.')
+    const green = (saved.getAttribute('class') ?? '').split(/\s+/)
+    expect(green).toEqual(expect.arrayContaining(['bg-positive-soft', 'text-positive']))
+    expect(green).not.toContain('bg-accent-soft')
+  })
+
   it('AC-9301.6: 저절로 학습 저장이 실패하면 띠에 E-LEARN-SAVE 안내와 [다시 저장]이 있고, 누르면 다시 저장한다', async () => {
     learnStore.saveLearned.mockResolvedValueOnce({ ok: false, code: 'E-LEARN-SAVE', limit: false })
     const { user } = await editAndLearn()

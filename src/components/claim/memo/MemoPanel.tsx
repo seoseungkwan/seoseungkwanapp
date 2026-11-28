@@ -52,6 +52,8 @@ const LEAVE_NOTE = '다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 
 const BAND = 'flex flex-col gap-1 rounded-control bg-warning-soft px-4 py-3'
 /** 저절로 학습 띠(notes '저절로 학습'): 파란 띠 · '이번만'은 회색 · 개인정보 줄은 노란 덧붙임 */
 const LEARN_BLUE = 'flex flex-wrap items-center gap-2 rounded-control bg-accent-soft px-3 py-1.5 text-small text-ink'
+/** 학습 창 [저장] 뒤 알림(시안 ?s=errors의 band ok): 초록 성공 */
+const LEARN_SAVED = 'rounded-control bg-positive-soft px-3 py-1.5 text-small text-positive'
 const LEARNED_TEXT = '학습했어요. 다음에 같은 처방·부위면 이렇게 써요. 처음 3번은 ‘확인 필요’로 보여 드려요.'
 /** 처음 학습 '한 달 불러오기'(AC-9305.4): 불러온 기간이 이 날 수보다 짧으면 */
 const MONTH_HINT_DAYS = 7
@@ -149,7 +151,7 @@ function LearnBandView({ band, onOnce, onConditions, onRetry, onStyleAll, onStyl
         </div>
       )}
       {band.phase === 'once' && <p className="rounded-control bg-canvas px-3 py-1.5 text-small text-ink-2">이번 고침만 저장했어요. 학습은 하지 않았어요.</p>}
-      {band.phase === 'saved' && <p className={LEARN_BLUE}>학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.</p>}
+      {band.phase === 'saved' && <p className={LEARN_SAVED}>학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.</p>}
       {band.phase === 'failed' && (
         <div className="flex flex-col items-start gap-1.5">
           <ErrorCard code={band.code} />
