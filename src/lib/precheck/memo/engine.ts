@@ -32,6 +32,8 @@ const IA_REGIONS = ['shoulder', 'knee', 'ankle', 'elbow', 'wrist', 'hip', 'hand'
 const IA_WORD = /\bIA\b|관절강|관절내|intra.?artic|injection/i
 /** 연골주사 날 일반 IA 줄로 고를 차트 줄의 IA 말(AC-3001.2). 'injection'만 있는 줄은 다른 시술 줄이라 고르지 않는다 */
 const IA_LINE_WORD = /\bIA\b|관절강|관절내|intra.?artic/i
+/** 천자(C8140010) 줄 부위로 먼저 볼 차트 말(design.md 9-1절 표) */
+const ASPIRATION_WORD = /aspir|\basp\b|천자|흡인|tapping/i
 /** fixedPhrases 칸이 없을 때 쓰는 고정 멘트. 설정 화면도 이 값을 보인다(phrases/constants.ts가 다시 내보냄) */
 export const FIXED_FALLBACK: readonly { token: string; text: string; on: boolean }[] = [{ token: 'C-arm', text: 'C-arm guide 하에', on: true }, { token: 'Sono', text: 'Sono guide 하에', on: true }, { token: '시행함', text: '시행함', on: true }]
 /** siteNames 칸이 없을 때 쓰는 부위 영어 표기. 설정 화면도 이 값을 보인다 */
@@ -59,6 +61,31 @@ function tsWordPattern(words: unknown): RegExp {
 const REGION_KEYS = new Set(REGION.map(([key]) => key))
 /** 차트 줄이 말하는 손가락(FINGER_RE 이름). 없으면 null */
 const fingerOf = (item: MemoItem) => FINGER_RE.find(([re]) => re.test(item.raw || item.t))?.[1] ?? null
+/** 글에 나온 부위 키 모두(글에 나온 차례). REGION 말이 없으면 regionOf 덧씌우기(MBB 레벨·neck pain)로 하나 */
+function regionsIn(value: string): string[] {
+  const found = REGION.map(([key, , re]) => ({ key, at: value.search(re) })).filter(({ at }) => at >= 0).sort((a, b) => a.at - b.at).map(({ key }) => key)
+  if (found.length) return found
+  const one = regionOf(value)
+  return one ? [one] : []
+}
+/** 차트 줄 조각: 괄호 밖의 쉼표·빗금·쌍반점·더하기로 나눈다(부위 읽기만, claim-learn REQ-9319) */
+function lineParts(value: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let depth = 0
+  for (const ch of value) {
+    if (ch === '(' || ch === '[') depth++
+    else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1)
+    if (depth === 0 && (ch === ',' || ch === '/' || ch === ';' || ch === '+')) {
+      out.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map((part) => part.trim()).filter(Boolean)
+}
 const sideTokens = (value: unknown) => [
   ...new Set((text(value).match(/\b(?:Rt|Lt|both|right|left)\b|우측|좌측|양측|양쪽/gi) || []).map((word) => (/^(?:rt|right|우측)$/i.test(word) ? 'Rt' : /^(?:lt|left|좌측)$/i.test(word) ? 'Lt' : 'both'))),
 ]
@@ -145,6 +172,8 @@ type DrugPlan = {
 }
 
 export type MemoEngine = ReturnType<typeof createMemoEngine>
+/** 빈칸([부위 확인])이 난 주사·시술 줄의 후보(siteChoices, claim-learn REQ-9319): code = 그 줄 시술 코드, choices = 후보 부위 글 */
+export type SiteChoice = { code: string; choices: string[] }
 
 export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   const TPL = phrases.TPL
@@ -1142,54 +1171,98 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return ''
   }
 
-  // ── 건초내주사 부위(claim-learn REQ-9308, design.md 9절) ─────────────
+  // ── 주사·시술 부위(claim-learn REQ-9308·REQ-9319, design.md 9·9-1절) ─────────────
 
   const TS_RE = tsWordPattern(TPL.tsWords)
   /**
-   * 건초내주사 줄 {부위}: 처방 수량(없거나 0이면 1)만큼 차례대로 채운다 — (1) 건초 말이 든 차트 줄의 부위 (2) 건초염 진단(상병 M65…)의 이름에서 읽은 부위.
-   * (1)·(2)에서 하나도 못 찾았을 때만 (3) 그 밖 부위(원본 siteOf 차례: 건초 말 줄이 있으면 진단·시술 줄 → 메모 → 모든 줄, 없으면 모든 줄 → 메모)를 쓴다.
-   * 한 차례의 부위가 남은 수보다 많으면 남은 자리마다 [부위 확인]이고 choices는 그 차례 부위다. 손가락을 말하는 줄은 손 부위이고 손 자리에 손가락 글을 쓴다.
-   * 좌우는 원본 siteOf처럼 부위마다 붙이고, 렌더가 첫 부위 좌우를 떼는 날(IA·건초내주사 줄 좌우 끔)에는 모든 부위에서 뗀다
+   * 부위를 고르는 시술 하나의 규칙(design.md 9-1절 표). words = (1) 차례로 볼 시술 말(prefer가 든 줄이 있으면 그 줄만 본다), dx = (2) 그 시술의 진단 코드,
+   * only = 그 시술 부위로 읽는 부위, finger = 손가락을 말하는 줄은 손 부위이고 손 자리에 손가락 글을 쓴다, bare = 렌더가 {부위}의 좌우를 떼는 줄이라 모든 부위에서 뗀다
    */
-  function tsSites(v: MemoVisit, a: RxAddition): { text: string; choices: string[] } {
-    const items = v.items || []
-    const hit = items.filter((i) => TS_RE.test(i.raw || i.t) || TS_RE.test(i.t))
-    const pool = hit.length ? hit : items
-    const siteKey = (i: MemoItem) => (fingerOf(i) ? 'hand' : i.rg)
-    const sites = (rgs: (string | null | undefined)[], taken: string[] = []) => [...new Set(rgs.filter((rg): rg is string => !!rg && REGION_KEYS.has(rg) && !taken.includes(rg)))]
-    const lineSites = sites(hit.map(siteKey))
-    const dxSites = sites((v.dx || []).filter((row) => /^M65/i.test(text(row.c))).map((row) => regionOf(text(row.n))), lineSites)
-    const memoSites = (v.memos || []).flatMap((m) => (m.sub ? m.sub.map((x) => x.rg) : [m.rg]))
-    const chain = hit.length ? [items.filter((i) => i.k === 'dx' || i.k === 'proc').map(siteKey), memoSites, items.map(siteKey)] : [items.map(siteKey), memoSites]
-    const tiers = lineSites.length || dxSites.length ? [lineSites, dxSites] : [chain.map((rgs) => sites(rgs)).find((list) => list.length) ?? []]
-    const finger = pool.concat(items).map(fingerOf).find(Boolean) ?? null
-    const matches = matchingRules(a.name, v.rxQty, a.code).filter((rule) => !rule.preserve)
-    const bare = !iaSide() && matches.length > 0 && segProcNames(text(a.name)).every((name) => matches.some((rule) => rule.names.some((alias) => alias.toUpperCase() === name.toUpperCase())))
-    const label = (rg: string) => {
-      const site = [sideAt(pool, items, TS_RE, rg, siteKey), rg === 'hand' && finger ? finger : Object.hasOwn(RG_EN, rg) ? RG_EN[rg] : rg].filter(Boolean).join(' ')
-      return bare ? site.replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '') : site
-    }
-    const qty = a.qty ?? v.rxQty?.[upper(a.name).trim()] ?? null
-    const count = typeof qty === 'number' && Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1
-    const out: string[] = []
-    let choices: string[] = []
-    for (const tier of tiers) {
-      const left = count - out.length
-      if (left <= 0 || !tier.length) continue
-      if (tier.length > left) {
-        out.push(...Array<string>(left).fill(MISS_SITE))
-        choices = tier.map(label)
-        break
-      }
-      out.push(...tier.map(label))
-    }
-    return { text: out.join(', '), choices }
+  type SiteRule = { code: string; words: RegExp | null; prefer: RegExp | null; dx: RegExp | null; only: readonly string[] | null; finger: boolean; bare: boolean }
+  type SitePick = { text: string; choices: string[] }
+  /** 빈칸이 난 줄의 후보와 그 줄(글의 줄 차례를 찾으려고) */
+  type SiteHole = SiteChoice & { line: string }
+  /** 부위 수 한도: 처방 수량, 없거나 1보다 작으면 1, 소수는 내린다(AC-9308.3·AC-9319.3) */
+  const siteLimit = (qty: unknown) => (typeof qty === 'number' && Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1)
+  /** 렌더(renderQuantityProcedure)가 {부위} 앞 좌우를 떼는 줄인가: 차트 좌우를 쓰지 않고(siteSide 끔) 시술 이름이 모두 수량 규칙에 맞을 때 */
+  function stripsSiteSide(name: unknown, qmap: QuantityMap | null | undefined, code: unknown, siteSide: boolean): boolean {
+    if (siteSide) return false
+    const matches = matchingRules(name, qmap, code).filter((rule) => !rule.preserve)
+    return matches.length > 0 && segProcNames(text(name)).every((proc) => matches.some((rule) => rule.names.some((alias) => alias.toUpperCase() === proc.toUpperCase())))
   }
-  /** 건초내주사 줄 [부위 확인] 자리의 후보(AC-9308.2, 화면 후보 단추는 이 부위들이다). 빈칸이 없거나 그 줄이 없으면 빈 목록 */
+  /**
+   * 주사·시술 줄 {부위}(REQ-9319): 차례는 (1) 시술 말이 든 차트 줄 (2) 그 시술 진단(상병 dx[].c)의 이름에서 읽은 부위 (3) 그날 차트 진단·시술 줄 (4) 그날 차트 모든 줄이고,
+   * 부위가 하나라도 나온 첫 차례만 쓴다. 차트 줄은 조각(괄호 밖 쉼표·빗금·쌍반점·더하기)마다 나온 부위를 모두 읽고, (1)은 시술 말이 든 조각만 본다(한 줄의 첫 부위 하나로 보지 않는다).
+   * 부위 하나 = (좌우, 부위)이고 both 또는 그 부위 조각에 우측·좌측이 함께 있으면 양측 = 둘, 좌우 모름은 하나로 센다. 센 수가 처방 수량(siteLimit) 이하면 모두 쓰고,
+   * 많으면 수량만큼 [부위 확인]이고 choices = 그 차례 부위들이다. 어느 차례에도 없으면 [부위 확인], choices = []. 수량보다 많은 부위는 쓰지 않는다.
+   * 좌우는 그 부위 조각의 좌우, 없으면 원본 siteOf처럼(sideAt) 붙이고, bare면 모든 부위에서 뗀다
+   */
+  function pickSites(v: Pick<MemoVisit, 'items' | 'dx'>, rule: SiteRule, qty: unknown): SitePick {
+    const items = v.items || []
+    const said = (re: RegExp | null) => (re ? items.filter((i) => re.test(i.raw || i.t) || re.test(i.t)) : [])
+    const strong = said(rule.prefer)
+    const kw = strong.length ? rule.prefer : rule.words
+    const hit = strong.length ? strong : said(rule.words)
+    const pool = hit.length ? hit : items
+    const siteKey = (i: MemoItem) => (rule.finger && fingerOf(i) ? 'hand' : i.rg)
+    const ok = (rg: string | null | undefined): rg is string => !!rg && REGION_KEYS.has(rg) && (!rule.only || rule.only.includes(rg))
+    /** 조각 하나의 부위: 손가락 말이면 손, 아니면 조각에 나온 부위 모두 → 줄에 나온 부위 모두 → 줄 부위(이웃 줄에서 물려받은 것) */
+    const partSites = (part: string, i: MemoItem) => {
+      if (rule.finger && FINGER_RE.some(([re]) => re.test(part))) return ['hand']
+      const own = regionsIn(part)
+      if (own.length) return own
+      if (rule.finger && fingerOf(i)) return ['hand']
+      const line = regionsIn(i.t)
+      return line.length ? line : i.rg ? [i.rg] : []
+    }
+    type Piece = { rgs: string[]; sd: string | null }
+    /** 줄들을 조각으로. word가 있으면 그 말이 든 조각만(든 조각이 없으면 줄 전체). 조각 좌우가 없으면 줄 좌우 */
+    const piecesOf = (lines: MemoItem[], word: RegExp | null): Piece[] =>
+      lines.flatMap((i) => {
+        const parts = lineParts(i.t)
+        const picked = word ? parts.filter((part) => word.test(part)) : parts
+        const whole = sideOf(i.t)
+        return (picked.length ? picked : [i.t]).map((part) => ({ rgs: partSites(part, i).filter(ok), sd: sideOf(part) || whole }))
+      })
+    const tiers: (() => Piece[])[] = [
+      () => piecesOf(hit, kw),
+      () => (rule.dx ? (v.dx || []).filter((row) => rule.dx!.test(text(row.c))).map((row) => ({ rgs: [regionOf(text(row.n))].filter(ok), sd: null })) : []),
+      () => piecesOf(items.filter((i) => i.k === 'dx' || i.k === 'proc'), null),
+      () => piecesOf(items, null),
+    ]
+    let found: Piece[] = []
+    for (const tier of tiers) if ((found = tier()).some((piece) => piece.rgs.length)) break
+    const rgs = [...new Set(found.flatMap((piece) => piece.rgs))]
+    if (!rgs.length) return { text: MISS_SITE, choices: [] }
+    const finger = rule.finger ? (pool.concat(items).map(fingerOf).find(Boolean) ?? null) : null
+    const sideFor = (rg: string) => {
+      const sides = new Set(found.filter((piece) => piece.rgs.includes(rg)).map((piece) => piece.sd).filter((sd): sd is string => !!sd))
+      if (sides.has('양측') || (sides.has('우측') && sides.has('좌측'))) return SIDE_EN['양측']
+      return sides.size === 1 ? SIDE_EN[[...sides][0]] : sideAt(pool, items, kw, rg, siteKey)
+    }
+    const units = rgs.map((rg) => {
+      const side = sideFor(rg)
+      const site = [side, rg === 'hand' && finger ? finger : Object.hasOwn(RG_EN, rg) ? RG_EN[rg] : rg].filter(Boolean).join(' ')
+      return { label: rule.bare ? site.replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '') : site, count: side === SIDE_EN['양측'] ? 2 : 1 }
+    })
+    const limit = siteLimit(qty)
+    if (units.reduce((sum, unit) => sum + unit.count, 0) <= limit) return { text: units.map((unit) => unit.label).join(', '), choices: [] }
+    return { text: Array<string>(limit).fill(MISS_SITE).join(', '), choices: units.map((unit) => unit.label) }
+  }
+  /** 이번 fullText 글에서 빈칸이 난 줄의 후보. 마지막 fullText의 것은 lastSiteHoles에 남는다 */
+  let siteHoles: SiteHole[] = []
+  let lastSiteHoles: SiteChoice[] = []
+  /** 쓴 줄에 빈칸이 났으면 그 후보를 적는다 */
+  function noteHole(line: string, code: string, pick: SitePick) {
+    if (line && pick.text.includes(MISS_SITE)) siteHoles.push({ code: upper(code), choices: pick.choices, line })
+  }
+  const tsRule = (v: MemoVisit, a: RxAddition): SiteRule => ({ code: 'KK062', words: TS_RE, prefer: null, dx: /^M65/i, only: null, finger: true, bare: stripsSiteSide(a.name, v.rxQty, a.code, iaSide()) })
+  const tsQty = (v: MemoVisit, a: RxAddition) => a.qty ?? v.rxQty?.[upper(a.name).trim()] ?? null
+  /** 건초내주사 줄 [부위 확인] 자리의 후보(AC-9308.2, siteChoices의 KK062 몫). 빈칸이 없거나 그 줄이 없으면 빈 목록 */
   function tsHoleChoices(visit: Visit | MemoVisit): string[] {
     const v = 'memos' in visit && Array.isArray(visit.memos) ? (visit as MemoVisit) : prepareVisit(visit)
     const a = TPL.ts ? (v.rxAdd || []).find((row) => upper(row.code) === 'KK062') : undefined
-    return a ? tsSites(v, a).choices : []
+    return a ? pickSites(v, tsRule(v, a), tsQty(v, a)).choices : []
   }
 
   // ── 연골주사(원본 claim-cartilage-rules) ──────────────────────────────
@@ -1430,6 +1503,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
 
   /** IA·건초내주사 줄 {부위}에 차트 좌우를 쓰는가(AC-3003.1) */
   const iaSide = () => phrases.memoRules?.iaSide === true
+  /** 관절강 주사(KK090) 부위 규칙(design.md 9-1절 표): (1) IA 말 줄 — 'injection'만 든 줄(다른 시술 줄일 수 있다)보다 IA·관절강 말 줄을 먼저 본다, 진단 차례 없음, IA 관절만 */
+  const iaRule = (name: string, qmap: QuantityMap | null | undefined, code: string, siteSide: boolean): SiteRule => ({ code: 'KK090', words: IA_WORD, prefer: IA_LINE_WORD, dx: null, only: IA_REGIONS, finger: false, bare: stripsSiteSide(name, qmap, code, siteSide) })
   /** IA·건초내주사 줄 {약제}의 약: 주인 없는 약 + 그 시술이 주인인 약(REQ-3002) */
   const slotDrugs = (plan: DrugPlan, owner: string) => [...free(plan.afterProc), ...ownedBy(plan.afterProc, owner)]
   /** 그 줄을 썼고 틀에 {약제}가 있으면 그 약은 놓였다. 아니면 [약 확인]으로 돌아간다 */
@@ -1451,11 +1526,13 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const name = cm(ia.code)?.n || 'IA'
     const one = Object.create(null) as QuantityMap
     addQuantity(one, name, 1, ia.code)
-    const site = siteOf({ items: chart, memos: [] }, IA_WORD, IA_REGIONS)
+    // 부위 수도 수량 1로 센다(REQ-9319). 차트 줄은 아라간이 아닌 IA 줄만 본다
+    const site = pickSites({ items: chart, dx: v.dx }, iaRule(name, one, ia.code, iaSide()), 1)
     const slot = slotDrugs(plan, 'KK090')
     const drugs = [...new Set(slot.map((item) => item.name))]
-    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: '', 부위: site || MISS_SITE }, one, fill, ia.code, iaSide())
+    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: '', 부위: site.text }, one, fill, ia.code, iaSide())
     placeSlot(line, tpl, slot)
+    noteHole(line, ia.code, site)
     return line ? [markOf() + line] : []
   }
 
@@ -1470,11 +1547,13 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const ia = v.rx.find((x) => upper(x.code) === 'KK090')!
     const slot = raw ? [] : slotDrugs(drugPlan(v), 'KK090')
     const drugs = [...new Set(slot.map((item) => item.name))]
-    const site = siteOf(v, IA_WORD, IA_REGIONS)
+    const name = cm(ia.code)?.n || 'IA'
+    const site = pickSites(v, iaRule(name, v.rxQty, ia.code, !raw && iaSide()), ia.qty ?? v.rxQty?.[upper(name).trim()] ?? null)
     const qty = ia.qty ?? 0
-    const iaVars = { 좌우: qty >= 2 ? ' - both' : '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: ia.qty || '', 부위: site || MISS_SITE }
-    const line = renderQuantityProcedure(cm(ia.code)?.n || 'IA', tpl, iaVars, v.rxQty, fill, ia.code, !raw && iaSide())
+    const iaVars = { 좌우: qty >= 2 ? ' - both' : '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: ia.qty || '', 부위: site.text }
+    const line = renderQuantityProcedure(name, tpl, iaVars, v.rxQty, fill, ia.code, !raw && iaSide())
     placeSlot(line, tpl, slot)
+    if (!raw) noteHole(line, ia.code, site)
     return line ? [markOf() + line] : []
   }
   /** fullText의 IA 줄: 꼬리표 KK090, 연골주사 줄은 따로 적는다 */
@@ -1495,12 +1574,13 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       if (o.k === 'proc' && (v.rxAdd || []).some((a) => upper(a.code) === C)) return
       const needSite = /\{부위\}/.test(o.memo)
       const needFx = /\{골절\}/.test(o.memo)
-      const site = needSite ? siteOf(v, C === 'C8140010' ? /aspir|\basp\b|천자|흡인|tapping/i : null, null) : ''
-      const noteVars = { 좌우: qty === 1.5 ? 'both' : '', 투여량: qty || '', 코드: C, 표기: o.n || '', 부위: needSite ? site || MISS_SITE : '', 골절: needFx ? fxOf(v.items || []) : '' }
+      const site = needSite ? pickSites(v, { code: C, words: C === 'C8140010' ? ASPIRATION_WORD : null, prefer: null, dx: null, only: null, finger: false, bare: o.k === 'proc' && stripsSiteSide(o.n, v.rxQty, code, false) }, qty) : null
+      const noteVars = { 좌우: qty === 1.5 ? 'both' : '', 투여량: qty || '', 코드: C, 표기: o.n || '', 부위: site ? site.text : '', 골절: needFx ? fxOf(v.items || []) : '' }
       const line = o.k === 'proc' ? renderQuantityProcedure(o.n, o.memo, noteVars, v.rxQty, fill, code) : fill(o.memo, noteVars)
       if (!line || seen.has(line)) return
       if (araVisit && /\bIA\b/i.test(line)) return
       seen.add(line)
+      if (site) noteHole(line, C, site)
       out.push(o.k === 'proc' ? procLine(markOf() + line, codeTags(code)) : tagLine(markOf() + line, codeTags(code)))
     })
     return out
@@ -1517,10 +1597,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       .map((a) => {
         const tags = codeTags(a.code)
         if (upper(a.code) === 'KK062' && TPL.ts) {
-          const s = tsSites(v, a).text
+          const site = pickSites(v, tsRule(v, a), tsQty(v, a))
           const slot = slotDrugs(drugPlan(v), 'KK062')
-          const line = renderQuantityProcedure(a.name, TPL.ts, { 부위: s || MISS_SITE, 좌우: '', 약제: formatDrugs(slot) }, v.rxQty, fill, a.code, iaSide())
+          const line = renderQuantityProcedure(a.name, TPL.ts, { 부위: site.text, 좌우: '', 약제: formatDrugs(slot) }, v.rxQty, fill, a.code, iaSide())
           placeSlot(line, TPL.ts, slot)
+          noteHole(line, a.code, site)
           return procLine(markOf() + line, tags)
         }
         const txt = applyRename(icnbFix(sideFix(a.name, v.rxQty), icS))
@@ -1696,6 +1777,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     lineTags = new Map()
     cartilageOut = new Set()
     placedDrugs = new Set()
+    siteHoles = []
     const seen = new Set<string>()
     const slot = drugTxt(v)
     const uniq = (line: string) => {
@@ -1716,6 +1798,13 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const lines = [procB, iaB].filter(filled).join('\n\n').split('\n')
     const ranks = lines.map(rankOf)
     const base = orderLines(placeDrugs(lines, plan), ranks)
+    // 빈칸 후보는 글의 줄 차례로(줄을 만든 차례는 시술·IA·메모 줄 차례와 다르다)
+    const baseLines = base.split('\n')
+    const holeAt = (hole: SiteHole) => {
+      const at = baseLines.findIndex((line) => line.includes(hole.line))
+      return at < 0 ? baseLines.length : at
+    }
+    siteHoles = siteHoles.map((hole, at) => ({ hole, at, line: holeAt(hole) })).sort((a, b) => a.line - b.line || a.at - b.at).map(({ hole }) => hole)
     // 확인 표시 자리: [약 확인] → 놓을 줄이 없던 약 → [코드 확인]. 사유 문장은 그 뒤다
     const checks = [...plan.checks, ...unplacedChecks(v, plan), ...codeChecks(v, lines.some((line) => procOut.has(line)))]
     const pl = patientLines(v)
@@ -1732,20 +1821,35 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   function fullText(visit: Visit | MemoVisit): string {
     const v = 'memos' in visit && Array.isArray(visit.memos) ? (visit as MemoVisit) : prepareVisit(visit)
     const previous = FILL_VISIT
+    const outerHoles = siteHoles
     FILL_VISIT = v
+    const done = (out: string) => {
+      lastSiteHoles = siteHoles.map((hole) => ({ code: hole.code, choices: [...hole.choices] }))
+      return out
+    }
     try {
       drugTokenUsed = false
       drugSlotOpen = false
       const first = fullTextBody(v)
-      if (!free(drugPlan(v).afterProc).length || drugTokenUsed || iaKind(v) === 'ara') return first
+      if (!free(drugPlan(v).afterProc).length || drugTokenUsed || iaKind(v) === 'ara') return done(first)
       // 넣을 약이 있는데 {약제} 자리가 어느 틀에도 없었다: 첫 시술 줄의 {시술} 바로 뒤를 자리로 삼아 다시 쓴다(AC-014.9). 주인 약은 이 자리에 오지 않는다(REQ-3002)
       drugSlotOpen = true
       const second = fullTextBody(v)
       drugSlotOpen = false
-      return second
+      return done(second)
     } finally {
       FILL_VISIT = previous
+      siteHoles = outerHoles
     }
+  }
+
+  /**
+   * 빈칸([부위 확인])이 난 주사·시술 줄의 후보(REQ-9319, design.md 9-1절): 그 진료 fullText를 만들어 글의 줄 차례로 돌려준다.
+   * code = 그 줄 시술 코드, choices = 그 차례 부위(어느 차례에도 부위가 없으면 빈 목록 = [직접 쓰기]만). 빈칸이 없으면 빈 목록. KK062 몫은 tsHoleChoices와 같다
+   */
+  function siteChoices(visit: Visit | MemoVisit): SiteChoice[] {
+    fullText(visit)
+    return lastSiteHoles.map((hole) => ({ code: hole.code, choices: [...hole.choices] }))
   }
 
   /** 원본 savedMemoMissing: 고친 메모에 없는 사유 문장을 돌려준다. 고친 메모는 건드리지 않는다(AC-014.4) */
@@ -1783,6 +1887,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     oneLineMemo,
     procKeys,
     tsHoleChoices,
+    siteChoices,
   }
 }
 

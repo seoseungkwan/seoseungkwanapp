@@ -5,7 +5,7 @@ import type { MemoParts, MemoTables, MemoVisit, Phrases, Region } from './types'
 // 청구메모 문장(precheck TASK-14). 순수 함수만 있다. 부르는 곳은 Worker(jobs.ts)와, 문구 검사·기본값만 쓰는 설정 화면(TASK-18)이다 [환자 자료 구역]
 
 export * from './types'
-export { createMemoEngine, FIXED_FALLBACK, SITE_FALLBACK, TS_WORDS_FALLBACK, unfinished, type MemoEngine } from './engine'
+export { createMemoEngine, FIXED_FALLBACK, SITE_FALLBACK, TS_WORDS_FALLBACK, unfinished, type MemoEngine, type SiteChoice } from './engine'
 export { allowedTokens, defaultPhrases, diffPhrases, migratePhrases, neutralPhrases, ourClinicPhrases, validatePhrases } from './phrases'
 export { defaultDictionary, dictionaryTerms, normalizeDictionary } from './dictionary'
 export { explainLines, FIELD_PLACE, fieldPlace, PHRASE_TAB_LABELS, type FieldPlace, type PhraseTab, type WhyLine, type WhySource } from './why'
