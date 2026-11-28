@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TAB_ACCESS_MENU } from '@/components/shell/menu'
 import { RoleProvider } from '@/components/shell/role'
 import type { RuleSummary } from '@/types/precheck'
+import type { ReactElement } from 'react'
+import { phraseOpenOf } from '@/components/settings/SettingsPage'
 import SettingsRoute, { metadata } from './page'
 
 // 시험 내용과 상관없이, PC가 바쁠 때 기본 5초를 넘겨 실패하는 일만 막는다
@@ -78,13 +80,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/** 페이지를 주소 값(?ptab=…)과 함께 그린다. 주소가 없으면 빈 값(지금 화면 그대로) */
+const route = async (params: Record<string, string | string[]> = {}) => (await SettingsRoute({ searchParams: Promise.resolve(params) })) as ReactElement<{ open: unknown }>
+
 describe('/settings 페이지', () => {
   it('AC-012.6: 브라우저 탭 이름은 설정이다', () => {
     expect(metadata.title).toBe('설정')
   })
 
   it('AC-012.6·AC-5201.1·AC-6602.1·AC-8528.1: 제목 "설정"과 안쪽 메뉴 — [설정](옛 [청구])은 지금 화면, [비트 PC 연결]은 /claim/setup 링크, [구글 캘린더 새], 옛 이름 청구·연락 글자 없음', async () => {
-    render(<SettingsRoute />)
+    render(await route())
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
     expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결', '구글 캘린더새'])
@@ -100,7 +105,7 @@ describe('/settings 페이지', () => {
   })
 
   it("AC-8528.1: 설정 안 메뉴 셋째 칸은 '구글 캘린더'(/settings/google-calendar) + 작은 꼬리표 '새'이고 [비트 PC 연결] 칸과 같은 모양이다(지금 화면 아님)", async () => {
-    render(<SettingsRoute />)
+    render(await route())
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
     const links = within(sub).getAllByRole('link')
     const gcal = links[2]!
@@ -115,13 +120,13 @@ describe('/settings 페이지', () => {
   })
 
   it("AC-012.6: '청구'에 '점검 규칙' 칸이 있고 규칙 줄이 나온다", async () => {
-    render(<SettingsRoute />)
+    render(await route())
     expect(screen.getByRole('heading', { level: 2, name: '점검 규칙' })).toBeTruthy()
     expect(await screen.findByText('신경차단술 12개월 횟수')).toBeTruthy()
   })
 
   it("AC-6304.2: 맨 아래 칸은 '데스크 계정'이다(현금 시재 다음)", async () => {
-    render(<SettingsRoute />)
+    render(await route())
     const titles = (await screen.findAllByRole('heading', { level: 2 })).map((h) => h.textContent)
     expect(titles.at(-1)).toBe('데스크 계정')
     expect(titles.at(-2)).toBe('현금 시재')
@@ -132,7 +137,7 @@ describe('/settings 페이지', () => {
 
   it("AC-7707.2: 주 관리자에게는 맨 아래 칸이 '관리자만 보는 탭'이다(데스크 계정 다음)", async () => {
     tabs.owner.mockResolvedValue(true)
-    render(<SettingsRoute />)
+    render(await route())
     await screen.findByRole('heading', { level: 2, name: '관리자만 보는 탭' })
     await screen.findByRole('textbox', { name: '데스크 구글 메일' })
     const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
@@ -145,7 +150,7 @@ describe('/settings 페이지', () => {
   })
 
   it("AC-6602.1: 원장에게는 맨 위(설치 파일 칸 앞) 첫 칸이 '병원 정보'다", async () => {
-    render(<SettingsRoute />)
+    render(await route())
     const titles = (await screen.findAllByRole('heading', { level: 2 })).map((h) => h.textContent)
     expect(titles[0]).toBe('병원 정보')
     expect(titles.filter((t) => t === '병원 정보')).toHaveLength(1)
@@ -156,7 +161,7 @@ describe('/settings 페이지', () => {
   it("AC-6602.7: 데스크에게는 '병원 정보' 칸이 없고 병원 정보를 읽지도 않는다", async () => {
     render(
       <RoleProvider desk>
-        <SettingsRoute />
+        {await route()}
       </RoleProvider>,
     )
     await screen.findByText('LA-01')
@@ -169,5 +174,42 @@ describe('/settings 페이지', () => {
   it('AC-012.6: 새 서버 경로 없음 — 페이지는 화면을 그리기만 한다(문지기는 레이아웃, DB는 브라우저 + RLS)', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/(app)/settings/page.tsx'), 'utf8')
     expect(source).not.toMatch(/use server|supabase|\bfetch\(/)
+  })
+})
+
+describe('AC-9306.2 주소로 병원 문구 탭·칸 열기', () => {
+  it('AC-9306.2: 주소 ptab·field·learn을 골라 설정 화면에 넘긴다(주소가 없으면 null)', async () => {
+    expect((await route()).props.open).toBeNull()
+    expect((await route({ ptab: 'proc', field: 'ts' })).props.open).toEqual({ tab: 'proc', field: 'ts' })
+    expect((await route({ ptab: 'learn', learn: 'l0000abcd' })).props.open).toEqual({ tab: 'learn', learn: 'l0000abcd' })
+  })
+
+  it('AC-9306.2: 탭은 병원 문구 탭 키만 받는다(모르는 키·여럿·물려받은 이름이면 null)', () => {
+    expect(phraseOpenOf({})).toBeNull()
+    for (const tab of ['basic', 'proc', 'codes', 'rules', 'reason', 'words', 'try', 'learn']) expect(phraseOpenOf({ ptab: tab }), tab).toEqual({ tab })
+    expect(phraseOpenOf({ ptab: 'nope' })).toBeNull()
+    expect(phraseOpenOf({ ptab: ['proc', 'reason'] })).toBeNull()
+    expect(phraseOpenOf({ ptab: '__proto__' })).toBeNull()
+    expect(phraseOpenOf({ ptab: 'toString' })).toBeNull()
+  })
+
+  it('AC-9306.2: 칸은 출처 표(fieldPlace)가 아는 칸이고 그 탭의 칸일 때만 받는다', () => {
+    expect(phraseOpenOf({ ptab: 'reason', field: 'itv' })).toEqual({ tab: 'reason', field: 'itv' })
+    expect(phraseOpenOf({ ptab: 'proc', field: 'byRegion.knee' })).toEqual({ tab: 'proc', field: 'byRegion.knee' })
+    expect(phraseOpenOf({ ptab: 'proc', field: 'byProc.SSNB' })).toEqual({ tab: 'proc', field: 'byProc.SSNB' })
+    expect(phraseOpenOf({ ptab: 'codes', field: 'CODEMAP.KK090.memo' })).toEqual({ tab: 'codes', field: 'CODEMAP.KK090.memo' })
+    expect(phraseOpenOf({ ptab: 'proc', field: 'itv' })).toEqual({ tab: 'proc' })
+    expect(phraseOpenOf({ ptab: 'proc', field: 'nope' })).toEqual({ tab: 'proc' })
+    expect(phraseOpenOf({ ptab: 'proc', field: 'byRegion.nope' })).toEqual({ tab: 'proc' })
+    expect(phraseOpenOf({ ptab: 'proc', field: ['ts', 'main'] })).toEqual({ tab: 'proc' })
+    expect(phraseOpenOf({ ptab: 'proc', field: `byProc.${'가'.repeat(80)}` })).toEqual({ tab: 'proc' })
+  })
+
+  it("AC-9306.2: 학습 번호는 학습 탭에서 'l' + 16진수 8자 모양일 때만 받는다(환자 값 모양은 버린다)", () => {
+    expect(phraseOpenOf({ ptab: 'learn', learn: 'l0000abcd' })).toEqual({ tab: 'learn', learn: 'l0000abcd' })
+    expect(phraseOpenOf({ ptab: 'learn', learn: '홍길동' })).toEqual({ tab: 'learn' })
+    expect(phraseOpenOf({ ptab: 'learn', learn: 'l0000ABCD' })).toEqual({ tab: 'learn' })
+    expect(phraseOpenOf({ ptab: 'learn', learn: ['l0000abcd'] })).toEqual({ tab: 'learn' })
+    expect(phraseOpenOf({ ptab: 'proc', learn: 'l0000abcd' })).toEqual({ tab: 'proc' })
   })
 })

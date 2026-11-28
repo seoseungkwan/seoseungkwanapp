@@ -7,13 +7,14 @@ import { WriteOnly } from '@/components/shell/viewing'
 import { useRxCatalog } from '@/components/stats/useRxCatalog'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
-import { neutralPhrases, validatePhrases, type PhraseDiffRow, type PhraseError, type Phrases } from '@/lib/precheck/memo'
+import { fieldPlace, neutralPhrases, overLearnLimit, validatePhrases, type LearnRule, type PhraseDiffRow, type PhraseError, type Phrases, type PhraseTab } from '@/lib/precheck/memo'
 import { readHospitalSettings, startHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { buildCodeRows } from './codeCatalog'
 import { BasicTab } from './phrases/BasicTab'
 import { CodesTab, undecidedCodes } from './phrases/CodesTab'
 import { ErrorList } from './phrases/fields'
+import { LearnTab } from './phrases/LearnTab'
 import { withPhraseChanges } from './phrases/merge'
 import { ProcTab } from './phrases/ProcTab'
 import { ReasonTab } from './phrases/ReasonTab'
@@ -34,11 +35,19 @@ import { ReadOnlyFields } from './ReadOnlyFields'
 // 묶음 '차트 줄임말'(chartWords, AC-6612.1)은 '메모 시험' 앞에 있다. 숨어 있던 칸(AC-6613)은 사유 문장·시술별 문구와 약 묶음에 있다.
 // 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 [처음 질문 다시 하기]·[처음 질문 하기]·[기본 문구로 바로 시작]·저장 줄을 그리지 않고(WriteOnly)
 // 고치는 묶음의 칸을 막는다(ReadOnlyFields, 처방코드 묶음은 그 안에서 표만). 묶음 단추·'메모 시험'(이 화면에서만 만들어 보는 글)은 그대로다
+// 묶음 '학습'(claim-learn AC-9304.1, '메모 시험' 뒤): 학습 목록을 draft에서 켜고 끄고 고치고 지운다. 저장은 같은 [저장] → 바뀐 부분 표이고,
+// 쓸 때는 내가 고친·지운 학습만 그때 읽은 학습 목록에 얹는다(다른 PC가 더한 학습·센 남은 확인은 남는다). 학습이 한도를 넘으면 쓰지 않고 학습 묶음을 연다(AC-9304.3).
+// 주소로 열기(AC-9306.2, open): 읽기가 끝나면 그 묶음을 열고, 칸(why.ts fieldPlace의 칸 이름과 같은 이름표)으로 내려가 2초 강조한다.
+// 학습이면 학습 묶음의 그 학습 줄, 칸을 못 찾거나 칸이 없으면 묶음으로만 내려간다. 주소 값은 SettingsPage의 phraseOpenOf가 정해진 키만 골라 준다
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'blocked' } | { kind: 'ready' }
-type Tab = 'basic' | 'proc' | 'codes' | 'rules' | 'reason' | 'words' | 'try'
+type Tab = PhraseTab
 
-const TABS: { key: Tab; label: string }[] = [
+/** 주소로 열 병원 문구 자리(AC-9306.2): 묶음 키 + 칸 키(fieldPlace가 아는 칸) 또는 학습 번호 */
+export type PhraseOpen = { tab: PhraseTab; field?: string; learn?: string }
+
+/** 묶음 단추. 이름은 why.ts PHRASE_TAB_LABELS와 같다(phrases/fieldPlace.test.ts가 본다) */
+export const TABS: readonly { key: Tab; label: string }[] = [
   { key: 'basic', label: '기본' },
   { key: 'proc', label: '시술별 문구와 약' },
   { key: 'codes', label: '처방코드' },
@@ -46,6 +55,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'reason', label: '사유 문장' },
   { key: 'words', label: '차트 줄임말' },
   { key: 'try', label: '메모 시험' },
+  { key: 'learn', label: '학습' },
 ]
 
 const BASIC_KEYS = ['mark', 'sideStyle', 'cartilageSideLang', 'levelSep', 'lineJoin', 'drugWrap', 'drugUnit', 'drugQty']
@@ -69,15 +79,51 @@ function tabOf(path: string): Tab | null {
   if (head === 'CODEMAP' || head === 'CODEMAP_DEL' || key === 'order') return 'codes'
   if (head === 'memoRules') return 'rules'
   if (head === 'chartWords') return 'words'
+  if (head === 'learned') return 'learn'
   return null
 }
 
-const sameWords = (a: Phrases['chartWords'], b: Phrases['chartWords']) => JSON.stringify(a ?? []) === JSON.stringify(b ?? [])
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const sameWords = (a: Phrases['chartWords'], b: Phrases['chartWords']) => same(a ?? [], b ?? [])
 
-/** withPhraseChanges(원래 칸만 얹는다)에 차트 줄임말 표를 더한다: before → after로 고쳤으면 내 표, 아니면 now의 표 그대로(다른 PC가 적은 줄이 남는다) */
+/**
+ * 학습 목록: before → after로 내가 고친·지운·더한 학습만 now에 얹는다(학습 번호마다). 고친 학습의 남은 확인은 now 값(다른 PC·청구 화면이 센다).
+ * 고치지 않은 학습과 그사이 다른 PC가 더한 학습은 now 그대로다. 고친 것이 없으면 now 그대로(칸이 없으면 없는 채로)
+ */
+function withLearnedChanges(now: readonly LearnRule[] | undefined, before: readonly LearnRule[], after: readonly LearnRule[]): LearnRule[] | undefined {
+  if (same(before, after)) return now ? [...now] : undefined
+  // 학습 번호 → 그때 읽은 학습. 내가 손대지 않은 학습(was에 없음 = 그사이 더한 학습, 또는 was와 같음)은 now 값 그대로 남는다
+  const was = new Map(before.map((rule) => [rule.id, rule]))
+  const will = new Map(after.map((rule) => [rule.id, rule]))
+  const kept = (now ?? []).flatMap((rule): LearnRule[] => {
+    if (!was.has(rule.id)) return [rule]
+    const mine = will.get(rule.id)
+    if (!mine) return []
+    return same(was.get(rule.id), mine) ? [rule] : [{ ...mine, left: rule.left }]
+  })
+  const added = after.filter((rule) => !was.has(rule.id) && !kept.some((other) => other.id === rule.id))
+  return [...kept, ...added]
+}
+
+/** withPhraseChanges(원래 칸만 얹는다)에 차트 줄임말 표·학습 목록을 더한다: before → after로 고쳤으면 내 표, 아니면 now의 표 그대로(다른 PC가 적은 줄이 남는다) */
 function withAllChanges(now: Phrases, before: Phrases, after: Phrases): Phrases {
   const merged = withPhraseChanges(now, before, after)
-  return sameWords(before.chartWords, after.chartWords) ? merged : { ...merged, chartWords: after.chartWords ?? [] }
+  const withWords = sameWords(before.chartWords, after.chartWords) ? merged : { ...merged, chartWords: after.chartWords ?? [] }
+  const learned = withLearnedChanges(now.learned, before.learned ?? [], after.learned ?? [])
+  const result: Phrases = { ...withWords }
+  if (learned === undefined) delete result.learned
+  else result.learned = learned
+  return result
+}
+
+/** 주소로 연 칸 강조(2초, design.md 8절). 칸 묶음에 원래 없던 클래스만 더했다 뺀다 */
+const FLASH = ['rounded-control', 'bg-accent-soft', 'outline-2', 'outline-offset-2', 'outline-accent'] as const
+const FLASH_MS = 2000
+
+/** 묶음 안에서 이름표 글이 label인 칸 묶음(이름표의 부모: TemplateField·DefaultedField·TextField 칸 하나). 없으면 null */
+function fieldBox(panel: HTMLElement, label: string): HTMLElement | null {
+  const hit = Array.from(panel.querySelectorAll('label')).find((element) => element.textContent?.trim() === label)
+  return hit?.parentElement ?? null
 }
 
 // 화면 안 탭(관리자 화면과 같은 모양): 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 지금 탭은 ink 600 + 아래 2px accent 밑줄
@@ -108,7 +154,7 @@ function StartChoice({ busy, failed, onStart }: { busy: boolean; failed: boolean
   )
 }
 
-export function HospitalPhrases() {
+export function HospitalPhrases({ open = null }: { open?: PhraseOpen | null } = {}) {
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
   const [draft, setDraft] = useState<Phrases | null>(null)
   const [errors, setErrors] = useState<PhraseError[]>([])
@@ -131,6 +177,14 @@ export function HospitalPhrases() {
   const baseId = useId()
   const tabId = (key: Tab) => `${baseId}-tab-${key}`
   const panelId = `${baseId}-panel`
+  const panelRef = useRef<HTMLDivElement>(null)
+  /** 주소로 갈 자리(AC-9306.2). 한 번 가면 비운다 */
+  const landing = useRef<PhraseOpen | null>(open)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** 주소로 연 학습(학습 묶음이 그 줄로 내려가 강조한다) */
+  const [flashLearn, setFlashLearn] = useState<string | null>(null)
+  /** 저장이 학습 한도로 막혔다(AC-9304.3) */
+  const [limitHit, setLimitHit] = useState(false)
 
   const read = useCallback(async () => {
     setLoad({ kind: 'loading' })
@@ -159,6 +213,38 @@ export function HospitalPhrases() {
     if (load.kind === 'ready') openCatalog()
   }, [load.kind, openCatalog])
 
+  // 주소로 열기(AC-9306.2) ①: 읽기가 끝나면 그 묶음을 연다
+  useEffect(() => {
+    if (load.kind === 'ready' && landing.current) setTab(landing.current.tab)
+  }, [load.kind])
+
+  // ②: 그 묶음이 그려진 뒤 칸(이름표가 fieldPlace의 칸 이름인 칸)으로 내려가 2초 강조. 학습이면 학습 묶음에 그 줄을 맡긴다. 못 찾으면 묶음으로만 내려간다
+  useEffect(() => {
+    const goal = landing.current
+    const panel = panelRef.current
+    if (load.kind !== 'ready' || !goal || goal.tab !== tab || !panel) return
+    landing.current = null
+    if (goal.learn && opened.current?.learned?.some((rule) => rule.id === goal.learn)) {
+      setFlashLearn(goal.learn)
+      return
+    }
+    const place = goal.field ? fieldPlace(goal.field) : null
+    const box = place ? fieldBox(panel, place.label) : null
+    ;(box ?? panel).scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+    if (!box) return
+    const added = FLASH.filter((name) => !box.classList.contains(name))
+    box.classList.add(...added)
+    flashTimer.current = setTimeout(() => box.classList.remove(...added), FLASH_MS)
+  }, [load.kind, tab])
+
+  useEffect(() => () => clearTimeout(flashTimer.current), [])
+
+  /** 묶음 고르기(단추·글쇠). 주소로 연 학습 강조는 끝낸다 */
+  const pickTab = (key: Tab) => {
+    setFlashLearn(null)
+    setTab(key)
+  }
+
   const recentRows = useMemo(() => (saved && catalog.state === 'ready' ? buildCodeRows(catalog.days, saved, today, 'recent') : []), [saved, catalog.state, catalog.days, today])
   const newCodes = draft ? undecidedCodes(recentRows, draft).length : 0
 
@@ -167,6 +253,7 @@ export function HospitalPhrases() {
     setSavedNote(false)
     setNothing(false)
     setConfirm(null)
+    setLimitHit(false)
     setDraft(next)
   }
 
@@ -177,7 +264,7 @@ export function HospitalPhrases() {
     if (!(event.key in moves)) return
     event.preventDefault()
     const key = TABS[moves[event.key]].key
-    setTab(key)
+    pickTab(key)
     tabRefs.current[key]?.focus()
   }
 
@@ -201,6 +288,13 @@ export function HospitalPhrases() {
     if (!draft || !opened.current || saving) return
     setSavedNote(false)
     setNothing(false)
+    if (overLearnLimit(draft)) {
+      // 학습 한도(AC-9304.3): 쓰지 않고 학습 묶음의 '한도' 글을 보인다
+      setConfirm(null)
+      setLimitHit(true)
+      pickTab('learn')
+      return
+    }
     const checked = validatePhrases(draft)
     if (!checked.ok) {
       setErrors(checked.errors)
@@ -235,7 +329,13 @@ export function HospitalPhrases() {
         setLoad({ kind: 'blocked' }) // 그사이 줄이 없어졌거나 틀려졌다: 이 값으로 쓰면 막음이 풀린다(AC-018.18)
         return
       }
-      const merged = validatePhrases(withAllChanges(latest.value, opened.current, checked.value))
+      const candidate = withAllChanges(latest.value, opened.current, checked.value)
+      if (overLearnLimit(candidate)) {
+        setLimitHit(true)
+        pickTab('learn')
+        return
+      }
+      const merged = validatePhrases(candidate)
       if (!merged.ok) {
         setErrors(merged.errors)
         return
@@ -299,7 +399,7 @@ export function HospitalPhrases() {
                   aria-selected={on}
                   aria-controls={panelId}
                   tabIndex={on ? 0 : -1}
-                  onClick={() => setTab(t.key)}
+                  onClick={() => pickTab(t.key)}
                   className={on ? tabCurrent : tabIdle}
                 >
                   {t.label}
@@ -316,7 +416,7 @@ export function HospitalPhrases() {
               )
             })}
           </div>
-          <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
+          <div ref={panelRef} role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
             {tab !== 'codes' && tab !== 'try' && (
               <ReadOnlyFields>
                 {tab === 'basic' && <BasicTab draft={draft} errors={errors} onChange={update} />}
@@ -324,6 +424,7 @@ export function HospitalPhrases() {
                 {tab === 'rules' && <RulesTab draft={draft} errors={errors} onChange={update} />}
                 {tab === 'reason' && <ReasonTab draft={draft} errors={errors} onChange={update} />}
                 {tab === 'words' && <WordsTab draft={draft} errors={errors} onChange={update} />}
+                {tab === 'learn' && <LearnTab draft={draft} errors={errors} onChange={update} flashId={flashLearn} limit={limitHit} />}
               </ReadOnlyFields>
             )}
             {tab === 'codes' && <CodesTab draft={draft} saved={saved ?? draft} errors={errors} onChange={update} days={catalog.days} state={catalog.state} today={today} onRetry={catalog.retry} />}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
+import { ourClinicPhrases, TS_WORDS_FALLBACK, type LearnRule, type Phrases } from '@/lib/precheck/memo'
 import { saveDiffRows } from './saveDiffRows'
 
 // 저장 전 비교 표의 줄(memo-settings AC-3007.5, clinic-profile AC-6608.5·AC-6612.1·AC-6613.3). diffPhrases 위에 코드 칸·시술별 약·부위 칸·약 역할을 쉬운 이름표로 바꾼다(AC-3006.2: 골든이 diffPhrases의 코드 칸 이름표를 원본 그대로 보므로 화면에서 바꾼다)
@@ -125,5 +125,55 @@ describe('AC-6612.1·AC-6613 새 칸 줄', () => {
     expect(rowsOf((p) => delete p.TPL.intervalCodes)).toEqual([{ label: '주사 간격을 볼 처방코드', before: 'LA358, KK090', after: '기본값: LA358, KK090' }])
     expect(rowsOf((p) => (p.TPL.mainCentralCodes = 'LA321'))).toEqual([{ label: 'Central 시술 처방코드', before: 'LA321, LA323, LA326, LA354, LA356, LA357, LA358, LA359', after: 'LA321' }])
     expect(rowsOf((p) => (p.TPL.twoSiteRules = 'KK090'))).toEqual([{ label: '2부위로 보는 처방', before: 'KK090 = LA274, LA272\nKK061\nKK062', after: 'KK090' }])
+  })
+})
+
+describe('AC-9304.2 학습 줄', () => {
+  const RULE: LearnRule = {
+    id: 'l0000abcd',
+    name: 'LA358 · 허리',
+    kind: 'replace',
+    from: '{좌우} {레벨} MBB 시행 (C-arm guide 하에)',
+    to: '{좌우} {레벨} 내측지 신경차단술(MBB) 시행',
+    after: '',
+    when: { codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [] },
+    on: true,
+    left: 2,
+    made: '2026-11-28',
+  }
+  const ADD: LearnRule = { ...RULE, id: 'l0000abce', kind: 'add', from: '', to: '시술 후 30분 관찰함', after: '{좌우} {레벨} MBB 시행 (C-arm guide 하에)' }
+  const REMOVE: LearnRule = {
+    ...RULE,
+    id: 'l0000abcf',
+    name: 'KK062 · 손목',
+    kind: 'remove',
+    from: '{좌우} wrist 건초내주사 시행',
+    to: '',
+    when: { codes: ['KK062'], regions: ['wrist'], chartWords: ['C-arm'], withCodes: ['KK001'], doctors: ['D01'] },
+  }
+  const rows = (before: LearnRule[], after: LearnRule[]) => saveDiffRows({ ...our(), learned: before }, { ...our(), learned: after }).map(({ label, before, after }) => ({ label, before, after }))
+
+  it("AC-9304.2: 바뀐 학습은 '학습: {이름}' 줄로 할 일·조건·문장·켜짐이 보이고, 지운 학습·더한 학습은 (없음)과 견준다", () => {
+    expect(rows([RULE, ADD], [{ ...RULE, on: false, to: '{좌우} {레벨} MBB 시행' }, REMOVE])).toEqual([
+      { label: '학습: LA358 · 허리', before: '줄 바꿈 · 처방 LA358 · 부위 허리 · {좌우} {레벨} 내측지 신경차단술(MBB) 시행 · 켜짐', after: '줄 바꿈 · 처방 LA358 · 부위 허리 · {좌우} {레벨} MBB 시행 · 꺼짐' },
+      { label: '학습: KK062 · 손목', before: '(없음)', after: '줄 뺌 · 처방 KK062 · 부위 손목 · 차트 말 ‘C-arm’ · 함께 한 다른 시술 KK001 · 진료한 원장님 D01 · (빼는 줄) · 켜짐' },
+      { label: '학습: LA358 · 허리', before: '줄 더함 · 처방 LA358 · 부위 허리 · 시술 후 30분 관찰함 · 켜짐', after: '(없음)' },
+    ])
+  })
+
+  it('AC-9304.2: 이름을 바꾸면 새 이름으로 줄이 서고 전·후에 이름이 보인다', () => {
+    expect(rows([RULE], [{ ...RULE, name: '허리 MBB' }])).toEqual([
+      { label: '학습: 허리 MBB', before: '이름 LA358 · 허리 · 줄 바꿈 · 처방 LA358 · 부위 허리 · {좌우} {레벨} 내측지 신경차단술(MBB) 시행 · 켜짐', after: '이름 허리 MBB · 줄 바꿈 · 처방 LA358 · 부위 허리 · {좌우} {레벨} 내측지 신경차단술(MBB) 시행 · 켜짐' },
+    ])
+  })
+
+  it('AC-9304.2: 남은 확인만 바뀌면(다른 PC가 셈) 줄이 없다', () => {
+    expect(rows([RULE], [{ ...RULE, left: 1 }])).toEqual([])
+  })
+})
+
+describe('AC-9308.4 건초 말 줄', () => {
+  it("AC-9308.4: '건초내주사로 알아볼 차트 말'은 비우면 지금 말(기본값)을 쓴다고 보인다", () => {
+    expect(rowsOf((p) => (p.TPL.tsWords = `${TS_WORDS_FALLBACK}, TSI`))).toEqual([{ label: '건초내주사로 알아볼 차트 말', before: `기본값: ${TS_WORDS_FALLBACK}`, after: `${TS_WORDS_FALLBACK}, TSI` }])
   })
 })

@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DEFAULT_MAIN_CENTRAL_CODES, ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
+import { DEFAULT_MAIN_CENTRAL_CODES, ourClinicPhrases, TS_WORDS_FALLBACK, type Phrases } from '@/lib/precheck/memo'
 import { ProcTab } from './ProcTab'
 
 // 설정 '시술별 문구와 약' 묶음(memo-settings AC-3007.3, AC-3002.6, clinic-profile AC-6613.2 Central 시술 처방코드)
@@ -141,5 +141,39 @@ describe('AC-6613.2 Central 시술 처방코드', () => {
     const codes = screen.getByLabelText('Central 시술 처방코드')
     expect(codes.getAttribute('aria-invalid')).toBe('true')
     expect(follows(codes, screen.getByText('Central 코드 오류'))).toBe(true)
+  })
+})
+
+describe('AC-9308.4 건초내주사로 알아볼 차트 말', () => {
+  const follows = (a: HTMLElement, b: HTMLElement) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  const LABEL = '건초내주사로 알아볼 차트 말'
+
+  it("AC-9308.4: '건초내주사' 칸 바로 아래에 '건초내주사로 알아볼 차트 말' 칸과 풀이가 있고, 비어 있으면 지금 말이 흐린 글로 보인다", () => {
+    render(<Harness />)
+    const words = screen.getByLabelText(LABEL) as HTMLInputElement
+    expect(words.value).toBe('')
+    expect(words.placeholder).toBe(TS_WORDS_FALLBACK)
+    expect(TS_WORDS_FALLBACK).toBe('건초, tendon sheath, trigger finger, 방아쇠, quervain, tenosyn, TS, STI')
+    const help = document.getElementById(words.getAttribute('aria-describedby') ?? '')
+    expect(help?.textContent).toBe('차트 줄에 이 말이 있으면 건초내주사 부위로 봐요. 쉼표로 나눠 적어요.')
+    expect(follows(screen.getByLabelText('건초내주사'), words)).toBe(true)
+  })
+
+  it("AC-9308.4: 'TSI'를 더해 적으면 TPL.tsWords에 들어가고, 비우면 칸을 지워 지금 말을 쓴다", async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    const words = screen.getByLabelText(LABEL) as HTMLInputElement
+    await user.click(words)
+    await user.paste(`${TS_WORDS_FALLBACK}, TSI`)
+    expect(latest.TPL.tsWords).toBe(`${TS_WORDS_FALLBACK}, TSI`)
+    await user.clear(words)
+    expect(Object.hasOwn(latest.TPL, 'tsWords')).toBe(false)
+  })
+
+  it('AC-9308.4: 틀린 값의 까닭을 그 칸 아래에 보인다', () => {
+    render(<ProcTab draft={ourClinicPhrases()} errors={[{ path: 'TPL.tsWords', message: '건초 말 오류' }]} onChange={() => {}} />)
+    const words = screen.getByLabelText(LABEL)
+    expect(words.getAttribute('aria-invalid')).toBe('true')
+    expect(follows(words, screen.getByText('건초 말 오류'))).toBe(true)
   })
 })

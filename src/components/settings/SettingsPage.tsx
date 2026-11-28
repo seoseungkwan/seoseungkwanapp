@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { WriteOnly } from '@/components/shell/viewing'
+import { fieldPlace, PHRASE_TAB_LABELS, type PhraseTab } from '@/lib/precheck/memo'
 import { CashFloatSetting } from './CashFloatSetting'
 import { ClinicProfileCard } from './ClinicProfileCard'
 import { DeskAccounts } from './DeskAccounts'
 import { DxLinks } from './DxLinks'
-import { HospitalPhrases } from './HospitalPhrases'
+import { HospitalPhrases, type PhraseOpen } from './HospitalPhrases'
 import { InstallFilesCard } from './InstallFilesCard'
 import { RuleSettings } from './RuleSettings'
 import { TabAccessSettings } from './TabAccessSettings'
@@ -18,6 +19,8 @@ import { TabAccessSettings } from './TabAccessSettings'
 // 보는 중(admin-view AC-8011.3, 관리자가 다른 의원을 읽기만)에는 [비트 PC 연결]·[구글 캘린더]로 가는 길을 그리지 않는다(WriteOnly — 비트 PC는 그 의원 PC이고,
 // 보는 관리자는 구글 연결 표를 읽지 못한다).
 // 칸마다 읽기만은 칸이 스스로 한다('관리자만 보는 탭' 칸은 보는 중에 그리지 않는다)
+// 주소로 병원 문구 열기(claim-learn AC-9306.2): /settings?ptab={탭}&field={칸} · ?ptab=learn&learn={학습 번호}. phraseOpenOf가 정해진 키만 골라
+// HospitalPhrases에 넘긴다 — 모르는 탭이면 아무것도 안 열고, 모르는 칸·다른 탭의 칸·학습 번호 모양이 아니면 그 값만 버린다
 const subBase =
   'relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body no-underline first:-ml-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 const subIdle = `${subBase} font-medium text-ink-2 hover:text-ink`
@@ -25,7 +28,30 @@ const subCurrent = `${subBase} font-semibold text-ink after:absolute after:inset
 // 셋째 칸 [구글 캘린더] 옆 작은 꼬리표 '새'(spec google-link AC-8528.1, 시안 calendar.html .newb — 16px 알약, accent-soft 바탕 accent-strong 600)
 const newBadge = 'rounded-float bg-accent-soft px-1.5 text-caption leading-4 font-semibold text-accent-strong'
 
-export function SettingsPage() {
+/** 주소 값(searchParams) 모양 */
+export type SettingsSearch = Readonly<Record<string, string | string[] | undefined>>
+
+/** 학습 번호 모양(newLearnId: 'l' + 16진수 8자). 환자 이름·차트번호 모양은 받지 않는다 */
+const LEARN_ID = /^l[0-9a-f]{8}$/
+/** 칸 키 길이 한도(시술 이름별 문구 byProc.{이름}이 아주 길면 버린다) */
+const FIELD_MAX = 64
+
+const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : null)
+
+/** 주소 → 열 병원 문구 자리(AC-9306.2). 탭이 병원 문구 탭 키가 아니면 null */
+export function phraseOpenOf(search: SettingsSearch): PhraseOpen | null {
+  const ptab = one(search.ptab)
+  if (ptab === null || !Object.hasOwn(PHRASE_TAB_LABELS, ptab)) return null
+  const tab = ptab as PhraseTab
+  const open: PhraseOpen = { tab }
+  const field = one(search.field)
+  if (field !== null && field.length <= FIELD_MAX && fieldPlace(field)?.tab === tab) open.field = field
+  const learn = one(search.learn)
+  if (tab === 'learn' && learn !== null && LEARN_ID.test(learn)) open.learn = learn
+  return open
+}
+
+export function SettingsPage({ open = null }: { open?: PhraseOpen | null } = {}) {
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
       <div className="flex flex-col gap-3">
@@ -49,7 +75,7 @@ export function SettingsPage() {
       <ClinicProfileCard />
       <InstallFilesCard />
       <RuleSettings />
-      <HospitalPhrases />
+      <HospitalPhrases open={open} />
       <DxLinks />
       <CashFloatSetting />
       <DeskAccounts />
