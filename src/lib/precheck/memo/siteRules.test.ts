@@ -239,6 +239,27 @@ describe('REQ-9319 병원 문구에서 {부위}를 쓰는 그 밖 시술 줄', (
     expect(holes(lines, [rx('X9001')], withSiteCode())).toEqual([{ code: 'X9001', choices: ['Rt knee', 'Lt shoulder'] }])
     expect(memo(lines, [rx('X9001', 2)], withSiteCode())).toBe('◈Rt knee, Lt shoulder 시술엑스 시행')
   })
+
+  /** 천자 코드 메모 틀에 {좌우}를 더한 병원(지어낸 틀) */
+  const withSideAspiration = () => {
+    const p = ourClinicPhrases()
+    p.CODEMAP.C8140010 = { ...p.CODEMAP.C8140010, memo: '{좌우} {부위} aspiration' } as MemoCode
+    return p
+  }
+
+  it('AC-9319.3 AC-9319.7: 커스텀 틀 `{좌우} {부위} aspiration`, 수량 1.5에 부위가 둘이면 수량 both를 붙이지 않는다(써진 부위 수가 한도 2를 넘지 않음)', () => {
+    const lines = ['Rt knee aspiration', 'Lt shoulder aspiration']
+    expect(memo(lines, [rx('C8140010', 1.5)], withSideAspiration())).toBe('◈Rt knee, Lt shoulder aspiration')
+  })
+
+  it('AC-9319.3 AC-9319.7: 같은 틀에 수량 1.5, 부위가 한도보다 많아 빈칸이 둘이어도 수량 both를 붙이지 않는다', () => {
+    const lines = ['Rt knee aspiration', 'Lt shoulder aspiration', 'Rt elbow aspiration']
+    expect(memo(lines, [rx('C8140010', 1.5)], withSideAspiration())).toBe('◈[부위 확인], [부위 확인] aspiration')
+  })
+
+  it('AC-9319.5: 같은 틀에 부위가 하나면 수량 1.5의 both는 지금처럼 붙는다', () => {
+    expect(memo(['knee aspiration'], [rx('C8140010', 1.5)], withSideAspiration())).toBe('◈both knee aspiration')
+  })
 })
 
 describe('REQ-9319 siteChoices — 빈칸이 난 줄의 후보', () => {

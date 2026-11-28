@@ -1583,8 +1583,10 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       const needSite = /\{부위\}/.test(o.memo)
       const needFx = /\{골절\}/.test(o.memo)
       const site = needSite ? pickSites(v, { code: C, words: C === 'C8140010' ? ASPIRATION_WORD : null, prefer: null, dx: null, only: null, finger: false, bare: o.k === 'proc' && stripsSiteSide(o.n, v.rxQty, code, false) }, qty) : null
-      const noteVars = { 좌우: qty === 1.5 ? 'both' : '', 투여량: qty || '', 코드: C, 표기: o.n || '', 부위: site ? site.text : '', 골절: needFx ? fxOf(v.items || []) : '' }
-      const line = o.k === 'proc' ? renderQuantityProcedure(o.n, o.memo, noteVars, v.rxQty, fill, code) : fill(o.memo, noteVars)
+      // 부위(또는 빈칸)가 둘 이상인 줄이면 수량은 부위 수라 양측 근거가 아니다: 수량 both를 붙이지 않는다(AC-9319.3·AC-9319.7)
+      const manySites = !!site?.many
+      const noteVars = { 좌우: qty === 1.5 && !manySites ? 'both' : '', 투여량: qty || '', 코드: C, 표기: o.n || '', 부위: site ? site.text : '', 골절: needFx ? fxOf(v.items || []) : '' }
+      const line = o.k === 'proc' ? renderQuantityProcedure(o.n, o.memo, noteVars, v.rxQty, fill, code, false, manySites) : fill(o.memo, noteVars)
       if (!line || seen.has(line)) return
       if (araVisit && /\bIA\b/i.test(line)) return
       seen.add(line)

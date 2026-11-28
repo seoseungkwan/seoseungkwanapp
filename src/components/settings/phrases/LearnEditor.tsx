@@ -38,6 +38,19 @@ const splitWords = (text: string) =>
 
 type Chip = { value: string; label: string }
 
+/** 개인정보 모양 안내(AC-9301.5): E-LEARN-PERSONAL 글. 이 글이 든 학습은 저장되지 않는다(저장 쪽이 막는다) */
+function PersonalNote() {
+  const info = errorInfo('E-LEARN-PERSONAL')
+  return (
+    <div className="flex flex-col gap-0.5 rounded-control bg-warning-soft px-3 py-1.5 text-small text-warning">
+      <span>{info.what}</span>
+      <span>{info.fix}</span>
+    </div>
+  )
+}
+/** 글에 전화·주민번호·메일 모양이 있나(이 칸에는 진료가 없어 글 모양만 본다) */
+const personalText = (value: string) => personalHit(value, [])
+
 /** 조건 한 줄: 켜기 체크(이름) + 칩. 체크를 끄면 그 줄 칩이 모두 꺼지고, 켜면 모두 켜진다 */
 function ChipRow({ label, options, picked, onChange }: { label: string; options: readonly Chip[]; picked: readonly string[]; onChange(next: string[]): void }) {
   const toggle = (value: string) => onChange(options.map((chip) => chip.value).filter((option) => (option === value ? !picked.includes(option) : picked.includes(option))))
@@ -118,6 +131,7 @@ export function LearnConditions({ when, chips, onChange }: { when: LearnWhen; ch
           />
         </div>
       </div>
+      {when.chartWords.some(personalText) && <PersonalNote />}
       <ChipRow label="함께 한 다른 시술" options={withCodes} picked={when.withCodes} onChange={(next) => set({ withCodes: next })} />
       {doctors.length > 0 && <ChipRow label="진료한 원장님" options={doctors} picked={when.doctors} onChange={(next) => set({ doctors: next })} />}
       {whenCount(when) === 0 && <p className={ds.fieldError}>조건을 하나 이상 골라 주세요.</p>}
@@ -136,9 +150,8 @@ export function LearnSentence({ value, words, label = '학습할 문장', captio
   const placed = useRef(false)
   /** 넣은 뒤 글쓰기 표시를 둘 자리(다음 그리기 뒤) */
   const caretAfter = useRef<number | null>(null)
-  const personal = personalHit(value, [])
+  const personal = personalText(value)
   const hits = personal ? [] : literalSlots(value, words)
-  const personalInfo = errorInfo('E-LEARN-PERSONAL')
 
   useLayoutEffect(() => {
     const at = caretAfter.current
@@ -173,12 +186,7 @@ export function LearnSentence({ value, words, label = '학습할 문장', captio
         ))}
         <span className={ds.help}>환자마다 다른 칸은 단추로 바꿔 두세요. 다음 진료의 값이 들어가요.</span>
       </div>
-      {personal && (
-        <div className="flex flex-col gap-0.5 rounded-control bg-warning-soft px-3 py-1.5 text-small text-warning">
-          <span>{personalInfo.what}</span>
-          <span>{personalInfo.fix}</span>
-        </div>
-      )}
+      {personal && <PersonalNote />}
       {hits.map((hit) => (
         <div key={`${hit.slot}:${hit.word}`} className="flex flex-wrap items-center gap-2 rounded-control bg-warning-soft px-3 py-1.5 text-small text-warning">
           <span>{`‘${hit.word}’가 글자 그대로 있어요. 다른 환자에게도 ‘${hit.word}’로 나와요.`}</span>
@@ -202,6 +210,7 @@ export function LearnEditor({ rule, words, chips, onChange }: { rule: LearnRule;
           이름
         </label>
         <input id={nameId} className={ds.input} autoComplete="off" value={rule.name} onChange={(event) => onChange({ ...rule, name: event.target.value })} />
+        {personalText(rule.name) && <PersonalNote />}
       </div>
       <LearnConditions when={rule.when} chips={chips} onChange={(when) => onChange({ ...rule, when })} />
       {rule.kind !== 'remove' && (
