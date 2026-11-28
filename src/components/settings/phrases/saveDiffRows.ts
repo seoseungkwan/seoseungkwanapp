@@ -3,7 +3,11 @@ import {
   DEFAULT_MAIN_CENTRAL_CODES,
   DEFAULT_TWO_SITE_RULES,
   diffPhrases,
+  TS_WORDS_FALLBACK,
   type DrugChoice,
+  type LearnKind,
+  type LearnRule,
+  type LearnWhen,
   type MemoCode,
   type PhraseDiffRow,
   type Phrases,
@@ -65,6 +69,7 @@ const ENGINE_DEFAULTS: Readonly<Record<string, string>> = {
   'TPL.mainCentralCodes': DEFAULT_MAIN_CENTRAL_CODES,
   'TPL.intervalCodes': DEFAULT_INTERVAL_CODES,
   'TPL.twoSiteRules': DEFAULT_TWO_SITE_RULES,
+  'TPL.tsWords': TS_WORDS_FALLBACK, // 건초내주사로 알아볼 차트 말(claim-learn AC-9308.4)
 }
 const tplOf = (tpl: PhraseTemplates, path: string): unknown => (tpl as Record<string, unknown>)[path.slice('TPL.'.length)]
 
@@ -162,6 +167,44 @@ function mapRows(path: string, labelOf: (key: string) => string, before: Readonl
     .map((key) => ({ path: `${path}.${key}`, label: labelOf(key), before: plainShown(before?.[key]), after: plainShown(after?.[key]) }))
 }
 
+// ── 학습(claim-learn AC-9304.1·AC-9304.2, notes '설정 › 병원 문구 › 학습 탭'). 학습 탭 표와 비교 표가 같은 글을 쓴다 ─────────────
+
+/** 할 일 값(notes 그대로) */
+export const LEARN_KIND_LABELS: Readonly<Record<LearnKind, string>> = { replace: '줄 바꿈', add: '줄 더함', remove: '줄 뺌' }
+/** 줄 뺌 학습의 문장 칸(시안 ?s=list) */
+export const REMOVED_LINE = '(빼는 줄)'
+/** 부위 짧은 이름: '허리(요추)' → '허리'(시안 '부위 허리', 학습 이름 'LA358 · 허리'와 같게) */
+export const regionShort = (key: string): string => regionKo(key).replace(/\(.*\)$/, '')
+/** 조건 글: '처방 LA358 · 부위 허리 · 차트 말 ‘C-arm’'(시안 ?s=list). 함께 한 다른 시술·진료한 원장님은 학습 창의 조건 이름으로 */
+export function learnWhenText(when: LearnWhen): string {
+  return [
+    when.codes.length ? `처방 ${when.codes.join(', ')}` : '',
+    when.regions.length ? `부위 ${when.regions.map(regionShort).join(', ')}` : '',
+    when.chartWords.length ? `차트 말 ${when.chartWords.map((word) => `‘${word}’`).join(', ')}` : '',
+    when.withCodes.length ? `함께 한 다른 시술 ${when.withCodes.join(', ')}` : '',
+    when.doctors.length ? `진료한 원장님 ${when.doctors.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+/** 비교 표의 학습 한 칸: 할 일 · 조건 · 문장 · 켜짐/꺼짐(이름이 바뀌면 앞에 이름). 남은 확인은 보이지 않는다(다른 PC가 세는 값) */
+function learnShown(rule: LearnRule | undefined, named: boolean): string {
+  if (!rule) return '(없음)'
+  const parts = [LEARN_KIND_LABELS[rule.kind] ?? rule.kind, learnWhenText(rule.when), rule.kind === 'remove' ? REMOVED_LINE : rule.to, rule.on ? '켜짐' : '꺼짐']
+  return (named ? [`이름 ${rule.name}`, ...parts] : parts).filter(Boolean).join(' · ')
+}
+/** 바뀐 학습마다 '학습: {이름}' 한 줄: 고친·더한 학습(고친 차례) 다음에 지운 학습. 보이는 글이 같으면 줄을 내지 않는다 */
+function learnRows(before: readonly LearnRule[], after: readonly LearnRule[]): PhraseDiffRow[] {
+  const was = new Map(before.map((rule) => [rule.id, rule]))
+  const now = new Set(after.map((rule) => rule.id))
+  const row = (a: LearnRule | undefined, b: LearnRule | undefined): PhraseDiffRow[] => {
+    const named = Boolean(a && b && a.name !== b.name)
+    const shown = { before: learnShown(a, named), after: learnShown(b, named) }
+    return shown.before === shown.after ? [] : [{ path: `learned.${(b ?? a)!.id}`, label: `학습: ${(b ?? a)!.name}`, ...shown }]
+  }
+  return [...after.flatMap((rule) => row(was.get(rule.id), rule)), ...before.filter((rule) => !now.has(rule.id)).flatMap((rule) => row(rule, undefined))]
+}
+
 const BY_REGION = (key: string) => `부위별 문구 · ${regionKo(key)}`
 const BY_PROC = (key: string) => `시술 이름별 문구 · ${key}`
 
@@ -183,6 +226,7 @@ export function saveDiffRows(before: Phrases, after: Phrases): PhraseDiffRow[] {
     else if (path === 'TPL.fixedPhrases' || path.startsWith('TPL.fixedPhrases.')) once('fixed', () => (fixedShown(before.TPL) === fixedShown(after.TPL) ? [] : [{ path: 'TPL.fixedPhrases', label: '고정 멘트', before: fixedShown(before.TPL), after: fixedShown(after.TPL) }]))
     else if (path === 'TPL.byRegion' || path.startsWith('TPL.byRegion.')) once('byRegion', () => mapRows('TPL.byRegion', BY_REGION, before.TPL.byRegion, after.TPL.byRegion))
     else if (path === 'TPL.byProc' || path.startsWith('TPL.byProc.')) once('byProc', () => mapRows('TPL.byProc', BY_PROC, before.TPL.byProc, after.TPL.byProc))
+    else if (path === 'learned' || path.startsWith('learned.')) once('learned', () => learnRows(before.learned ?? [], after.learned ?? []))
     else if (path === 'TPL.reasonPriority') {
       const shown = { before: priorityShown(before.TPL.reasonPriority), after: priorityShown(after.TPL.reasonPriority) }
       if (shown.before !== shown.after) out.push({ ...row, ...shown })

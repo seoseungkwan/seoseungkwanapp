@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayInKorea } from '@/lib/analytics/dates'
-import { neutralPhrases, ourClinicPhrases } from '@/lib/precheck/memo'
+import { neutralPhrases, ourClinicPhrases, type LearnRule } from '@/lib/precheck/memo'
 import type { DayPayload } from '@/types/payload'
 import { HospitalPhrases } from './HospitalPhrases'
 
@@ -88,9 +88,11 @@ beforeEach(() => {
 afterEach(cleanup)
 
 type User = ReturnType<typeof userEvent.setup>
-const TABS = ['기본', '시술별 문구와 약', '처방코드', '표기 규칙', '사유 문장', '차트 줄임말', '메모 시험']
+const TABS = ['기본', '시술별 문구와 약', '처방코드', '표기 규칙', '사유 문장', '차트 줄임말', '메모 시험', '학습']
 /** 잠금 칸 글(AC-6607.1) */
 const BLOCKED_TEXT = '아직 병원 문구가 없어요. 처음 질문으로 우리 병원 메모 모양을 맞추거나, 기본 문구로 바로 시작할 수 있어요.'
+/** 학습 탭 '학습 없음' 글(claim-learn notes) */
+const NO_LEARN_TEXT = '아직 학습이 없어요. 청구 메모를 고쳐 저장하면 저절로 학습해요. 청구 화면에서 [처음 학습]을 해 보세요.'
 const openTab = (user: User, name: string) => user.click(screen.getByRole('tab', { name }))
 /** [저장] → 바뀐 부분 표 → [이대로 저장] */
 async function saveAndConfirm(user: User, button = '저장') {
@@ -100,7 +102,7 @@ async function saveAndConfirm(user: User, button = '저장') {
 const savedPhrases = () => (db.upserts[0] as { phrases: ReturnType<typeof ourClinicPhrases> }).phrases
 
 describe('AC-3007.1 묶음 단추', () => {
-  it("AC-3007.1·AC-6612.1: 묶음 단추 일곱 개('메모 시험' 앞에 '차트 줄임말')로 나뉘고 저장 단추는 묶음과 상관없이 아래에 하나다", async () => {
+  it("AC-3007.1·AC-6612.1·AC-9304.1: 묶음 단추 여덟 개('메모 시험' 앞에 '차트 줄임말', 뒤에 '학습')로 나뉘고 저장 단추는 묶음과 상관없이 아래에 하나다", async () => {
     const user = userEvent.setup()
     render(<HospitalPhrases />)
     const tablist = await screen.findByRole('tablist', { name: '병원 문구 묶음' })
@@ -114,6 +116,7 @@ describe('AC-3007.1 묶음 단추', () => {
       '사유 문장': () => screen.getByLabelText('주사 간격 일수'),
       '차트 줄임말': () => screen.getByRole('table', { name: '차트 줄임말' }),
       '메모 시험': () => screen.getByRole('button', { name: '메모 만들기' }),
+      학습: () => screen.getByText(NO_LEARN_TEXT),
     }
     for (const name of TABS) {
       await openTab(user, name)
@@ -125,7 +128,7 @@ describe('AC-3007.1 묶음 단추', () => {
     expect(screen.queryByText('가입 보기 글')).toBeNull()
   })
 
-  it('AC-3007.1: 화살표 글쇠로 묶음을 옮긴다', async () => {
+  it('AC-3007.1·AC-9304.1: 화살표 글쇠로 묶음을 옮긴다(처음에서 왼쪽은 마지막 묶음 학습)', async () => {
     const user = userEvent.setup()
     render(<HospitalPhrases />)
     await screen.findByRole('tablist', { name: '병원 문구 묶음' })
@@ -133,6 +136,8 @@ describe('AC-3007.1 묶음 단추', () => {
     await user.keyboard('{ArrowRight}')
     expect(screen.getByRole('tab', { name: '시술별 문구와 약' }).getAttribute('aria-selected')).toBe('true')
     await user.keyboard('{ArrowLeft}{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: '학습' }).getAttribute('aria-selected')).toBe('true')
+    await user.keyboard('{ArrowLeft}')
     expect(screen.getByRole('tab', { name: '메모 시험' }).getAttribute('aria-selected')).toBe('true')
   })
 })
@@ -625,5 +630,128 @@ describe('AC-6607 잠금 풀기', () => {
     expect(within(await screen.findByRole('alert')).getByText(/오류 번호 E-SETTINGS-FAILED/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '기본 문구로 바로 시작' })).toBeNull()
+  })
+})
+
+// ── claim-learn: 학습 탭(AC-9304)·주소로 탭과 칸 열기(AC-9306.2). 학습 값은 지어낸 값이다 ─────────────
+const RULE: LearnRule = {
+  id: 'l0000abcd',
+  name: 'LA358 · 허리',
+  kind: 'replace',
+  from: '{좌우} {레벨} MBB 시행 (C-arm guide 하에)',
+  to: '{좌우} {레벨} 내측지 신경차단술(MBB) 시행',
+  after: '',
+  when: { codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [] },
+  on: true,
+  left: 2,
+  made: '2026-11-28',
+}
+const ADDED: LearnRule = { ...RULE, id: 'l0000abce', kind: 'add', from: '', to: '시술 후 30분 관찰함', after: '{좌우} {레벨} MBB 시행 (C-arm guide 하에)', left: 0 }
+/** 그사이 다른 PC가 더한 학습 */
+const FROM_OTHER: LearnRule = { ...RULE, id: 'l0000abcf', name: 'KK090 · 무릎', to: '{좌우} knee IA 시행', when: { ...RULE.when, codes: ['KK090'], regions: ['knee'] }, made: '2026-11-29' }
+const withLearned = (learned: LearnRule[]) => ({ ...ourClinicPhrases(), learned })
+
+describe('AC-9304 학습 탭', () => {
+  it("AC-9304.1·AC-9304.2: 학습 탭에서 끄고 [저장]하면 바뀐 부분 표에 '학습: {이름}' 줄이 보이고, 그사이 다른 PC가 센 남은 확인과 더한 학습은 남는다", async () => {
+    const user = userEvent.setup()
+    db.row = { phrases: withLearned([RULE, ADDED]), dx_links: [] }
+    render(<HospitalPhrases />)
+    await screen.findByRole('tablist', { name: '병원 문구 묶음' })
+    await openTab(user, '학습')
+    expect(screen.getAllByText('LA358 · 허리')).toHaveLength(2)
+    await user.click(screen.getByRole('switch', { name: '학습 1 켜기' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    const diff = await screen.findByRole('region', { name: '바뀐 부분' })
+    const rows = within(within(diff).getByRole('table')).getAllByRole('row')
+    expect(rows.map((r) => within(r).queryAllByRole('cell').map((c) => c.textContent))).toEqual([
+      [],
+      ['학습: LA358 · 허리', '줄 바꿈 · 처방 LA358 · 부위 허리 · {좌우} {레벨} 내측지 신경차단술(MBB) 시행 · 켜짐', '줄 바꿈 · 처방 LA358 · 부위 허리 · {좌우} {레벨} 내측지 신경차단술(MBB) 시행 · 꺼짐'],
+    ])
+    db.row = { phrases: withLearned([{ ...RULE, left: 1 }, ADDED, FROM_OTHER]), dx_links: [] }
+    await user.click(within(diff).getByRole('button', { name: '이대로 저장' }))
+    await waitFor(() => expect(db.upserts).toHaveLength(1))
+    expect(savedPhrases().learned).toEqual([{ ...RULE, on: false, left: 1 }, ADDED, FROM_OTHER])
+    await waitFor(() => expect(screen.getAllByText('KK090 · 무릎')).toHaveLength(1))
+  })
+
+  it('AC-9304.2: [지우기]로 지운 학습은 저장하면 빠지고, 고치지 않은 학습은 다른 PC 값 그대로다', async () => {
+    const user = userEvent.setup()
+    db.row = { phrases: withLearned([RULE, ADDED]), dx_links: [] }
+    render(<HospitalPhrases />)
+    await screen.findByRole('tablist', { name: '병원 문구 묶음' })
+    await openTab(user, '학습')
+    await user.click(screen.getByRole('button', { name: '학습 2 지우기' }))
+    await user.click(screen.getByRole('button', { name: '지우기' }))
+    db.row = { phrases: withLearned([{ ...RULE, to: '다른 PC 문장' }, ADDED]), dx_links: [] }
+    await saveAndConfirm(user)
+    await waitFor(() => expect(db.upserts).toHaveLength(1))
+    expect(savedPhrases().learned).toEqual([{ ...RULE, to: '다른 PC 문장' }])
+  })
+
+  it('AC-9304.2: 학습 칸이 틀리면 저장하지 않고 학습 탭을 열어 그 학습 줄에 까닭을 보인다', async () => {
+    const user = userEvent.setup()
+    db.row = { phrases: withLearned([RULE]), dx_links: [] }
+    render(<HospitalPhrases />)
+    await screen.findByRole('tablist', { name: '병원 문구 묶음' })
+    await openTab(user, '학습')
+    await user.click(screen.getByRole('button', { name: '학습 1 고치기' }))
+    await user.click(screen.getByRole('checkbox', { name: '처방 코드' }))
+    await user.click(screen.getByRole('checkbox', { name: '부위' }))
+    expect(screen.getByText('조건을 하나 이상 골라 주세요.')).toBeTruthy()
+    await openTab(user, '기본')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(screen.getByRole('tab', { name: '학습' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('학습 조건을 하나 이상 골라 주세요.')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '바뀐 부분' })).toBeNull()
+    expect(db.upserts).toEqual([])
+  })
+})
+
+describe('AC-9306.2 주소로 탭·칸 열기', () => {
+  const scrolled = vi.fn()
+  beforeEach(() => {
+    scrolled.mockClear()
+    Element.prototype.scrollIntoView = scrolled
+  })
+  const selected = (name: string) => screen.getByRole('tab', { name }).getAttribute('aria-selected') === 'true'
+
+  it("AC-9306.2: 시술별 문구와 약 › '건초내주사' 칸이면 그 탭을 열고 그 칸으로 내려가 2초 강조한다", async () => {
+    render(<HospitalPhrases open={{ tab: 'proc', field: 'ts' }} />)
+    await waitFor(() => expect(selected('시술별 문구와 약')).toBe(true))
+    const spot = screen.getByLabelText('건초내주사').parentElement!
+    await waitFor(() => expect(spot.classList.contains('bg-accent-soft')).toBe(true))
+    expect(scrolled.mock.contexts).toContain(spot)
+    await waitFor(() => expect(spot.classList.contains('bg-accent-soft')).toBe(false), { timeout: 3000 })
+  })
+
+  it("AC-9306.2: 칸은 출처 표(FIELD_PLACE)의 칸 이름으로 찾는다 — 사유 문장 › '주사 간격 사유'", async () => {
+    render(<HospitalPhrases open={{ tab: 'reason', field: 'itv' }} />)
+    await waitFor(() => expect(selected('사유 문장')).toBe(true))
+    const spot = screen.getByLabelText('주사 간격 사유').parentElement!
+    await waitFor(() => expect(spot.classList.contains('bg-accent-soft')).toBe(true))
+    expect(scrolled.mock.contexts).toContain(spot)
+  })
+
+  it('AC-9306.2: 학습 출처면 학습 탭의 그 학습 줄로 내려가 강조한다', async () => {
+    db.row = { phrases: withLearned([RULE, ADDED]), dx_links: [] }
+    render(<HospitalPhrases open={{ tab: 'learn', learn: 'l0000abce' }} />)
+    await waitFor(() => expect(selected('학습')).toBe(true))
+    const row = within(screen.getByRole('table', { name: '학습 목록' })).getAllByRole('row')[2]
+    await waitFor(() => expect(row.classList.contains('bg-accent-soft')).toBe(true))
+    expect(scrolled.mock.contexts).toContain(row)
+  })
+
+  it('AC-9306.2: 칸 없이 탭만이면 그 탭을 열고 묶음으로 내려간다(칸 강조 없음)', async () => {
+    render(<HospitalPhrases open={{ tab: 'codes' }} />)
+    await waitFor(() => expect(selected('처방코드')).toBe(true))
+    await waitFor(() => expect(scrolled.mock.contexts).toContain(screen.getByRole('tabpanel')))
+    expect(document.querySelector('.bg-accent-soft.outline-accent')).toBeNull()
+  })
+
+  it('AC-9306.2: 주소가 없으면 기본 묶음 그대로이고 내려가지 않는다', async () => {
+    render(<HospitalPhrases />)
+    await screen.findByRole('tablist', { name: '병원 문구 묶음' })
+    expect(selected('기본')).toBe(true)
+    expect(scrolled).not.toHaveBeenCalled()
   })
 })
