@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>병원 고르기 시안</title>
+<style>
+  :root {
+    --desk: #2b4a6f;
+    --win: #f0f0f0;
+    --title: #ffffff;
+    --ink: #1a1a1a;
+    --ink2: #5a5a5a;
+    --line: #adadad;
+    --pick: #e5f1fb;
+    --pickline: #0078d4;
+    --note: #fff3cd;
+    --warn: #8a5a00;
+  }
+  body { margin: 0; background: var(--desk); font-family: "Malgun Gothic", "맑은 고딕", sans-serif; color: var(--ink); }
+  .tabs { display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap; }
+  .tabs a { color: #fff; background: rgba(255,255,255,.15); padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; }
+  .tabs a.on { background: #fff; color: var(--desk); font-weight: 700; }
+  .cap { color: #dfe8f2; font-size: 13px; padding: 0 16px 8px; }
+  .stage { display: flex; justify-content: center; padding: 24px 16px 48px; }
+  .win { width: 600px; background: var(--win); border: 1px solid #6b6b6b; box-shadow: 0 8px 28px rgba(0,0,0,.45); }
+  .bar { height: 32px; background: var(--title); display: flex; align-items: center; justify-content: space-between; padding: 0 0 0 12px; font-size: 12px; border-bottom: 1px solid #e0e0e0; }
+  .bar .x { width: 46px; height: 32px; display: grid; place-items: center; font-size: 16px; color: #333; }
+  .body { padding: 16px; font-size: 13.3px; line-height: 1.55; }
+  .q { font-size: 13.3px; margin: 0 0 12px; }
+  .list { border: 1px solid var(--line); background: #fff; margin: 0 0 12px; }
+  .row { display: flex; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e6e6e6; align-items: flex-start; }
+  .row:last-child { border-bottom: 0; }
+  .row.on { background: var(--pick); outline: 1px solid var(--pickline); outline-offset: -1px; }
+  .radio { width: 14px; height: 14px; border: 1px solid #333; border-radius: 50%; margin-top: 3px; flex: none; display: grid; place-items: center; background: #fff; }
+  .row.on .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #1a1a1a; }
+  .num { font-weight: 700; }
+  .sub { color: var(--ink2); font-size: 12.5px; }
+  .tag { display: inline-block; font-size: 12px; padding: 0 6px; border: 1px solid var(--pickline); color: #005a9e; background: #fff; margin-left: 6px; }
+  .warn { background: var(--note); padding: 8px; margin: 0 0 12px; font-size: 12.8px; }
+  .meta { color: var(--ink2); font-size: 12.5px; margin: 0 0 16px; }
+  .prev { border: 1px solid var(--line); background: #fff; padding: 8px 12px; margin: 0 0 12px; font-size: 12.8px; }
+  .btns { display: flex; justify-content: flex-end; gap: 8px; }
+  .btn { min-width: 96px; height: 32px; border: 1px solid var(--line); background: #e1e1e1; font: inherit; font-size: 13px; }
+  .btn.def { border: 2px solid var(--pickline); }
+  .btn[disabled] { color: #a0a0a0; background: #f4f4f4; border-color: #cfcfcf; }
+  .plain { white-space: pre-line; margin: 0 0 16px; }
+  .anno { max-width: 600px; margin: 0 auto; color: #dfe8f2; font-size: 13px; line-height: 1.6; padding: 0 16px 32px; }
+  .anno b { color: #fff; }
+</style>
+</head>
+<body>
+<nav class="tabs" id="tabs"></nav>
+<div class="cap" id="cap"></div>
+<div class="stage"><div class="win" id="win"></div></div>
+<div class="anno" id="anno"></div>
+<script>
+// 합성 값만 씀(실제 의원 번호 아님)
+const STATES = {
+  two: {
+    tab: '① 병원 둘 · 추천 있음',
+    cap: '비트에 병원이 둘(양도양수). 로그인한 계정의 병원을 미리 골라 둠.',
+    rows: [
+      { num: '31234567', visits: '1,284', mine: true, on: true },
+      { num: '31209876', visits: '0' },
+    ],
+  },
+  none: {
+    tab: '② 추천 없음',
+    cap: '계정으로도, 최근 30일 내원으로도 못 정한 경우. 아무것도 안 골라 둠 → 고르기 전엔 [확인]이 안 눌림.',
+    rows: [
+      { num: '31234567', visits: '642' },
+      { num: '31209876', visits: '598' },
+    ],
+    noPick: true,
+  },
+  again: {
+    tab: '③ 다시 등록',
+    cap: '이미 등록된 PC에서 [다시 등록]을 누른 경우. 지금 등록을 위에 보여 줌.',
+    rows: [
+      { num: '31234567', visits: '1,284', mine: true, on: true },
+      { num: '31209876', visits: '0' },
+    ],
+    prev: '31209876',
+  },
+  one: {
+    tab: '④ 병원 하나(지금 그대로)',
+    cap: '비트에 병원이 하나면 지금 창 그대로 — 고르기 없음.',
+    single: true,
+  },
+};
+const order = ['two', 'none', 'again', 'one'];
+const s = new URLSearchParams(location.search).get('s') || 'two';
+const st = STATES[s] || STATES.two;
+
+document.getElementById('tabs').innerHTML = order.map(k =>
+  `<a href="?s=${k}" class="${k === s ? 'on' : ''}">${STATES[k].tab}</a>`).join('');
+document.getElementById('cap').textContent = st.cap;
+
+const bar = `<div class="bar"><span>청구메모 도우미</span><span class="x">✕</span></div>`;
+const meta = `<p class="meta">비트 설치 위치: C:\\DrBIT50<br>비트 DB: SERVER / DrBIT</p>`;
+
+let html;
+if (st.single) {
+  html = `${bar}<div class="body"><p class="plain">이 병원으로 등록할까요?
+
+기관기호 3123****
+비트 병원 범위: 0001
+비트 설치 위치: C:\\DrBIT50
+비트 DB: SERVER / DrBIT
+
+[확인]을 누르면 이 PC에 등록합니다. 등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 읽기와 입력을 멈춥니다.</p>
+<div class="btns"><button class="btn">확인</button><button class="btn def">취소</button></div></div>`;
+} else {
+  const rows = st.rows.map(r => `
+    <div class="row ${r.on ? 'on' : ''}">
+      <span class="radio"></span>
+      <div>
+        <div><span class="num">요양기관번호 ${r.num}</span>${r.mine ? '<span class="tag">지금 로그인한 계정의 병원</span>' : ''}</div>
+        <div class="sub">최근 30일 외래 ${r.visits}건</div>
+      </div>
+    </div>`).join('');
+  const prev = st.prev ? `<div class="prev">지금 등록: 요양기관번호 ${st.prev}</div>` : '';
+  html = `${bar}<div class="body">
+    <p class="q"><b>비트에 병원이 여러 개 있어요. 이 PC에서 쓸 병원을 골라 주세요.</b></p>
+    ${prev}
+    <div class="list">${rows}</div>
+    <div class="warn">양도양수로 번호가 바뀌었으면 지금 쓰는 번호를 고르세요. 다른 번호를 고르면 그 병원 자료를 읽어요.</div>
+    ${meta}
+    <div class="btns"><button class="btn" ${st.noPick ? 'disabled' : ''}>확인</button><button class="btn def">취소</button></div>
+  </div>`;
+}
+document.getElementById('win').innerHTML = html;
+
+document.getElementById('anno').innerHTML = st.single ? '' : `
+  <b>언제 뜨나</b> — [처음 등록]·[다시 등록]에서 비트에 병원이 둘 이상일 때만. 하나면 ④처럼 지금 창 그대로.<br>
+  <b>미리 골라 두는 것</b> — ① 지금 로그인한 계정의 병원 → ② 없으면 최근 30일 외래가 있는 병원이 하나일 때 그것 → ③ 둘 다 못 정하면 안 골라 둠.<br>
+  <b>번호</b> — 고르는 창에서는 번호를 다 보여 줌(앞 4자리가 같은 번호가 많아서). 병원 하나일 때 창은 지금처럼 뒤 4자리를 가림.<br>
+  <b>단추</b> — 기본 단추는 지금처럼 [취소](엔터로 잘못 등록되지 않게). [취소]·창 닫기면 저장 안 함.`;
+</script>
+</body>
+</html>

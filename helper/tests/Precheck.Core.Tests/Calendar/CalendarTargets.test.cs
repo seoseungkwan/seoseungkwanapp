@@ -563,8 +563,8 @@ public class CalendarTargetsTests
 
     // ── AC-5903.5 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-5903.5 AC-6912.6 AC-8511.6 도우미 판은 0.14.0이다(예약 탭 비트 읽기는 0.10.0부터, 지난 도착 400일은 0.14.0부터. 웹 LATEST_HELPER·CAL_PAST_HELPER 0.14.0·CAL_HELPER 0.10.0, MIN·SUNAP·LIST 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroEleven() => Assert.Equal("0.14.0", HelperVersion.Value);
+    [Fact(DisplayName = "AC-5903.5 AC-6912.6 AC-8511.6 도우미 판은 0.14.1이다(예약 탭 비트 읽기는 0.10.0부터, 지난 도착 400일은 0.14.0부터. 웹 LATEST_HELPER·CAL_PAST_HELPER 0.14.0·CAL_HELPER 0.10.0, MIN·SUNAP·LIST 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroEleven() => Assert.Equal("0.14.1", HelperVersion.Value);
 
     [Fact(DisplayName = "AC-8511.6 calday 시작 한도는 오늘−400일(CalendarTargets.BackDays), 한 번에 42일 한도는 그대로")]
     public void DayBackDaysIsFourHundred()

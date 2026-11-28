@@ -159,18 +159,90 @@ public class RegisterFlowTests
         }
     }
 
-    [Fact(DisplayName = "AC-005.13 DB 안 병원 범위가 그것 하나가 아니면 E-BIT-REG-MANY")]
+    /// <summary>최근 30일 내원 답: (범위, 내원 수) 줄</summary>
+    private static void Active(Rig rig, params (string? Scope, long Visits)[] rows) =>
+        rig.Session.Answer(Sql.ActiveScopesSql, _ => rows.Select(row => new object?[] { row.Scope, row.Visits }).ToArray());
+
+    [Fact(DisplayName = "AC-005.18 DB 안 범위가 여럿이면 로그인한 계정의 범위(DB 안에 있는 것)로 등록하고 최근 내원은 읽지 않는다")]
+    public void ManyHospitalsUseAccountScope()
+    {
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+            Assert.Contains(Sql.UserScopeSql, rig.Session.Sqls);
+            Assert.DoesNotContain(Sql.ActiveScopesSql, rig.Session.Sqls);
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "", "FOREIGN ");
+            rig.Session.Answer(Sql.UserScopeSql, "FOREIGN ");
+            SavesWith(rig, "FOREIGN", Synthetic.Institution);
+            Assert.DoesNotContain(Sql.ActiveScopesSql, rig.Session.Sqls);
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.18 계정 범위를 못 정하면(없음·둘·DB 밖·로그인 모양 틀림) 최근 30일 외래 내원이 있는 범위 하나로 등록한다(오늘 30일 전 0시 ~ 다음 날 0시)")]
+    public void ManyHospitalsUseRecentVisits()
+    {
+        var accounts = new Action<Rig>[]
+        {
+            rig => rig.Session.Answer(Sql.UserScopeSql),
+            rig => rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope, "FOREIGN"),
+            rig => rig.Session.Answer(Sql.UserScopeSql, "ELSEWHERE"),
+            rig => rig.Login.User = new VendorUser("NINECHARS", "20261030"),
+        };
+        foreach (var account in accounts)
+        {
+            using var rig = new Rig();
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            account(rig);
+            Active(rig, ("FOREIGN ", 0), (Synthetic.Scope + " ", 812), ("ELSEWHERE", 5), ("", 9), (null, 4));
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Answer(Sql.UserScopeSql);
+            Active(rig, ("FOREIGN", 3));
+            SavesWith(rig, "FOREIGN", Synthetic.Institution);
+            var call = rig.Session.Calls.Single(c => c.Sql == Sql.ActiveScopesSql);
+            Assert.Equal("202609300000", call.Args["@from"]);
+            Assert.Equal("202610310000", call.Args["@to"]);
+            Assert.Equal(Sql.MemoTimeout, call.Timeout);
+            Assert.All(rig.Session.Sqls, sql => Assert.Contains(sql, Sql.All));
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.18 계정 범위도 최근 내원 범위도 하나로 못 정하면 E-BIT-REG-MANY, 읽기가 실패하면 그 번호로 멈춘다(저장 없음)")]
     public void ManyHospitalsStop()
     {
         using (var rig = new Rig())
         {
             rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Answer(Sql.UserScopeSql);
+            Active(rig, (Synthetic.Scope, 3), ("FOREIGN", 1));
             StopsWith(rig, "E-BIT-REG-MANY");
         }
         using (var rig = new Rig())
         {
             rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "", "FOREIGN ");
+            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope, "FOREIGN");
+            Active(rig, (Synthetic.Scope, 0), ("", 9), (null, 4));
             StopsWith(rig, "E-BIT-REG-MANY");
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Answer(Sql.UserScopeSql);
+            rig.Session.Fail(Sql.ActiveScopesSql, BitErrors.ReadFailed);
+            StopsWith(rig, "E-BIT-READ-FAILED");
+        }
+        using (var rig = new Rig())
+        {
+            rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+            rig.Session.Fail(Sql.UserScopeSql, BitErrors.ReadFailed);
+            StopsWith(rig, "E-BIT-READ-FAILED");
         }
     }
 
@@ -369,5 +441,118 @@ public class RegisterFlowTests
         Assert.StartsWith("이 병원으로 등록할까요?", Assert.Single(rig.Confirm.Shown).Text);
         Assert.Equal(new[] { "registration.dat" }, System.IO.Directory.GetFiles(rig.Folder).Select(System.IO.Path.GetFileName));
         Assert.Equal("broken-dat", System.IO.File.ReadAllText(rig.Store.FilePath));
+    }
+
+    // ── AC-005.19 병원 고르기 창(TASK-48): 범위가 둘 이상이고 고르기 창이 있으면 PC 확인 창 대신 고르기 창 ──
+
+    /// <summary>범위 둘(SYNTHETIC·FOREIGN)과 범위마다 다른 오늘 기관기호</summary>
+    private static Rig TwoHospitals()
+    {
+        var rig = new Rig(withPick: true);
+        rig.Session.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        rig.Session.Answer(Sql.InstitutionSql, args =>
+            new[] { new object?[] { (string)args["@scope"]! == "FOREIGN" ? Synthetic.OtherInstitution : Synthetic.Institution } });
+        return rig;
+    }
+
+    [Fact(DisplayName = "AC-005.19 범위가 둘 이상이면 고르기 창을 띄우고(PC 확인 창 없음, 5분), 고른 줄의 범위·기관기호로 저장한다(DB를 닫은 뒤 창)")]
+    public void PickSaves()
+    {
+        using (var rig = TwoHospitals())
+        {
+            rig.Session.Answer(Sql.UserScopeSql);
+            Active(rig, (Synthetic.Scope, 5));
+            var disposedWhenShown = -1;
+            rig.Pick.Answer = _ =>
+            {
+                disposedWhenShown = rig.Session.Disposed;
+                return 1; // 미리 골라 둔 줄(0)이 아닌 줄을 사람이 고름
+            };
+            Assert.True(Registered(Handle(rig)));
+
+            Assert.Empty(rig.Confirm.Shown);
+            var shown = Assert.Single(rig.Pick.Shown);
+            Assert.Equal(TimeSpan.FromMinutes(5), shown.Timeout);
+            Assert.Equal(1, disposedWhenShown); // 창이 뜰 때 DB는 이미 닫혀 있다
+            Assert.Equal(new[] { Synthetic.Scope, "FOREIGN" }, shown.View.Choices.Select(c => c.Scope));
+            Assert.Equal(new[] { Synthetic.Institution, Synthetic.OtherInstitution }, shown.View.Choices.Select(c => c.InstitutionCode));
+            Assert.Equal(0, shown.View.Preselected);
+            Assert.Null(shown.View.PreviousLine);
+
+            var saved = rig.Store.Load();
+            Assert.NotNull(saved);
+            Assert.Equal("FOREIGN", saved!.Scope);
+            Assert.Equal(Synthetic.OtherInstitution, saved.InstitutionCode);
+            Assert.Equal(Synthetic.Root, saved.InstallPath);
+            Assert.Equal(rig.IssuedIds.Single(), saved.ProfileId);
+            Assert.Equal(1, rig.Session.Disposed);
+            Assert.All(rig.Session.Sqls, sql => Assert.Contains(sql, Sql.All));
+        }
+        using (var rig = TwoHospitals())
+        {
+            // 계정 범위가 FOREIGN이면 그 줄을 미리 골라 둔다(처음 값 FakePick은 미리 고른 줄로 [확인])
+            rig.Session.Answer(Sql.UserScopeSql, "FOREIGN ");
+            Active(rig, (Synthetic.Scope, 812));
+            Assert.True(Registered(Handle(rig)));
+            Assert.Equal(1, rig.Pick.Shown.Single().View.Preselected);
+            Assert.True(rig.Pick.Shown.Single().View.Choices[1].Mine);
+            Assert.Equal("FOREIGN", rig.Store.Load()!.Scope);
+        }
+    }
+
+    [Fact(DisplayName = "AC-005.19 계정 범위도 최근 내원도 못 정하면 아무 줄도 골라 두지 않은 채 창을 띄운다(E-BIT-REG-MANY로 막지 않음)")]
+    public void PickWithoutPreselect()
+    {
+        using var rig = TwoHospitals();
+        rig.Session.Answer(Sql.UserScopeSql);
+        Active(rig, (Synthetic.Scope, 3), ("FOREIGN", 1));
+        rig.Pick.Answer = view => view.Preselected == null ? 0 : -1;
+        Assert.True(Registered(Handle(rig)));
+        Assert.Null(rig.Pick.Shown.Single().View.Preselected);
+        Assert.Equal(Synthetic.Scope, rig.Store.Load()!.Scope);
+    }
+
+    [Fact(DisplayName = "AC-005.19 고르기 창에서 [취소]·창 닫기·시간 지남이면 저장하지 않고 {registered: false}")]
+    public void PickCancelDoesNotSave()
+    {
+        using var rig = TwoHospitals();
+        rig.Session.Answer(Sql.UserScopeSql);
+        Active(rig, (Synthetic.Scope, 3));
+        rig.Pick.Answer = _ => null;
+        Assert.False(Registered(Handle(rig)));
+        Assert.Null(rig.Store.Load());
+        Assert.Empty(rig.Confirm.Shown);
+    }
+
+    [Fact(DisplayName = "AC-005.19 다시 등록: 지금 등록 줄을 보이고, 같은 범위·기관기호를 고르면 프로필 ID를 그대로 둔다")]
+    public void PickReRegister()
+    {
+        using var rig = TwoHospitals();
+        rig.Registered();
+        rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope);
+        Active(rig, (Synthetic.Scope, 3));
+        Assert.True(Registered(Handle(rig)));
+        Assert.Equal("지금 등록: 요양기관번호 12345678", rig.Pick.Shown.Single().View.PreviousLine);
+        Assert.Equal(Synthetic.ProfileId, rig.Store.Load()!.ProfileId);
+        Assert.Empty(rig.IssuedIds);
+    }
+
+    [Fact(DisplayName = "AC-005.19 범위가 하나면 고르기 창 없이 지금 PC 확인 창 그대로, 저장 모양이 틀리면 창을 띄우기 전에 E-BIT-REG-PLACE")]
+    public void PickOnlyWhenMany()
+    {
+        using (var rig = new Rig(withPick: true))
+        {
+            SavesWith(rig, Synthetic.Scope, Synthetic.Institution);
+            Assert.Empty(rig.Pick.Shown);
+        }
+        using (var rig = TwoHospitals())
+        {
+            rig.Session.Answer(Sql.UserScopeSql);
+            Active(rig, (Synthetic.Scope, 3));
+            rig.Session.Target = Synthetic.Target(server: "");
+            Assert.Equal("E-BIT-REG-PLACE", ErrorCode(Handle(rig)));
+            Assert.Null(rig.Store.Load());
+            Assert.Empty(rig.Pick.Shown); // 고르기 창 없이 번호만(AC-005.13)
+        }
     }
 }

@@ -79,3 +79,12 @@ public interface IConfirmWindow
 {
     bool Show(string text, TimeSpan timeout);
 }
+
+/// <summary>
+/// 병원 고르기 창(AC-005.19, 승인 시안 docs/mockups/reg-pick). 비트에 병원 범위가 둘 이상일 때 처음 등록·다시 등록에서 띄운다.
+/// 사람이 고르고 [확인]을 누르면 그 줄 번호, [취소]·창 닫기·시간 지남이면 null. 글은 도우미가 비트에서 읽은 값으로만 만든다.
+/// </summary>
+public interface IHospitalPick
+{
+    int? Pick(Registration.HospitalPickView view, TimeSpan timeout);
+}

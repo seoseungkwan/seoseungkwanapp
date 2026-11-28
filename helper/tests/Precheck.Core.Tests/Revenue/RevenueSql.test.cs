@@ -166,7 +166,26 @@ public class RevenueSqlTests
         Assert.Contains(NoSpace("CAST(SUM(CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc) AS decimal(28,5)) AS Amount"), sql, StringComparison.Ordinal);
         Assert.Contains(NoSpace("SUM(CASE WHEN o.OdrDay IS NULL OR o.OdrPrc IS NULL OR (CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END) IS NULL THEN CONVERT(bigint,1) ELSE CONVERT(bigint,0) END) AS MissingValues"), sql, StringComparison.Ordinal);
         Assert.Contains(NoSpace("o.OdrDelFlg = 'N' AND o.OdrCanYon = 'N' AND o.OdrOspTyp = 'I' AND o.OdrOutCod <> '99'"), sql, StringComparison.Ordinal);
-        Assert.Contains(NoSpace("(SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s WHERE RTRIM(s.SeeOdrCod) = c.Code ORDER BY s.SeeAdpDte DESC) AS Name"), sql, StringComparison.Ordinal);
+        Assert.Contains(NoSpace("(SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s WHERE s.SeeOdrCod = c.Code ORDER BY s.SeeAdpDte DESC) AS Name"), sql, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-039.1 CodeAmounts 이름 하위 질의는 SeeOdrCod를 RTRIM으로 감싸지 않고(s.SeeOdrCod = c.Code) 나머지 글·매개변수·관문은 그대로다")]
+    public void CodeAmountsNameLookupUsesBareColumn()
+    {
+        var sql = Squash(RevenueSql.CodeAmounts);
+        Assert.Contains("(SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s WHERE s.SeeOdrCod = c.Code ORDER BY s.SeeAdpDte DESC) AS Name", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("RTRIM(s.SeeOdrCod)", sql, StringComparison.Ordinal);
+
+        // 빈 코드는 그대로 Codes 줄에서 뺀다(그래서 c.Code는 빈 글자가 아니다)
+        Assert.StartsWith(CodesHead, sql, StringComparison.Ordinal);
+        Assert.Contains("WHERE o.OdrDtm >= @from AND o.OdrDtm < @to AND RTRIM(o.OdrCod) <> ''", sql, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(sql, Regex.Escape(CodesGroup)).Cast<Match>());
+        Assert.EndsWith("ORDER BY s.SeeAdpDte DESC) AS Name FROM Codes c", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cht", NoSpace(RevenueSql.CodeAmounts), StringComparison.Ordinal);
+
+        Assert.True(Sql.IsAllowed(RevenueSql.CodeAmounts));
+        ReadOnlyGuard.Require(RevenueSql.CodeAmounts, ValidArgs(RevenueSql.CodeAmounts));
+        Assert.Equal(new[] { "@from:Char:12", "@to:Char:12", "@hospital:VarChar:32" }, RevenueSql.Parameters[RevenueSql.CodeAmounts].Select(p => p.Name + ":" + p.Kind + ":" + p.Size));
     }
 
     [Fact(DisplayName = "AC-003.7 새 문장은 차트번호 칸을 답으로 내지 않는다(합계·건수·처방 코드뿐)")]

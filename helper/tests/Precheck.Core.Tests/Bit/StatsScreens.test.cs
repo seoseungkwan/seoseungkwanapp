@@ -116,6 +116,35 @@ public class StatsScreensTests
         Assert.DoesNotContain(Sql.UserScopeSql, badDay.Sqls);
     }
 
+    [Fact(DisplayName = "AC-005.18 계정 범위를 하나로 못 읽었는데 DB 안 범위가 둘 이상이면 E-BIT-HOSPITAL-MISMATCH(권한을 읽지 않음), DB 안 범위가 하나면 지금처럼 통과, 계정 범위를 읽었으면 DB 범위를 읽지 않음")]
+    public void AccessUnknownScopeInManyHospitalsStops()
+    {
+        var permissions = new[] { new object?[] { "전산자료 추출통계", "A" }, new object?[] { "처방별 환자 목록", "A" } };
+        foreach (var account in new Action<FakeDb>[] { db => db.Answer(Sql.UserScopeSql), db => db.Answer(Sql.UserScopeSql, Synthetic.Scope, "OTHER") })
+        {
+            var many = Db(permissions);
+            many.Answer(Sql.ScopesSql, Synthetic.Scope, "", "OTHER ");
+            account(many);
+            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Assert.Throws<BitException>(() => StatsAccess.Check(many, User, Synthetic.Scope, Menu, StatsScreens.Keys)).Code);
+            Assert.DoesNotContain(Sql.UserPermissionsSql, many.Sqls);
+        }
+
+        var badDay = Db(permissions);
+        badDay.Answer(Sql.ScopesSql, Synthetic.Scope, "OTHER");
+        Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Assert.Throws<BitException>(() => StatsAccess.Check(badDay, new VendorUser("SYNUSER", "2026-10-30"), Synthetic.Scope, Menu, StatsScreens.Keys)).Code);
+
+        var one = Db(permissions);
+        one.Answer(Sql.UserScopeSql);
+        one.Answer(Sql.ScopesSql, Synthetic.Scope + " ", "", null);
+        StatsAccess.Check(one, User, Synthetic.Scope, Menu, StatsScreens.Keys);
+        Assert.Equal(new[] { Sql.UserScopeSql, Sql.ScopesSql, Sql.UserPermissionsSql }, one.Sqls);
+
+        var known = Db(permissions);
+        known.Answer(Sql.ScopesSql, Synthetic.Scope, "OTHER");
+        StatsAccess.Check(known, User, Synthetic.Scope, Menu, StatsScreens.Keys);
+        Assert.Equal(new[] { Sql.UserScopeSql, Sql.UserPermissionsSql }, known.Sqls);
+    }
+
     public static IEnumerable<object?[]> MissingPermissions()
     {
         yield return new object?[] { new[] { new object?[] { "처방별 환자 목록", "A" } } };                                                   // 83 권한 없음

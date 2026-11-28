@@ -239,7 +239,10 @@ SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
 
     // ---- 새 문장 3개(design.md 4-2) ------------------------------------------------------------------
 
-    /// <summary>기간의 처방 코드별 줄 수·금액·빠진 값 수·이름. 금액 식은 원본 TrendDataSource와 같고, 내원 상태 목록은 원본 LaCodes와 같다.</summary>
+    /// <summary>
+    /// 기간의 처방 코드별 줄 수·금액·빠진 값 수·이름. 금액 식은 원본 TrendDataSource와 같고, 내원 상태 목록은 원본 LaCodes와 같다.
+    /// 이름 하위 질의는 SeeOdrCod를 RTRIM으로 감싸지 않는다(spec precheck AC-039.1): 감싸면 코드마다 SeeMst 전체를 훑는다. 문자 = 는 뒤 공백을 무시하고 c.Code는 빈 글자가 아니라 결과는 같다.
+    /// </summary>
     public const string CodeAmounts = @"WITH Codes AS (
   SELECT RTRIM(o.OdrCod) AS Code, COUNT_BIG(*) AS Lines,
          CAST(SUM(CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc) AS decimal(28,5)) AS Amount,
@@ -254,7 +257,7 @@ SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
                 AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB') AND c.OcmRsuYon <> 'O')
   GROUP BY RTRIM(o.OdrCod))
 SELECT c.Code, c.Lines, c.Amount, c.MissingValues,
-       (SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s WHERE RTRIM(s.SeeOdrCod) = c.Code ORDER BY s.SeeAdpDte DESC) AS Name
+       (SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s WHERE s.SeeOdrCod = c.Code ORDER BY s.SeeAdpDte DESC) AS Name
 FROM Codes c";
 
     /// <summary>요양비용총액(OrpInsAmt)·급여 본인부담(OrpInsOwn) 합. 원본 FinanceNormal과 마지막 SELECT 줄만 다르다.</summary>
