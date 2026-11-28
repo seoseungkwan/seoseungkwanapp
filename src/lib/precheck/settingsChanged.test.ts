@@ -166,3 +166,60 @@ describe('AC-7804.4 settingsChanged — 바뀐 규칙 판', () => {
     expect({ a, b }).toEqual(copy)
   })
 })
+
+// 청구 메모 학습(specs/claim-learn AC-9302.7, design.md 6절): 학습의 남은 확인(learned[].left)과 처음 학습 종류(learnKinds)는 견주지 않는다.
+// 확인 수가 줄거나 처음 학습 종류가 늘 때마다 '설정 바뀜' 띠가 뜨지 않게. 학습 문장·조건·켜짐이 바뀌면 지금처럼 띠가 뜬다
+describe('AC-9302.7 settingsChanged — 학습', () => {
+  const learned = (patch: Record<string, unknown> = {}) => ({
+    id: 'l0a1b2c3d',
+    name: 'LA358 · 허리',
+    kind: 'replace',
+    from: '{좌우} {레벨} MBB',
+    to: '{좌우} {레벨} MBB 시행함',
+    after: '',
+    when: { codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [] },
+    on: true,
+    left: 3,
+    made: '2026-11-28',
+    ...patch,
+  })
+  const withLearn = (rows: unknown[], kinds?: string[]): SettingsBundle => {
+    const b = bundle()
+    b.phrases = { ...(b.phrases as object), learned: rows, ...(kinds === undefined ? {} : { learnKinds: kinds }) }
+    return b
+  }
+  const both = (a: SettingsBundle, b: SettingsBundle) => [settingsChanged(a, b), settingsChanged(b, a)]
+
+  it('AC-9302.7: 남은 확인만 다르면 false', () => {
+    expect(both(withLearn([learned({ left: 3 })]), withLearn([learned({ left: 2 })]))).toEqual([false, false])
+    expect(both(withLearn([learned({ left: 1 }), learned({ id: 'l00000002', left: 3 })]), withLearn([learned({ left: 0 }), learned({ id: 'l00000002', left: 2 })]))).toEqual([false, false])
+  })
+
+  it('AC-9302.7: 처음 학습 종류만 다르거나 칸이 없으면 false', () => {
+    expect(both(withLearn([learned()], ['LA358|lumbar']), withLearn([learned()], ['LA358|lumbar', 'KK062|wrist']))).toEqual([false, false])
+    expect(both(withLearn([learned()]), withLearn([learned()], ['LA358|lumbar']))).toEqual([false, false])
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['학습 문장', { to: '{좌우} {레벨} MBB 시행' }],
+    ['줄 틀', { from: '{좌우} MBB' }],
+    ['조건', { when: { codes: ['LA358'], regions: [], chartWords: ['C-arm'], withCodes: [], doctors: [] } }],
+    ['켜짐', { on: false }],
+    ['이름', { name: '허리 MBB' }],
+  ])('AC-9302.7: 학습의 %s이(가) 바뀌면 true', (_name, patch) => {
+    expect(both(withLearn([learned()]), withLearn([learned(patch)]))).toEqual([true, true])
+  })
+
+  it('AC-9302.7: 학습이 늘거나 빠지면 true', () => {
+    expect(both(withLearn([learned()]), withLearn([learned(), learned({ id: 'l00000002' })]))).toEqual([true, true])
+    expect(both(withLearn([learned()]), withLearn([]))).toEqual([true, true])
+  })
+
+  it('AC-9302.7: 받은 묶음을 고치지 않는다', () => {
+    const a = withLearn([learned({ left: 3 })], ['LA358|lumbar'])
+    const b = withLearn([learned({ left: 1 })])
+    const copy = structuredClone({ a, b })
+    settingsChanged(a, b)
+    expect({ a, b }).toEqual(copy)
+  })
+})
