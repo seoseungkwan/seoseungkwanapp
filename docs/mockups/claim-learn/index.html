@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>청구 메모 학습 시안</title>
+<!--
+  spec claim-learn 시안. ?s=memo|learn|why|first|list|dates|default|connect|errors
+  색은 앱 토큰(src/app/globals.css :root)만 쓴다. 이름·차트번호·증상·처방은 모두 지어낸 값이다. 어디로도 보내지 않는다.
+  화면 글은 notes.md '화면 글'과 같다. PC 너비(1440)만 그린다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --warning: #B45309; --warning-soft: #FDF4E3; --positive: #15803D; --positive-soft: #EAF6EE; --negative: #B91C1C; --negative-soft: #FDECEC;
+  --r: 4px; --r-float: 8px;
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #E9ECF0; color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.mhead { max-width: 1440px; margin: 0 auto; padding: 16px 12px 10px; display: grid; gap: 8px; }
+.mhead h1 { margin: 0; font-size: 19px; line-height: 27px; font-weight: 600; color: var(--ink); }
+.mhead p { margin: 0; font-size: 13px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg a { padding: 5px 12px; font-size: 13px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a + a { border-left: 1px solid var(--line-strong); }
+.seg a[aria-current="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.stage { padding: 0 12px 24px; }
+.frame { width: 1424px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-float); overflow: hidden; position: relative; }
+.page { padding: 12px 24px 20px; display: flex; flex-direction: column; gap: 12px; }
+.state { display: none; }
+.state.on { display: block; }
+.steps { display: flex; gap: 14px; font-size: 13px; color: var(--muted); }
+.steps b { display: inline-block; min-width: 18px; margin-right: 4px; border: 1px solid var(--line-strong); border-radius: 3px; text-align: center; font-size: 12px; line-height: 17px; }
+.steps .on { color: var(--ink); font-weight: 600; }
+.toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r); font-size: 13px; }
+.sp { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; white-space: nowrap; }
+.btn.sm { height: 26px; padding: 0 8px; font-size: 12px; }
+.btn.pri { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+.btn.go { border-color: var(--positive); background: var(--positive); color: #fff; font-weight: 600; }
+.btn.text { border: 0; background: none; color: var(--accent-strong); padding: 0 4px; height: auto; }
+.btn.chip { height: 24px; padding: 0 8px; font-size: 12px; border-radius: 12px; }
+.btn.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.btn:disabled { opacity: .45; cursor: default; }
+.small { font-size: 12px; line-height: 18px; color: var(--muted); }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.tag.warn { background: var(--warning-soft); color: var(--warning); }
+.tag.blue { background: var(--accent-soft); color: var(--accent-strong); }
+.tag.red { background: var(--negative-soft); color: var(--negative); }
+.tag.gray { background: var(--canvas); color: var(--muted); border: 1px solid var(--line); }
+.band { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: var(--r); font-size: 13px; }
+.band.warn { background: var(--warning-soft); color: var(--warning); }
+.band.blue { background: var(--accent-soft); color: var(--accent-strong); }
+.band.red { background: var(--negative-soft); color: var(--negative); }
+.band.ok { background: var(--positive-soft); color: var(--positive); }
+.card { border: 1px solid var(--line); border-radius: var(--r-float); background: var(--surface); padding: 16px; }
+.err { border: 1px solid #F3C7C7; background: var(--negative-soft); border-radius: var(--r-float); padding: 14px 16px; display: grid; gap: 6px; }
+.err b { color: var(--negative); }
+.err .code { font-size: 12px; color: var(--muted); }
+h2 { margin: 0; font-size: 16px; line-height: 24px; color: var(--ink); }
+h3 { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink); }
+
+/* 메모 두 칸 */
+.split { height: 760px; display: grid; grid-template-columns: 272px minmax(0, 1fr); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.list { border-right: 1px solid var(--line); overflow-y: auto; }
+.ghead { display: flex; justify-content: space-between; padding: 5px 12px; background: var(--canvas); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.item { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.item.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.item .nm { color: var(--ink); font-weight: 600; }
+.item .ch { color: var(--muted); font-size: 12px; }
+.detail { display: flex; flex-direction: column; min-width: 0; }
+.dhead { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.dhead .nm { font-size: 15px; font-weight: 600; color: var(--ink); }
+.cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 420px 1fr 1fr; }
+.cols > div { border-right: 1px solid var(--line); padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.cols > div:last-child { border-right: 0; }
+.box { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; font-size: 13px; line-height: 21px; background: var(--surface); }
+.box .lbl { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
+.mline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0; }
+.hole { display: inline-flex; align-items: center; gap: 3px; padding: 1px 4px; border: 1px dashed var(--warning); border-radius: 3px; background: var(--warning-soft); color: var(--warning); font-weight: 600; font-size: 12px; }
+.hole .btn { height: 20px; padding: 0 6px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th, .tbl td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl th { color: var(--muted); font-weight: 600; background: var(--canvas); }
+
+/* 창 */
+.dim { position: absolute; inset: 0; background: rgb(17 24 39 / .35); display: flex; align-items: flex-start; justify-content: center; padding-top: 28px; }
+.modal { width: 860px; background: var(--surface); border-radius: var(--r-float); box-shadow: 0 12px 40px rgb(0 0 0 / .2); display: flex; flex-direction: column; }
+.modal header { padding: 16px 20px 8px; border-bottom: 1px solid var(--line); }
+.modal section { padding: 12px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.modal footer { padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px; }
+.diff { display: grid; grid-template-columns: 22px 52px 1fr; gap: 6px 8px; align-items: start; font-size: 13px; }
+.diff .old { color: var(--muted); text-decoration: line-through; }
+.diff .new { color: var(--ink); }
+.cb { width: 15px; height: 15px; margin-top: 3px; accent-color: var(--accent); }
+.cond { display: grid; grid-template-columns: 22px 130px 1fr; gap: 6px 8px; align-items: center; font-size: 13px; }
+.input { height: 30px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 0 8px; font: inherit; font-size: 13px; width: 100%; }
+.area { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 6px 8px; font-size: 13px; min-height: 38px; background: var(--surface); }
+.tok { color: var(--accent-strong); background: var(--accent-soft); border-radius: 3px; padding: 0 3px; font-weight: 600; }
+.lit { background: #FFF1C2; border-bottom: 2px solid var(--warning); }
+
+/* 설정 */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+.tabs span { padding: 8px 14px; font-size: 13px; color: var(--muted); }
+.tabs .on { color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.toggle i { width: 28px; height: 16px; border-radius: 8px; background: var(--line-strong); position: relative; }
+.toggle i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+.toggle.on i { background: var(--accent); }
+.toggle.on i::after { left: 14px; }
+.bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rowx { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dt th, .dt td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.dt th { background: var(--canvas); color: var(--muted); font-size: 12px; font-weight: 600; }
+.dt tr.inp td { background: #F4F8FF; }
+.cap { font-size: 12px; color: var(--muted); padding: 4px 0 0; }
+</style>
+</head>
+<body>
+<div class="mhead">
+  <h1>청구 메모 학습 · 청구 탭 다듬기 — 시안</h1>
+  <p>상태를 골라 보세요. 이름·차트번호·차트 글은 모두 지어낸 값이에요.</p>
+  <nav class="seg" id="nav"></nav>
+</div>
+<div class="stage"><div class="frame">
+
+<!-- ───────── memo ───────── -->
+<div class="state" data-s="memo"><div class="page">
+  <div class="steps"><span><b>1</b>날짜 고르기</span><span><b>2</b>점검 결과</span><span class="on"><b>3</b>메모 확인</span></div>
+  <div class="toolbar"><span><b style="color:var(--ink)">11/24 (월) – 11/27 (목)</b> · 메모 필요 42명 · 입력할 사람 18명</span><span class="sp"></span><button class="btn">처음 학습</button><button class="btn go">비트에 입력 (18명)</button></div>
+  <div class="split">
+    <div class="list">
+      <div class="ghead"><span>미완료</span><span class="small">18명</span></div>
+      <div class="item sel"><span class="nm">김하늘</span><span class="ch">10234</span><span class="tag warn">빈칸 2</span></div>
+      <div class="item"><span class="nm">이바다</span><span class="ch">10877</span><span class="tag warn">빈칸 1</span></div>
+      <div class="item"><span class="nm">박구름</span><span class="ch">11002</span><span class="tag warn">확인 필요</span></div>
+      <div class="item"><span class="nm">최들판</span><span class="ch">10456</span><span class="tag red">하루 두 번</span></div>
+      <div class="item"><span class="nm">최들판</span><span class="ch">10456</span><span class="tag red">하루 두 번</span></div>
+      <div class="item"><span class="nm">정시내</span><span class="ch">10999</span><span class="tag gray">학습: LA358 · 허리</span></div>
+      <div class="item"><span class="nm">한솔숲</span><span class="ch">11120</span></div>
+      <div class="item"><span class="nm">오별빛</span><span class="ch">10310</span></div>
+      <div class="ghead"><span>완료</span><span class="small">24명</span></div>
+      <div class="item"><span class="nm">윤봄비</span><span class="ch">10021</span></div>
+    </div>
+    <div class="detail">
+      <div class="dhead"><span class="nm">김하늘</span><span class="tag warn">빈칸 2</span><span>11/26 (수)</span><span class="small">차트 10234</span><span class="sp"></span><button class="btn sm">왜 이렇게?</button><span class="small">입력할 사람 1 / 18</span></div>
+      <div class="cols">
+        <div>
+          <button class="btn go" style="height:36px">복사(완료)</button>
+          <div class="box"><div class="lbl">우리 메모</div>
+            <div class="mline">요추 추간판 탈출증 및 우측 손목 건초염으로</div>
+            <div class="mline"><span class="hole">[좌우 확인] <button class="btn">Rt</button><button class="btn">Lt</button><button class="btn">both</button></span> L4,5 MBB 시행 (C-arm guide 하에)</div>
+            <div class="mline"><span class="hole">[부위 확인] <button class="btn">wrist</button><button class="btn">finger</button><button class="btn">직접 쓰기</button></span> 건초내주사 시행 트리암시놀론 10mg</div>
+          </div>
+          <div class="rowx"><button class="btn">메모 고치기</button><button class="btn">학습하기</button></div>
+          <div class="box"><div class="lbl">비트 메모</div><span class="small">비어 있어요</span></div>
+          <div class="card" style="padding:10px 12px;display:grid;gap:6px">
+            <div class="small" style="font-weight:600">다른 사람을 고르면 (예)</div>
+            <div class="band warn" style="padding:6px 10px">새 학습이 쓰인 메모예요. 맞으면 그대로 복사·입력하세요. (남은 확인 2번)</div>
+            <div class="rowx"><span class="tag warn">확인 필요</span><span class="tag gray">학습: LA358 · 허리</span></div>
+            <div class="band red" style="padding:6px 10px">이 환자는 이날 두 번 진료했어요. 그날 처방이 두 메모에 똑같이 들어가니 맞는지 봐 주세요.</div>
+          </div>
+        </div>
+        <div><h3>증상</h3><div class="small" style="color:var(--ink-2);line-height:20px">LBP r/o HIVD L4-5<br>Rt wrist pain, 엄지 쪽 압통<br>MBB L4,5 (C-arm)<br>손목 TS 트리암 10<br>Lt shoulder stiffness 호전 중</div></div>
+        <div><h3>처방</h3><table class="tbl"><tr><th>코드</th><th>처방명</th><th>수량</th></tr><tr><td>LA358</td><td>후지내측지신경차단술</td><td>2</td></tr><tr><td>KK062</td><td>건초내주사</td><td>1</td></tr><tr><td>…</td><td>트리암시놀론</td><td>1</td></tr></table></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">빈칸이 있는 환자는 미완료 맨 위로 모여요. 빈칸 자리의 단추를 누르면 그 글로 바뀌어 저장돼요. 건초내주사 부위는 처방 수량(1)만큼만: 'TS' 줄의 손목 하나라서 실제로는 빈칸 없이 'Rt wrist'로 나오고, 여기서는 후보 단추 모양을 보이려고 빈칸으로 그렸어요.</p>
+</div></div>
+
+<!-- ───────── learn ───────── -->
+<div class="state" data-s="learn"><div class="page" style="height:1260px;background:var(--canvas)"></div>
+  <div class="dim"><div class="modal">
+    <header><h2>학습하기 — 다음에도 이렇게 쓸까요?</h2><p class="small" style="margin:4px 0 8px">고친 줄을 학습해 두면, 조건이 맞는 다음 진료에 저절로 이렇게 나와요.</p></header>
+    <section>
+      <h3>고친 줄</h3>
+      <div class="diff">
+        <input type="checkbox" class="cb" checked><span class="tag blue">바꿈</span>
+        <div><div class="old">Rt L4,5 MBB 시행 (C-arm guide 하에)</div><div class="new">Rt L4,5 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div><div class="small">처방 LA358</div></div>
+        <input type="checkbox" class="cb" checked><span class="tag blue">더함</span>
+        <div><div class="new">시술 후 30분 관찰함</div><div class="small">처방 LA358</div></div>
+        <input type="checkbox" class="cb" checked><span class="tag blue">바꿈</span>
+        <div><div class="old">Lt knee IA 시행</div><div class="new">좌측 knee IA 시행</div><div class="small">처방 KK090</div>
+          <div class="band blue" style="margin-top:6px;padding:6px 10px;flex-wrap:wrap">이 고침은 모든 메모의 좌우 표기예요. 모든 메모에서 ‘Lt’을 ‘좌측’으로 바꿀까요? <span class="sp"></span><button class="btn sm pri">모든 메모에</button><button class="btn sm">이 학습만</button></div>
+        </div>
+      </div>
+    </section>
+    <section>
+      <h3>이럴 때 쓰기 <span class="small" style="font-weight:400">켠 조건이 모두 맞을 때만 써요.</span></h3>
+      <div class="cond">
+        <input type="checkbox" class="cb" checked><span>처방 코드</span><div class="rowx"><button class="btn chip on">LA358</button><button class="btn chip on">KK090</button></div>
+        <input type="checkbox" class="cb" checked><span>부위</span><div class="rowx"><button class="btn chip on">허리</button></div>
+        <input type="checkbox" class="cb"><span>차트에 쓴 말</span><input class="input" placeholder="예: C-arm" style="max-width:260px">
+        <input type="checkbox" class="cb"><span>함께 한 다른 시술</span><div class="rowx"><button class="btn chip">하이알 주</button><button class="btn chip">물리치료 기본</button></div>
+        <input type="checkbox" class="cb"><span>진료한 원장님</span><div class="rowx"><button class="btn chip">김원장</button></div>
+      </div>
+    </section>
+    <section>
+      <h3>학습할 문장</h3>
+      <div class="small">바꿈 · 처방 LA358</div>
+      <div class="area"><span class="lit">Rt</span> <span class="lit">L4,5</span> 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div>
+      <div class="rowx"><button class="btn sm">{좌우}</button><button class="btn sm">{레벨}</button><button class="btn sm">{부위}</button><span class="small">환자마다 다른 칸은 단추로 바꿔 두세요. 다음 진료의 값이 들어가요.</span></div>
+      <div class="band warn" style="flex-wrap:wrap">‘Rt’가 글자 그대로 있어요. 다른 환자에게도 ‘Rt’로 나와요. <button class="btn sm">{좌우}로 바꾸기</button></div>
+      <div class="band warn" style="flex-wrap:wrap">‘L4,5’가 글자 그대로 있어요. 다른 환자에게도 ‘L4,5’로 나와요. <button class="btn sm">{레벨}로 바꾸기</button></div>
+      <div class="small">더함 · 처방 LA358</div>
+      <div class="area">시술 후 30분 관찰함</div>
+      <div class="small">바꾼 뒤 모양: <span class="tok">{좌우}</span> <span class="tok">{레벨}</span> 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div>
+    </section>
+    <footer><span class="small" style="margin-right:auto">조건을 다 끄면 ‘조건을 하나 이상 골라 주세요.’가 나오고 [저장]이 막혀요.</span><button class="btn">취소</button><button class="btn pri">저장</button></footer>
+  </div></div>
+</div>
+
+<!-- ───────── why ───────── -->
+<div class="state" data-s="why"><div class="page">
+  <div class="steps"><span><b>1</b>날짜 고르기</span><span><b>2</b>점검 결과</span><span class="on"><b>3</b>메모 확인</span></div>
+  <div class="grid2" style="grid-template-columns: 1fr 1fr">
+    <div class="box"><div class="lbl">우리 메모 · 정시내 · 11/26 (수)</div>
+      <div class="mline">요추 추간판 탈출증으로</div>
+      <div class="mline">Rt L4,5 내측지 신경차단술(MBB) 시행, C-arm 유도 하</div>
+      <div class="mline">시술 후 30분 관찰함</div>
+      <div class="mline">Lt knee IA 시행 하이알 1A</div>
+      <div class="mline">경과 관찰 중</div>
+    </div>
+    <div class="card" style="display:grid;gap:10px">
+      <h3>이 메모가 이렇게 나온 까닭</h3>
+      <table class="tbl">
+        <tr><th style="width:42%">줄</th><th>출처</th></tr>
+        <tr><td>요추 추간판 탈출증으로</td><td><a href="#" class="btn text">병원 문구 › 사유 문장 › 진단 문장</a><div class="small">차트: LBP r/o HIVD L4-5</div></td></tr>
+        <tr><td>Rt L4,5 내측지 신경차단술(MBB) 시행, C-arm 유도 하</td><td><a href="#" class="btn text">학습: LA358 · 허리</a><div class="small">처방 LA358 · 차트: MBB L4,5 (C-arm)</div></td></tr>
+        <tr><td>시술 후 30분 관찰함</td><td><a href="#" class="btn text">학습: LA358 · 허리</a><div class="small">처방 LA358</div></td></tr>
+        <tr><td>Lt knee IA 시행 하이알 1A</td><td><a href="#" class="btn text">병원 문구 › 시술별 문구와 약 › IA 문장</a><div class="small">처방 KK090 · 차트: Lt knee IA 하이알</div></td></tr>
+        <tr><td>경과 관찰 중</td><td class="small">출처 모름</td></tr>
+      </table>
+      <div class="small">출처를 누르면 그 설정으로 가요.</div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ───────── first ───────── -->
+<div class="state" data-s="first"><div class="page">
+  <div class="rowx"><h2>처음 학습</h2><span class="sp"></span><button class="btn">그만</button></div>
+  <p class="small" style="margin:0">자주 나온 진료부터 하나씩 봐요. 맞으면 [맞아요], 다르면 [고치기]로 고쳐 학습해요. 언제든 [그만]하고 나중에 이어서 할 수 있어요.</p>
+  <div style="display:grid;gap:6px;max-width:640px"><div class="bar"><i style="width:63%"></i></div><span class="small" style="color:var(--ink-2)">확인한 종류가 불러온 진료의 63%예요 (4 / 23 종류)</span></div>
+  <div class="card" style="display:grid;gap:12px">
+    <h3>LA358 + KK062 · 허리, 손목 · 진료 37건</h3>
+    <div class="grid2" style="grid-template-columns: 1fr 1fr 1.2fr">
+      <div class="box"><div class="lbl">차트</div>LBP r/o HIVD L4-5<br>MBB L4,5 (C-arm)<br>Rt wrist TS 트리암 10</div>
+      <div class="box"><div class="lbl">처방</div>LA358 후지내측지신경차단술 2<br>KK062 건초내주사 1<br>트리암시놀론 1</div>
+      <div class="box"><div class="lbl">지금 메모</div>요추 추간판 탈출증 및 우측 손목 건초염으로<br>Rt L4,5 MBB 시행 (C-arm guide 하에)<br>Rt wrist 건초내주사 시행 트리암시놀론 10mg</div>
+    </div>
+    <div class="rowx"><button class="btn pri">맞아요</button><button class="btn">고치기</button><button class="btn">건너뛰기</button></div>
+  </div>
+  <div class="band blue">처음 학습은 한 달쯤 불러온 진료로 하면 좋아요. 지금 불러온 기간이 짧아요. <span class="sp"></span><button class="btn sm pri">지난 30일 불러오기</button></div>
+  <p class="cap">위 파란 띠는 불러온 기간이 7일보다 짧을 때만 나와요(예로 함께 그림). 종류를 다 보면 ‘불러온 진료의 종류를 다 봤어요.’</p>
+</div></div>
+
+<!-- ───────── list ───────── -->
+<div class="state" data-s="list"><div class="page">
+  <h2>설정 · 병원 문구</h2>
+  <div class="tabs"><span>기본</span><span>시술별 문구와 약</span><span>처방코드</span><span>표기 규칙</span><span>사유 문장</span><span>차트 줄임말</span><span>메모 시험</span><span class="on">학습</span></div>
+  <table class="dt">
+    <tr><th>이름</th><th>할 일</th><th>조건</th><th>문장</th><th>남은 확인</th><th>만든 날</th><th></th></tr>
+    <tr><td>LA358 · 허리</td><td>줄 바꿈</td><td>처방 LA358 · 부위 허리</td><td><span class="tok">{좌우}</span> <span class="tok">{레벨}</span> 내측지 신경차단술(MBB) 시행, C-arm 유도 하</td><td>2</td><td>11/28</td><td class="rowx"><span class="toggle on"><i></i>켜짐</span><button class="btn sm">고치기</button><button class="btn sm">지우기</button></td></tr>
+    <tr><td>LA358 · 허리</td><td>줄 더함</td><td>처방 LA358 · 부위 허리</td><td>시술 후 30분 관찰함</td><td>0</td><td>11/28</td><td class="rowx"><span class="toggle on"><i></i>켜짐</span><button class="btn sm">고치기</button><button class="btn sm">지우기</button></td></tr>
+    <tr><td>KK062 · 손목 (C-arm)</td><td>줄 뺌</td><td>처방 KK062 · 부위 손목 · 차트 말 ‘C-arm’</td><td class="small">(빼는 줄)</td><td>0</td><td>11/27</td><td class="rowx"><span class="toggle"><i></i>꺼짐</span><button class="btn sm">고치기</button><button class="btn sm">지우기</button></td></tr>
+  </table>
+  <div class="grid2">
+    <div class="card" style="display:grid;gap:6px"><div class="small" style="font-weight:600">학습이 없을 때</div><span>아직 학습이 없어요. 청구 메모를 고친 뒤 [학습하기]를 누르거나, 청구 화면에서 [처음 학습]을 해 보세요.</span></div>
+    <div class="card" style="display:grid;gap:6px"><div class="small" style="font-weight:600">‘시술별 문구와 약’ 탭 새 칸</div><b style="color:var(--ink);font-size:13px">건초내주사로 알아볼 차트 말</b><input class="input" value="건초, tendon sheath, trigger finger, 방아쇠, quervain, tenosyn, TS, STI, TSI"><span class="small">차트 줄에 이 말이 있으면 건초내주사 부위로 봐요. 쉼표로 나눠 적어요.</span></div>
+  </div>
+  <div class="card" style="display:grid;gap:8px;max-width:420px"><b style="color:var(--ink)">‘LA358 · 허리’ 학습을 지울까요?</b><div class="rowx"><button class="btn" style="border-color:var(--negative);color:var(--negative)">지우기</button><button class="btn">취소</button></div></div>
+</div></div>
+
+<!-- ───────── dates ───────── -->
+<div class="state" data-s="dates"><div class="page">
+  <div class="steps"><span class="on"><b>1</b>날짜 고르기</span><span><b>2</b>점검 결과</span><span><b>3</b>메모 확인</span></div>
+  <div style="display:grid;grid-template-columns: 1fr 340px;gap:16px">
+    <div class="card" style="padding:0">
+      <div class="band blue" style="border-radius:var(--r-float) var(--r-float) 0 0;flex-wrap:wrap">고른 기간에서 아직 입력 안 된 날 3일 <span class="tag warn">오늘도 들어 있어요. 오늘 진료가 더 있을 수 있어요.</span><span class="sp"></span><button class="btn sm pri">고른 날 완료로 저장</button></div>
+      <table class="dt">
+        <tr><th></th><th>날짜</th><th>진료</th><th>메모 필요</th><th>남음</th><th>상태</th><th></th></tr>
+        <tr class="inp"><td><input type="checkbox" class="cb" checked></td><td>11/26 (수)</td><td>84</td><td>31</td><td>12</td><td>진행중</td><td><button class="btn sm">이 날만</button></td></tr>
+        <tr class="inp"><td><input type="checkbox" class="cb" checked></td><td>11/27 (목)</td><td>79</td><td>28</td><td>28</td><td>입력 전</td><td><button class="btn sm">이 날만</button></td></tr>
+        <tr class="inp"><td><input type="checkbox" class="cb" checked></td><td>11/28 (금)</td><td>41</td><td>15</td><td>15</td><td>입력 전</td><td><button class="btn sm">이 날만</button></td></tr>
+        <tr><td colspan="7" class="small" style="background:var(--canvas)">입력이 끝난 날짜</td></tr>
+        <tr><td><input type="checkbox" class="cb"></td><td>11/25 (화)</td><td>88</td><td>33</td><td>0</td><td>완료</td><td><button class="btn sm">이 날만</button></td></tr>
+        <tr><td><input type="checkbox" class="cb"></td><td>11/24 (월)</td><td>95</td><td>36</td><td>0</td><td>완료</td><td><button class="btn sm">이 날만</button></td></tr>
+      </table>
+    </div>
+    <div class="card" style="display:grid;gap:10px;align-content:start">
+      <h3>불러올 기간</h3>
+      <div class="rowx"><input class="input" value="2026-09-02" style="width:130px"> ~ <input class="input" value="2026-09-02" style="width:130px"></div>
+      <div class="band warn" style="padding:6px 10px">목록에 없는 날짜예요. [자료 불러오기]를 누르면 보여요.</div>
+      <button class="btn pri">자료 불러오기</button>
+      <p class="cap">[이 날만]을 누르면 시작·끝이 그 날 하나가 돼요. 목록 밖 날을 직접 치면 ‘진료한 날 0일’ 대신 위 글이 나와요.</p>
+    </div>
+  </div>
+</div></div>
+
+<!-- ───────── default ───────── -->
+<div class="state" data-s="default"><div class="page">
+  <div class="steps"><span><b>1</b>날짜 고르기</span><span><b>2</b>점검 결과</span><span class="on"><b>3</b>메모 확인</span></div>
+  <div class="band blue">아직 우리 병원 문구가 없어 기본 문구로 만들었어요. 처음 학습을 하면 우리 병원 메모 모양에 맞춰져요. <span class="sp"></span><button class="btn sm pri">처음 학습</button><button class="btn sm">병원 문구 설정</button></div>
+  <div class="toolbar"><span><b style="color:var(--ink)">11/24 (월) – 11/27 (목)</b> · 메모 필요 30명</span><span class="sp"></span><button class="btn">처음 학습</button><button class="btn go">비트에 입력 (30명)</button></div>
+  <div class="card small">(메모 두 칸은 지금과 같아요. 잠김 카드 대신 기본 문구로 만든 메모가 보여요.)</div>
+</div></div>
+
+<!-- ───────── connect ───────── -->
+<div class="state" data-s="connect"><div class="page">
+  <div class="band warn">청구 점검을 하려면 이 PC 연결을 먼저 마쳐야 해요. (도우미 연결이 끊겼어요)</div>
+  <h2>설정 · 비트 PC 연결</h2>
+  <div class="grid2">
+    <div class="card" style="display:grid;gap:8px"><h3>1. 크롬 확장</h3><span class="small">확장을 설치했으면 이 화면을 새로 고쳐야 알아봐요.</span><div class="rowx"><button class="btn">확장 내려받기</button><button class="btn pri">이 화면 새로 고침</button></div></div>
+    <div class="card" style="display:grid;gap:8px"><h3>청구 탭을 열자마자</h3><span class="small" style="color:var(--ink-2)">청구</span><span class="small">이 PC 연결을 확인하는 중…</span></div>
+    <div class="card" style="display:grid;gap:8px"><h3>저장 파일의 병원이 다를 때</h3><span>이 PC에 저장된 자료가 지금 등록한 병원(요양기관기호)과 달라요. 병원이 바뀌었으면 이 PC를 다시 등록해 주세요.</span><div class="rowx"><button class="btn pri">이 PC 다시 등록</button></div></div>
+    <div class="card" style="display:grid;gap:8px;grid-column:1 / -1;max-width:560px;background:#F0F0F0;border-color:#9CA3AF"><h3>도우미 등록 확인 창 (0.15.0, 병원이 바뀐 PC)</h3><span style="font-size:13px">이 병원으로 다시 등록할까요?</span><span class="small">(지금 등록 · 새로 등록 병원 글은 지금 그대로)</span><span style="font-size:13px">기관기호가 달라 전 병원의 작업은 읽지 않습니다.</span><span style="font-size:13px">전에 쓰던 병원의 저장 파일 6개는 지우지 않고 따로 보관해요.</span><div class="rowx" style="justify-content:flex-end"><button class="btn">확인</button><button class="btn">취소</button></div></div>
+    <div class="err"><b>비트 연결을 다른 창에서 쓰고 있어요</b><span>지금 열린 다른 창: ‘수납일지’ · ‘통계’</span><span class="small">(위 줄 아래는 지금 안내 글 그대로)</span><span class="code">E-BRIDGE-BUSY</span></div>
+  </div>
+</div></div>
+
+<!-- ───────── errors ───────── -->
+<div class="state" data-s="errors"><div class="page">
+  <div class="steps"><span><b>1</b>날짜 고르기</span><span><b>2</b>점검 결과</span><span class="on"><b>3</b>메모 확인</span></div>
+  <div class="band warn">이 PC에 저장된 2026년 11월 고친 메모·완료 표시를 읽지 못해 빈 채로 시작했어요. 이 달 메모는 다시 확인해 주세요.</div>
+  <div class="err"><b>도우미가 일하는 중에 멈췄어요</b><span>[다시 불러오기]를 눌러 주세요. 또 멈추면 이 번호를 알려 주세요.</span><span class="code">E-HELPER-STOPPED</span><div class="rowx"><button class="btn pri">다시 불러오기</button><button class="btn">비트 PC 연결 확인</button></div></div>
+  <div class="card" style="display:grid;gap:8px"><h3>입력 결과</h3><div class="rowx"><span class="tag blue">들어감 16</span><span class="tag gray">건너뜀 2</span><span class="sp"></span><button class="btn">다시 하기</button><button class="btn pri">날짜 목록으로</button></div></div>
+  <div class="grid2">
+    <div class="err"><b>학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요</b><span>그 글을 지우고 다시 저장해 주세요.</span><span class="code">E-LEARN-PERSONAL</span></div>
+    <div class="err"><b>학습을 저장하지 못했어요</b><span>잠시 뒤 다시 저장해 주세요.</span><span class="code">E-LEARN-SAVE</span></div>
+  </div>
+  <div class="band ok">학습했어요. 처음 3번은 ‘확인 필요’로 보여 드려요.</div>
+</div></div>
+
+</div></div>
+<script>
+const states = [['memo','메모 단계'],['learn','학습 창'],['why','왜 이렇게?'],['first','처음 학습'],['list','학습 목록'],['dates','날짜 목록'],['default','문구 없는 병원'],['connect','연결 길'],['errors','오류·알림']]
+const cur = new URLSearchParams(location.search).get('s') || 'memo'
+const nav = document.getElementById('nav')
+for (const [k, label] of states) { const a = document.createElement('a'); a.href = '?s=' + k; a.textContent = label; if (k === cur) a.setAttribute('aria-current', 'true'); nav.appendChild(a) }
+for (const el of document.querySelectorAll('.state')) el.classList.toggle('on', el.dataset.s === cur)
+</script>
+</body>
+</html>
