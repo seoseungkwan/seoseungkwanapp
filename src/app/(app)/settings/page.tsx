@@ -10,6 +10,6 @@ export const metadata: Metadata = { title: '설정' }
 
 export const dynamic = 'force-dynamic'
 
-export default async function SettingsRoute({ searchParams }: { searchParams?: Promise<SettingsSearch> } = {}) {
+export default async function SettingsRoute({ searchParams }: { searchParams?: Promise<SettingsSearch> }) {
   return <SettingsPage open={phraseOpenOf((await searchParams) ?? {})} />
 }

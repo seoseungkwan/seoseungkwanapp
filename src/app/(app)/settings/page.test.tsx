@@ -184,6 +184,10 @@ describe('AC-9306.2 주소로 병원 문구 탭·칸 열기', () => {
     expect((await route({ ptab: 'learn', learn: 'l0000abcd' })).props.open).toEqual({ tab: 'learn', learn: 'l0000abcd' })
   })
 
+  it('AC-9306.2: 페이지 함수는 props를 꼭 받는다(기본값 없음 — Next 빌드의 PageProps 검사가 undefined를 받지 않는다)', () => {
+    expect(SettingsRoute.length).toBe(1)
+  })
+
   it('AC-9306.2: 탭은 병원 문구 탭 키만 받는다(모르는 키·여럿·물려받은 이름이면 null)', () => {
     expect(phraseOpenOf({})).toBeNull()
     for (const tab of ['basic', 'proc', 'codes', 'rules', 'reason', 'words', 'try', 'learn']) expect(phraseOpenOf({ ptab: tab }), tab).toEqual({ tab })
