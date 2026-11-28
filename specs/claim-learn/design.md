@@ -168,9 +168,37 @@ export function explainLines(text: string, used: { id; name; line }[], visit: { 
   - 좌우·손가락 글은 지금 `siteOf` 규칙 그대로 부위마다 붙인다.
 - `MemoVisit`가 `dx`를 들고 있게 `prepareVisit`에서 넘긴다(없으면 더함). 지금 골든 시험 가운데 건초 한 부위 사례는 그대로, 바뀌는 사례는 tasks.md에 적는다.
 
+### 9-1. 모든 주사·시술 부위 (REQ-9319)
+
+- 9절 건초내주사 규칙을 부위가 들어가는 주사·시술 줄 모두로 넓힌다. `siteOf`를 부르는 자리(IA 줄 둘, `{부위}`를 쓰는 noteLines 줄, KK062 줄)는 `pickSites(v, rule, qty)`를 부른다.
+
+```ts
+type SiteRule = { code: string; words: RegExp | null; dx: RegExp | null; only: string[] | null; finger: boolean }
+function pickSites(v: MemoVisit, rule: SiteRule, qty: number): { text: string; choices: string[] } // text = 메모에 쓸 부위 글(모자라면 [부위 확인] 섞임), choices = 빈칸 후보
+// 엔진이 돌려주는 것에 더함: siteChoices(visit): { code: string; choices: string[] }[]  — 마지막 fullText에서 빈칸이 난 줄의 후보. TASK-3의 tsHoleChoices는 이것의 KK062 몫으로 남긴다
+```
+
+| 시술 | words (1) | dx (2) | only |
+|---|---|---|---|
+| KK062 건초내주사 | `TPL.tsWords`(9절) | `^M65` | 없음, 손가락 켬 |
+| KK090 관절강 주사 | 지금 `IA_WORD` | 없음 | 지금 `IA_REGIONS` |
+| C8140010 천자 | 지금 천자 말(`aspir·asp·천자·흡인·tapping`) | 없음 | 없음 |
+| 그 밖 `{부위}` 시술 줄 | 없음 | 없음 | 없음 |
+
+- 차례: (1) words가 든 차트 줄 (2) 그날 상병 `dx[].c`가 dx와 맞는 줄의 이름에서 읽은 부위 (3) 그날 차트 진단·시술 줄(`k`가 dx·proc) (4) 그날 차트 모든 줄. 부위가 하나라도 나온 **첫 차례만** 쓴다.
+- 부위 하나 = (좌우, 부위). both는 둘, 좌우 모름은 하나로 센다. qty = 그 코드 처방 수량(`rxQty`·`rxAdd`), 없거나 0이면 1, 내림 정수.
+- 부위 수 ≤ qty면 모두 쓴다(좌우·손가락 글은 지금 `siteOf` 규칙). 부위 수 > qty면 남은 자리는 `[부위 확인]`, choices = 그 차례 부위들. 어느 차례에도 없으면 `[부위 확인]`, choices = [].
+- IA 좌우(`iaSide`)·연골주사 줄·KLG 줄은 바꾸지 않는다.
+- 골든 시험: 부위가 하나인 사례는 그대로(AC-9319.5). 두 부위 이상을 잇던 기대만 바꾸고, 바꾼 시험 이름을 tdd 기록에 적는다.
+- **정확도 맞춰 보기**(사용자 문답, 배포 전 한 번, 저장소 밖):
+  - 이 PC 비트 자료에서 지난 3개월 진료 가운데 KK062·KK090·`{부위}` 시술이 있고 비트 메모가 있는 진료를 읽는다.
+  - 바꾸기 전·후 엔진 부위를 비트 메모의 부위 글과 견주어 '같음·다름·빈칸' 건수와 %만 낸다.
+  - 진료 이름·차트번호·날짜·글은 화면이나 파일에 내지 않는다. 읽기는 `ssk-bit-db-probe` 규칙(무거운 SQL 금지)을 따른다.
+  - '다름'이 많은 종류는 사용자에게 알리고, 규칙을 고칠지 묻는다.
+
 ## 10. 빈칸·하루 두 번·기본 문구 (Worker·메모 화면)
 
-- 빈칸: 메모 글의 `\[[^\]]*확인\]` 개수 = `holes`. 줄 앞 후보: `[좌우 확인]` → 병원 좌우 표기 셋, `[부위 확인]` → 그 진료 부위(건초는 9절 후보). 목록 순서: `memoSplit.ts` `allGroups`에서 빈칸 있는 사람(지금 'mark' 묶음)을 맨 앞으로(AC-9307.1). 후보 단추 → 그 자리만 바꾼 글을 지금 `editMemo` 길로 보낸다.
+- 빈칸: 메모 글의 `\[[^\]]*확인\]` 개수 = `holes`. 줄 앞 후보: `[좌우 확인]` → 병원 좌우 표기 셋, `[부위 확인]` → 엔진 `siteChoices`(9-1절)의 그 줄 후보, 없으면 그 진료 부위. 후보 싣기는 TASK-6이 `jobs.ts`에서 한다. 목록 순서: `memoSplit.ts` `allGroups`에서 빈칸 있는 사람(지금 'mark' 묶음)을 맨 앞으로(AC-9307.1). 후보 단추 → 그 자리만 바꾼 글을 지금 `editMemo` 길로 보낸다.
 - 하루 두 번: Worker가 같은 차트·같은 날 진료 수를 `sameDay`로 싣는다. 2 이상이면 표시만(AC-9309.1).
 - 기본 문구: `jobs.ts:172` 설정 없음(줄 없음)일 때 `E-MEMO-NO-SETTINGS` 대신 `neutralPhrases()`로 엔진을 만들고 `defaultPhrases: true`를 싣는다. 설정이 **있는데 검사 실패**면 지금처럼 `E-MEMO-NO-SETTINGS`. 띠는 메모 단계 위.
 - 복사 뒤 건수: `memoCopied`로 완료가 바뀌면 `saveMonth` 뒤 `postDayCounts()`(AC-9312.1).
