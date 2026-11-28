@@ -39,12 +39,33 @@ const setOf = (list: readonly unknown[]) => list.map(text).sort()
 /** 바뀐 규칙 판의 (changeId, from) 정렬 목록. 칸이 없으면 빈 목록 */
 const updatesOf = (list: readonly RuleUpdate[] | undefined) => (Array.isArray(list) ? list : []).map((u) => `${u?.changeId}|${u?.from}`).sort()
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * 견주는 병원 문구: 학습의 남은 확인(learned[].left)과 처음 학습 종류(learnKinds)는 뺀다(specs/claim-learn AC-9302.7).
+ * 확인 수가 줄거나 처음 학습 종류가 늘 때마다 띠가 뜨지 않게. 학습 문장·조건·켜짐 같은 다른 칸은 그대로 견준다. 받은 값은 고치지 않는다
+ */
+function phrasesView(phrases: object | null): unknown {
+  if (!isRecord(phrases)) return phrases
+  const copy: Record<string, unknown> = { ...phrases }
+  delete copy.learnKinds
+  if (Array.isArray(copy.learned)) {
+    copy.learned = copy.learned.map((row: unknown) => {
+      if (!isRecord(row)) return row
+      const rest: Record<string, unknown> = { ...row }
+      delete rest.left
+      return rest
+    })
+  }
+  return copy
+}
+
 const view = (bundle: SettingsBundle) =>
   JSON.stringify([
     setOf(bundle.rules.off),
     setOf(bundle.rules.on),
     setOf(bundle.rules.grade),
-    text(bundle.phrases),
+    text(phrasesView(bundle.phrases)),
     text(bundle.dxLinks),
     setOf(bundle.templates),
     updatesOf(bundle.ruleUpdates),

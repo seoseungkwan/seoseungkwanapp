@@ -394,6 +394,95 @@ function validateChartWords(value: unknown): PhraseError[] {
   return errors
 }
 
+// ── 학습(claim-learn design.md 2절 '학습 모양'). 원본에 없는 칸이다 ─────────────
+
+/** 학습은 300개까지(AC-9304.3, notes '한도'의 {N}) */
+export const LEARN_MAX = 300
+/** 처음 학습에서 확인한 종류 열쇠는 2000개까지, 열쇠마다 120자까지 */
+export const LEARN_KINDS_MAX = 2000
+export const LEARN_KIND_KEY_MAX = 120
+/** 설정 전체 글자 한도(원본 validate의 200만 자와 같은 수) */
+export const PHRASES_MAX_CHARS = 2000000
+
+const LEARN_KEYS = ['id', 'name', 'kind', 'from', 'to', 'after', 'when', 'on', 'left', 'made']
+const WHEN_KEYS = ['codes', 'regions', 'chartWords', 'withCodes', 'doctors']
+const LEARN_KINDS = ['replace', 'add', 'remove']
+/** 한 줄 글: 줄바꿈·탭·제어문자 없이 max자까지 */
+const oneLine = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max && !hasControl(value) && !/[\n\r\t]/.test(value)
+const ymd = (value: unknown) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === value
+}
+
+function validateWhen(value: unknown, path: string): PhraseError[] {
+  if (!plain(value) || Object.keys(value).length !== WHEN_KEYS.length || Object.keys(value).some((key) => !WHEN_KEYS.includes(key))) return [{ path, message: '학습 조건 형식을 확인해 주세요.' }]
+  const errors: PhraseError[] = []
+  const list = (key: string, ok: (item: unknown) => boolean, message: string, max = Infinity) => {
+    const items = value[key]
+    if (!Array.isArray(items) || items.length > max || !items.every(ok)) errors.push({ path: `${path}.${key}`, message })
+  }
+  const upperCode = (item: unknown) => validCode(item) && item === item.toUpperCase()
+  list('codes', upperCode, '처방코드 형식을 확인해 주세요.')
+  list('regions', (item) => regions.includes(item as string), '지원하는 부위를 골라 주세요.')
+  list('chartWords', (item) => oneLine(item, 20) && item.trim() !== '', '차트에 쓴 말은 5개까지, 말마다 1~20자로 적어 주세요.', 5)
+  list('withCodes', upperCode, '처방코드 형식을 확인해 주세요.')
+  list('doctors', validCode, '진료의 코드 형식을 확인해 주세요.')
+  if (!errors.length && WHEN_KEYS.every((key) => !(value[key] as unknown[]).length)) errors.push({ path, message: '학습 조건을 하나 이상 골라 주세요.' })
+  return errors
+}
+
+/** 학습 칸 검사: 300개까지, 칸은 학습 모양뿐(환자 값 칸이 끼면 거절, AC-9316.2), 번호 모양·겹침, 할 일마다 빈 칸 규칙, 남은 확인 0~3 정수. 칸이 없으면 지난다 */
+function validateLearned(value: unknown): PhraseError[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return [{ path: 'learned', message: '학습 목록 형식을 확인해 주세요.' }]
+  if (value.length > LEARN_MAX) return [{ path: 'learned', message: `학습은 ${LEARN_MAX}개까지 둘 수 있습니다.` }]
+  const errors: PhraseError[] = []
+  const seen = new Set<string>()
+  value.forEach((row: unknown, index: number) => {
+    const path = `learned.${index}`
+    const err = (key: string, message: string) => errors.push({ path: `${path}.${key}`, message })
+    if (!plain(row) || Object.keys(row).length !== LEARN_KEYS.length || Object.keys(row).some((key) => !LEARN_KEYS.includes(key))) {
+      errors.push({ path, message: '학습 형식을 확인해 주세요.' })
+      return
+    }
+    if (typeof row.id !== 'string' || !/^l[0-9a-f]{8}$/.test(row.id)) err('id', '학습 번호 형식을 확인해 주세요.')
+    else if (seen.has(row.id)) err('id', '같은 학습 번호가 이미 있습니다.')
+    else seen.add(row.id)
+    if (!oneLine(row.name, 40) || !row.name.trim()) err('name', '학습 이름은 1~40자로 적어 주세요.')
+    if (!LEARN_KINDS.includes(row.kind as string)) err('kind', '학습 할 일을 골라 주세요.')
+    else {
+      const needs: Record<string, [boolean, boolean]> = {
+        // 칸: [쓰는 칸인가, 꼭 있어야 하나]
+        from: [row.kind !== 'add', true],
+        to: [row.kind !== 'remove', true],
+        after: [row.kind === 'add', false],
+      }
+      for (const [key, [used, required]] of Object.entries(needs)) {
+        const cell = row[key]
+        if (!oneLine(cell, 300)) err(key, '학습 문장은 줄바꿈 없이 300자까지 적어 주세요.')
+        else if (!used && cell !== '') err(key, '이 학습 할 일에는 쓰지 않는 칸입니다.')
+        else if (used && required && !cell.trim()) err(key, '학습 문장을 적어 주세요.')
+      }
+    }
+    errors.push(...validateWhen(row.when, `${path}.when`))
+    if (typeof row.on !== 'boolean') err('on', '켜기·끄기 값을 확인해 주세요.')
+    if (!Number.isInteger(row.left) || (row.left as number) < 0 || (row.left as number) > 3) err('left', '남은 확인은 0~3 사이의 정수로 적어 주세요.')
+    if (!ymd(row.made)) err('made', '만든 날 형식을 확인해 주세요.')
+  })
+  return errors
+}
+
+/** 처음 학습 확인한 종류 칸 검사: 2000개까지, 열쇠마다 1~120자 한 줄 글. 칸이 없으면 지난다 */
+function validateLearnKinds(value: unknown): PhraseError[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return [{ path: 'learnKinds', message: '처음 학습 종류 형식을 확인해 주세요.' }]
+  if (value.length > LEARN_KINDS_MAX) return [{ path: 'learnKinds', message: `처음 학습 종류는 ${LEARN_KINDS_MAX}개까지입니다.` }]
+  return value.flatMap((key: unknown, index: number) =>
+    oneLine(key, LEARN_KIND_KEY_MAX) && key !== '' ? [] : [{ path: `learnKinds.${index}`, message: `처음 학습 종류 열쇠는 1~${LEARN_KIND_KEY_MAX}자로 적어 주세요.` }],
+  )
+}
+
 /**
  * 메모에 쓸 수 있는 문구 값인지 본다. 옛 좌우 규칙은 먼저 2로 바꾼다(원본 apply·preview 흐름). 틀리면 어느 칸인지 돌려준다.
  * 줄이 없거나 빈 {}이거나 약 칸이 없으면 ok가 거짓이고, 부르는 쪽은 메모를 만들지 않는다(AC-014.8)
@@ -405,10 +494,11 @@ export function validatePhrases(input: unknown): PhraseCheck {
   } catch (error) {
     return { ok: false, errors: [{ path: '설정', message: (error as Error).message }] }
   }
-  const { procedureDrugs, memoRules, chartWords, ...original } = migrated as Rec
+  const { procedureDrugs, memoRules, chartWords, learned, learnKinds, ...original } = migrated as Rec
   const errors = validateOriginal(original)
   if (errors.length === 1 && errors[0].path === '설정' && errors[0].message === '설정 형식을 확인해 주세요.') return { ok: false, errors }
   errors.push(...validateDrugs(procedureDrugs), ...validateMemoRules(memoRules), ...validateChartWords(chartWords))
+  errors.push(...validateLearned(learned), ...validateLearnKinds(learnKinds))
   return errors.length ? { ok: false, errors } : { ok: true, value: migrated as Phrases }
 }
 

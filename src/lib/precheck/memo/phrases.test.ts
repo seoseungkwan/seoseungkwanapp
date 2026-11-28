@@ -311,3 +311,147 @@ describe('AC-6612.1 AC-6612.2 chartWords 검사', () => {
     expect(diffPhrases(ourClinicPhrases(), withWords([]))).toEqual([])
   })
 })
+
+// ── claim-learn TASK-1: 학습(learned)·처음 학습 종류(learnKinds) 검사(specs/claim-learn design.md 2절) ─────────────
+
+const learnRow = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: 'l0a1b2c3d',
+  name: 'LA358 · 허리',
+  kind: 'replace',
+  from: '{좌우} {레벨} MBB 시행 (C-arm guide 하에)',
+  to: '{좌우} {레벨} MBB 시행함',
+  after: '',
+  when: { codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [] },
+  on: true,
+  left: 3,
+  made: '2026-11-28',
+  ...patch,
+})
+const learnWhen = (patch: Record<string, unknown>) => ({ codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [], ...patch })
+const withoutKey = (row: Record<string, unknown>, key: string) => Object.fromEntries(Object.entries(row).filter(([name]) => name !== key))
+const withLearned = (learned: unknown, extra: Record<string, unknown> = {}) => ({ ...ourClinicPhrases(), learned, ...extra }) as Phrases
+const learnIds = (n: number) => Array.from({ length: n }, (_, i) => learnRow({ id: `l${i.toString(16).padStart(8, '0')}` }))
+
+describe('AC-9301.5 AC-9316.2 learned 검사', () => {
+  it.each([
+    ['줄 바꿈', [learnRow()]],
+    ['줄 더함(앞 줄 틀 있음)', [learnRow({ kind: 'add', from: '', to: 'Sono guide 하에 시행', after: 'IA injection of - {좌우} {부위}' })]],
+    ['줄 더함(앞 줄 틀 없음)', [learnRow({ kind: 'add', from: '', to: 'Sono guide 하에 시행', after: '' })]],
+    ['줄 뺌', [learnRow({ kind: 'remove', to: '' })]],
+    ['조건 다섯 모두', [learnRow({ when: learnWhen({ chartWords: ['C-arm', '가'.repeat(20)], withCodes: ['KK090'], doctors: ['D01'] }) })]],
+    ['차트 말만', [learnRow({ when: learnWhen({ codes: [], regions: [], chartWords: ['C-arm'] }) })]],
+    ['꺼짐·남은 확인 0', [learnRow({ on: false, left: 0 })]],
+    ['300자 문장·40자 이름', [learnRow({ from: 'x'.repeat(300), to: 'y'.repeat(300), name: '이'.repeat(40) })]],
+    ['빈 목록', []],
+    ['300개', learnIds(300)],
+  ])('AC-9301.5: 받는 값: %s', (_name, rows) => {
+    const result = validatePhrases(withLearned(rows))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.learned).toEqual(rows)
+  })
+
+  it('AC-9301.5: 칸이 없어도 지난다', () => {
+    const result = validatePhrases(ourClinicPhrases())
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(Object.hasOwn(result.value, 'learned')).toBe(false)
+      expect(Object.hasOwn(result.value, 'learnKinds')).toBe(false)
+    }
+  })
+
+  it.each([
+    ['배열이 아님', {}, 'learned'],
+    ['null', null, 'learned'],
+    ['301개', learnIds(301), 'learned'],
+    ['줄이 글자', ['x'], 'learned.0'],
+    ['칸이 빠짐', [withoutKey(learnRow(), 'made')], 'learned.0'],
+    ['번호 모양(대문자)', [learnRow({ id: 'l0A1B2C3D' })], 'learned.0.id'],
+    ['번호 모양(7자)', [learnRow({ id: 'l0a1b2c3' })], 'learned.0.id'],
+    ['번호 모양(머리 글자)', [learnRow({ id: 'x0a1b2c3d' })], 'learned.0.id'],
+    ['번호 겹침', [learnRow(), learnRow({ name: '다른 이름' })], 'learned.1.id'],
+    ['빈 이름', [learnRow({ name: '' })], 'learned.0.name'],
+    ['빈칸 이름', [learnRow({ name: '   ' })], 'learned.0.name'],
+    ['41자 이름', [learnRow({ name: '이'.repeat(41) })], 'learned.0.name'],
+    ['모르는 할 일', [learnRow({ kind: 'move' })], 'learned.0.kind'],
+    ['줄 바꿈인데 틀 없음', [learnRow({ from: '' })], 'learned.0.from'],
+    ['줄 바꿈인데 문장 없음', [learnRow({ to: '' })], 'learned.0.to'],
+    ['줄 바꿈인데 앞 줄 틀', [learnRow({ after: 'x' })], 'learned.0.after'],
+    ['줄 뺌인데 문장 있음', [learnRow({ kind: 'remove' })], 'learned.0.to'],
+    ['줄 더함인데 틀 있음', [learnRow({ kind: 'add', after: '' })], 'learned.0.from'],
+    ['줄 더함 앞 줄 301자', [learnRow({ kind: 'add', from: '', after: 'x'.repeat(301) })], 'learned.0.after'],
+    ['301자 틀', [learnRow({ from: 'x'.repeat(301) })], 'learned.0.from'],
+    ['줄바꿈 든 문장', [learnRow({ to: 'a\nb' })], 'learned.0.to'],
+    ['제어 문자', [learnRow({ to: 'a\u0001b' })], 'learned.0.to'],
+    ['남은 확인 4', [learnRow({ left: 4 })], 'learned.0.left'],
+    ['남은 확인 -1', [learnRow({ left: -1 })], 'learned.0.left'],
+    ['남은 확인 1.5', [learnRow({ left: 1.5 })], 'learned.0.left'],
+    ['남은 확인 글자', [learnRow({ left: '1' })], 'learned.0.left'],
+    ['켜짐이 글자', [learnRow({ on: 'yes' })], 'learned.0.on'],
+    ['없는 달', [learnRow({ made: '2026-13-01' })], 'learned.0.made'],
+    ['없는 날', [learnRow({ made: '2026-02-30' })], 'learned.0.made'],
+    ['날짜 모양', [learnRow({ made: '2026/11/28' })], 'learned.0.made'],
+    ['조건이 배열', [learnRow({ when: [] })], 'learned.0.when'],
+    ['조건 칸 빠짐', [learnRow({ when: { codes: ['LA358'], regions: [], chartWords: [], withCodes: [] } })], 'learned.0.when'],
+    ['조건 모르는 칸', [learnRow({ when: learnWhen({ dx: ['M545'] }) })], 'learned.0.when'],
+    ['켠 조건 없음', [learnRow({ when: learnWhen({ codes: [], regions: [] }) })], 'learned.0.when'],
+    ['소문자 처방 코드', [learnRow({ when: learnWhen({ codes: ['la358'] }) })], 'learned.0.when.codes'],
+    ['코드가 배열 아님', [learnRow({ when: learnWhen({ codes: 'LA358' }) })], 'learned.0.when.codes'],
+    ['모르는 부위', [learnRow({ when: learnWhen({ regions: ['back'] }) })], 'learned.0.when.regions'],
+    ['차트 말 6개', [learnRow({ when: learnWhen({ chartWords: ['a', 'b', 'c', 'd', 'e', 'f'] }) })], 'learned.0.when.chartWords'],
+    ['빈 차트 말', [learnRow({ when: learnWhen({ chartWords: [''] }) })], 'learned.0.when.chartWords'],
+    ['21자 차트 말', [learnRow({ when: learnWhen({ chartWords: ['가'.repeat(21)] }) })], 'learned.0.when.chartWords'],
+    ['다른 시술 코드 모양', [learnRow({ when: learnWhen({ withCodes: ['KK 090!'] }) })], 'learned.0.when.withCodes'],
+    ['원장님 코드가 숫자', [learnRow({ when: learnWhen({ doctors: [1] }) })], 'learned.0.when.doctors'],
+  ])('AC-9301.5: 거절하는 값: %s', (_name, rows, path) => {
+    const result = validatePhrases(withLearned(rows))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.map((e) => e.path)).toContain(path)
+  })
+
+  it.each([
+    ['차트 원문', { chart: 'LBP 3일 전부터' }],
+    ['환자 이름', { patient: '홍길동' }],
+    ['차트번호', { chartNo: '12345' }],
+    ['진료 날짜', { date: '2026-11-28' }],
+  ])('AC-9316.2: 학습 모양 밖의 칸(%s)이 있으면 거절한다', (_name, extra) => {
+    const result = validatePhrases(withLearned([learnRow(extra)]))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.map((e) => e.path)).toContain('learned.0')
+  })
+
+  it('AC-9316.2: 위험한 칸 이름을 거절한다', () => {
+    const row: unknown = JSON.parse(JSON.stringify(learnRow()).replace('{"id"', '{"__proto__":{},"id"'))
+    expect(validatePhrases(withLearned([row])).ok).toBe(false)
+  })
+
+  it('AC-9301.5: learned가 있어도 원본 칸 검사 결과는 그대로다', () => {
+    const value = withLearned([learnRow()])
+    value.TPL.main = '{없는말}'
+    expect(validatePhrases(value)).toEqual({ ok: false, errors: [{ path: 'TPL.main', message: '지원하지 않는 항목 {없는말}입니다. 이 항목의 삽입 버튼을 사용해 주세요.' }] })
+  })
+})
+
+describe('AC-9304.3 learnKinds 검사', () => {
+  it.each([
+    ['종류 하나', ['LA358|lumbar']],
+    ['빈 목록', []],
+    ['2000개·120자', [...Array.from({ length: 1999 }, (_, i) => `K${i}|knee`), 'x'.repeat(120)]],
+  ])('AC-9304.3: 받는 값: %s', (_name, kinds) => {
+    const result = validatePhrases(withLearned([], { learnKinds: kinds }))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.learnKinds).toEqual(kinds)
+  })
+
+  it.each([
+    ['배열이 아님', 'LA358|lumbar', 'learnKinds'],
+    ['2001개', Array.from({ length: 2001 }, (_, i) => `K${i}|knee`), 'learnKinds'],
+    ['121자', ['x'.repeat(121)], 'learnKinds.0'],
+    ['빈 열쇠', [''], 'learnKinds.0'],
+    ['숫자', [1], 'learnKinds.0'],
+    ['줄바꿈', ['LA358\n|lumbar'], 'learnKinds.0'],
+  ])('AC-9304.3: 거절하는 값: %s', (_name, kinds, path) => {
+    const result = validatePhrases(withLearned([], { learnKinds: kinds }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.map((e) => e.path)).toContain(path)
+  })
+})

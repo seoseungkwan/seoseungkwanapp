@@ -104,8 +104,59 @@ export type MemoRules = {
 /** 차트 줄임말 한 줄(clinic-profile REQ-6612): 차트에 term으로 적으면 target으로 읽는다. 앞뒤 빈칸 없는 1~40자 */
 export type ChartWord = { term: string; target: string }
 
-/** 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 + 메모 규칙 + 차트 줄임말(100줄까지, 없으면 빈 표) */
-export type Phrases = { TPL: PhraseTemplates; CODEMAP: Record<string, MemoCode>; CODEMAP_DEL: string[]; procedureDrugs: ProcedureDrugs; memoRules?: MemoRules; chartWords?: ChartWord[] }
+/** 학습 할 일(claim-learn design.md 2절): 줄 바꿈 · 줄 더함 · 줄 뺌 */
+export type LearnKind = 'replace' | 'add' | 'remove'
+/** 학습을 쓸 조건. 칸이 비면 그 조건은 꺼짐이고, 켠 조건이 모두 맞을 때만 쓴다(AC-9302.3) */
+export type LearnWhen = {
+  /** 처방 코드(대문자) */
+  codes: string[]
+  /** 부위 키(Region: lumbar·knee…) */
+  regions: string[]
+  /** 사람이 칸에 쓴 차트 말. 0~5개, 말마다 1~20자 */
+  chartWords: string[]
+  /** 함께 한 다른 처방 코드(대문자) */
+  withCodes: string[]
+  /** 진료의 코드 */
+  doctors: string[]
+}
+/**
+ * 학습 하나(claim-learn design.md 2절 '학습 모양'). 환자 이름·차트번호·진료 날짜·차트 원문은 없다.
+ * from·after는 엔진 줄에서 그 진료 값을 {좌우}·{레벨}·{부위}로 바꾼 줄 틀이고, to는 새 문장 틀이다
+ */
+export type LearnRule = {
+  /** 'l' + 소문자 16진수 8자 */
+  id: string
+  /** 1~40자 */
+  name: string
+  kind: LearnKind
+  /** replace·remove: 줄 틀(1~300자). add: '' */
+  from: string
+  /** replace·add: 새 문장 틀(1~300자). remove: '' */
+  to: string
+  /** add만: 앞 줄 틀(0~300자). 그 밖은 '' */
+  after: string
+  when: LearnWhen
+  on: boolean
+  /** 남은 확인 0~3 */
+  left: number
+  /** 만든 날 YYYY-MM-DD(한국 날짜) */
+  made: string
+}
+
+/**
+ * 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 + 메모 규칙 + 차트 줄임말(100줄까지, 없으면 빈 표)
+ * + 학습(300개까지)과 처음 학습에서 확인한 종류 열쇠(2000개까지, 열쇠마다 120자까지, claim-learn design.md 2절)
+ */
+export type Phrases = {
+  TPL: PhraseTemplates
+  CODEMAP: Record<string, MemoCode>
+  CODEMAP_DEL: string[]
+  procedureDrugs: ProcedureDrugs
+  memoRules?: MemoRules
+  chartWords?: ChartWord[]
+  learned?: LearnRule[]
+  learnKinds?: string[]
+}
 
 export type PhraseError = { path: string; message: string }
 export type PhraseCheck = { ok: true; value: Phrases } | { ok: false; errors: PhraseError[] }
