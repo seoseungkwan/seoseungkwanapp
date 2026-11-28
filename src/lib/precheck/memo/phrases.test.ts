@@ -311,3 +311,48 @@ describe('AC-6612.1 AC-6612.2 chartWords 검사', () => {
     expect(diffPhrases(ourClinicPhrases(), withWords([]))).toEqual([])
   })
 })
+
+// ── claim-learn TASK-3: 건초내주사로 알아볼 차트 말(TPL.tsWords) 검사·비교 이름표(design.md 2·9절) ─────────────
+
+const withTsWords = (tsWords: unknown) => {
+  const value = ourClinicPhrases()
+  ;(value.TPL as Record<string, unknown>).tsWords = tsWords
+  return value
+}
+
+describe('AC-9308.4 TPL.tsWords 검사', () => {
+  it.each([
+    ['처음 말 + TSI', '건초, tendon sheath, trigger finger, 방아쇠, quervain, tenosyn, TS, STI, TSI'],
+    ['빈 글', ''],
+    ['500자', 'a'.repeat(500)],
+  ])('AC-9308.4: 받는 값: %s', (_name, words) => {
+    const result = validatePhrases(withTsWords(words))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.TPL.tsWords).toBe(words)
+  })
+
+  it('AC-9308.4: 칸이 없어도 지난다(없으면 지금 말)', () => {
+    const result = validatePhrases(ourClinicPhrases())
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(Object.hasOwn(result.value.TPL, 'tsWords')).toBe(false)
+  })
+
+  it.each([
+    ['501자', 'a'.repeat(501)],
+    ['숫자', 1],
+    ['배열', ['TS']],
+    ['제어 문자', 'TS\u0001'],
+  ])('AC-9308.4: 거절하는 값: %s', (_name, words) => {
+    expect(validatePhrases(withTsWords(words))).toEqual({ ok: false, errors: [{ path: 'TPL.tsWords', message: '건초내주사로 알아볼 차트 말은 쉼표로 나눠 500자까지 적어 주세요.' }] })
+  })
+
+  it('AC-9308.4: tsWords가 있어도 원본 칸 검사 결과는 그대로다', () => {
+    const value = withTsWords('TS, TSI')
+    value.TPL.main = '{없는말}'
+    expect(validatePhrases(value)).toEqual({ ok: false, errors: [{ path: 'TPL.main', message: '지원하지 않는 항목 {없는말}입니다. 이 항목의 삽입 버튼을 사용해 주세요.' }] })
+  })
+
+  it("AC-9308.4: diffPhrases는 '건초내주사로 알아볼 차트 말' 이름표로 보인다", () => {
+    expect(diffPhrases(ourClinicPhrases(), withTsWords('TS, TSI'))).toEqual([{ path: 'TPL.tsWords', label: '건초내주사로 알아볼 차트 말', before: '(없음)', after: 'TS, TSI' }])
+  })
+})

@@ -41,6 +41,24 @@ const LEVEL_NOTATION_SUFFIX = '(?![A-Za-z0-9.])'
 const text = (value: unknown) => String(value ?? '')
 const upper = (value: unknown) => String(value ?? '').toUpperCase()
 const codeEscape = (value: unknown) => text(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** 건초내주사로 알아볼 차트 말의 처음 값(TPL.tsWords가 비었을 때, claim-learn AC-9308.4). 설정 화면도 이 글을 보인다 */
+export const TS_WORDS_FALLBACK = '건초, tendon sheath, trigger finger, 방아쇠, quervain, tenosyn, TS, STI'
+/** 처음 말은 지금까지 쓰던 정규식 조각 그대로다(tenosyn은 tenosynovitis도 잡고, TS·STI는 낱말 경계) */
+const TS_WORD_SOURCE: Readonly<Record<string, string>> = { 건초: '건초', 'tendon sheath': 'tendon\\s*sheath', 'trigger finger': 'trigger\\s*finger', 방아쇠: '방아쇠', quervain: 'quervain', tenosyn: 'tenosyn', ts: '\\bTS\\b', sti: '\\bSTI\\b' }
+/** 건초내주사 말 정규식(design.md 9절): 칸의 말(쉼표로 나눔)마다 escape하고 영문으로 시작·끝나면 그 쪽은 낱말 경계. 칸이 비면 처음 말 */
+function tsWordPattern(words: unknown): RegExp {
+  const split = (value: string) => value.split(/[,，\n]/).map((word) => word.trim()).filter(Boolean)
+  const list = split(text(words))
+  const source = (word: string) =>
+    Object.hasOwn(TS_WORD_SOURCE, word.toLowerCase())
+      ? TS_WORD_SOURCE[word.toLowerCase()]
+      : `${/^[A-Za-z0-9]/.test(word) ? '(?<![A-Za-z0-9])' : ''}${codeEscape(word).replace(/\s+/g, '\\s*')}${/[A-Za-z0-9]$/.test(word) ? '(?![A-Za-z0-9])' : ''}`
+  return new RegExp((list.length ? list : split(TS_WORDS_FALLBACK)).map(source).join('|'), 'i')
+}
+const REGION_KEYS = new Set(REGION.map(([key]) => key))
+/** 차트 줄이 말하는 손가락(FINGER_RE 이름). 없으면 null */
+const fingerOf = (item: MemoItem) => FINGER_RE.find(([re]) => re.test(item.raw || item.t))?.[1] ?? null
 const sideTokens = (value: unknown) => [
   ...new Set((text(value).match(/\b(?:Rt|Lt|both|right|left)\b|우측|좌측|양측|양쪽/gi) || []).map((word) => (/^(?:rt|right|우측)$/i.test(word) ? 'Rt' : /^(?:lt|left|좌측)$/i.test(word) ? 'Lt' : 'both'))),
 ]
@@ -1097,29 +1115,81 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       }
     }
     if (!rgs.length && !fg) return ''
-    const sideFor = (rg: string | undefined) => {
-      const ls = pool.filter((i) => !rg || i.rg === rg).concat(items.filter((i) => i.rg === rg))
-      let sd: string | null | undefined = null
-      for (const i of pool.concat(items)) {
-        for (const sg of i.segs || []) {
-          if (rg && sg.rg && sg.rg !== rg) continue
-          if (kw && !kw.test(sg.t)) continue
-          if (sg.sd) {
-            sd = sg.sd
-            break
-          }
-        }
-        if (sd) break
-      }
-      if (!sd) {
-        const mixed = (i: MemoItem) => i.segs && new Set(i.segs.map((x) => x.sd).filter(Boolean)).size > 1
-        sd = ls.filter((i) => !mixed(i)).map((i) => i.sd).find(Boolean)
-      }
-      if (sd) return Object.hasOwn(SIDE_EN, sd) ? SIDE_EN[sd] : sd
-      return ''
-    }
+    const sideFor = (rg: string | undefined) => sideAt(pool, items, kw, rg)
     if (fg) return [sideFor(rgs[0] || 'hand'), fg].filter(Boolean).join(' ')
     return rgs.map((rg) => [sideFor(rg), Object.hasOwn(RG_EN, rg) ? RG_EN[rg] : rg].filter(Boolean).join(' ')).join(', ')
+  }
+  /** 원본 siteOf의 부위 좌우: 말(kw)이 든 시술 조각의 좌우 → 그 부위 줄의 좌우. siteKey는 줄의 부위(처음 값 = 줄 부위) */
+  function sideAt(pool: MemoItem[], items: MemoItem[], kw: RegExp | null, rg: string | undefined, siteKey: (item: MemoItem) => string | null = (item) => item.rg): string {
+    const ls = pool.filter((i) => !rg || siteKey(i) === rg).concat(items.filter((i) => siteKey(i) === rg))
+    let sd: string | null | undefined = null
+    for (const i of pool.concat(items)) {
+      for (const sg of i.segs || []) {
+        if (rg && sg.rg && sg.rg !== rg) continue
+        if (kw && !kw.test(sg.t)) continue
+        if (sg.sd) {
+          sd = sg.sd
+          break
+        }
+      }
+      if (sd) break
+    }
+    if (!sd) {
+      const mixed = (i: MemoItem) => i.segs && new Set(i.segs.map((x) => x.sd).filter(Boolean)).size > 1
+      sd = ls.filter((i) => !mixed(i)).map((i) => i.sd).find(Boolean)
+    }
+    if (sd) return Object.hasOwn(SIDE_EN, sd) ? SIDE_EN[sd] : sd
+    return ''
+  }
+
+  // ── 건초내주사 부위(claim-learn REQ-9308, design.md 9절) ─────────────
+
+  const TS_RE = tsWordPattern(TPL.tsWords)
+  /**
+   * 건초내주사 줄 {부위}: 처방 수량(없거나 0이면 1)만큼 차례대로 채운다 — (1) 건초 말이 든 차트 줄의 부위 (2) 건초염 진단(상병 M65…)의 이름에서 읽은 부위.
+   * (1)·(2)에서 하나도 못 찾았을 때만 (3) 그 밖 부위(원본 siteOf 차례: 건초 말 줄이 있으면 진단·시술 줄 → 메모 → 모든 줄, 없으면 모든 줄 → 메모)를 쓴다.
+   * 한 차례의 부위가 남은 수보다 많으면 남은 자리마다 [부위 확인]이고 choices는 그 차례 부위다. 손가락을 말하는 줄은 손 부위이고 손 자리에 손가락 글을 쓴다.
+   * 좌우는 원본 siteOf처럼 부위마다 붙이고, 렌더가 첫 부위 좌우를 떼는 날(IA·건초내주사 줄 좌우 끔)에는 모든 부위에서 뗀다
+   */
+  function tsSites(v: MemoVisit, a: RxAddition): { text: string; choices: string[] } {
+    const items = v.items || []
+    const hit = items.filter((i) => TS_RE.test(i.raw || i.t) || TS_RE.test(i.t))
+    const pool = hit.length ? hit : items
+    const siteKey = (i: MemoItem) => (fingerOf(i) ? 'hand' : i.rg)
+    const sites = (rgs: (string | null | undefined)[], taken: string[] = []) => [...new Set(rgs.filter((rg): rg is string => !!rg && REGION_KEYS.has(rg) && !taken.includes(rg)))]
+    const lineSites = sites(hit.map(siteKey))
+    const dxSites = sites((v.dx || []).filter((row) => /^M65/i.test(text(row.c))).map((row) => regionOf(text(row.n))), lineSites)
+    const memoSites = (v.memos || []).flatMap((m) => (m.sub ? m.sub.map((x) => x.rg) : [m.rg]))
+    const chain = hit.length ? [items.filter((i) => i.k === 'dx' || i.k === 'proc').map(siteKey), memoSites, items.map(siteKey)] : [items.map(siteKey), memoSites]
+    const tiers = lineSites.length || dxSites.length ? [lineSites, dxSites] : [chain.map((rgs) => sites(rgs)).find((list) => list.length) ?? []]
+    const finger = pool.concat(items).map(fingerOf).find(Boolean) ?? null
+    const matches = matchingRules(a.name, v.rxQty, a.code).filter((rule) => !rule.preserve)
+    const bare = !iaSide() && matches.length > 0 && segProcNames(text(a.name)).every((name) => matches.some((rule) => rule.names.some((alias) => alias.toUpperCase() === name.toUpperCase())))
+    const label = (rg: string) => {
+      const site = [sideAt(pool, items, TS_RE, rg, siteKey), rg === 'hand' && finger ? finger : Object.hasOwn(RG_EN, rg) ? RG_EN[rg] : rg].filter(Boolean).join(' ')
+      return bare ? site.replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '') : site
+    }
+    const qty = a.qty ?? v.rxQty?.[upper(a.name).trim()] ?? null
+    const count = typeof qty === 'number' && Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1
+    const out: string[] = []
+    let choices: string[] = []
+    for (const tier of tiers) {
+      const left = count - out.length
+      if (left <= 0 || !tier.length) continue
+      if (tier.length > left) {
+        out.push(...Array<string>(left).fill(MISS_SITE))
+        choices = tier.map(label)
+        break
+      }
+      out.push(...tier.map(label))
+    }
+    return { text: out.join(', '), choices }
+  }
+  /** 건초내주사 줄 [부위 확인] 자리의 후보(AC-9308.2, 화면 후보 단추는 이 부위들이다). 빈칸이 없거나 그 줄이 없으면 빈 목록 */
+  function tsHoleChoices(visit: Visit | MemoVisit): string[] {
+    const v = 'memos' in visit && Array.isArray(visit.memos) ? (visit as MemoVisit) : prepareVisit(visit)
+    const a = TPL.ts ? (v.rxAdd || []).find((row) => upper(row.code) === 'KK062') : undefined
+    return a ? tsSites(v, a).choices : []
   }
 
   // ── 연골주사(원본 claim-cartilage-rules) ──────────────────────────────
@@ -1447,7 +1517,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       .map((a) => {
         const tags = codeTags(a.code)
         if (upper(a.code) === 'KK062' && TPL.ts) {
-          const s = siteOf(v, /건초|tendon\s*sheath|trigger\s*finger|방아쇠|quervain|tenosyn|\bTS\b|\bSTI\b/i, null, true)
+          const s = tsSites(v, a).text
           const slot = slotDrugs(drugPlan(v), 'KK062')
           const line = renderQuantityProcedure(a.name, TPL.ts, { 부위: s || MISS_SITE, 좌우: '', 약제: formatDrugs(slot) }, v.rxQty, fill, a.code, iaSide())
           placeSlot(line, TPL.ts, slot)
@@ -1712,6 +1782,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     gapify,
     oneLineMemo,
     procKeys,
+    tsHoleChoices,
   }
 }
 
