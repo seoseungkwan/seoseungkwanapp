@@ -160,6 +160,19 @@ export const ERRORS: Record<ErrorCode | StaffErrorCode, ErrorInfo> = {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '연락 표시 파일이 깨졌다면 다시 불러올 때 빈 상태로 시작해요. 정기 주사 기록은 비트에서 다시 읽고, 연락 표시는 다시 눌러 주세요. 같은 오류가 또 나오면 비트 PC 연결 화면을 열어 [처음 등록]이 보일 때 눌러 주세요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요. 깨진 파일은 지우지 않고 남겨 둬요. 그래도 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // 청구 메모 학습·도우미가 일하는 중 멈춤(spec claim-learn design.md 14절). 글은 시안 notes.md '오류·알림' 그대로
+  'E-HELPER-STOPPED': {
+    what: '도우미가 일하는 중에 멈췄어요',
+    fix: '[다시 불러오기]를 눌러 주세요. 또 멈추면 이 번호를 알려 주세요.',
+  },
+  'E-LEARN-PERSONAL': {
+    what: '학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요',
+    fix: '그 글을 지우고 다시 저장해 주세요.',
+  },
+  'E-LEARN-SAVE': {
+    what: '학습을 저장하지 못했어요',
+    fix: '잠시 뒤 다시 저장해 주세요.',
+  },
   // 매출 탭 저장(spec revenue design.md 8절)
   'E-REVENUE-SAVE-FAILED': {
     what: '매출 숫자를 저장하지 못했어요',

@@ -4,6 +4,7 @@
 import type { ClaimDayCountRow } from '@/types/db'
 import type { ErrorCode } from '@/types/errors'
 import type { DateRange } from '@/types/dates'
+import type { AutoRule, LearnDraftLine, SlotWords, StyleChange } from '@/lib/precheck/memo/learn'
 
 /** 결과 등급(원본 grade) */
 export type Grade = '확인필요' | '알림' | '참고'
@@ -137,6 +138,11 @@ export type Visit = {
   rx: RxLine[] // 같은 차트번호·날짜의 처방(원본 rxOf)
   dx: DxLine[] // 같은 내원번호·차트번호의 상병(원본 diagnoses get)
   memosInBit: string[] // 비트에 이미 있는 그 내원의 청구메모(12개월 이력의 m)
+  /**
+   * 그날 그 사람 진료의 코드들(claim-learn AC-9317.2, 도우미 0.15.0 visitDoctors). 진료의 칸이 없는 옛 도우미 답이면 칸이 없다(모름 = 빈 배열로 읽는다).
+   * 칸이 없을 수 있는 까닭: 진료를 손으로 만드는 시험·화면 자료가 많아 지금 모양을 그대로 받는다
+   */
+  doctors?: string[]
 }
 
 /** 차트번호 → 날짜(YYYY-MM-DD) → 그날 처방코드·비트 메모(원본 HIST.byChart) */
@@ -191,6 +197,8 @@ export type ClaimMonth = {
   catalog: HospitalCatalog
   /** 상병(83D) 줄이 있었나. 원본은 상병 자료가 없으면 상병 확인을 건너뛴다(diagnoses has() 거짓) */
   hasDx: boolean
+  /** 진료의 이름표: 코드 → 이름(모르면 null, claim-learn AC-9317.2 doctors). 진료의 칸이 없는 옛 도우미 답이면 칸이 없다(빈 표로 읽는다) */
+  doctorNames?: Map<string, string | null>
 }
 
 /** 점검 결과 한 줄(design.md 6-3, 규칙 엔진 TASK-10이 채운다) */
@@ -202,9 +210,12 @@ export type RuleSettings = { schema?: 1; off: string[]; on: string[]; grade: Rec
 /** 진료 하나의 메모(TASK-14). text는 비트에 들어가는 글: 사람이 고쳤거나 완료했으면 그 글, 아니면 새 초안(fullText). missing은 고친 글에 빠진 사유 문장, hasMemo는 부위 메모가 있나(원본 v.memos), unfinished는 확인 표시가 남았나 */
 export type VisitMemoView = { visitKey: string; text: string; edited: boolean; missing: string[]; hasMemo: boolean; unfinished: boolean }
 /** 메모 재료. phrases는 claim_hospital_settings.phrases(줄이 없으면 null). saved는 사람이 고쳤거나 완료한 메모: 내원번호 → 글. store.load에서 받은 값은 jobs.check·jobs.memoInput·jobs.memoState가 채운다(TASK-16) */
-export type MemoInput = { phrases: unknown; saved?: ReadonlyMap<string, string> }
-/** 메모 결과. memoBlocked면 메모를 만들지 않았다(AC-014.8) */
-export type MemoViews = { memoBlocked: 'E-MEMO-NO-SETTINGS' | null; memos: VisitMemoView[] }
+export type MemoInput = { phrases: unknown; saved?: ReadonlyMap<string, string>; finished?: ReadonlySet<string> }
+/**
+ * 메모 결과. memoBlocked면 메모를 만들지 않았다(AC-014.8: 설정이 검사를 지나지 못함).
+ * defaultPhrases는 병원 문구 줄이 없어(phrases null) 기본 문구(neutralPhrases)로 만들었을 때만 칸이 있다(claim-learn AC-9310.1)
+ */
+export type MemoViews = { memoBlocked: 'E-MEMO-NO-SETTINGS' | null; memos: VisitMemoView[]; defaultPhrases?: true }
 
 // ── 비트 메모 비교(TASK-16, REQ-016) ──────────
 
@@ -243,7 +254,15 @@ export type VisitMemo = {
   declined?: true
   appended?: string
   lastJournal?: string
+  /** 이 메모에 쓰인 학습(쓴 차례, claim-learn AC-9302.6). 학습 글이 그대로 보일 때만 칸이 있다. left가 1 이상이면 '확인 필요' */
+  learned?: LearnedTag[]
+  /** 메모 글의 [… 확인] 빈칸 수(claim-learn AC-9307.1). 1 이상일 때만 칸이 있다 */
+  holes?: number
+  /** 같은 차트번호·같은 날 진료 수(claim-learn AC-9309.1). 2 이상일 때만 칸이 있다 */
+  sameDay?: number
 }
+/** 메모에 쓰인 학습 하나(claim-learn AC-9302.6): 번호·이름·남은 확인 */
+export type LearnedTag = { id: string; name: string; left: number }
 /** 입력 묶음 줄. replaces는 지금 쥔 비트 메모이고 비교가 다름이 아니면 칸이 없다(AC-016.3·AC-037.1) */
 export type InputPlanRow = VisitMemo & { replaces?: string }
 /** 입력 묶음과 빠지는 사람(AC-016.3). 메모 없음·확인 표시·조회 못함은 AC-018.26의 묶음 까닭이다 */
@@ -267,6 +286,8 @@ export type CheckView = {
   groups: CheckGroup[]
   totals: { checked: number; hi: number; mid: number; lo: number; patients: number; historySkips: number }
   memoBlocked: MemoViews['memoBlocked']
+  /** 병원 문구 줄이 없어 기본 문구로 메모를 만들었다(claim-learn AC-9310.1). 그때만 칸이 있다 */
+  defaultPhrases?: true
 }
 
 /** 화면으로 가는 진료 한 줄(AC-013.3·AC-013.14): 규칙 결과 + 처방 이름·지금 상병 + 추천 상병·상병 확인(dxViews) */
@@ -307,7 +328,36 @@ export type StuckPerson = { key: string; state: 'known' | 'noData' | 'outside'; 
 /** 띠 하나의 자료(AC-018.16). big은 큰 글을 보일지(모두 자료에 없거나 기간 밖이면 거짓), loadRange는 [자료 불러오기]의 기간, note는 단추 아래 글 */
 export type StuckView = { people: StuckPerson[]; canContinue: boolean; canByHand: boolean; big: boolean; loadRange: DateRange | null; note: string | null }
 /** 메모 칸 보기 모양(Worker → 화면). 환자 글자가 있어 환자 줄 화면과 이 탭 메모리에만 있다. 저장소·주소·로그·오류 카드에 두지 않는다 */
-export type MemoScreenView = { period: DateRange; memoBlocked: MemoViews['memoBlocked']; noAsk: boolean; targets: InputTargets; table: MemoTableRow[]; stuck: StuckView | null; bit: { has: boolean; count: number; period: DateRange | null } }
+export type MemoScreenView = {
+  period: DateRange
+  memoBlocked: MemoViews['memoBlocked']
+  noAsk: boolean
+  targets: InputTargets
+  table: MemoTableRow[]
+  stuck: StuckView | null
+  bit: { has: boolean; count: number; period: DateRange | null }
+  /** 병원 문구 줄이 없어 기본 문구로 만들었다(claim-learn AC-9310.1). 그때만 칸이 있다 */
+  defaultPhrases?: true
+  /** 손 간 정도(claim-learn AC-9318.1). Worker는 늘 싣는다(화면 시험 자료가 지금 모양 그대로 되게 칸은 없어도 된다) */
+  handStats?: HandStats
+}
+/** 손 간 정도(claim-learn design.md 5-2절): 고른 기간의 메모가 필요한 진료 수 · 학습이 쓰인 메모 수 · 사람이 고친 글이 있는 진료 수 */
+export type HandStats = { need: number; learned: number; edited: number }
+
+// ── 청구 메모 학습(claim-learn design.md 5·5-1·6·7절). 학습 모양은 lib/precheck/memo/types.ts의 LearnRule ──────────
+
+/** 저절로 학습 결과(Worker → 화면, AC-9301.1). add는 번호·만든 날이 없는 학습(화면이 붙여 saveLearned), update는 바꿀 학습의 새 문장, style은 모양 고침 물음, personal은 개인정보라 학습하지 않은 줄 수 */
+export type LearnAutoMessage = { type: 'learnAuto'; visitKey: string; add: AutoRule[]; update: { id: string; to: string }[]; style: StyleChange[]; personal: number }
+/**
+ * 학습 창 재료(Worker → 화면, AC-9301.2·AC-9301.3). diffs는 그 진료의 마지막 저절로 학습 줄 차이(없으면 지금 고친 글과 보이던 글).
+ * codes는 그 진료 시술 코드, withCodes는 시술 아닌 처방 코드, regions는 부위 키, doctors는 진료의(모르면 빈 배열), forbidden은 그 진료의 환자 이름·차트번호(개인정보 거르기), words는 바뀌는 칸 글자.
+ * 환자 글자가 있어 환자 줄 화면(components/claim/rows)에만 넘긴다
+ */
+export type LearnDraftMessage =
+  | { type: 'learnDraft'; visitKey: string; ok: true; diffs: LearnDraftLine[]; codes: string[]; withCodes: string[]; regions: string[]; doctors: { code: string; name: string | null }[]; forbidden: string[]; words: SlotWords }
+  | { type: 'learnDraft'; visitKey: string; ok: false }
+/** 처음 학습 종류 하나(AC-9305.1). key = 시술 코드 묶음 + '|' + 부위 키(120자까지), example은 예시 진료(차트 줄·처방·지금 메모, 환자 글자가 있다) */
+export type FirstLearnKind = { key: string; name: string; count: number; done: boolean; example: { visitKey: string; chart: string[]; rx: { code: string; name: string; qty: number | null }[]; memo: string } }
 /** 입력을 시작하는 단추: [비트에 입력]·[빼고 N명 입력] · '지난번 건너뜀'의 [다시 하기] · 결과의 [다시 하기] · [이어서 하기] · [이어서 입력] · [직접 확인했어요] */
 export type InputWhat = 'selection' | 'held' | 'retry' | 'resume' | 'continueStuck' | 'byHand'
 /** 결과 한 줄. 자료에 없는 진료는 name·chart가 null이다(자리 채움 값을 보이지 않는다, AC-018.15·AC-018.16). retry는 [다시 하기]에 드는 사람 */
@@ -402,6 +452,10 @@ export type PrecheckFromScreen =
   | { type: 'storeBlock' }
   | { type: 'buildInputBatch'; run: number; what: InputWhat; selection: InputSelection }
   | { type: 'inputExcel'; ask: number }
+  /** 학습 창 재료를 묻는다(claim-learn AC-9301.2). 답은 learnDraft 하나 */
+  | { type: 'learnDraft'; visitKey: string }
+  /** 처음 학습 종류를 묻는다(claim-learn AC-9305.1). 답은 firstLearn 하나 */
+  | { type: 'firstLearn' }
 
 /** Worker → 통로 포트: 도우미에 보낼 글자(design.md 6-1). 화면을 지나지 않는다. 결과는 포트로 {type: 'sent', ticket, ok, …} */
 export type PrecheckToPort = { type: 'send'; ticket: number; cmd: 'store.save' | 'bit.input'; payload: string }
@@ -432,3 +486,8 @@ export type PrecheckToScreen =
   | { type: 'inputDone'; run: number; ok: false; code: string }
   | { type: 'inputExcel'; ask: number; ok: true; bytes: ArrayBuffer; fileName: string }
   | { type: 'inputExcel'; ask: number; ok: false; code: ErrorCode }
+  // 청구 메모 학습(claim-learn). learnAuto는 editMemo 저장 뒤 학습할 것이 있을 때만, learnUsed는 학습이 쓰인 메모를 끝냈거나(done: 복사 완료·입력 완료) 고쳤을 때(edited)만 간다
+  | LearnAutoMessage
+  | LearnDraftMessage
+  | { type: 'firstLearn'; total: number; kinds: FirstLearnKind[] }
+  | { type: 'learnUsed'; ids: string[]; how: 'done' | 'edited' }

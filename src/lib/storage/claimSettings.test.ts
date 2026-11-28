@@ -1,8 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
 import type { SavedRuleSettings } from '@/types/precheck'
+import { todayInKorea } from '@/lib/analytics/dates'
+import { neutralPhrases, ourClinicPhrases, validatePhrases } from '@/lib/precheck/memo'
+import type { LearnRule, Phrases } from '@/lib/precheck/memo/types'
 import {
   SettingsError,
+  addLearnKinds,
+  revertLearned,
+  saveLearned,
+  tickLearned,
   changedRuleIds,
   diffRuleSettings,
   withRulesFrom,
@@ -394,5 +401,235 @@ describe('AC-6610.2 입력 방식 저장 saveInputMode', () => {
     await saveInputMode(sb, '', 'code')
     await saveInputMode(sb, HOSPITAL_ID, 'week' as never)
     expect(sent).toEqual([])
+  })
+})
+
+// ── 청구 메모 학습 저장(specs/claim-learn design.md 2절·5-1절·6절·7절, TASK-5). 서버 값을 다시 읽어 학습 칸만 바꿔 쓴다 ──────────
+// 학습 문장·코드는 지어낸 값이다. 서버로 가는 몸통은 phrases 한 칸이고, 학습 칸은 design.md '학습 모양'뿐이다
+
+const LEARN_KEYS = ['after', 'from', 'id', 'kind', 'left', 'made', 'name', 'on', 'to', 'when']
+const WHEN = { codes: ['LA358'], regions: ['lumbar'], chartWords: [], withCodes: [], doctors: [] }
+const learnRule = (patch: Partial<LearnRule> = {}): LearnRule => ({
+  id: 'l0000000a',
+  name: 'LA358 · 허리',
+  kind: 'replace',
+  from: 'MBB {레벨} {좌우}',
+  to: 'MBB {레벨} {좌우} 시행함',
+  after: '',
+  when: { ...WHEN },
+  on: true,
+  left: 3,
+  made: '2026-11-01',
+  ...patch,
+})
+const draft = (patch: Partial<LearnRule> = {}): Omit<LearnRule, 'id' | 'made'> => {
+  const rest: Partial<LearnRule> = { ...learnRule(patch) }
+  delete rest.id
+  delete rest.made
+  return rest as Omit<LearnRule, 'id' | 'made'>
+}
+const serverPhrases = (learned: LearnRule[] = [], learnKinds?: string[]): Phrases => ({ ...ourClinicPhrases(), learned, ...(learnKinds ? { learnKinds } : {}) })
+const rowOf = (phrases: unknown) => ({ data: { hospital_id: HOSPITAL_ID, phrases } })
+/** update 몸통의 phrases(없으면 insert 몸통) */
+const written = (sent: Sent[]) => {
+  const call = sent.find((s) => s.op === 'update' || s.op === 'insert')
+  return (call?.body as { phrases: Phrases } | undefined)?.phrases
+}
+const PHONE = ['010', '1234', '5678'].join('-')
+
+describe('AC-9301.5 saveLearned: 서버 값을 다시 읽어 학습 칸만 바꿔 쓴다', () => {
+  it('AC-9301.5: 내 줄의 phrases를 다시 읽고, 학습을 더해 phrases 한 칸만 내 줄에 고친다(다른 칸·다른 학습은 그대로)', async () => {
+    const old = learnRule({ id: 'l000000aa', kind: 'remove', from: 'SNB', to: '' })
+    const server = serverPhrases([old])
+    const { sb, sent } = scriptedSb([rowOf(server), { data: null }])
+    const result = await saveLearned(sb, { add: [draft()] })
+    expect(sent.map(({ op, columns, filters }) => ({ op, columns, filters }))).toEqual([
+      { op: 'select', columns: 'hospital_id, phrases', filters: [] },
+      { op: 'update', columns: undefined, filters: [['hospital_id', HOSPITAL_ID]] },
+    ])
+    expect(Object.keys(sent[1].body as object)).toEqual(['phrases'])
+    const next = written(sent)!
+    const rest: Partial<Phrases> = { ...next }
+    delete rest.learned
+    const restBefore: Partial<Phrases> = { ...server }
+    delete restBefore.learned
+    expect(rest).toEqual(restBefore)
+    const learned = next.learned!
+    expect(learned).toHaveLength(2)
+    expect(learned[0]).toEqual(old)
+    expect(learned[1]).toEqual({ ...draft(), id: expect.stringMatching(/^l[0-9a-f]{8}$/), made: todayInKorea() })
+    expect(Object.keys(learned[1]).sort()).toEqual(LEARN_KEYS)
+    expect(result).toEqual({ ok: true, phrases: next, added: [learned[1].id], before: [] })
+  })
+
+  it('AC-9301.5: 화면이 붙인 번호·만든 날은 그대로 쓰고, 이미 있는 번호면 새 번호를 붙인다', async () => {
+    const old = learnRule({ id: 'l000000aa', from: 'SNB' })
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([old])), { data: null }])
+    const result = await saveLearned(sb, { add: [{ ...draft({ from: 'MBB {레벨}' }), id: 'l12345678', made: '2026-11-20' }, { ...draft({ from: 'IA' }), id: 'l000000aa' }] })
+    const learned = written(sent)!.learned!
+    expect(learned[1]).toMatchObject({ id: 'l12345678', made: '2026-11-20' })
+    expect(learned[2].id).not.toBe('l000000aa')
+    expect(new Set(learned.map((r) => r.id)).size).toBe(3)
+    expect(result.ok && result.added).toEqual(['l12345678', learned[2].id])
+  })
+
+  it('AC-9301.1: 바꾸기는 그 학습만 고치고 남은 확인을 3으로 돌리며(주면 그 값), 바꾸기 전 학습을 돌려준다. 지우기는 그 번호를 뺀다', async () => {
+    const a = learnRule({ id: 'l000000aa', left: 1 })
+    const b = learnRule({ id: 'l000000bb', from: 'SNB', left: 0 })
+    const c = learnRule({ id: 'l000000cc', from: 'IA' })
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([a, b, c])), { data: null }])
+    const result = await saveLearned(sb, { update: [{ id: a.id, to: 'MBB {레벨} {좌우} 시행' }, { id: b.id, on: false, left: 0 }, { id: 'l99999999', to: '없는 학습' }], remove: [c.id] })
+    expect(written(sent)!.learned).toEqual([{ ...a, to: 'MBB {레벨} {좌우} 시행', left: 3 }, { ...b, on: false, left: 0 }])
+    expect(result).toMatchObject({ ok: true, added: [], before: [a, b] })
+  })
+
+  it('AC-9301.1: 이미 있는 학습과 할 일·줄 틀·앞 줄 틀·조건이 같은 더하기는 새로 더하지 않고 그 학습의 문장을 바꾼다(남은 확인 3)', async () => {
+    const a = learnRule({ id: 'l000000aa', left: 0 })
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([a])), { data: null }])
+    const result = await saveLearned(sb, { add: [draft({ to: 'MBB {레벨} {좌우} 시행함 (C-arm)' })] })
+    expect(written(sent)!.learned).toEqual([{ ...a, to: 'MBB {레벨} {좌우} 시행함 (C-arm)', left: 3 }])
+    expect(result).toMatchObject({ ok: true, added: [], before: [a] })
+  })
+
+  it('AC-9310.3: 병원 문구 줄이 없으면 기본 문구(neutralPhrases) + 그 학습으로 처음 만든다', async () => {
+    const { sb, sent } = scriptedSb([{ data: null }, { data: null }, { data: null }])
+    const result = await saveLearned(sb, { add: [draft()] })
+    expect(sent.map((s) => s.op)).toEqual(['select', 'select', 'insert'])
+    const made = written(sent)!
+    const rest: Partial<Phrases> = { ...made }
+    delete rest.learned
+    expect(rest).toEqual(neutralPhrases())
+    expect(made.learned).toEqual([expect.objectContaining({ ...draft(), made: todayInKorea() })])
+    expect(validatePhrases(made).ok).toBe(true)
+    expect(result.ok).toBe(true)
+  })
+
+  it.each([
+    ['다시 읽기 오류', [{ error: { message: SECRET_MESSAGE } }]],
+    ['다시 읽기 네트워크 실패', ['throw']],
+    ['쓰기 오류', [rowOf(serverPhrases()), { error: { message: SECRET_MESSAGE } }]],
+    ['쓰기 네트워크 실패', [rowOf(serverPhrases()), 'throw']],
+    ['읽은 문구가 객체가 아님', [rowOf('글자')]],
+    ['처음 만들기 실패', [{ data: null }, { error: { message: SECRET_MESSAGE } }]],
+  ] as [string, Step[]][])('AC-9301.6: %s면 E-LEARN-SAVE이고 던지지 않는다', async (_name, steps) => {
+    const result = await saveLearned(scriptedSb(steps).sb, { add: [draft()] })
+    expect(result).toEqual({ ok: false, code: 'E-LEARN-SAVE', limit: false })
+    expect(JSON.stringify(result)).not.toContain('does not exist')
+  })
+
+  it('AC-9301.6·AC-9304.3: 학습이 300개를 넘으면 쓰지 않고 E-LEARN-SAVE(한도)다', async () => {
+    const full = Array.from({ length: 300 }, (_, i) => learnRule({ id: `l${i.toString(16).padStart(8, '0')}`, from: `MBB ${i}` }))
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases(full))])
+    expect(await saveLearned(sb, { add: [draft()] })).toEqual({ ok: false, code: 'E-LEARN-SAVE', limit: true })
+    expect(sent.map((s) => s.op)).toEqual(['select'])
+  })
+
+  it('AC-9301.6: 바꾼 문구가 병원 문구 검사를 지나지 못하면(틀린 학습 모양) 쓰지 않는다: 병원 전체 메모가 잠기지 않게', async () => {
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases())])
+    expect(await saveLearned(sb, { add: [draft({ from: '' })] })).toEqual({ ok: false, code: 'E-LEARN-SAVE', limit: false })
+    expect(sent.map((s) => s.op)).toEqual(['select'])
+  })
+
+  it('AC-9301.5·AC-9316.2: 학습 문장·이름·차트 말에 전화·주민번호·메일 모양이 있으면 읽지도 쓰지도 않고 E-LEARN-PERSONAL이다', async () => {
+    const patches: Partial<LearnRule>[] = [{ to: `MBB ${PHONE}` }, { from: 'MBB 900101-1234567' }, { name: 'a@b.co' }, { when: { ...WHEN, chartWords: [PHONE] } }]
+    for (const patch of patches) {
+      const { sb, sent } = scriptedSb([rowOf(serverPhrases())])
+      expect(await saveLearned(sb, { add: [draft(patch)] })).toEqual({ ok: false, code: 'E-LEARN-PERSONAL', limit: false })
+      expect(sent).toEqual([])
+    }
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([learnRule()]))])
+    expect(await saveLearned(sb, { update: [{ id: 'l0000000a', to: `연락 ${PHONE}` }] })).toMatchObject({ ok: false, code: 'E-LEARN-PERSONAL' })
+    expect(sent).toEqual([])
+  })
+})
+
+describe('AC-9301.2 revertLearned: [이번만 고친 거예요]', () => {
+  it('AC-9301.2: 방금 더한 학습은 지우고, 바꾼 학습은 바꾸기 전 문장·남은 확인으로 되돌린다(다른 학습은 그대로)', async () => {
+    const before = learnRule({ id: 'l000000aa', to: '옛 문장', left: 1 })
+    const other = learnRule({ id: 'l000000cc', from: 'IA' })
+    const now = [{ ...before, to: '새 문장', left: 3 }, learnRule({ id: 'l000000bb', from: 'SNB' }), other]
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases(now)), { data: null }])
+    const result = await revertLearned(sb, { added: ['l000000bb'], before: [before] })
+    expect(written(sent)!.learned).toEqual([before, other])
+    expect(result.ok).toBe(true)
+  })
+
+  it('AC-9301.2: 되돌리다 실패하면 E-LEARN-SAVE다', async () => {
+    expect(await revertLearned(scriptedSb(['throw']).sb, { added: ['l000000bb'], before: [] })).toEqual({ ok: false, code: 'E-LEARN-SAVE', limit: false })
+  })
+})
+
+describe('AC-9302.7 tickLearned: 남은 확인 바꾸기', () => {
+  it('AC-9302.7: done이면 그 학습의 남은 확인이 쓰인 수만큼 하나씩 줄고 0 아래로 가지 않는다', async () => {
+    const a = learnRule({ id: 'l000000aa', left: 3 })
+    const b = learnRule({ id: 'l000000bb', from: 'SNB', left: 1 })
+    const c = learnRule({ id: 'l000000cc', from: 'IA', left: 2 })
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([a, b, c])), { data: null }])
+    expect(await tickLearned(sb, [a.id, a.id, b.id, b.id, 'l99999999'], 'done')).toBe('ok')
+    expect(written(sent)!.learned).toEqual([{ ...a, left: 1 }, { ...b, left: 0 }, c])
+  })
+
+  it('AC-9302.7: edited면 남은 확인이 3으로 돌아간다', async () => {
+    const a = learnRule({ id: 'l000000aa', left: 0 })
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([a])), { data: null }])
+    expect(await tickLearned(sb, [a.id], 'edited')).toBe('ok')
+    expect(written(sent)!.learned).toEqual([{ ...a, left: 3 }])
+  })
+
+  it('AC-9302.7: 바뀌는 것이 없거나(이미 0·번호 없음·줄 없음) 번호가 비면 쓰지 않는다', async () => {
+    const cases: [Step[], string[]][] = [
+      [[rowOf(serverPhrases([learnRule({ left: 0 })]))], ['l0000000a']],
+      [[rowOf(serverPhrases([learnRule()]))], ['l99999999']],
+      [[{ data: null }], ['l0000000a']],
+      [[], []],
+    ]
+    for (const [steps, ids] of cases) {
+      const { sb, sent } = scriptedSb(steps)
+      expect(await tickLearned(sb, ids, 'done')).toBe('ok')
+      expect(sent.filter((s) => s.op !== 'select')).toEqual([])
+    }
+  })
+
+  it('AC-9302.7: 실패하면 failed이고 던지지 않는다(메모 일은 막지 않는다)', async () => {
+    expect(await tickLearned(scriptedSb(['throw']).sb, ['l0000000a'], 'done')).toBe('failed')
+    expect(await tickLearned(scriptedSb([rowOf(serverPhrases([learnRule({ left: 1 })])), { error: { message: SECRET_MESSAGE } }]).sb, ['l0000000a'], 'edited')).toBe('failed')
+  })
+})
+
+describe('AC-9305.3 addLearnKinds: 처음 학습 확인한 종류', () => {
+  it('AC-9305.3: 종류 열쇠를 더한다(겹침·빈 열쇠는 빼고 열쇠마다 120자까지)', async () => {
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([], ['LA358|lumbar'])), { data: null }])
+    expect(await addLearnKinds(sb, ['LA358|lumbar', 'KK090|knee', '', 'K'.repeat(130)])).toBe('ok')
+    expect(written(sent)!.learnKinds).toEqual(['LA358|lumbar', 'KK090|knee', 'K'.repeat(120)])
+    expect(written(sent)!.learned).toEqual([])
+  })
+
+  it('AC-9305.3·AC-9310.3: 병원 문구 줄이 없으면 기본 문구 + 그 종류로 처음 만든다', async () => {
+    const { sb, sent } = scriptedSb([{ data: null }, { data: null }, { data: null }])
+    expect(await addLearnKinds(sb, ['LA358|lumbar'])).toBe('ok')
+    expect(written(sent)).toEqual({ ...neutralPhrases(), learnKinds: ['LA358|lumbar'] })
+  })
+
+  it('AC-9305.3: 더할 것이 없으면 쓰지 않고, 2000개를 넘거나 실패하면 failed다', async () => {
+    const same = scriptedSb([rowOf(serverPhrases([], ['LA358|lumbar']))])
+    expect(await addLearnKinds(same.sb, ['LA358|lumbar'])).toBe('ok')
+    expect(same.sent.map((s) => s.op)).toEqual(['select'])
+    const full = scriptedSb([rowOf(serverPhrases([], Array.from({ length: 2000 }, (_, i) => `K${i}|knee`)))])
+    expect(await addLearnKinds(full.sb, ['LA358|lumbar'])).toBe('failed')
+    expect(full.sent.map((s) => s.op)).toEqual(['select'])
+    expect(await addLearnKinds(scriptedSb(['throw']).sb, ['LA358|lumbar'])).toBe('failed')
+  })
+})
+
+describe('AC-9301.1 학습 저장은 한 번에 하나씩', () => {
+  it('AC-9301.1·AC-9302.7: 저절로 학습 저장과 남은 확인 바꿈을 함께 불러도 앞 것이 쓴 뒤에 다음 것이 다시 읽는다(서로 덮지 않는다)', async () => {
+    const a = learnRule({ id: 'l000000aa', left: 3 })
+    const b = learnRule({ id: 'l000000bb', from: 'SNB' })
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([a])), { data: null }, rowOf(serverPhrases([a, b])), { data: null }])
+    const [saved, ticked] = await Promise.all([saveLearned(sb, { add: [{ ...draft({ from: 'SNB' }), id: 'l000000bb', made: b.made }] }), tickLearned(sb, [a.id], 'done')])
+    expect(saved.ok).toBe(true)
+    expect(ticked).toBe('ok')
+    expect(sent.map((s) => s.op)).toEqual(['select', 'update', 'select', 'update'])
+    expect((sent[3].body as { phrases: Phrases }).phrases.learned).toEqual([{ ...a, left: 2 }, b])
   })
 })

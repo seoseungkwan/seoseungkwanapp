@@ -42,6 +42,9 @@ const ALL_CODES = [
   'E-BIT-REG-PLACE',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-HELPER-STOPPED',
+  'E-LEARN-PERSONAL',
+  'E-LEARN-SAVE',
   'E-REVENUE-SAVE-FAILED',
   'E-REVENUE-GROUP-SAVE-FAILED',
   'E-REVENUE-GROUP-LOAD-FAILED',
@@ -1960,5 +1963,29 @@ describe('AC-8814.1 의사랑 엑셀 오류 번호 열다섯', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(UIS)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// ── 청구 메모 학습·도우미 멈춤(specs/claim-learn design.md 14절). 글은 시안 notes.md '오류·알림' 그대로다 ──────────
+describe('AC-9301.5·AC-9301.6·AC-9315.1 청구 메모 학습·도우미 멈춤 오류 번호 셋', () => {
+  it('AC-9301.5: E-LEARN-PERSONAL은 notes 글 그대로다', () => {
+    expect(errorInfo('E-LEARN-PERSONAL')).toEqual({ what: '학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요', fix: '그 글을 지우고 다시 저장해 주세요.' })
+  })
+
+  it('AC-9301.6: E-LEARN-SAVE는 notes 글 그대로다', () => {
+    expect(errorInfo('E-LEARN-SAVE')).toEqual({ what: '학습을 저장하지 못했어요', fix: '잠시 뒤 다시 저장해 주세요.' })
+  })
+
+  it('AC-9315.1: E-HELPER-STOPPED는 notes 글 그대로다', () => {
+    expect(errorInfo('E-HELPER-STOPPED')).toEqual({ what: '도우미가 일하는 중에 멈췄어요', fix: '[다시 불러오기]를 눌러 주세요. 또 멈추면 이 번호를 알려 주세요.' })
+  })
+
+  it('AC-9301.5·AC-9301.6·AC-9315.1: 세 번호가 번호 타입 ErrorCode(src/types/errors.ts)에 있고 isErrorCode가 안다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of ['E-LEARN-PERSONAL', 'E-LEARN-SAVE', 'E-HELPER-STOPPED']) {
+      expect(union).toContain(`'${code}'`)
+      expect(isErrorCode(code), code).toBe(true)
+    }
   })
 })
