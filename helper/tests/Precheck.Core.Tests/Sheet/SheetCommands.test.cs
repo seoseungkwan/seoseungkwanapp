@@ -69,8 +69,8 @@ public class SheetCommandsTests
         Assert.Equal("[\"fillEmpty\",\"overwrite\"]", JsonSerializer.Serialize(commands.GetProperty("sheet.fill").GetProperty("args").GetProperty("mode").GetProperty("values")));
     }
 
-    [Fact(DisplayName = "AC-8511.1 도우미 판은 0.14.1이다(Directory.Build.props 한 곳)")]
-    public void HelperVersionIsZeroFourteen() => Assert.Equal("0.14.1", HelperVersion.Value);
+    [Fact(DisplayName = "AC-8511.1 도우미 판은 0.15.0이다(Directory.Build.props 한 곳)")]
+    public void HelperVersionIsZeroFourteen() => Assert.Equal("0.15.0", HelperVersion.Value);
 
     [Fact(DisplayName = "AC-8511.1 처리기를 붙이면 sheet.* 여덟 모두 답한다(모르는 명령이 아님)")]
     public void AllEightAreRegistered()

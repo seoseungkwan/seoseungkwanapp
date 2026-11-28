@@ -218,10 +218,10 @@ public class StatsReportTests
         }
     }
 
-    [Fact(DisplayName = "AC-6912.6 도우미 판은 0.14.1이고 stats.rows 보고 벌의 칸 이름은 그대로다(새 칸 없음, financeUnconfirmed 칸은 남고 financeUnconfirmedReason 열쇠는 없음)")]
+    [Fact(DisplayName = "AC-6912.6 도우미 판은 0.15.0이고 stats.rows 보고 벌의 칸 이름은 그대로다(새 칸 없음, financeUnconfirmed 칸은 남고 financeUnconfirmedReason 열쇠는 없음)")]
     public void VersionAndReportKeysStay()
     {
-        Assert.Equal("0.14.1", HelperVersion.Value);
+        Assert.Equal("0.15.0", HelperVersion.Value);
         using var rig = StatsFake.Clinic();
         var report = ReportJson(rig);
         Assert.Equal(new[] { "daily", "monthly" }, Json.Keys(report));

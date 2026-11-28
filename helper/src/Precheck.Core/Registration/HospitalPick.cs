@@ -32,7 +32,15 @@ public sealed class HospitalChoice
 /// </summary>
 public sealed class HospitalPickView
 {
+    private readonly int archiveIfKept;
+    private readonly int archiveIfNew;
+
     public HospitalPickView(IReadOnlyList<HospitalChoice> choices, BitTarget target, HospitalRegistration? previous)
+        : this(choices, target, previous, 0, 0)
+    {
+    }
+
+    private HospitalPickView(IReadOnlyList<HospitalChoice> choices, BitTarget target, HospitalRegistration? previous, int archiveIfKept, int archiveIfNew)
     {
         if (choices == null) throw new ArgumentNullException(nameof(choices));
         if (target == null) throw new ArgumentNullException(nameof(target));
@@ -40,6 +48,8 @@ public sealed class HospitalPickView
         Target = target;
         Previous = previous;
         Preselected = HospitalPick.Preselect(Choices);
+        this.archiveIfKept = Math.Max(0, archiveIfKept);
+        this.archiveIfNew = Math.Max(0, archiveIfNew);
     }
 
     public IReadOnlyList<HospitalChoice> Choices { get; }
@@ -72,6 +82,27 @@ public sealed class HospitalPickView
         "최근 " + HospitalCheck.RecentDays.ToString(CultureInfo.InvariantCulture) + "일 외래 "
         + Choices[index].RecentVisits.ToString("#,0", CultureInfo.InvariantCulture) + "건";
 
+    /// <summary>
+    /// 줄을 골라 등록하면 옮길 전 병원 저장 파일 수를 단 창(claim-learn AC-9317.3). ifKept는 지금 등록과 범위·기관기호가 같은 줄(프로필 ID 그대로)일 때,
+    /// ifNew는 나머지 줄(새 프로필 ID)일 때의 수다(WorkStore.CountOtherProfiles). 다른 칸은 그대로다.
+    /// </summary>
+    public HospitalPickView WithArchive(int ifKept, int ifNew) => new HospitalPickView(Choices, Target, Previous, ifKept, ifNew);
+
+    /// <summary>그 줄로 등록하면 옮길 전 병원 저장 파일 수.</summary>
+    public int ArchiveCount(int index)
+    {
+        var choice = Choices[index];
+        return HospitalPick.KeepsProfile(Previous, choice.Scope, choice.InstitutionCode) ? archiveIfKept : archiveIfNew;
+    }
+
+    /// <summary>고른 줄로 옮길 파일이 있으면 notes '전 병원 파일 보관' 한 줄(PC 확인 창과 같은 글), 없거나 고른 줄이 없으면 null.</summary>
+    public string? ArchiveLine(int? index)
+    {
+        if (index is not int i) return null;
+        var count = ArchiveCount(i);
+        return count > 0 ? RegisterPrompt.ArchiveLine(count) : null;
+    }
+
     public string InstallLine => "비트 설치 위치: " + Target.InstallPath;
 
     public string DatabaseLine => "비트 DB: " + Target.Server + " / " + Target.Database;
@@ -82,6 +113,14 @@ public sealed class HospitalPickView
 /// <summary>병원 고르기(AC-005.19): 창 글자와 비트에서 줄 읽기·미리 고를 줄.</summary>
 public static class HospitalPick
 {
+    /// <summary>
+    /// 이 범위·기관기호로 등록하면 전 등록의 프로필 ID를 그대로 두는가(AC-005.13): 전 등록과 기관기호·범위가 모두 같을 때만.
+    /// RegisterFlow가 저장할 값을 만들 때와 고르기 창이 옮길 파일 수를 고를 때(claim-learn AC-9317.3) 같이 쓴다.
+    /// </summary>
+    public static bool KeepsProfile(HospitalRegistration? previous, string scope, string code) =>
+        previous != null && string.Equals(previous.InstitutionCode, code, StringComparison.Ordinal)
+        && string.Equals(previous.Scope, scope, StringComparison.Ordinal);
+
     public const string Question = "비트에 병원이 여러 개 있어요. 이 PC에서 쓸 병원을 골라 주세요.";
 
     public const string MineTag = "지금 로그인한 계정의 병원";

@@ -825,8 +825,8 @@ public class StatsExtraPayloadTests
         Assert.Equal(0, pays.GetArrayLength());
     }
 
-    [Fact(DisplayName = "AC-6106.1 AC-6912.6 도우미 판은 0.14.1이다(웹 LATEST_HELPER 0.14.1·VALUE_HELPER 0.11.0, MIN_HELPER 0.3.0 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroEleven() => Assert.Equal("0.14.1", HelperVersion.Value);
+    [Fact(DisplayName = "AC-6106.1 AC-6912.6 도우미 판은 0.15.0이다(웹 LATEST_HELPER 0.15.0·VALUE_HELPER 0.11.0, MIN_HELPER 0.3.0 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroEleven() => Assert.Equal("0.15.0", HelperVersion.Value);
 
     [Fact(DisplayName = "AC-2701.1 visits 줄은 다섯 칸 [차트번호|null, 진료일, 접수 시각|null, 보험 이름|null, 진료의 코드|null]이고 빈 칸은 JSON null이다")]
     public void VisitsJson()

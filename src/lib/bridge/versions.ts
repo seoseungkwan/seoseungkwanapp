@@ -5,7 +5,7 @@ import { PROTOCOL } from './protocol'
 /** 이보다 낮은 도우미는 막는다(update-helper) */
 export const MIN_HELPER = '0.3.0'
 /** 이보다 낮은 도우미는 쓰게 두되 "새 도우미가 있어요"를 보인다 */
-export const LATEST_HELPER = '0.14.1'
+export const LATEST_HELPER = '0.15.0'
 /** 이보다 낮은 확장은 막는다(update-extension) */
 export const MIN_EXTENSION = '0.1.0'
 /**

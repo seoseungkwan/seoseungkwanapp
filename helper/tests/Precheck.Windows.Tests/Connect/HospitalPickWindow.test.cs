@@ -112,6 +112,30 @@ public class HospitalPickWindowTests
         typeof(Control).GetMethod("OnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(radio, new object[] { EventArgs.Empty });
 
+    [Fact(DisplayName = "AC-9317.3 고르기 창도 '전 병원 파일 보관' 한 줄: 고른 줄로 옮길 파일이 있을 때만 보이고, 줄을 바꾸면 그 줄의 수로 바뀐다")]
+    public void AC9317_3_ArchiveNoteFollowsChoice()
+    {
+        var previous = new HospitalRegistration("12345678", "SYNTHETIC", @"C:\DrBIT50", @".\SQLEXPRESS", "DRBIT", "0123456789abcdef0123456789abcdef");
+        var view = new HospitalPickView(View(mine: true).Choices, new BitTarget(@"C:\DrBIT50", @".\SQLEXPRESS", "DRBIT"), previous).WithArchive(ifKept: 0, ifNew: 6);
+        using var form = HospitalPickWindow.CreateForm(view);
+        Assert.Equal(0, form.Selected);
+        Assert.Equal("", form.ArchiveNote.Text); // 지금 병원 그대로(프로필 그대로, 옮길 파일 없음)
+        Assert.DoesNotContain("따로 보관해요", AllText(form));
+
+        Click(form.Choices[1]);
+        Assert.Equal("전에 쓰던 병원의 저장 파일 6개는 지우지 않고 따로 보관해요.", form.ArchiveNote.Text);
+        Assert.Contains("전에 쓰던 병원의 저장 파일 6개는 지우지 않고 따로 보관해요.", AllText(form));
+
+        Click(form.Choices[0]);
+        Assert.Equal("", form.ArchiveNote.Text);
+
+        // 미리 고른 줄에 옮길 파일이 있으면 처음부터 보인다, 아무 줄도 안 골랐으면 없다
+        using var first = HospitalPickWindow.CreateForm(View(mine: true).WithArchive(ifKept: 0, ifNew: 2));
+        Assert.Equal("전에 쓰던 병원의 저장 파일 2개는 지우지 않고 따로 보관해요.", first.ArchiveNote.Text);
+        using var none = HospitalPickWindow.CreateForm(NoPreselect().WithArchive(ifKept: 0, ifNew: 2));
+        Assert.Equal("", none.ArchiveNote.Text);
+    }
+
     [Fact(DisplayName = "AC-005.19 시간이 없으면 창 없이 null(저장 안 함)")]
     public void NoTimeNoWindow()
     {

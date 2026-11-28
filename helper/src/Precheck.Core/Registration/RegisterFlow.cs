@@ -1,6 +1,9 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using Precheck.Core.Bit;
+using Precheck.Core.Store;
 
 namespace Precheck.Core.Registration;
 
@@ -14,6 +17,9 @@ namespace Precheck.Core.Registration;
 /// 이미 등록돼 있으면 같은 길로 바꿔 쓴다: 확인 창에 전 값과 새 값을 함께 보이고, 기관기호가 같으면 전 프로필 ID를 둔다.
 /// 등록 파일이 깨지고 .bak도 못 쓰면(E-STORE-BROKEN) 처음 등록처럼 한다: 전 값 없이, 새 프로필 ID(AC-005.12).
 /// 저장할 때 깨진 파일은 RegistrationStore.Save가 이름을 바꿔 둔다(지우지 않음).
+/// 도우미 0.15.0(claim-learn AC-9317.3): 창을 띄우기 전에 저장 폴더에서 새 등록과 프로필이 다른 작업 파일을 세어(WorkStore.CountOtherProfiles) 창 글에
+/// '전 병원 파일 보관' 한 줄을 더하고, [확인]으로 등록을 저장한 뒤에 그 파일들을 old-{yyyyMMdd-HHmmss}로 옮긴다(WorkStore.ArchiveOtherProfiles, 지우지 않음).
+/// [취소]면 아무것도 옮기지 않는다. 옮기다 막히면 등록은 그대로 두고 E-STORE-FAILED다.
 /// </summary>
 public static class RegisterFlow
 {
@@ -56,10 +62,14 @@ public static class RegisterFlow
         }
 
         // DB를 닫은 뒤 창을 띄운다(사람이 5분까지 생각하는 동안 DB 연결을 붙잡지 않는다)
+        var (folder, protector) = WorkFiles(services.Store);
         if (pickView != null)
         {
             // 저장 모양이 틀린 줄이 있으면 창 없이 번호만(AC-005.13). 프로필 ID는 아직 만들지 않고 모양 맞는 빈 값으로 본다
             if (pickView.Choices.Any(c => !Place(c, pickView.Target).IsValid)) throw new BitException(BitErrors.RegisterPlace);
+            // 옮길 전 병원 저장 파일 수(claim-learn AC-9317.3): 전 등록 그대로인 줄은 다른 프로필만, 나머지 줄은 아직 없는 새 프로필 기준
+            var ifKept = previous == null ? 0 : WorkStore.CountOtherProfiles(folder, protector, previous.ProfileId);
+            pickView = pickView.WithArchive(ifKept, WorkStore.CountOtherProfiles(folder, protector, null));
             // 고르기 창이 PC 확인 창을 대신한다: [확인]이면 고른 줄로 저장, [취소]·닫기·시간 지남이면 저장 안 함(AC-005.19)
             var index = services.Pick!.Pick(pickView, ConfirmTimeout);
             if (index == null || index.Value < 0 || index.Value >= pickView.Choices.Count) return false;
@@ -67,13 +77,34 @@ public static class RegisterFlow
             var picked = Candidate(services, previous, choice.Scope, choice.InstitutionCode, pickView.Target);
             if (!picked.IsValid) throw new BitException(BitErrors.RegisterPlace);
             services.Store.Save(picked);
+            WorkStore.ArchiveOtherProfiles(folder, protector, picked.ProfileId);
             return true;
         }
 
         if (!candidate!.IsValid) throw new BitException(BitErrors.RegisterPlace);
-        if (!services.Confirm.Show(RegisterPrompt.Build(candidate, previous), ConfirmTimeout)) return false;
+        var archive = WorkStore.CountOtherProfiles(folder, protector, candidate.ProfileId);
+        if (!services.Confirm.Show(RegisterPrompt.Build(candidate, previous, archive), ConfirmTimeout)) return false;
         services.Store.Save(candidate);
+        // 등록을 저장한 뒤에 옮긴다(claim-learn AC-9317.3). 옮기다 막히면 등록은 그대로 두고 E-STORE-FAILED가 답으로 간다
+        WorkStore.ArchiveOtherProfiles(folder, protector, candidate.ProfileId);
         return true;
+    }
+
+    // RegistrationStore가 등록 파일을 푸는 암호. 작업 저장 파일(WorkStore)도 같은 폴더·같은 암호를 쓴다(도우미 HelperStore).
+    // RegistrationStore는 이 값을 밖에 내놓지 않고 claim-learn TASK-2 범위에 RegistrationStore.cs·BitServices.cs가 없어 여기서만 이름으로 읽는다.
+    private static readonly FieldInfo? RegistrationProtector =
+        typeof(RegistrationStore).GetField("protector", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    /// <summary>
+    /// 작업 저장 폴더와 암호(claim-learn AC-9317.3): 등록 파일과 같은 폴더(RegistrationStore.FilePath의 폴더), 같은 암호.
+    /// 암호를 읽지 못하면 E-STORE-FAILED(파일을 하나도 건드리기 전, 등록하지 않음).
+    /// </summary>
+    private static (IStoreFolder Folder, IProtector Protector) WorkFiles(RegistrationStore store)
+    {
+        var protector = RegistrationProtector?.GetValue(store) as IProtector ?? throw new BitException(BitErrors.StoreFailed);
+        var directory = Path.GetDirectoryName(store.FilePath);
+        if (string.IsNullOrEmpty(directory)) throw new BitException(BitErrors.StoreFailed);
+        return (new StoreFolder(directory!), protector);
     }
 
     /// <summary>프로필 ID 말고 저장 모양만 보려는 값(프로필 ID 자리는 모양 맞는 0).</summary>
@@ -92,8 +123,7 @@ public static class RegisterFlow
     /// </summary>
     private static HospitalRegistration Candidate(BitServices services, HospitalRegistration? previous, string scope, string code, BitTarget target)
     {
-        var sameHospital = previous != null && string.Equals(previous.InstitutionCode, code, StringComparison.Ordinal)
-            && string.Equals(previous.Scope, scope, StringComparison.Ordinal);
+        var sameHospital = HospitalPick.KeepsProfile(previous, scope, code);
         return new HospitalRegistration(
             institutionCode: code,
             scope: scope,
