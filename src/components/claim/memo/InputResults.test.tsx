@@ -25,7 +25,7 @@ const result = (over: Partial<InputResultView> = {}): InputResultView => ({
   firstNoAsk: null,
   ...over,
 })
-const handlers = () => ({ onRetry: vi.fn(), onResume: vi.fn(), onBack: vi.fn(), onExcel: vi.fn() })
+const handlers = () => ({ onRetry: vi.fn(), onResume: vi.fn(), onBack: vi.fn(), onExcel: vi.fn(), onDates: vi.fn() })
 function show(value: InputResultView, busy = false) {
   const on = handlers()
   render(<InputResults result={value} busy={busy} excelBusy={false} excelError={null} {...on} />)
@@ -88,6 +88,23 @@ describe('AC-018.4 결과', () => {
     expect(on.onBack).toHaveBeenCalledTimes(1)
     await user.click(screen.getByRole('button', { name: '엑셀로 저장' }))
     expect(on.onExcel).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-9314.2: [날짜 목록으로]가 있고 누르면 날짜 단계로 가라고 알린다(입력 방식으로 돌아가기·엑셀은 그대로)', async () => {
+    const on = show(result({ done: [line('a', { result: '완료', reason: '입력' })] }))
+    const back = screen.getByRole('button', { name: '날짜 목록으로' }) as HTMLButtonElement
+    expect(back.disabled).toBe(false)
+    await userEvent.setup().click(back)
+    expect(on.onDates).toHaveBeenCalledTimes(1)
+    expect(on.onBack).not.toHaveBeenCalled()
+    // 아래 단추 줄에 [입력 방식으로 돌아가기] 다음이다
+    const row = screen.getByRole('button', { name: '입력 방식으로 돌아가기' }).parentElement as HTMLElement
+    expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['입력 방식으로 돌아가기', '날짜 목록으로', '엑셀로 저장'])
+  })
+
+  it('AC-9314.2: 멈춘 결과에도 [날짜 목록으로]가 있다', () => {
+    show(result({ status: 'stopped', code: 'E-INPUT-STOPPED', entered: 1, left: 2 }))
+    expect(screen.getByRole('button', { name: '날짜 목록으로' })).toBeTruthy()
   })
 
   it('AC-018.16: 자료에 없는 진료는 자리 채움 값을 보이지 않고 날짜(모르면 달)를 보인다', () => {

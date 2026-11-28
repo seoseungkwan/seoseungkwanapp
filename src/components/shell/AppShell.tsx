@@ -7,6 +7,7 @@ import { AccountMenu } from './AccountMenu'
 import { DeskGate } from './DeskGate'
 import { KstClock } from './KstClock'
 import type { MenuPath } from './menu'
+import { OpenTabsAnswer } from './OtherTabsLine'
 import { RoleProvider } from './role'
 import { TabBar } from './TabBar'
 import { TabGate } from './TabGate'
@@ -45,6 +46,7 @@ const MAIN_CLASS = 'flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:s
 // 관리자(데스크 아님)는 머리 시계 왼쪽에 '보는 의원' 단추(ViewPicker)가 있다
 // 저절로 올리기(admin-view REQ-8021): AutoUpload를 늘 그린다(아무것도 그리지 않고, 보는 중·보기 쿠키면 아무 일도 하지 않는다)
 // 구글 잇기(spec google-link AC-8540.1): 그 옆에 수납 저절로 넣기(GoogleSheetAuto)·예약 맞춤(GcalSync)도 늘 그린다 — 둘 다 아무것도 그리지 않고 보는 중이면 쉰다
+// 열린 창 이름(claim-learn AC-9313.5): OpenTabsAnswer도 늘 그린다 — 아무것도 그리지 않고, 다른 창이 물으면 지금 화면의 메뉴 이름만 답한다(비트 연결이 다른 창에 있다는 안내가 어느 창인지 보인다)
 export function AppShell({
   hospitalName,
   email,
@@ -86,6 +88,7 @@ export function AppShell({
       <AutoUpload />
       <GoogleSheetAuto />
       <GcalSync />
+      <OpenTabsAnswer />
       <div className="sticky top-0 z-10 print:hidden">
         {viewing && <ViewBand viewing={viewing} />}
         <header className="border-b border-line bg-surface">

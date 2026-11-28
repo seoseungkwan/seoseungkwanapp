@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
@@ -11,7 +11,7 @@ import { openClaimChannel } from '../claimLoad'
 import { ClaimScreen } from '../ClaimScreen'
 import { OutsideCounts } from '../OutsideCounts'
 import { useBridge } from '../useBridge'
-import { BusyCard } from './SetupAlert'
+import { BusyCard, claimSetupHref, type ClaimWhy } from './SetupAlert'
 
 // /claim 입구 (precheck REQ-006·REQ-013, ui-90 REQ-413, design.md '청구 (TASK-10)', 시안 docs/mockups/ui-90/app/gen.py claim_body·BUSY).
 // 다른 PC에서 보는 건수(precheck AC-019.5)는 OutsideCounts가 아래 두 자리에 들어간다. ui-90 화면이 목업 화면 11보다 앞서므로 h1·안내·단추는 그대로다.
@@ -19,8 +19,13 @@ import { BusyCard } from './SetupAlert'
 // - 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요"(ClaimOffline, AC-013.8). 이때는 Worker를 만들지 않는다
 // - 연결됐으면 청구 화면(ClaimScreen). 통로와 번호 칸은 Worker 하나를 함께 쓴다
 // - 다른 창에서 작업 중이면 카드 그대로. [건수만 보기]를 누르면 그 자리에서 건수와 "건수만 볼 수 있어요"(design.md '시안과 다른 점' 7)
+// claim-learn(REQ-9313·REQ-9315): 옮길 때 까닭을 주소에 싣고(?from=claim&why=…, 연결 화면이 띠로 보인다), 연결을 확인하는 동안 제목 아래 한 줄을 보인다.
+// 청구 화면이 일하는 중(불러오기·비트 메모 읽기·입력)이라고 알린 동안 도우미가 사라지면 옮기지 않고 청구 화면을 그대로 둔다:
+// 청구 화면이 그 자리에 E-HELPER-STOPPED 안내를 보이고, [다시 불러오기]는 reconnect로 다시 붙은 뒤 불러온다. 다시 붙으면(ready) 평소대로 돌아간다
 
 const TO_SETUP: ReadonlySet<BridgeState> = new Set(['no-helper', 'update-helper', 'update-extension', 'disconnected'])
+/** 옮길 까닭: 상태 그대로, hello가 오류 번호로 끝나 연결 중에 멈춘 것은 끊김이다 */
+const whyOf = (state: BridgeState): ClaimWhy => (state === 'no-helper' || state === 'update-helper' || state === 'update-extension' ? state : 'disconnected')
 
 const titleClass = 'text-title font-semibold text-ink'
 // 건수 위 글 줄: small muted, 사이 8 · 줄 사이 6(시안 .cl-other gap 6px 8px)
@@ -70,19 +75,57 @@ export function ClaimEntry() {
   // hello가 오류 번호로 끝나 연결 중에 멈췄어도 비트 PC 연결로(거기서 번호와 [다시 확인]을 보인다)
   const toSetup = TO_SETUP.has(state) || (state === 'connecting' && helloError !== null)
 
+  /** 청구 화면이 알린 '일하는 중'(AC-9315.1) */
+  const [working, setWorking] = useState(false)
+  /** 일하는 중에 도우미가 사라져 청구 화면을 붙잡아 둔다(멈춤 안내를 보는 동안). 다시 붙으면(ready) 놓는다 */
+  const [held, setHeld] = useState(false)
+  if (toSetup && working && !held) setHeld(true)
+  if (held && state === 'ready') setHeld(false)
+
+  // [다시 불러오기]의 다시 붙기: retry 뒤 연결 확인이 끝나면(ready면 참) 알린다. 붙어 있으면 바로 참이다
+  const waiting = useRef<{ resolve(ok: boolean): void; seen: boolean } | null>(null)
+  const now = useRef({ state, helloError })
+  now.current = { state, helloError }
+  const reconnect = useCallback(() => {
+    if (now.current.state === 'ready') return Promise.resolve(true)
+    waiting.current?.resolve(false)
+    // 이미 확인 중이면 다음에 끝난 상태가 답이다
+    const seen = now.current.state === 'connecting' && now.current.helloError === null
+    return new Promise<boolean>((resolve) => {
+      waiting.current = { resolve, seen }
+      retry()
+    })
+  }, [retry])
   useEffect(() => {
-    if (toSetup) router.replace('/claim/setup')
-  }, [toSetup, router])
+    const wait = waiting.current
+    if (!wait) return
+    // retry 바로 뒤에는 아직 옛 상태일 수 있다: 확인 중(connecting)을 한 번 본 뒤 끝난 상태로 답한다
+    if (state === 'connecting' && helloError === null) {
+      wait.seen = true
+      return
+    }
+    if (state === 'ready' || wait.seen) {
+      waiting.current = null
+      wait.resolve(state === 'ready')
+    }
+  }, [state, helloError])
+
+  const keep = held || waiting.current !== null
+  useEffect(() => {
+    if (toSetup && !working && !keep) router.replace(claimSetupHref(whyOf(state)))
+  }, [toSetup, working, keep, state, router])
 
   if (state === 'no-extension') return <ClaimOffline />
 
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
       <h1 className={titleClass}>청구</h1>
+      {/* 연결을 확인하는 동안(AC-9313.2). 붙잡아 둔 청구 화면이 있으면 그 화면이 알린다 */}
+      {state === 'connecting' && helloError === null && !keep && <p className="text-small text-muted">이 PC 연결을 확인하는 중…</p>}
       {/* helperVersion: [뒤에 붙이기]는 도우미 판이 APPEND_HELPER 이상일 때만 보인다(clinic-profile AC-6611.1). 판을 모르면 숨긴다 */}
-      {state === 'ready' &&
+      {(state === 'ready' || keep) &&
         (channel ? (
-          <ClaimScreen channel={channel} call={call} stream={stream} onProgress={onProgress} helperVersion={hello?.helperVersion} />
+          <ClaimScreen channel={channel} call={call} stream={stream} onProgress={onProgress} helperVersion={hello?.helperVersion} onWorking={setWorking} reconnect={reconnect} />
         ) : (
           <ErrorCard code="E-RULES-LOAD-FAILED" />
         ))}

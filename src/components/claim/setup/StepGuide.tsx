@@ -11,6 +11,7 @@ import type { ProblemGuideKind, StepGuideKind } from './steps'
 // - ProblemActions: 진짜 문제(버전 안 맞음·의원 다름)의 단추 둘. 위 오류 상자(SetupAlert)의 단추 줄에 들어가고 그 단계 줄에는 단추가 없다
 // - HelperUpdateSteps: 도우미 업데이트 순서 글. 위 오류 상자(SetupAlert) 안에 넣는다
 // 단추는 기본 크기(36px), 768px 미만은 44px 전체 폭이다. 주 단추는 한 화면에 하나다
+// claim-learn(AC-9313.3): 확장 설치 안내 아래(상자 밖) "새로 고침" 한 줄과 [이 화면 새로 고침](보조) — 확장은 이 화면을 새로 열어야 알아본다. 상자 안 단추 둘은 그대로다
 
 type ActionProps = {
   storeUrl: string | null
@@ -66,6 +67,20 @@ export function ProblemActions({ kind, storeUrl, disabled, onRetry, onRegister }
 // 할 차례 안내 상자: 768px 미만은 번호 칸까지 전체(1~3), 이상은 이름 칸부터 끝까지(2~4). 단계 줄 격자의 넷째 줄(768px 이상 셋째 줄)
 const box =
   'col-start-1 col-end-3 row-start-4 mt-3 rounded-control bg-canvas p-4 max-md:p-3 md:col-start-2 md:col-end-4 md:row-start-3'
+/** 상자 바로 아래 줄(같은 칸들, 다음 줄) */
+const belowBox = 'col-start-1 col-end-3 row-start-5 mt-2 flex flex-wrap items-center gap-2 md:col-start-2 md:col-end-4 md:row-start-4'
+
+/** 확장을 설치한 뒤 이 화면을 새로 연다(AC-9313.3) */
+function RefreshLine() {
+  return (
+    <div className={belowBox}>
+      <p className="text-body text-ink-2">확장을 설치했으면 이 화면을 새로 고쳐야 알아봐요.</p>
+      <button type="button" className={ds.button.secondary} onClick={() => window.location.reload()}>
+        이 화면 새로 고침
+      </button>
+    </div>
+  )
+}
 
 /** 순서 글 안의 주소(시안 .howto code): surface·1px line·4px, small 500 ink. 고정폭이 아니라 본문 글꼴 */
 const Code = ({ children }: { children: ReactNode }) => (
@@ -151,12 +166,15 @@ export function StepGuide({ kind, code, storeUrl, disabled, onRetry, onRegister 
       return null
   }
   return (
-    <div className={box}>
-      <Steps items={items} />
-      <div className={actionsRow}>
-        {main}
-        {retry}
+    <>
+      <div className={box}>
+        <Steps items={items} />
+        <div className={actionsRow}>
+          {main}
+          {retry}
+        </div>
       </div>
-    </div>
+      {kind === 'install-extension' && <RefreshLine />}
+    </>
   )
 }

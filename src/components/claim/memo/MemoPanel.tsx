@@ -10,7 +10,7 @@ import { errorInfo } from '@/lib/errors'
 import type { DateRange } from '@/types/dates'
 import type { InputResultView, InputSelection, InputWhat, MemoScreenView, TargetRow } from '@/types/precheck'
 import { ClaimError, SetupLink } from '../ClaimError'
-import { runInputExcel, type ClaimChannel, type ClaimStream, type MemoViewAnswer } from '../claimLoad'
+import { runInputExcel, whileWorking, type ClaimChannel, type ClaimStream, type MemoViewAnswer } from '../claimLoad'
 import { BitMemoCard } from '../rows/BitMemoCard'
 import { MemoDetail } from '../rows/MemoDetail'
 import { MemoList, type Show } from '../rows/MemoList'
@@ -30,8 +30,12 @@ import { useSplitKeys } from './useSplitKeys'
 // 묶음 글자와 대상 고르기는 Worker가 한다(AC-004.11). 여기는 일만 시키고, 고른 사람·보기·복사 상태만 쥔다. 고친 글·복사로 한 완료는 Worker를 거쳐 도우미가 그 PC에 저장한다.
 // 복사(완료)는 우리 메모를 그 PC의 복사 칸에 넣고(copyMemo), 된 때만 Worker에 memoCopied를 보낸다(AC-3103.1~AC-3103.3). 환자 글은 화면 메모리와 Worker 밖으로 나가지 않는다.
 // 설정 변경 띠와 기관기호 안내는 ClaimScreen이 화면 맨 위에 둔다(design.md 6-5, AC-018.17). 다른 탭에 다녀오면 비트 메모 읽기 상태와 입력 결과를 ClaimChannel에 맡겨 둔 것으로 되살린다
+// claim-learn(AC-9314.2·AC-9315.1): 입력 결과의 [날짜 목록으로]는 onDates. 비트 메모 읽기·입력 중에 도우미가 사라지면(E-HELPER-MISSING) E-HELPER-STOPPED 안내와
+// [다시 불러오기](onReload)·[비트 PC 연결 확인]을 그 자리에 보이고, 받은 입력 결과는 그대로 둔다. 비트 메모를 읽는 동안은 onBitReading으로 위에 알린다(일하는 중)
 
 export type InputStage = 'pick' | 'wait' | 'run' | 'result'
+
+const HELPER_STOPPED = 'E-HELPER-STOPPED'
 
 const WAIT_NOTE = '[취소]를 누르거나 창을 닫거나 5분이 지나면 아무것도 넣지 않아요.'
 /** 메모 표가 없어져 끝은 '환자 목록에 보여요.'다(AC-3107.1) */
@@ -73,6 +77,10 @@ export type MemoPanelProps = {
   onModeChange?(mode: InputSelection['mode']): void
   /** 연결된 도우미 판(hello.helperVersion). APPEND_HELPER보다 낮거나 모르면 [뒤에 붙이기]를 보이지 않는다(AC-6611.1) */
   helperVersion?: string
+  /** 입력 결과의 [날짜 목록으로](AC-9314.2). ClaimScreen이 날짜 칸으로 가고 목록을 다시 읽는다 */
+  onDates?(): void
+  /** 비트 메모를 읽는 중인가(AC-9315.1의 일하는 중). ClaimScreen이 위로 알린다 */
+  onBitReading?(reading: boolean): void
 }
 
 /**
@@ -118,7 +126,7 @@ export function MemoPanel(props: MemoPanelProps) {
   return <Panel {...props} />
 }
 
-function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, settingsStale, storeStuck, onStoreStuck, checkFresh, onLoadRange, onReload, onStage, flushRef, focusKey, savedMode, onModeChange, helperVersion }: MemoPanelProps) {
+function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, settingsStale, storeStuck, onStoreStuck, checkFresh, onLoadRange, onReload, onStage, flushRef, focusKey, savedMode, onModeChange, helperVersion, onDates, onBitReading }: MemoPanelProps) {
   const kept = useRef(channel.keptMemo())
   const [selection, setSelection] = useState<InputSelection>(() => defaultSelection(visible, savedMode))
   const [view, setView] = useState<MemoScreenView | null>(null)
@@ -267,6 +275,14 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   const locked = stage === 'wait' || stage === 'run'
   const reading = bit.state.status === 'reading'
   const startBlocked = storeStuck || reading
+  useEffect(() => {
+    onBitReading?.(reading)
+  }, [onBitReading, reading])
+  useEffect(() => () => onBitReading?.(false), [onBitReading])
+  /** 비트 메모 읽기 중에 도우미가 멈췄다(AC-9315.1, runMemoReload가 번호를 바꾼다) */
+  const bitStopped = bit.state.status === 'failed' && bit.state.code === HELPER_STOPPED
+  /** 입력 오류, 없으면 비트 메모 읽기 멈춤(AC-9315.1) */
+  const shownError = inputError ?? (bitStopped ? HELPER_STOPPED : null)
 
   /** 입력을 시작하는 단추 하나(AC-018.3·AC-018.16·AC-018.20·AC-018.21) */
   const start = useCallback(
@@ -290,7 +306,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
       if (!begin.ok) channel.setInputBusy(false)
       if (!mounted.current) return
       if (!begin.ok) {
-        setInputError(begin.code)
+        setInputError(whileWorking(begin.code))
         return
       }
       setResult(null)
@@ -302,7 +318,8 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
       if (!mounted.current) return
       await refreshRef.current()
       if (!end.ok) {
-        setInputError(end.code)
+        // 입력 중에 도우미가 사라지면 그 자리 멈춤 안내다(AC-9315.1)
+        setInputError(whileWorking(end.code))
         setStage('pick')
         return
       }
@@ -538,16 +555,16 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
           <span className="text-small text-ink-2">비트에는 아무것도 들어가지 않았어요.</span>
         </div>
       )}
-      {inputError && (
+      {shownError && (
         <div className="flex flex-col items-start gap-2">
-          <ClaimError code={inputError} />
+          <ClaimError code={shownError} />
           <div className="flex flex-wrap items-center gap-2">
-            {inputError === 'E-CLAIM-PARTIAL' && (
+            {(shownError === 'E-CLAIM-PARTIAL' || shownError === HELPER_STOPPED) && (
               <button type="button" className={ds.button.primarySmall} onClick={onReload}>
                 다시 불러오기
               </button>
             )}
-            <SetupLink code={inputError} />
+            <SetupLink code={shownError} />
           </div>
         </div>
       )}
@@ -588,6 +605,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
             void refreshRef.current()
           }}
           onExcel={() => void saveExcel()}
+          onDates={() => onDates?.()}
         />
       ) : (
         <>

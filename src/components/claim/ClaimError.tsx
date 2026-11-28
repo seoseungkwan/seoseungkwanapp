@@ -28,9 +28,12 @@ export const SETUP_CODES: ReadonlySet<string> = new Set([
   'E-STORE-BROKEN',
 ])
 
-/** 그 단추가 있는 곳으로 가는 링크(AC-013.5). 그런 번호가 아니면 그리지 않는다. 달 칸 store.load의 E-BIT-HOSPITAL-MISMATCH는 이 카드로 오지 않는다(AC-018.17의 StoreBlockedCard) */
+/**
+ * 그 단추가 있는 곳으로 가는 링크(AC-013.5). 그런 번호가 아니면 그리지 않는다. 달 칸 store.load의 E-BIT-HOSPITAL-MISMATCH는 이 카드로 오지 않는다(AC-018.17의 StoreBlockedCard).
+ * 일하는 중에 도우미가 멈춤(E-HELPER-STOPPED, claim-learn AC-9315.1)에도 [다시 불러오기] 옆에 붙는다: 글은 [다시 불러오기]를 말하지만 또 멈추면 연결을 확인하러 간다
+ */
 export function SetupLink({ code }: { code: string }) {
-  if (!SETUP_CODES.has(code)) return null
+  if (!SETUP_CODES.has(code) && code !== 'E-HELPER-STOPPED') return null
   return (
     <Link href="/claim/setup" className={`${ds.button.secondarySmall} no-underline`}>
       비트 PC 연결 확인
