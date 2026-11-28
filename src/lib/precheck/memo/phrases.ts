@@ -394,6 +394,20 @@ function validateChartWords(value: unknown): PhraseError[] {
   return errors
 }
 
+const TS_WORDS_MAX = 500
+
+/**
+ * 건초내주사로 알아볼 차트 말(TPL.tsWords, 원본에 없는 칸. claim-learn design.md 2절): 500자까지의 글. 원본 검사가 모르는 칸이라
+ * 원본 검사에 넘기는 TPL에서만 뺀다(돌려주는 값에는 남는다). 칸이 없으면 지난다
+ */
+function takeTsWords(original: Rec): PhraseError[] {
+  if (!plain(original.TPL) || !Object.hasOwn(original.TPL, 'tsWords')) return []
+  const { tsWords, ...TPL } = original.TPL
+  original.TPL = TPL
+  const bad = typeof tsWords !== 'string' || tsWords.length > TS_WORDS_MAX || hasControl(tsWords)
+  return bad ? [{ path: 'TPL.tsWords', message: `건초내주사로 알아볼 차트 말은 쉼표로 나눠 ${TS_WORDS_MAX}자까지 적어 주세요.` }] : []
+}
+
 /**
  * 메모에 쓸 수 있는 문구 값인지 본다. 옛 좌우 규칙은 먼저 2로 바꾼다(원본 apply·preview 흐름). 틀리면 어느 칸인지 돌려준다.
  * 줄이 없거나 빈 {}이거나 약 칸이 없으면 ok가 거짓이고, 부르는 쪽은 메모를 만들지 않는다(AC-014.8)
@@ -406,9 +420,11 @@ export function validatePhrases(input: unknown): PhraseCheck {
     return { ok: false, errors: [{ path: '설정', message: (error as Error).message }] }
   }
   const { procedureDrugs, memoRules, chartWords, ...original } = migrated as Rec
+  const tsWordErrors = takeTsWords(original)
   const errors = validateOriginal(original)
   if (errors.length === 1 && errors[0].path === '설정' && errors[0].message === '설정 형식을 확인해 주세요.') return { ok: false, errors }
   errors.push(...validateDrugs(procedureDrugs), ...validateMemoRules(memoRules), ...validateChartWords(chartWords))
+  errors.push(...tsWordErrors)
   return errors.length ? { ok: false, errors } : { ok: true, value: migrated as Phrases }
 }
 
@@ -416,7 +432,7 @@ const labels: Record<string, string> = {
   main: '기본 시술 문구', mainCentral: 'Central 시술 문구', mainPeripheral: 'Peripheral 시술 문구', mainCentralCodes: 'Central 시술 처방코드', mainPeripheralCodes: 'Peripheral 시술 처방코드',
   lidoCodes: '리도카인(국소마취제) 처방코드', twoSiteRules: '2부위로 보는 처방', intervalCodes: '주사 간격을 볼 처방코드', intervalDays: '주사 간격 일수', reasonPriority: '두 사유가 겹칠 때',
   sideStyle: '좌우 표기 모양', drugWrap: '약제 표기 모양', drugQty: '약제 투여량 쓰기', drugUnit: '약제 투여량 단위', drugLocal: '국소마취제도 약제에 쓰기', kneeSetSkipIa: '무릎 세트면 IA 줄 생략',
-  splitCpb: '경추 CPB 따로 쓰기', splitSnb: '요추 SNB 따로 쓰기', cpb: '경부 CPB', snb: 'SNB 문구', ara: '연골주사', klg: 'K-L grade', iaAra: '연골주사 포함 IA', iaEtc: '일반 IA', ts: '건초내주사',
+  splitCpb: '경추 CPB 따로 쓰기', splitSnb: '요추 SNB 따로 쓰기', cpb: '경부 CPB', snb: 'SNB 문구', ara: '연골주사', klg: 'K-L grade', iaAra: '연골주사 포함 IA', iaEtc: '일반 IA', ts: '건초내주사', tsWords: '건초내주사로 알아볼 차트 말',
   itv: '주사 간격 사유', ia2: '2부위 시술 사유', icnb: 'ICNB', sideAuto: '좌우 자동 처리', sideKeep: '좌우 유지', sideQuantity: '수량 1.5 기준 시술', sideOmit: '항상 좌우 미표기', sideByCode: '코드별 좌우 표시',
   sideRuleVersion: '좌우 적용 규칙', rename: '표기 바꾸기', mark: '줄머리 기호', splitEach: '시술 줄 나누기', sideMode: '좌우 기본 표기', sideSpread: '앞에 적힌 좌우 적용', cartilageSideLang: '연골주사 좌우 표기',
   drugUnlistedOther: '목록에 없는 약·처치', lineJoin: '줄 나눔', sentence: '한 줄 문장 틀', guides: '가이드(투시) 문구(이전)', fixedPhrases: '고정 멘트', siteNames: '부위 영어 표기', levelSep: '레벨 구분 기호',

@@ -18,6 +18,8 @@ export type PhraseTemplates = {
   iaAra?: string
   iaEtc?: string
   ts?: string
+  /** 건초내주사로 알아볼 차트 말(쉼표로, 500자까지). 비면 지금 말(TS_WORDS_FALLBACK)이다(claim-learn REQ-9308) */
+  tsWords?: string
   itv?: string
   ia2?: string
   twoSiteRules?: string
