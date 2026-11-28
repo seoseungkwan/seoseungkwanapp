@@ -3,7 +3,8 @@ import { dayCounts } from '@/lib/precheck/counts'
 import { drugRoles, type DrugRole } from '@/lib/precheck/drugRoles'
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
-import { createMemoEngine, neutralPhrases, unfinished, validatePhrases, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
+import { createMemoEngine, neutralPhrases, unfinished, validatePhrases, type MemoEngine, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
+import { RG_EN, SIDE_STYLES } from '@/lib/precheck/memo/chart'
 import { autoLearn, holeCount, type LineOrigin } from '@/lib/precheck/memo/learn'
 import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, joinedMemo, readBitMemos, replacesOf, trimMemoEnd, visitMemos } from '@/lib/precheck/memoCompare'
 import { withRuleUpdates } from '@/lib/precheck/ruleUpdates'
@@ -12,7 +13,7 @@ import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { Outcome } from '@/types/parse'
-import type { BitMemos, ChartLine, ChartLineKind, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, RxRow, SavedRuleSettings, StuckPerson, StuckView, TargetRow, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
+import type { BitMemos, ChartLine, ChartLineKind, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, RxRow, SavedRuleSettings, StuckPerson, StuckView, TargetRow, TargetVisit, Tables, Visit, VisitDxView, VisitMemo, HoleChoice } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { draftLines, firstLearnKinds, forbiddenOf, learnEligible, learnedTags, learnInput, learnSetup, overlayVisit, usesLearning, visitCodes, visitRegions, type LearnSetup, type VisitLearn } from './learnJobs'
 import { loadTables as defaultLoadTables } from './tables'
@@ -26,6 +27,12 @@ const GRADE_ORDER: readonly Grade[] = ['확인필요', '알림', '참고']
 /** 메모 목록 열린 줄에 이름표가 붙는 증상 줄 종류(AC-2601.1)와 처방내역 차례(AC-2601.2) */
 const LINE_KINDS: ReadonlySet<string> = new Set<ChartLineKind>(['subj', 'exam', 'dx', 'img', 'proc', 'rx', 'plan'])
 const RX_ORDER: Record<RxRow['kind'], number> = { proc: 0, drug: 1, other: 2 }
+/** 메모 글의 빈칸(learn.ts holeCount와 같은 모양)과 후보가 있는 두 빈칸(claim-learn AC-9307.2) */
+const HOLES = /\[[^\]]*확인\]/g
+const MISS_SIDE = '[좌우 확인]'
+const MISS_SITE = '[부위 확인]'
+/** 좌우 표기를 고르지 않았을 때의 좌우 글(엔진이 바꾸지 않는 글) */
+const PLAIN_SIDES: Readonly<Record<string, string>> = { rt: 'Rt', lt: 'Lt', both: 'both' }
 
 /** 다 모은 claim.month 글자 → ClaimMonth. JSON은 여기서 한 번만 푼다. 틀리면(잘린 글자·모양·줄 수) E-CLAIM-PARTIAL */
 export function loadMonth(text: string): Outcome<ClaimMonth> {
@@ -163,7 +170,7 @@ function phraseCheckOf(phrases: unknown): { checked: PhraseCheck; fallback: bool
 }
 
 /** memoViewsOf의 곁 재료: 완료한 진료(학습을 쓰지 않음), 기본 문구로 만듦, 진료마다 덧씌우기 결과를 받을 곳(Worker 메모리) */
-type MemoExtra = { finished?: ReadonlySet<string>; fallback?: boolean; learnOut?: Map<string, VisitLearn>; setupOut?: (setup: LearnSetup) => void }
+type MemoExtra = { finished?: ReadonlySet<string>; fallback?: boolean; learnOut?: Map<string, VisitLearn>; setupOut?: (setup: LearnSetup) => void; engineOut?: (engine: MemoEngine) => void }
 
 /** 약 역할 표와 처방 목록의 연골주사 약 이름(clinic-profile design.md 10·11절). 점검(runRules 넷째 값)과 메모(tables.roles·cartilageNames)가 같은 표를 쓴다 */
 type DrugTables = { roles: Map<string, DrugRole | 'none'>; cartilageNames: string[] }
@@ -187,6 +194,7 @@ function memoViewsOf(month: ClaimMonth, tables: Tables, checked: PhraseCheck, sa
   const engine = createMemoEngine(checked.value, { ...tables, roles, cartilageNames })
   const setup = learnSetup(checked.value)
   extra.setupOut?.(setup)
+  extra.engineOut?.(engine)
   return {
     memoBlocked: null,
     memos: engine.analyzeMonth(month).map((visit) => {
@@ -414,6 +422,8 @@ export function createPrecheckJobs(deps: {
   /** 메모 보기와 함께 만드는 진료마다의 학습 덧씌우기 결과와 그때의 학습 재료(claim-learn design.md 4절). 메모 보기와 함께 버린다 */
   let learnCache: Map<string, VisitLearn> = new Map()
   let learnNow: LearnSetup | null = null
+  /** 그 메모 보기를 만든 엔진(빈칸 후보 siteChoices, claim-learn AC-9307.2). 메모 보기와 함께 버린다 */
+  let engineNow: MemoEngine | null = null
   /** 진료마다 마지막 저절로 학습의 보이던 글·고친 글(학습 창 [조건 바꾸기]의 줄 차이, AC-9301.2). 새 loadStart가 지운다 */
   const lastLearn = new Map<string, { shown: string; edited: string; origins: LineOrigin[] }>()
 
@@ -561,8 +571,15 @@ export function createPrecheckJobs(deps: {
       kindsCache = new Map()
       learnCache = new Map()
       learnNow = null
+      engineNow = null
       const { checked, fallback } = phraseCheckOf(memoContext.settings.phrases)
-      viewsCache = memoViewsOf(current, memoContext.tables, checked, work.saved, kindsCache, undefined, { finished: finishedKeys(), fallback, learnOut: learnCache, setupOut: (setup) => (learnNow = setup) })
+      viewsCache = memoViewsOf(current, memoContext.tables, checked, work.saved, kindsCache, undefined, {
+        finished: finishedKeys(),
+        fallback,
+        learnOut: learnCache,
+        setupOut: (setup) => (learnNow = setup),
+        engineOut: (engine) => (engineNow = engine),
+      })
     }
     return viewsCache
   }
@@ -622,7 +639,38 @@ export function createPrecheckJobs(deps: {
     const holes = holeCount(row.text)
     const count = sameDay.get(`${visit.chart}|${visit.date}`) ?? 1
     if (!tags.length && !holes && count < 2) return row
-    return { ...row, ...(tags.length ? { learned: tags } : {}), ...(holes ? { holes } : {}), ...(count > 1 ? { sameDay: count } : {}) }
+    return { ...row, ...(tags.length ? { learned: tags } : {}), ...(holes ? { holes, holeChoices: holeChoicesOf(row.text, learn) } : {}), ...(count > 1 ? { sameDay: count } : {}) }
+  }
+
+  /**
+   * 빈칸마다 후보 글(claim-learn AC-9307.2, design.md 10절). 글의 빈칸 차례로 holeCount와 같은 수다.
+   * [좌우 확인] → 병원 좌우 표기 셋(표기를 고르지 않았으면 Rt·Lt·both). [부위 확인] → 엔진 siteChoices의 그 줄 후보: 엔진 글에서 [부위 확인]이 있는 줄과
+   * siteChoices가 줄 차례로 하나씩이라 수가 같을 때만 줄 글로 잇는다(엔진 글의 다른 [부위 확인]과 헷갈리지 않게). 못 이으면 그 진료 부위. 그 밖의 빈칸은 후보가 없다
+   */
+  function holeChoicesOf(text: string, learn: VisitLearn | undefined): HoleChoice[] {
+    const style = learnNow?.phrases.TPL.sideStyle
+    const sides = typeof style === 'string' && Object.hasOwn(SIDE_STYLES, style) ? SIDE_STYLES[style] : PLAIN_SIDES
+    const sideChoices = [sides.rt, sides.lt, sides.both]
+    const byLine = new Map<string, string[]>()
+    let regions: string[] = []
+    if (learn) {
+      regions = visitRegions(learn.visit).map((key) => RG_EN[key] ?? key)
+      const holeLines = learn.engine
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.includes(MISS_SITE))
+      const entries = engineNow?.siteChoices(learn.visit) ?? []
+      if (entries.length === holeLines.length) holeLines.forEach((line, at) => byLine.set(line, entries[at].choices))
+    }
+    return [...text.matchAll(HOLES)].map((found) => {
+      const hole = found[0]
+      if (hole === MISS_SIDE) return { hole, choices: sideChoices }
+      if (hole !== MISS_SITE) return { hole, choices: [] }
+      const start = text.lastIndexOf('\n', found.index) + 1
+      const end = text.indexOf('\n', found.index)
+      const line = text.slice(start, end < 0 ? undefined : end).trim()
+      return { hole, choices: [...(byLine.get(line) ?? regions)] }
+    })
   }
 
   /**

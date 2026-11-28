@@ -78,7 +78,7 @@ describe('REQ-3101 왼쪽 환자 목록', () => {
     expect(on.onShow).toHaveBeenCalledWith('done')
   })
 
-  it('AC-3101.2: 목록 차례는 입력할 사람 → 확인 필요 → 다른 메모 있음 → 직접 입력 → 지난번 건너뜀 → 비트 메모를 읽지 못함 → 이미 입력됨 → 메모 없음이다', () => {
+  it('AC-9307.1·AC-3101.2: 빠지는 묶음 차례는 확인 필요 → 다른 메모 있음 → 직접 입력 → 지난번 건너뜀 → 비트 메모를 읽지 못함 → 이미 입력됨 → 메모 없음이다(입력할 사람은 그 앞, 빈칸 있는 사람이 있으면 확인 필요가 맨 위 — memoSplit)', () => {
     expect(LIST_ORDER).toEqual(['mark', 'diff', 'manual', 'held', 'unread', 'done', 'nomemo'])
     expect(BATCH_NAME).toBe('입력할 사람')
     expect([BATCH_NAME, ...LIST_ORDER.map((reason) => LEFT_GROUPS[reason].name)]).toEqual(['입력할 사람', '확인 필요', '다른 메모 있음', '직접 입력', '지난번 건너뜀', '비트 메모를 읽지 못함', '이미 입력됨', '메모 없음'])
@@ -367,5 +367,46 @@ describe('AC-6611.1 목록 줄의 붙임 표시', () => {
     expect(tagsOf(row('A', { chip: '메모 바꿈', appended: '◈가상 비트 글', unfinished: true }), 'batch').map((tag) => tag.textContent)).toEqual(['! 확인 필요'])
     cleanup()
     expect(tagsOf(row('A', { chip: '메모 바꿈', appended: '◈가상 비트 글' }), 'diff')).toEqual([])
+  })
+})
+
+// 청구 메모 학습(claim-learn): 빈칸 수·학습 확인 필요·학습 꼬리표·하루 두 번(notes '메모 단계' 글 그대로). 목록 줄과 상세 머리가 같은 RowTags를 쓴다
+describe('AC-9307.1·AC-9302.6·AC-9309.1 목록 줄의 학습 표시', () => {
+  const tagsOf = (value: ListRow, id: ListGroup['id'] = 'batch') => {
+    render(
+      <span data-testid="tags">
+        <RowTags row={value} group={id} failed={false} />
+      </span>,
+    )
+    return ([...screen.getByTestId('tags').children] as HTMLElement[]).map((tag) => [tag.textContent, tag.className])
+  }
+
+  it("AC-9307.1: 빈칸이 있는 줄은 '! 확인 필요' 대신 '빈칸 {n}'(노랑)이다. 빈칸 없는 확인 표시는 지금 그대로다", () => {
+    expect(tagsOf(left('A', { unfinished: true, holes: 2 }), 'mark')).toEqual([['빈칸 2', ds.chip.warning]])
+    cleanup()
+    expect(tagsOf(left('A', { unfinished: true }), 'mark')).toEqual([['! 확인 필요', ds.chip.warning]])
+  })
+
+  it("AC-9302.6: 남은 확인이 1 이상인 학습이 쓰인 줄은 '확인 필요'(노랑)와 첫 학습 이름 꼬리표 '학습: {이름}'이다. 0이면 꼬리표만 있다", () => {
+    const learned = [
+      { id: 'l0000a001', name: 'LA358 · 허리', left: 0 },
+      { id: 'l0000a002', name: 'KK090 · 무릎', left: 2 },
+    ]
+    expect(tagsOf(row('A', { learned }))).toEqual([['새 메모', ds.chip.neutral], ['확인 필요', ds.chip.warning], ['학습: LA358 · 허리', ds.chip.neutral]])
+    cleanup()
+    expect(tagsOf(row('A', { learned: [{ id: 'l0000a001', name: 'LA358 · 허리', left: 0 }] }))).toEqual([['새 메모', ds.chip.neutral], ['학습: LA358 · 허리', ds.chip.neutral]])
+  })
+
+  it("AC-9309.1: 같은 차트·같은 날 진료가 둘 이상이면 '하루 두 번'(빨강)이 맨 뒤에 붙는다", () => {
+    expect(tagsOf(row('A', { sameDay: 2 }))).toEqual([['새 메모', ds.chip.neutral], ['하루 두 번', ds.chip.negative]])
+    cleanup()
+    expect(tagsOf(left('A', { sameDay: 3 }), 'manual')).toEqual([['하루 두 번', ds.chip.negative]])
+    cleanup()
+    expect(tagsOf(row('A', { sameDay: 1 }))).toEqual([['새 메모', ds.chip.neutral]])
+  })
+
+  it('AC-9307.1: 목록 줄에 빈칸 표시가 보인다(줄 글 그대로)', () => {
+    show([group('mark', [left('K', { unfinished: true, holes: 1 })])])
+    expect(lineOf('K').textContent).toBe('가상환자K11/2 (월)9011빈칸 1')
   })
 })

@@ -9,9 +9,11 @@ import { RowTags, type ListGroup } from './MemoList'
 // 오른쪽 고른 환자 상세(memo-split REQ-3105, 승인 시안 4의 .detail). 머리 → 단추 줄(초록 복사·상태 줄) → 우리 메모 | 비트 메모 두 칸 → 증상·처방 표.
 // 줄은 props로만 받는다. 어느 상태 줄인지(CopyStatus)·단추를 막을지는 화면(MemoPanel·memoSplit)이 정하고 여기는 그대로 그린다.
 // 알림은 떠 사라지는 알림 대신 단추 줄 맨 아래 상태 줄 한 곳이다. 기호는 글자와 같이 쓰고, 완료·복사 실패의 기호는 공용 Icon(check·x)이다(ui-90 AC-408.2)
+// claim-learn(시안 ?s=memo·why): 우리 메모의 빈칸([… 확인]) 자리에 후보 단추(AC-9307.2·AC-9307.3) · 머리 [왜 이렇게?](출처 표는 화면이 그려 넘기고 증상·처방 칸 자리에 선다, AC-9306.1) ·
+// 메모 칸 아래 저절로 학습 띠(화면이 그려 넘김, AC-9301.1)·학습 노란 줄(AC-9302.6)·하루 두 번 빨간 줄(AC-9309.1) · 설정 바뀜 상태 줄(AC-9314.1)
 
 /** 상태 줄 하나(AC-3103.2~AC-3103.8·AC-3104.6). 고르는 차례는 memoSplit.copyStatus가 정한다 */
-export type CopyStatus = 'editing' | 'failed' | 'failedAgain' | 'reopened' | 'mark' | 'none' | 'locked' | 'stuck' | 'copied' | 'done' | 'ready'
+export type CopyStatus = 'editing' | 'failed' | 'failedAgain' | 'reopened' | 'mark' | 'none' | 'locked' | 'stuck' | 'stale' | 'copied' | 'done' | 'ready'
 
 type Line = { tone: string; sign?: 'check' | 'x' | '!'; lead?: string; text: string; role?: 'alert' | 'status' }
 /** 기본(ready)은 상태 줄이 없다(claim-memo-fit AC-4804.1). 다른 상태의 글·색·기호는 그대로(AC-4804.2) */
@@ -19,6 +21,8 @@ const STATUS: Record<Exclude<CopyStatus, 'ready'>, Line> = {
   editing: { tone: 'text-muted', text: '우리 메모를 고치는 중이에요. 칸 밖을 누르면 반영돼요.' },
   locked: { tone: 'text-muted', text: '입력 중에는 복사할 수 없어요.' },
   stuck: { tone: 'text-muted', text: '저장이 막혀 있는 동안에는 복사할 수 없어요.' },
+  // 설정 바뀜 띠가 떠 있다: [비트에 입력] 옆 글과 같다(claim-learn AC-9314.1)
+  stale: { tone: 'text-muted', text: '[다시 점검]을 누른 뒤에 눌러 주세요.' },
   failed: { tone: 'text-negative', sign: 'x', lead: '복사하지 못했어요.', text: '완료로 바뀌지 않았어요. 다시 눌러 주세요.', role: 'alert' },
   failedAgain: { tone: 'text-negative', sign: 'x', lead: '다시 복사하지 못했어요.', text: '완료는 그대로예요. 다시 눌러 주세요.', role: 'alert' },
   reopened: { tone: 'text-warning', sign: '!', lead: '메모를 고쳐서 완료가 풀렸어요.', text: '고친 메모를 다시 복사(완료)해 주세요.' },
@@ -50,6 +54,53 @@ const th = 'whitespace-nowrap border-b border-line bg-canvas px-2 py-1 text-left
 const td = 'border-t border-line px-2 py-1 align-top'
 const kindCell = (proc: boolean) => `${td} whitespace-nowrap text-caption ${proc ? 'font-semibold text-ink' : 'text-muted'}`
 const note = 'text-caption text-muted'
+/** 빈칸 표시(시안 .hole): 점선 노란 테두리 · 노란 바탕 · 굵은 작은 글. 후보 단추는 그 안에 */
+const hole = 'mx-0.5 inline-flex flex-wrap items-center gap-1 rounded-control border border-dashed border-warning bg-warning-soft px-1 align-middle text-caption font-semibold text-warning'
+const holeButton = `inline-flex h-5 cursor-pointer items-center rounded-control border border-line-strong bg-surface px-1.5 text-caption font-semibold text-ink-2 hover:bg-canvas ${ds.focusRing}`
+/** 메모 글의 빈칸(Worker의 holeCount와 같은 모양, claim-learn design.md 10절) */
+const HOLES = /\[[^\]]*확인\]/g
+const SITE_HOLE = '[부위 확인]'
+/** 우리 메모 칸 아래 줄(학습 노란 줄·하루 두 번 빨간 줄) */
+const band = 'rounded-control px-3 py-1.5 text-small'
+
+/**
+ * 우리 메모 글(AC-3105.3). 빈칸([… 확인]) 자리는 '빈칸 {i} {글}' 묶음이고, 고칠 수 있고 후보가 지금 글의 빈칸과 차례·글이 맞으면 후보 단추가 있다(AC-9307.2).
+ * 단추를 누르면 그 빈칸 한 곳만 그 글로 바꾼 메모를 알린다(AC-9307.3). [부위 확인]은 [직접 쓰기]로 고치는 칸을 연다. 입력 중(locked)에는 단추가 없다
+ */
+function MemoText({ row, canFill, onFill, onEdit }: { row: TargetRow; canFill: boolean; onFill?(text: string): void; onEdit(): void }) {
+  const text = row.text
+  const found = [...text.matchAll(HOLES)]
+  if (found.length === 0) return <p className="whitespace-pre-wrap break-words text-body text-ink">{text}</p>
+  const choices = row.holeChoices ?? []
+  const aligned = choices.length === found.length && found.every((match, index) => choices[index].hole === match[0])
+  const buttons = canFill && aligned
+  const parts: ReactNode[] = []
+  let at = 0
+  found.forEach((match, index) => {
+    const start = match.index
+    const word = match[0]
+    if (start > at) parts.push(text.slice(at, start))
+    parts.push(
+      <span key={index} role="group" aria-label={`빈칸 ${index + 1} ${word}`} className={hole}>
+        {word}
+        {buttons &&
+          choices[index].choices.map((choice) => (
+            <button key={choice} type="button" className={holeButton} onClick={() => onFill?.(text.slice(0, start) + choice + text.slice(start + word.length))}>
+              {choice}
+            </button>
+          ))}
+        {buttons && word === SITE_HOLE && (
+          <button type="button" className={holeButton} onClick={onEdit}>
+            직접 쓰기
+          </button>
+        )}
+      </span>,
+    )
+    at = start + word.length
+  })
+  if (at < text.length) parts.push(text.slice(at))
+  return <p className="whitespace-pre-wrap break-words text-body text-ink">{parts}</p>
+}
 
 /** 단추 줄 맨 아래 상태 줄: 앞 기호(Icon x · ! · Icon check)와 첫 문장은 굵게(시안 .status) */
 function StatusLine({ status }: { status: CopyStatus }) {
@@ -219,14 +270,28 @@ export function MemoDetail(props: {
   /** true [이 메모로 바꾸기] · false [바꾸지 않기](붙이기도 푼다) · 'append' [뒤에 붙이기](AC-6611.1) */
   onApprove(approved: boolean | 'append'): void
   onHeldRetry(): void
+  /** 빈칸 후보 단추로 채운 글(claim-learn AC-9307.3). 화면이 [메모 고치기] 저장과 같은 길로 보낸다. 없으면 단추가 없다 */
+  onFill?(text: string): void
+  /** [왜 이렇게?](AC-9306.1). 없으면 단추가 없다 */
+  onWhy?(): void
+  /** 열린 출처 표(WhyTable). 있으면 증상·처방 칸 자리에 선다 */
+  why?: ReactNode
+  /** 저절로 학습 띠(AC-9301.1). 화면이 그 진료일 때만 그려 넘긴다 */
+  learnBand?: ReactNode
 }) {
   const { row, group, groupName, position, tableRow, canPrev, canNext, onPrev, onNext, status, copying, failed, copyDisabled, undoDisabled } = props
   const { editing, locked, reading, startBlocked, showUnsaved, heldCount, card, canAppend = false, onCopy, onUndone, onEdit, onEditDone, onApprove, onHeldRetry } = props
+  const { onFill, onWhy, why, learnBand } = props
   // 우리 메모가 있는 사람이면 고칠 수 있다. 글을 다 지워 '메모 없음'으로 간 사람도 다시 쓸 수 있다(AC-3105.2). 복사는 화면이 빈 글이면 막는다(canCopy)
   const editable = row.hasMemo
   const label = copying ? '복사 중…' : row.done ? '다시 복사' : '복사(완료)'
   const journal = !row.done && tableRow?.lastJournal !== undefined ? JOURNAL_TEXT[tableRow.lastJournal] : undefined
   const hasText = row.text.trim() !== ''
+  /** 남은 확인이 있는 학습(AC-9302.6): 노란 줄의 남은 확인 수는 가장 많은 것 */
+  const checking = (row.learned ?? []).filter((tag) => tag.left > 0)
+  const leftMost = Math.max(0, ...checking.map((tag) => tag.left))
+  const twice = row.sameDay > 1
+  const bands = Boolean(learnBand) || checking.length > 0 || twice
 
   // lg(1024px) 이상은 머리 한 줄 + 아래 세 칸(① 단추 상자·메모 ② 증상 ③ 처방, claim-memo-fit AC-4803.1~AC-4803.6).
   // DOM 차례는 그대로 두고 lg: class(contents·order·grid)로만 모양을 바꾼다. lg 미만은 지금 모양 그대로다
@@ -255,6 +320,11 @@ export function MemoDetail(props: {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 lg:order-3 lg:flex-row lg:items-center">
           <div className="flex gap-1.5">
+            {onWhy && (
+              <button type="button" className={ds.button.secondarySmall} aria-pressed={why !== undefined} onClick={onWhy}>
+                왜 이렇게?
+              </button>
+            )}
             <button type="button" className={ds.button.secondarySmall} disabled={!canPrev} onClick={onPrev}>
               ↑ 앞 사람
             </button>
@@ -320,7 +390,7 @@ export function MemoDetail(props: {
               {editing ? (
                 <Editor row={row} locked={locked} onDone={onEditDone} />
               ) : hasText ? (
-                <p className="whitespace-pre-wrap break-words text-body text-ink">{row.text}</p>
+                <MemoText row={row} canFill={!locked} onFill={onFill} onEdit={onEdit} />
               ) : (
                 <p className="text-small text-muted">우리 메모가 없어요.</p>
               )}
@@ -334,12 +404,23 @@ export function MemoDetail(props: {
               </div>
             )}
           </div>
+          {bands && (
+            <div className="flex flex-col gap-2">
+              {learnBand}
+              {checking.length > 0 && <p className={`${band} bg-warning-soft text-warning`}>{`새 학습이 쓰인 메모예요. 맞으면 그대로 복사·입력하세요. (남은 확인 ${leftMost}번)`}</p>}
+              {twice && <p className={`${band} bg-negative-soft text-negative`}>이 환자는 이날 두 번 진료했어요. 그날 처방이 두 메모에 똑같이 들어가니 맞는지 봐 주세요.</p>}
+            </div>
+          )}
         </div>
 
         {/* lg 미만은 2 : 3 두 칸, lg 이상은 상자가 없어져(lg:contents) 증상 ②·처방 ③이 바깥 격자의 칸이 된다 */}
         <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 lg:contents">
-          <ChartLines lines={row.chartLines} />
-          <RxRows rows={row.rxRows} />
+          {why ?? (
+            <>
+              <ChartLines lines={row.chartLines} />
+              <RxRows rows={row.rxRows} />
+            </>
+          )}
         </div>
       </div>
     </div>

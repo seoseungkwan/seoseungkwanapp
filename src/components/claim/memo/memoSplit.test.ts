@@ -42,12 +42,27 @@ const SAMPLE = targets(
 )
 
 describe('AC-3101.2 묶음 차례', () => {
-  it('AC-3101.2: 입력할 사람 → 확인 필요 → 다른 메모 있음 → 직접 입력 → 지난번 건너뜀 → 읽지 못함 → 이미 입력됨 → 메모 없음', () => {
+  it('AC-9307.1·AC-3101.2: 빈칸 있는 사람이 없으면 차례는 지금 그대로 입력할 사람 → 확인 필요 → 다른 메모 있음 → 직접 입력 → 지난번 건너뜀 → 읽지 못함 → 이미 입력됨 → 메모 없음', () => {
     const groups = listGroups(SAMPLE, 'all', null)
     expect(ids(groups)).toEqual(['batch', 'mark', 'diff', 'manual', 'held', 'unread', 'done', 'nomemo'])
     expect(groups.map((group) => group.name)).toEqual(['입력할 사람', '확인 필요', '다른 메모 있음', '직접 입력', '지난번 건너뜀', '비트 메모를 읽지 못함', '이미 입력됨', '메모 없음'])
     expect(keysOf(groups)).toEqual(['a', 'b', 'c', 'f', 'h', 'g', 'j', 'i', 'd', 'e'])
     expect(groups[0]).toMatchObject({ total: 3 })
+  })
+
+  it('AC-9307.1: 빈칸 있는 사람이 있으면 확인 필요 묶음이 맨 위이고 그 안에서 빈칸 있는 사람이 먼저다(빈칸 없는 사람끼리·다른 묶음의 차례는 그대로)', () => {
+    const holed = targets(SAMPLE.batch, [
+      ...SAMPLE.left.filter((group) => group.reason !== 'mark'),
+      { reason: 'mark', rows: [row('f', { unfinished: true }), row('k', { unfinished: true, holes: 2 }), row('l', { unfinished: true }), row('n', { unfinished: true, holes: 1 })] },
+    ])
+    const groups = listGroups(holed, 'all', null)
+    expect(ids(groups)).toEqual(['mark', 'batch', 'diff', 'manual', 'held', 'unread', 'done', 'nomemo'])
+    expect(keysOf(groups)).toEqual(['k', 'n', 'f', 'l', 'a', 'b', 'c', 'h', 'g', 'j', 'i', 'd', 'e'])
+    // 고를 사람·앞뒤·자리도 같은 차례다
+    expect(keepOrFirst(groups, null)).toBe('k')
+    expect(neighbor(groups, 'l', 1)).toBe('a')
+    expect(positionOf(holed, 'n')).toEqual({ id: 'mark', name: '확인 필요', index: 2, total: 4 })
+    expect(groups.find((group) => group.id === 'batch')!.rows.map((item) => item.no)).toEqual([1, 2, 3])
   })
 
   it('AC-3101.2: 사람이 없는 묶음은 없다', () => {
@@ -134,6 +149,15 @@ describe('AC-3103.5~AC-3103.8 복사할 수 있나와 상태 줄', () => {
   it('AC-3103.5: 메모 없음은 none, 확인 표시는 mark다', () => {
     expect(copyStatus({ ...base, row: row('a', { hasMemo: false, text: '' }) })).toBe('none')
     expect(copyStatus({ ...base, row: row('a', { unfinished: true }) })).toBe('mark')
+  })
+
+  it('AC-9314.1: 설정 바뀜 띠가 떠 있으면 stale이다(고치는 중·입력 중·저장 막힘보다 뒤, 복사 실패보다 앞)', () => {
+    expect(copyStatus({ ...base, row: row('a'), stale: true })).toBe('stale')
+    expect(copyStatus({ ...base, row: row('a', { done: true }), stale: true, failed: true })).toBe('stale')
+    expect(copyStatus({ ...base, row: row('a'), stale: true, editing: true })).toBe('editing')
+    expect(copyStatus({ ...base, row: row('a'), stale: true, locked: true })).toBe('locked')
+    expect(copyStatus({ ...base, row: row('a'), stale: true, storeStuck: true })).toBe('stuck')
+    expect(copyStatus({ ...base, row: row('a'), stale: false })).toBe('ready')
   })
 
   it('AC-3104.6: 고쳐서 완료가 풀렸으면 reopened다(복사 실패보다 뒤, 확인 표시보다 앞)', () => {
