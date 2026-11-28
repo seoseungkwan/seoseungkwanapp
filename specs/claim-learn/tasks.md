@@ -8,9 +8,10 @@
 >   같이 고치는 파일은 셋뿐이고 고치는 자리가 다르다: `types.ts`·`phrases.ts`(TASK-1 = `learned`·`learnKinds`, TASK-3 = `TPL.tsWords`), `errors.ts`(TASK-1 = E-LEARN-*, TASK-4 = E-HELPER-STOPPED), `memo/index.ts`(내보내기 줄). 합칠 때 둘 다 남긴다.
 > - Phase 2 (일꾼 셋): TASK-5 ∥ TASK-7 ∥ TASK-8 — Worker·저장·자료 모양 / 설정 학습 탭 / 모든 주사 부위 (Phase 1을 합친 뒤: 학습 함수·건초·출처 표를 쓴다. TASK-8은 TASK-3만 기다리므로 TASK-3을 합치면 바로 시작해도 된다)
 > - Phase 3 (일꾼 하나): TASK-6 — 메모 단계 화면(학습 창·처음 학습·왜 이렇게·빈칸·하루 두 번·기본 문구). TASK-5의 Worker 메시지·저장 함수, TASK-7의 `LearnEditor`, TASK-8의 `siteChoices`를 쓰므로 마지막이다.
-> - 배포 전: design.md 9-1절 '정확도 맞춰 보기'(저장소 밖, 숫자만).
+> - Phase 3에 TASK-9(10월 맞춰 보기 뒤 손볼 것)도 함께 — TASK-6과 고치는 파일이 겹치지 않는다(엔진 부위 규칙·합친 뒤 옛 기대로 남은 범위 밖 시험·도우미 등록 열쇠).
+> - 배포 전: design.md 9-1절 '정확도 맞춰 보기'(저장소 밖, 숫자만). 1차는 끝(2026-11-28), TASK-9 뒤 2차.
 > - 검토는 끝에 한 번(ssk-finish-check: 전체 시험·lint·build·도우미 net10·net48, 하네스 화면 사진 1440·1024). 중간 검토는 없다.
-> - `extension/`·`supabase/migrations/`는 고치지 않는다. 도우미는 TASK-2만 고친다.
+> - `extension/`·`supabase/migrations/`는 고치지 않는다. 도우미는 TASK-2와 TASK-9(등록 파일 열쇠 한 줄)만 고친다.
 
 ## 먼저 할 일 (코드 작업 아님)
 1. 시안 `docs/mockups/claim-learn/index.html`(?s=memo·learn·why·first·list·dates·default·connect·errors)과 `notes.md` '화면 글'을 이 명세 승인과 함께 승인받는다(사용자 "승인도 명세와 함께 한 번에").
@@ -79,3 +80,11 @@
 - Tests: src/lib/precheck/memo/siteRules.test.ts, src/lib/precheck/memo/tsSites.test.ts, src/lib/precheck/memo/golden.test.ts, src/lib/precheck/memo/fullText.test.ts
 - TDD: required — design.md 9-1절. TASK-3의 KK062 `tsSites`를 `pickSites`로 넓혀 IA 줄 둘·`{부위}` noteLines 줄에도 쓴다. `siteChoices(visit)`를 엔진이 돌려주는 것에 더한다(`tsHoleChoices`는 남김). 좌우·IA 좌우·연골주사·KLG 줄 규칙은 그대로다. 골든 등 지금 시험은 부위가 하나인 사례는 그대로 두고, 두 부위 이상을 잇던 기대만 AC-9319로 바꾼다. 바꾼 시험 이름은 tdd 기록에 적는다.
 - 차례: Phase 2 (TASK-3을 합친 뒤 바로, TASK-5·7과 동시)
+
+## TASK-9: 10월 맞춰 보기 뒤 손볼 것 — 차트 좌우·건초 넓은 부위·소수 수량 + 합친 뒤 옛 기대로 남은 시험 + 도우미 등록 열쇠
+- REQ: REQ-9319, REQ-9317, REQ-9313, REQ-9304, REQ-9316
+- AC: AC-9319.3, AC-9319.6, AC-9319.7, AC-9319.8, AC-9317.3, AC-9317.5, AC-9313.1, AC-9304.1, AC-9316.1
+- Files: src/lib/precheck/memo/engine.ts, src/lib/precheck/memo/siteRules.test.ts, src/lib/precheck/memo/tsSites.test.ts, src/lib/precheck/memo/golden.test.ts, src/lib/precheck/memo/fullText.test.ts, src/lib/precheck/memo/buildMemo.test.ts, src/lib/precheck/memo/clinicMemo.test.ts, src/lib/precheck/memo/drugs.test.ts, src/lib/precheck/memo/memoSettings.test.ts, src/lib/precheck/memo/ourClinic.test.ts, src/lib/bridge/protocol.test.ts, src/app/(app)/claim/page.test.tsx, src/components/settings/viewMode.test.tsx, helper/src/Precheck.Core/Registration/RegistrationStore.cs, helper/src/Precheck.Core/Registration/RegisterFlow.cs, helper/tests/Precheck.Core.Tests/Registration/RegisterFlow.test.cs
+- Tests: src/lib/precheck/memo/siteRules.test.ts, src/lib/precheck/memo/tsSites.test.ts, src/lib/bridge/protocol.test.ts, src/app/(app)/claim/page.test.tsx, src/components/settings/viewMode.test.tsx, helper/tests/Precheck.Core.Tests/Registration/RegisterFlow.test.cs
+- TDD: required — (1) 엔진(design.md 9-1절): 한도는 소수 올림, 고른 부위가 둘 이상이면 수량 both를 붙이지 않음, iaSide 켬이면 IA·건초 줄에 그 조각 좌우, KK062 부위는 `IA_REGIONS`만(손가락은 손). 부위 하나·연골주사·KLG 줄 기대는 그대로(AC-9319.5)이고 바뀌는 기대만 바꿔 이름을 tdd 기록에 적는다. (2) 일꾼 결과를 합친 뒤 옛 기대로 남은 범위 밖 시험의 기대값만 고친다: `protocol.test.ts` LATEST_HELPER 0.15.0(AC-9317.5), `claim/page.test.tsx` 연결 화면 주소 `/claim/setup?from=claim&why=…`(AC-9313.1), `viewMode.test.tsx` 탭 목록 끝 '학습'(AC-9304.1). (3) 도우미: `RegisterFlow`가 `RegistrationStore`의 암호(protector)를 리플렉션으로 읽던 것을 `RegistrationStore`의 internal 읽기 한 줄로 바꾼다(동작 같음, AC-9317.3 시험 그대로 통과).
+- 차례: Phase 3 (TASK-6과 동시). 끝나면 '정확도 맞춰 보기' 2차(iaSide 켬).
