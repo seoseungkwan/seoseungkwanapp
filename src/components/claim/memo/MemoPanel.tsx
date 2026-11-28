@@ -272,9 +272,19 @@ function Panel(props: MemoPanelProps) {
   const learned = useLearned({ worker: channel.worker, onSaved: () => onLearnedRef.current?.() })
   const [whyOpen, setWhyOpen] = useState(false)
   const [firstOpen, setFirstOpen] = useState(false)
-  /** 이 칸을 연 뒤 [맞아요]로 확인한 처음 학습 종류(AC-9305.2) */
+  /** 이 칸을 연 뒤 [맞아요]로, 또는 [고치기]로 고쳐 저장해 확인한 처음 학습 종류(AC-9305.2) */
   const [confirmedKinds, setConfirmedKinds] = useState<ReadonlySet<string>>(() => new Set())
-  const { askFirst } = learned
+  /** [고치기]로 연 종류와 그 예시 진료(AC-9305.2): 그 진료의 고친 글을 보냈으면 sent, 그 저장이 되면(memoSave 성공) 확인함으로 적는다 */
+  const fixingKind = useRef<{ key: string; visitKey: string; sent: boolean } | null>(null)
+  const { askFirst, confirmKinds } = learned
+  /** 처음 학습 종류를 확인함으로: 종류 열쇠를 저장하고 이 칸에서도 확인한 것으로 센다(AC-9305.2·AC-9305.3) */
+  const confirmKind = useCallback(
+    (key: string) => {
+      confirmKinds([key])
+      setConfirmedKinds((now) => (now.has(key) ? now : new Set(now).add(key)))
+    },
+    [confirmKinds],
+  )
   /** [처음 학습](AC-9305.1): Worker에 종류를 묻고 처음 학습 칸을 연다 */
   const openFirstLearn = useCallback(() => {
     askFirst()
@@ -350,12 +360,19 @@ function Panel(props: MemoPanelProps) {
     () =>
       channel.onSave((answer) => {
         if (!mounted.current) return
-        if (answer.ok) setSaveError(null)
-        else if (answer.blocked) onStoreStuck()
+        if (answer.ok) {
+          setSaveError(null)
+          // [고치기]로 고친 글이 저장됐다: 저절로 학습이 되든 안 되든 그 종류는 확인함이다(AC-9305.2)
+          const fix = fixingKind.current
+          if (fix?.sent) {
+            fixingKind.current = null
+            confirmKind(fix.key)
+          }
+        } else if (answer.blocked) onStoreStuck()
         else setSaveError(answer.code)
         void refreshRef.current()
       }),
-    [channel, onStoreStuck],
+    [channel, onStoreStuck, confirmKind],
   )
 
   useEffect(() => {
@@ -368,6 +385,8 @@ function Panel(props: MemoPanelProps) {
 
   const drafts = useMemoDrafts((visitKey, text) => {
     channel.tell({ type: 'editMemo', visitKey, text })
+    // 처음 학습 [고치기]로 연 예시 진료의 고친 글을 보냈다(같은 글은 위에서 보내지 않는다): 그 저장이 되면 그 종류를 확인함으로 적는다(AC-9305.2)
+    if (fixingKind.current?.visitKey === visitKey) fixingKind.current.sent = true
     if (mounted.current) void refreshRef.current()
   })
   if (flushRef) flushRef.current = drafts.flushAll
@@ -817,12 +836,10 @@ function Panel(props: MemoPanelProps) {
               kinds={first.kinds}
               confirmed={confirmedKinds}
               short={first.total === 0 || diffDays(visible.from, visible.to) + 1 < MONTH_HINT_DAYS}
-              onRight={(kind) => {
-                learned.confirmKinds([kind.key])
-                setConfirmedKinds((now) => new Set(now).add(kind.key))
-              }}
+              onRight={(kind) => confirmKind(kind.key)}
               onFix={(kind) => {
-                // 그 예시 진료를 골라 고치기 칸을 연다. 고쳐 저장하면 저절로 학습 띠(AC-9305.2)
+                // 그 예시 진료를 골라 고치기 칸을 연다. 고쳐 저장하면 저절로 학습 띠가 뜨고, 그 저장이 되면 이 종류를 확인함으로 적는다(AC-9305.2)
+                fixingKind.current = { key: kind.key, visitKey: kind.example.visitKey, sent: false }
                 setFirstOpen(false)
                 pick(kind.example.visitKey)
                 setEditing(kind.example.visitKey)

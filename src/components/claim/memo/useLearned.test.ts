@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ourClinicPhrases, slotWords, type LearnRule, type Phrases } from '@/lib/precheck/memo'
+import { ourClinicPhrases, slotWords, type LearnRule } from '@/lib/precheck/memo'
 import type { AutoRule, LearnDraftLine, StyleChange } from '@/lib/precheck/memo/learn'
 import type { PrecheckToScreen } from '@/types/precheck'
 import type { LearnDraft } from '../rows/LearnDialog'
@@ -17,6 +17,7 @@ const store = vi.hoisted(() => ({
   revertLearned: vi.fn(),
   tickLearned: vi.fn(),
   addLearnKinds: vi.fn(),
+  applyStyleChange: vi.fn(),
   readHospitalSettings: vi.fn(),
   writeHospitalSettings: vi.fn(),
   startHospitalSettings: vi.fn(),
@@ -61,6 +62,7 @@ beforeEach(() => {
   store.revertLearned.mockResolvedValue(ok([], []))
   store.tickLearned.mockResolvedValue('ok')
   store.addLearnKinds.mockResolvedValue('ok')
+  store.applyStyleChange.mockResolvedValue('ok')
   store.readHospitalSettings.mockResolvedValue({ phrases: ourClinicPhrases(), dxLinks: [] })
   store.writeHospitalSettings.mockResolvedValue(undefined)
   store.startHospitalSettings.mockResolvedValue('ok')
@@ -145,6 +147,29 @@ describe('AC-9301.2·AC-9301.5 [조건 바꾸기]와 학습 창 저장', () => {
     expect(onSaved).toHaveBeenCalledTimes(2)
   })
 
+  it('AC-9301.5: 학습 창 [저장]으로 기존 학습을 고치면 그 학습의 지금 이름을 그대로 두고(조건 이름으로 덮지 않음), 새 학습만 조건 이름을 쓴다', async () => {
+    const { worker, now } = start()
+    const RENAMED: LearnRule = { ...OLD, name: '내가 지은 이름' }
+    store.saveLearned.mockResolvedValueOnce(ok(['l0000a001'], [RENAMED]))
+    await worker.emit(auto({ update: [{ id: RENAMED.id, to: '새 문장' }] }))
+    await waitFor(() => expect(now().band?.phase).toBe('learned'))
+    act(() => now().openDialog('v1'))
+    await worker.emit(DRAFT)
+    const picked = { ...AUTO, to: '{좌우} {레벨} 고친 문장', when: { ...WHEN, chartWords: ['C-arm'] } }
+    const { name: _conditionName, ...kept } = picked
+    store.saveLearned.mockResolvedValueOnce(ok(['l0000a004'], []))
+    await act(async () => now().saveDialog({ rules: [{ ...picked, update: RENAMED.id }, { ...picked, update: null }, { ...picked, update: 'l0000a009' }], styles: [] }))
+    expect(_conditionName).toBe('LA358 · 허리')
+    expect(store.saveLearned).toHaveBeenLastCalledWith({ fake: 'sb' }, {
+      remove: ['l0000a001'],
+      add: [picked],
+      update: [{ ...kept, name: '내가 지은 이름', id: RENAMED.id, left: 3 }, { ...kept, id: 'l0000a009', left: 3 }],
+    })
+    // 이름을 모르는 기존 학습은 이름 칸을 보내지 않는다: 서버의 지금 이름이 남는다
+    const sent = store.saveLearned.mock.lastCall![1] as { update: Record<string, unknown>[] }
+    expect('name' in sent.update[1]).toBe(false)
+  })
+
   it('AC-9301.6: 학습 창 저장이 실패하면 창은 그대로이고 그 번호가 보인다', async () => {
     const { worker, now } = start()
     act(() => now().openDialog('v1'))
@@ -156,20 +181,42 @@ describe('AC-9301.2·AC-9301.5 [조건 바꾸기]와 학습 창 저장', () => {
 })
 
 describe('AC-9303.2 모양 고침', () => {
-  it('AC-9303.2: [모든 메모에]는 서버 병원 문구를 다시 읽어 그 설정 칸만 바꿔 저장하고 위에 알린다(학습은 만들지 않는다)', async () => {
+  it('AC-9303.2: [모든 메모에]는 서버 병원 문구를 다시 읽어 그 설정 칸만 바꿔 저장하고 위에 알린다(학습은 만들지 않는다). 저장은 학습 저장과 같은 줄에 서는 applyStyleChange가 하고 설정 전체를 덮어쓰지 않는다', async () => {
     const { worker, onSaved, now } = start()
-    const server = ourClinicPhrases()
-    server.TPL = { ...server.TPL, main: '다른 PC가 고친 문구 {시술}' }
-    store.readHospitalSettings.mockResolvedValue({ phrases: server, dxLinks: [{ code: 'X' }] })
     await worker.emit(auto({ add: [], style: [STYLE] }))
     await act(async () => now().styleAll(0))
     expect(store.saveLearned).not.toHaveBeenCalled()
-    const written = store.writeHospitalSettings.mock.calls[0][1] as { phrases: Phrases; dxLinks: unknown[] }
-    expect(written.phrases.TPL.sideStyle).toBe('ko')
-    expect(written.phrases.TPL.main).toBe('다른 PC가 고친 문구 {시술}')
-    expect(written.dxLinks).toEqual([{ code: 'X' }])
+    expect(store.applyStyleChange).toHaveBeenCalledWith({ fake: 'sb' }, STYLE)
+    expect(store.readHospitalSettings).not.toHaveBeenCalled()
+    expect(store.writeHospitalSettings).not.toHaveBeenCalled()
+    expect(store.startHospitalSettings).not.toHaveBeenCalled()
     await waitFor(() => expect(now().band).toMatchObject({ styles: [{ change: STYLE, state: 'all' }] }))
     expect(onSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-9303.2: [모든 메모에] 저장이 실패하면 그 물음이 저장 못 함이고 위에 알리지 않는다', async () => {
+    const { worker, onSaved, now } = start()
+    store.applyStyleChange.mockResolvedValueOnce('failed')
+    await worker.emit(auto({ add: [], style: [STYLE] }))
+    await act(async () => now().styleAll(0))
+    await waitFor(() => expect(now().band).toMatchObject({ styles: [{ change: STYLE, state: 'failed' }] }))
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('AC-9303.2: 학습 창 [저장]에서 [모든 메모에]를 고른 모양 고침도 applyStyleChange로 그 칸만 저장한다(설정 전체를 쓰지 않는다)', async () => {
+    const { worker, now } = start()
+    act(() => now().openDialog('v1'))
+    await worker.emit(DRAFT)
+    await act(async () => now().saveDialog({ rules: [], styles: [STYLE] }))
+    expect(store.applyStyleChange).toHaveBeenCalledWith({ fake: 'sb' }, STYLE)
+    expect(store.writeHospitalSettings).not.toHaveBeenCalled()
+    await waitFor(() => expect(now().dialog).toBeNull())
+    expect(now().band).toEqual({ visitKey: 'v1', phase: 'saved' })
+    store.applyStyleChange.mockResolvedValueOnce('failed')
+    act(() => now().openDialog('v1'))
+    await worker.emit(DRAFT)
+    await act(async () => now().saveDialog({ rules: [], styles: [STYLE] }))
+    expect(now().dialog).toEqual({ draft: DRAFT, saving: false, error: 'E-LEARN-SAVE' })
   })
 
   it('AC-9303.2: [이 학습만]은 그 진료의 학습 창 재료를 물어 그 모양 고침 줄을 다른 줄처럼 학습한다(조건은 그 진료 처방 코드 + 부위)', async () => {
@@ -183,6 +230,17 @@ describe('AC-9303.2 모양 고침', () => {
     expect(store.saveLearned).toHaveBeenCalledWith({ fake: 'sb' }, { add: [{ name: 'LA358 · 허리', kind: 'replace', from: '{좌우} {부위}', to: '좌측 {부위}', after: '', when: WHEN, on: true, left: 3 }] })
     await waitFor(() => expect(now().band).toMatchObject({ styles: [{ change: STYLE, state: 'line' }] }))
     expect(now().dialog).toBeNull()
+  })
+
+  it('AC-9303.2·AC-9301.5: [이 학습만]이 기존 학습(같은 줄 틀·조건)을 고치면 그 학습의 지금 이름은 그대로 둔다(조건 이름을 보내지 않는다)', async () => {
+    const { worker, now } = start()
+    await worker.emit(auto({ add: [], style: [STYLE] }))
+    act(() => now().styleLine(0))
+    const styled: LearnDraftLine = { kind: 'replace', old: '◈Lt knee', new: '◈좌측 knee', before: '', from: '{좌우} {부위}', to: '좌측 {부위}', after: '', update: 'l0000a002', skip: 'style', style: STYLE }
+    await worker.emit({ ...DRAFT, diffs: [styled] })
+    await waitFor(() => expect(store.saveLearned).toHaveBeenCalledTimes(1))
+    expect(store.saveLearned).toHaveBeenCalledWith({ fake: 'sb' }, { update: [{ id: 'l0000a002', kind: 'replace', from: '{좌우} {부위}', to: '좌측 {부위}', after: '', when: WHEN, on: true, left: 3 }] })
+    expect('name' in (store.saveLearned.mock.lastCall![1] as { update: object[] }).update[0]).toBe(false)
   })
 })
 

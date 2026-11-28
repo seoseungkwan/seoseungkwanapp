@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { SavedRuleSettings } from '@/types/precheck'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { neutralPhrases, ourClinicPhrases, validatePhrases } from '@/lib/precheck/memo'
+import type { StyleChange } from '@/lib/precheck/memo/learn'
 import type { LearnRule, Phrases } from '@/lib/precheck/memo/types'
 import {
   SettingsError,
   addLearnKinds,
+  applyStyleChange,
   revertLearned,
   saveLearned,
   tickLearned,
@@ -631,5 +633,68 @@ describe('AC-9301.1 학습 저장은 한 번에 하나씩', () => {
     expect(ticked).toBe('ok')
     expect(sent.map((s) => s.op)).toEqual(['select', 'update', 'select', 'update'])
     expect((sent[3].body as { phrases: Phrases }).phrases.learned).toEqual([{ ...a, left: 2 }, b])
+  })
+})
+
+describe('AC-9303.2 applyStyleChange: [모든 메모에] 모양 고침은 그 설정 칸 하나만', () => {
+  /** 모양 고침: patch에는 고친 그때의 TPL 전체가 실린다(그 뒤 서버가 바뀌었을 수 있다) */
+  const style = (field: StyleChange['field'], value: unknown): StyleChange => ({ field, label: '좌우 표기', from: 'Lt', to: '좌측', patch: { TPL: { ...ourClinicPhrases().TPL, [field]: value } } })
+
+  it('AC-9303.2: 서버 병원 문구를 다시 읽어 그 TPL 칸 하나만 바꿔 phrases 한 칸만 쓴다(다른 칸·학습·확인한 종류는 서버 값 그대로, 상병 연결표는 보내지 않는다)', async () => {
+    const server = serverPhrases([learnRule()], ['LA358|lumbar'])
+    server.TPL = { ...server.TPL, main: '다른 PC가 고친 문구 {시술}' }
+    const { sb, sent } = scriptedSb([rowOf(server), { data: null }])
+    expect(await applyStyleChange(sb, style('sideStyle', 'ko'))).toBe('ok')
+    expect(sent.map(({ op, columns, filters }) => ({ op, columns, filters }))).toEqual([
+      { op: 'select', columns: 'hospital_id, phrases', filters: [] },
+      { op: 'update', columns: undefined, filters: [['hospital_id', HOSPITAL_ID]] },
+    ])
+    expect(Object.keys(sent[1].body as object)).toEqual(['phrases'])
+    expect(written(sent)).toEqual({ ...server, TPL: { ...server.TPL, sideStyle: 'ko' } })
+  })
+
+  it('AC-9303.2·AC-9310.3: 병원 문구 줄이 없으면 기본 문구(neutralPhrases)에 그 칸만 얹어 처음 만든다', async () => {
+    const { sb, sent } = scriptedSb([{ data: null }, { data: null }, { data: null }])
+    expect(await applyStyleChange(sb, style('levelSep', 'dash'))).toBe('ok')
+    expect(sent.map((s) => s.op)).toEqual(['select', 'select', 'insert'])
+    const base = neutralPhrases()
+    expect(written(sent)).toEqual({ ...base, TPL: { ...base.TPL, levelSep: 'dash' } })
+  })
+
+  it('AC-9303.2: 이미 그 값이면 쓰지 않는다. 바꿀 값이 없거나·모양 고침 넷 밖의 칸이거나·병원 문구 검사를 못 지나거나·실패하면 failed이고 던지지 않는다', async () => {
+    const same = scriptedSb([rowOf({ ...serverPhrases(), TPL: { ...ourClinicPhrases().TPL, sideStyle: 'ko' } })])
+    expect(await applyStyleChange(same.sb, style('sideStyle', 'ko'))).toBe('ok')
+    expect(same.sent.map((s) => s.op)).toEqual(['select'])
+    const none = scriptedSb([rowOf(serverPhrases())])
+    expect(await applyStyleChange(none.sb, { ...style('sideStyle', 'ko'), patch: {} })).toBe('failed')
+    expect(none.sent).toEqual([])
+    const other = scriptedSb([rowOf(serverPhrases())])
+    expect(await applyStyleChange(other.sb, { ...style('sideStyle', 'ko'), field: 'main' as StyleChange['field'], patch: { TPL: { ...ourClinicPhrases().TPL, main: '몰래 바꾼 문구' } } })).toBe('failed')
+    expect(other.sent).toEqual([])
+    const bad = scriptedSb([rowOf(serverPhrases())])
+    expect(await applyStyleChange(bad.sb, style('sideStyle', '없는 모양'))).toBe('failed')
+    expect(bad.sent.map((s) => s.op)).toEqual(['select'])
+    expect(await applyStyleChange(scriptedSb(['throw']).sb, style('sideStyle', 'ko'))).toBe('failed')
+    expect(await applyStyleChange(scriptedSb([rowOf(serverPhrases()), { error: { message: SECRET_MESSAGE } }]).sb, style('sideStyle', 'ko'))).toBe('failed')
+  })
+
+  it('AC-9301.1·AC-9303.2: 학습 저장·남은 확인 바꿈과 함께 불러도 같은 줄에 서서 앞 것이 쓴 뒤에 다시 읽는다(서로 바꾼 칸을 덮지 않는다)', async () => {
+    const a = learnRule({ id: 'l000000aa', left: 3 })
+    const b = learnRule({ id: 'l000000bb', from: 'SNB' })
+    const withB = serverPhrases([a, b])
+    const { sb, sent } = scriptedSb([rowOf(serverPhrases([a])), { data: null }, rowOf(withB), { data: null }, rowOf({ ...withB, TPL: { ...withB.TPL, sideStyle: 'ko' } }), { data: null }])
+    const [saved, styled, ticked] = await Promise.all([
+      saveLearned(sb, { add: [{ ...draft({ from: 'SNB' }), id: 'l000000bb', made: b.made }] }),
+      applyStyleChange(sb, style('sideStyle', 'ko')),
+      tickLearned(sb, [a.id], 'done'),
+    ])
+    expect([saved.ok, styled, ticked]).toEqual([true, 'ok', 'ok'])
+    expect(sent.map((s) => s.op)).toEqual(['select', 'update', 'select', 'update', 'select', 'update'])
+    const afterStyle = (sent[3].body as { phrases: Phrases }).phrases
+    expect(afterStyle.learned).toEqual([a, b])
+    expect(afterStyle.TPL.sideStyle).toBe('ko')
+    const afterTick = (sent[5].body as { phrases: Phrases }).phrases
+    expect(afterTick.learned).toEqual([{ ...a, left: 2 }, b])
+    expect(afterTick.TPL.sideStyle).toBe('ko')
   })
 })

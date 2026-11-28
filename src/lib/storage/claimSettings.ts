@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { LEARN_KIND_KEY_MAX, neutralPhrases, validatePhrases } from '@/lib/precheck/memo'
-import { overLearnLimit, personalHit, sameWhen } from '@/lib/precheck/memo/learn'
+import { overLearnLimit, personalHit, sameWhen, type StyleChange } from '@/lib/precheck/memo/learn'
 import type { LearnRule, Phrases } from '@/lib/precheck/memo/types'
 import type { ClaimHospitalSettingsRow, ClaimRuleSettingRow } from '@/types/db'
 import type { ErrorCode } from '@/types/errors'
@@ -197,7 +197,7 @@ export async function saveInputMode(sb: SupabaseClient, hospitalId: string, mode
 // ── 청구 메모 학습 저장(spec claim-learn design.md 2절·5-1절·6절·7절) ─────────────────────
 // 병원 문구(phrases)의 learned·learnKinds 칸만 바꾼다. 늘 서버 값을 다시 읽어 그 위에 고쳐 쓴다(다른 창·다른 칸을 덮지 않게).
 // 학습 모양은 design.md '학습 모양'뿐이다: 환자 이름·차트번호·진료 날짜·차트 원문은 여기 오지 않는다(guardrails.test.ts AC-9316.2가 증명).
-// 넷 다 던지지 않고 값으로 답한다. 한 번에 하나씩 차례로 한다(앞 것이 쓴 뒤 다음 것이 다시 읽는다)
+// 모두 던지지 않고 값으로 답한다. 한 번에 하나씩 차례로 한다(앞 것이 쓴 뒤 다음 것이 다시 읽는다). 모양 고침 [모든 메모에](applyStyleChange)도 같은 줄에 선다
 
 const LEARN_SAVE = 'E-LEARN-SAVE' as const
 const LEARN_PERSONAL = 'E-LEARN-PERSONAL' as const
@@ -377,6 +377,29 @@ export async function addLearnKinds(sb: SupabaseClient, keys: readonly string[])
       const known = Array.isArray(phrases.learnKinds) ? phrases.learnKinds : []
       const more = fresh.filter((key) => !known.includes(key))
       return more.length ? { kind: 'write', next: { ...phrases, learnKinds: [...known, ...more] } } : { kind: 'same' }
+    })
+    return result.kind === 'failed' ? 'failed' : 'ok'
+  })
+}
+
+/** 모양 고침이 바꿀 수 있는 설정 칸(design.md 5절 '알아보는 모양 고침' 넷) */
+const STYLE_FIELDS: ReadonlySet<string> = new Set<StyleChange['field']>(['sideStyle', 'siteNames', 'fixedPhrases', 'levelSep'])
+
+/**
+ * 모양 고침 [모든 메모에](AC-9303.2): 서버 병원 문구를 다시 읽어 그 TPL 칸 하나만 바꿔 쓴다. 학습 저장과 같은 줄에 서서 그 사이 바뀐 학습·다른 칸을 덮지 않는다.
+ * patch의 다른 칸(고친 그때의 TPL)은 쓰지 않는다. 상병 연결표는 보내지 않는다. 줄이 없으면 기본 문구에 그 칸을 얹어 처음 만든다(AC-9310.3).
+ * 이미 그 값이면 쓰지 않는다. 바꿀 값이 없거나 넷 밖의 칸이거나 병원 문구 검사를 못 지나거나 실패하면 'failed'(던지지 않는다)
+ */
+export async function applyStyleChange(sb: SupabaseClient, change: StyleChange): Promise<'ok' | 'failed'> {
+  const field = change?.field
+  const tpl = change?.patch?.TPL as Record<string, unknown> | undefined
+  const value = typeof field === 'string' && STYLE_FIELDS.has(field) ? tpl?.[field] : undefined
+  if (value === undefined) return 'failed'
+  return oneAtATime(async () => {
+    const result = await changePhrases(sb, (phrases) => {
+      const now = (phrases.TPL ?? {}) as Record<string, unknown>
+      if (JSON.stringify(now[field]) === JSON.stringify(value)) return { kind: 'same' }
+      return { kind: 'write', next: { ...phrases, TPL: { ...phrases.TPL, [field]: structuredClone(value) } } }
     })
     return result.kind === 'failed' ? 'failed' : 'ok'
   })

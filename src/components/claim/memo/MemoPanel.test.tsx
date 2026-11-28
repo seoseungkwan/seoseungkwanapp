@@ -1943,6 +1943,49 @@ describe('claim-learn 메모 단계', () => {
     expect(screen.getByRole('textbox', { name: '가상환자c 우리 메모 고치기' })).toBeTruthy()
   })
 
+  const KINDS = [KIND, { ...KIND, key: 'KK090|knee', name: 'KK090 · 무릎', count: 1, example: { ...KIND.example, visitKey: 'c', memo: '우리 메모 c' } }]
+  /** 처음 학습을 열어 첫 종류(LA358 · 허리, 예시 진료 b)의 [고치기]를 누른다 */
+  async function fixFirstKind() {
+    const made = await toMemo(live(memoView({ targets: { ...memoView().targets, batch: [row('a'), row('b'), row('c')] } })))
+    await made.user.click(within(toolbar()).getByRole('button', { name: '처음 학습' }))
+    await act(async () => made.worker.emit({ type: 'firstLearn', total: 3, kinds: KINDS }))
+    await made.user.click(within(screen.getByRole('region', { name: '처음 학습' })).getByRole('button', { name: '고치기' }))
+    expect(shown()).toBe('가상환자b')
+    return made
+  }
+
+  it('AC-9305.2: 처음 학습 [고치기]로 그 예시 진료를 고쳐 저장하면(memoSave 성공) 저절로 학습과 따로 그 종류를 확인함으로 저장하고(addLearnKinds), 다시 열면 그 종류는 확인함이다', async () => {
+    const { user, worker } = await fixFirstKind()
+    await user.type(screen.getByRole('textbox', { name: '가상환자b 우리 메모 고치기' }), ' 더')
+    await user.tab()
+    await waitFor(() => expect(worker.of('editMemo')).toEqual([{ type: 'editMemo', visitKey: 'b', text: '우리 메모 b 더' }]))
+    // 저장이 되기 전·저장이 실패했을 때는 적지 않는다(Worker가 학습할 것이 없어 learnAuto가 오지 않아도 저장이 되면 적는다)
+    expect(learnStore.addLearnKinds).not.toHaveBeenCalled()
+    await act(async () => worker.emit({ type: 'memoSave', ok: false, code: 'E-STORE-FAILED', blocked: false }))
+    expect(learnStore.addLearnKinds).not.toHaveBeenCalled()
+    await act(async () => worker.emit({ type: 'memoSave', ok: true }))
+    expect(learnStore.addLearnKinds).toHaveBeenCalledWith(expect.anything(), ['LA358|lumbar'])
+    // 다음 저장에는 다시 적지 않는다
+    await act(async () => worker.emit({ type: 'memoSave', ok: true }))
+    expect(learnStore.addLearnKinds).toHaveBeenCalledTimes(1)
+    await user.click(within(toolbar()).getByRole('button', { name: '처음 학습' }))
+    await act(async () => worker.emit({ type: 'firstLearn', total: 3, kinds: KINDS }))
+    const first = screen.getByRole('region', { name: '처음 학습' })
+    expect(within(first).getByRole('heading', { level: 3 }).textContent).toBe('KK090 · 무릎 · 진료 1건')
+    expect(within(first).getByText('확인한 종류가 불러온 진료의 66%예요 (1 / 2 종류)')).toBeTruthy()
+  })
+
+  it('AC-9305.2: [고치기]로 연 칸을 고치지 않고 닫으면 다른 저장이 와도 그 종류를 확인함으로 적지 않는다', async () => {
+    const { user, worker } = await fixFirstKind()
+    await user.tab()
+    expect(worker.of('editMemo')).toEqual([])
+    await act(async () => worker.emit({ type: 'memoSave', ok: true }))
+    expect(learnStore.addLearnKinds).not.toHaveBeenCalled()
+    await user.click(within(toolbar()).getByRole('button', { name: '처음 학습' }))
+    await act(async () => worker.emit({ type: 'firstLearn', total: 3, kinds: KINDS }))
+    expect(within(screen.getByRole('region', { name: '처음 학습' })).getByRole('heading', { level: 3 }).textContent).toBe('LA358 · 허리 · 진료 2건')
+  })
+
   it("AC-9305.4: 불러온 기간이 7일보다 짧으면 '한 달 불러오기' 글과 [지난 30일 불러오기]가 있고, 누르면 오늘−29일~오늘을 불러온 뒤 처음 학습을 연다", async () => {
     const { user, worker, link } = await toMemo()
     await user.click(within(toolbar()).getByRole('button', { name: '처음 학습' }))

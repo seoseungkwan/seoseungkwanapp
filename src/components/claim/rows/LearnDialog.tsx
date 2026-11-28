@@ -14,7 +14,10 @@ import type { LearnDraftMessage } from '@/types/precheck'
 
 /** 학습 창 재료: Worker의 learnDraft 답 가운데 된 것 */
 export type LearnDraft = Extract<LearnDraftMessage, { ok: true }>
-/** [저장]으로 올리는 학습 하나: 저장할 학습 + 바탕이 된 학습 번호(줄 차이의 update, 없으면 null) */
+/**
+ * [저장]으로 올리는 학습 하나: 저장할 학습 + 바탕이 된 학습 번호(줄 차이의 update, 없으면 null).
+ * name은 창에서 고른 조건의 이름이고 새 학습일 때만 쓰인다. 바탕 학습이 있으면 위(memo/useLearned)가 그 학습의 지금 이름을 그대로 둔다
+ */
 export type DialogRule = AutoRule & { update: string | null }
 export type DialogSave = { rules: DialogRule[]; styles: StyleChange[] }
 

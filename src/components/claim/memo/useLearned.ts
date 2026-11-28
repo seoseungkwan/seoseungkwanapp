@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { neutralPhrases, validatePhrases, type LearnRule, type Phrases } from '@/lib/precheck/memo'
+import type { LearnRule } from '@/lib/precheck/memo'
 import { learnName, type StyleChange } from '@/lib/precheck/memo/learn'
-import { addLearnKinds, readHospitalSettings, revertLearned, saveLearned, startHospitalSettings, tickLearned, writeHospitalSettings, type LearnedChange, type LearnedPatch, type LearnedResult } from '@/lib/storage/claimSettings'
+import { addLearnKinds, applyStyleChange, revertLearned, saveLearned, tickLearned, type LearnedChange, type LearnedPatch, type LearnedResult } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { FirstLearnKind, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
 import type { ClaimWorker } from '../claimLoad'
@@ -53,25 +53,10 @@ type Saved = { visitKey: string; added: string[]; before: LearnRule[] }
 const sameStyle = (a: StyleChange, b: StyleChange) => a.field === b.field && a.from === b.from && a.to === b.to
 
 /**
- * 모양 고침 [모든 메모에](AC-9303.2): 서버 병원 문구를 다시 읽어 그 설정 칸 하나만 바꿔 쓴다(설정 화면 저장과 같은 줄, 다른 칸·상병 연결표는 그대로).
- * 줄이 없으면 기본 문구에 그 칸을 얹어 처음 만든다. 병원 문구 검사를 지나지 못하면 쓰지 않는다
+ * 모양 고침 [모든 메모에](AC-9303.2): 그 설정 칸 하나만 저장한다. 서버 값을 다시 읽어 그 칸만 바꾸는 일은 학습 저장과 같은 줄에 서는 applyStyleChange가 한다
+ * (학습 저장·남은 확인 바꿈과 겹쳐도 서로 바꾼 칸을 덮지 않는다, 다른 칸·상병 연결표는 그대로)
  */
-async function applyStyle(change: StyleChange): Promise<boolean> {
-  const value = (change.patch.TPL as Record<string, unknown> | undefined)?.[change.field]
-  if (value === undefined) return false
-  try {
-    const sb = supabaseBrowser()
-    const now = await readHospitalSettings(sb)
-    const base = (now?.phrases ?? neutralPhrases()) as Phrases
-    const next: Phrases = { ...base, TPL: { ...base.TPL, [change.field]: value } }
-    if (!validatePhrases(next).ok) return false
-    if (!now) return (await startHospitalSettings(sb, next)) === 'ok'
-    await writeHospitalSettings(sb, { phrases: next, dxLinks: now.dxLinks })
-    return true
-  } catch {
-    return false
-  }
-}
+const applyStyle = async (change: StyleChange): Promise<boolean> => (await applyStyleChange(supabaseBrowser(), change)) === 'ok'
 
 export function useLearned({ worker, onSaved }: { worker: LearnWorker; onSaved(): void }) {
   const [band, setBand] = useState<LearnBand | null>(null)
@@ -140,8 +125,9 @@ export function useLearned({ worker, onSaved }: { worker: LearnWorker; onSaved()
       return
     }
     const when = { codes: [...draft.codes], regions: [...draft.regions], chartWords: [], withCodes: [], doctors: [] }
-    const rule = { name: learnName(when), kind: line.kind, from: line.kind === 'add' ? '' : line.from, to: line.kind === 'remove' ? '' : line.to, after: line.kind === 'add' ? line.after : '', when, on: true, left: 3 }
-    const result = await saveLearned(supabaseBrowser(), line.update ? { update: [{ ...rule, id: line.update }] } : { add: [rule] })
+    const rule = { kind: line.kind, from: line.kind === 'add' ? '' : line.from, to: line.kind === 'remove' ? '' : line.to, after: line.kind === 'add' ? line.after : '', when, on: true, left: 3 }
+    // 기존 학습을 고칠 때는 이름 칸을 보내지 않아 그 학습의 지금 이름이 남는다. 새 학습만 조건 이름
+    const result = await saveLearned(supabaseBrowser(), line.update ? { update: [{ ...rule, id: line.update }] } : { add: [{ ...rule, name: learnName(when) }] })
     if (!mounted.current) return
     setStyle(draft.visitKey, change, result.ok ? 'line' : 'failed')
     if (result.ok) onSavedRef.current()
@@ -217,6 +203,7 @@ export function useLearned({ worker, onSaved }: { worker: LearnWorker; onSaved()
 
   /**
    * 학습 창 [저장](AC-9301.5): 방금 저절로 만든 학습을 창에서 고른 것으로 바꾼다. 더한 학습은 지우고 고른 것을 새로 더하고, 바꾼 학습은 그 번호를 고친다.
+   * 새 학습만 창의 조건 이름을 쓰고, 기존 학습을 고칠 때는 그 학습의 지금 이름을 그대로 둔다(바꾸기 전 학습에서 알면 그 이름, 모르면 이름 칸을 보내지 않아 서버 값이 남는다).
    * 창에서 고르지 않은 바꾼 학습은 바꾸기 전으로 되돌린다. [모든 메모에]를 고른 모양 고침은 그 설정 칸만 저장한다
    */
   const saveDialog = useCallback(async ({ rules, styles }: DialogSave) => {
@@ -228,9 +215,13 @@ export function useLearned({ worker, onSaved }: { worker: LearnWorker; onSaved()
     const added = last?.added ?? []
     const add: Omit<LearnRule, 'id' | 'made'>[] = []
     const update: LearnedPatch[] = []
-    for (const { update: base, ...rule } of rules) {
-      if (base === null || added.includes(base)) add.push(rule)
-      else update.push({ ...rule, id: base, left: 3 })
+    const names = new Map((last?.before ?? []).map((old) => [old.id, old.name]))
+    for (const { update: base, name, ...rule } of rules) {
+      if (base === null || added.includes(base)) add.push({ ...rule, name })
+      else {
+        const kept = names.get(base)
+        update.push({ ...rule, ...(kept === undefined ? {} : { name: kept }), id: base, left: 3 })
+      }
     }
     for (const old of last?.before ?? []) if (!rules.some((rule) => rule.update === old.id)) update.push(old)
     let result: LearnedResult | null = null
