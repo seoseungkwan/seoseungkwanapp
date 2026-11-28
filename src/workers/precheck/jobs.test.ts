@@ -1238,7 +1238,6 @@ describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeo
   })
 
   it.each([
-    ['설정 줄 없음(null)', null],
     ['빈 {}', {}],
     ['약 칸 없음', noDrugs()],
     ['틀린 문구 칸', { ...ourClinicPhrases(), TPL: { ...ourClinicPhrases().TPL, main: '{없는말}' } }],
@@ -1252,6 +1251,30 @@ describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeo
     expect(view.totals).toEqual(without.totals)
     expect(view.groups).toEqual(without.groups)
     expect(view.visits.map((v) => v.findings)).toEqual(without.visits.map((v) => v.findings))
+  })
+
+  it('AC-9310.1: 설정 줄 없음(null)이면 잠그지 않고 기본 문구(neutralPhrases)로 메모를 만들고 defaultPhrases를 싣는다. 규칙 결과는 그대로다', async () => {
+    const month = monthFrom('claim-month-rules-v1-v18.json')
+    const tables = await tablesValue()
+    const neutral = checkMonth(month, tables, NO_SETTINGS, { phrases: neutralPhrases() })
+    const view = checkMonth(month, tables, NO_SETTINGS, { phrases: null })
+    expect(view.memoBlocked).toBeNull()
+    expect(view.defaultPhrases).toBe(true)
+    expect(neutral).not.toHaveProperty('defaultPhrases')
+    expect(view.visits.map((v) => v.memo)).toEqual(neutral.visits.map((v) => v.memo))
+    expect(view.visits.some((v) => v.memo !== null && v.memo.text !== '')).toBe(true)
+    expect(view.totals).toEqual(neutral.totals)
+    expect(view.groups).toEqual(neutral.groups)
+  })
+
+  it('AC-9310.1: memoViews도 설정 줄 없음(null)이면 기본 문구로 만들고, 검사를 지나지 못한 설정({})은 지금처럼 E-MEMO-NO-SETTINGS다', async () => {
+    const month = memo()
+    const tables = await tablesValue()
+    const views = memoViews(month, tables, { phrases: null })
+    expect(views.memoBlocked).toBeNull()
+    expect(views.defaultPhrases).toBe(true)
+    expect(views.memos).toEqual(memoViews(month, tables, { phrases: neutralPhrases() }).memos)
+    expect(memoViews(month, tables, { phrases: {} })).toEqual({ memoBlocked: 'E-MEMO-NO-SETTINGS', memos: [] })
   })
 
   it('AC-014.8: 기본값으로 대신 만들지 않는다(메모 없는 답에 글자가 없다)', async () => {
@@ -1332,7 +1355,7 @@ describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeo
 
     it('AC-014.13: 메모를 만들지 않는 병원은 메모가 없으므로 거짓이다', async () => {
       const month = withDxData()
-      const views = memoViews(month, await tablesValue(), { phrases: null })
+      const views = memoViews(month, await tablesValue(), { phrases: {} })
       expect(dxViews(month, [], views).find((v) => v.visitKey === noDx)!.missingDx).toBe(false)
     })
   })
@@ -3957,7 +3980,7 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
 
   describe('AC-018.18 메모를 만들지 않는 병원', () => {
     it('AC-018.18: 쓰다 멈춘 기록이 있어도 띠 자료가 없다', async () => {
-      const made = await ready({ settings: { ...SETTINGS, phrases: null }, store: { journal: { [A.key]: 'writing' } } })
+      const made = await ready({ settings: { ...SETTINGS, phrases: {} }, store: { journal: { [A.key]: 'writing' } } })
       const view = await viewOf(made)
       expect(view.memoBlocked).toBe('E-MEMO-NO-SETTINGS')
       expect(view.stuck).toBeNull()
@@ -3965,12 +3988,51 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
 
     it('AC-018.18: memoBlocked면 목록과 표가 비고 입력을 시작할 수 없다', async () => {
-      const made = await ready({ settings: { ...SETTINGS, phrases: null } })
+      const made = await ready({ settings: { ...SETTINGS, phrases: {} } })
       const view = await viewOf(made)
       expect(view.memoBlocked).toBe('E-MEMO-NO-SETTINGS')
       expect(view.table).toEqual([])
       expect(view.targets.batch).toEqual([])
       expect((await press(made)).payload).toBeNull()
+    })
+  })
+
+  describe('AC-9310.1 병원 문구 줄이 없는 병원은 기본 문구로', () => {
+    const NO_ROW: CheckSettings = { ...SETTINGS, phrases: null }
+    const NEUTRAL: CheckSettings = { ...SETTINGS, phrases: neutralPhrases() }
+
+    it('AC-9310.1: 잠그지 않고 기본 문구로 만든 메모가 표·목록에 있고 메모 보기에 defaultPhrases가 실린다', async () => {
+      const view = await viewOf(await ready({ settings: NO_ROW }))
+      const neutral = await viewOf(await ready({ settings: NEUTRAL }))
+      expect(view.memoBlocked).toBeNull()
+      expect(view.defaultPhrases).toBe(true)
+      expect(neutral).not.toHaveProperty('defaultPhrases')
+      expect(view.table.length).toBeGreaterThan(0)
+      expect(view.table).toEqual(neutral.table)
+      expect(batchKeys(view)).toEqual(batchKeys(neutral))
+    })
+
+    it('AC-9310.1: 점검 답에도 defaultPhrases가 실리고 진료마다 메모가 있다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen(CHECK_AGAIN(2, NO_ROW))
+      const answer = made.posts.find((m) => m.type === 'check')
+      if (answer?.type !== 'check' || !answer.ok) throw new Error('check 답이 없다')
+      expect(answer.view.memoBlocked).toBeNull()
+      expect(answer.view.defaultPhrases).toBe(true)
+      expect(answer.view.visits.some((visit) => visit.memo !== null)).toBe(true)
+    })
+
+    it('AC-9310.1: 복사(완료)·비트 입력이 지금 규칙 그대로 된다', async () => {
+      const made = await ready({ settings: NO_ROW })
+      const view = await viewOf(made)
+      const { payload, ticket } = await press(made)
+      expect(payload?.items.map((item) => item.visitKey)).toEqual(batchKeys(view))
+      await finish(made, ticket, { status: 'cancelled' })
+      // 복사로 완료할 수 있는 줄(메모가 있고 빈칸 표시가 없고 아직 완료가 아님)
+      const row = view.table.find((item) => item.hasMemo && !item.unfinished && !item.done && item.compare !== '같음' && item.text.trim() !== '')
+      if (!row) throw new Error('복사할 줄이 없다')
+      await made.jobs.fromScreen({ type: 'memoCopied', visitKey: row.key, text: row.text } satisfies PrecheckFromScreen)
+      expect(rowOf(await viewOf(made), row.key)).toMatchObject({ done: true, text: row.text })
     })
   })
 
@@ -4204,8 +4266,31 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       made.posts.length = 0
       await copied(made, A.key, text)
       expect(saves(made)).toEqual([{ month: '2026-10', drafts: { other: '파일 글' }, done: { older: '완료 글', [A.key]: text } }])
-      expect(made.posts).toEqual([]) // 날짜별 건수도 다시 보내지 않는다(범위 밖)
+      // 화면에 가는 것은 날짜별 건수뿐이다(AC-9312.1: 복사로 완료가 바뀌면 건수를 다시 보낸다)
+      expect(made.posts.map((m) => m.type)).toEqual(['dayCounts'])
       expect(rowOf(await viewOf(made), A.key)).toMatchObject({ done: true, text })
+    })
+
+    it('AC-9312.1: 복사로 완료가 바뀌면 saveMonth 뒤 날짜별 건수를 다시 보내고 그 사람이 입력 수에 든다. 완료가 바뀌지 않는 복사는 보내지 않는다', async () => {
+      const made = await ready()
+      const view = await viewOf(made)
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      const first = made.posts.filter((m) => m.type === 'dayCounts').at(-1)
+      if (first?.type !== 'dayCounts') throw new Error('dayCounts가 없다')
+      const enteredBefore = first.rows.find((row) => row.visit_date === DAY.from)!.entered
+      made.posts.length = 0
+      made.sent.length = 0
+      await copied(made, A.key, rowOf(view, A.key).text)
+      expect(sends(made, 'store.save')).toHaveLength(1)
+      const counts = made.posts.filter((m) => m.type === 'dayCounts')
+      expect(counts).toHaveLength(1)
+      if (counts[0].type !== 'dayCounts') throw new Error('dayCounts가 아니다')
+      expect(counts[0]).toMatchObject({ load: 1, range: DAY })
+      expect(counts[0].rows.find((row) => row.visit_date === DAY.from)?.entered).toBe(enteredBefore + 1)
+      made.posts.length = 0
+      await copied(made, A.key, rowOf(view, A.key).text) // 이미 완료
+      await copied(made, B.key, '다른 글')
+      expect(made.posts).toEqual([])
     })
 
     it('AC-3104.4: 복사로 새로 완료한 사람은 메모 보기를 다시 만들어도 완료 전과 같은 묶음·같은 차례에 있고 줄에 done이 켜져 있다', async () => {
@@ -4505,9 +4590,17 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
 
     it('AC-018.18·AC-019.3: 메모를 만들지 않는 병원은 보내지 않는다: 0으로 덮으면 남은 일이 끝난 것처럼 보인다', async () => {
-      const { posts } = await firstLoad({ settings: { ...SETTINGS, phrases: null } })
+      const { posts } = await firstLoad({ settings: { ...SETTINGS, phrases: {} } })
       expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
       expect(countsIn(posts)).toEqual([])
+    })
+
+    it('AC-9310.2: 병원 문구 줄이 없는 병원(기본 문구)은 날짜별 건수를 지금 규칙대로 보낸다', async () => {
+      const { posts } = await firstLoad({ settings: { ...SETTINGS, phrases: null } })
+      const { posts: neutral } = await firstLoad({ settings: { ...SETTINGS, phrases: neutralPhrases() } })
+      expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+      expect(countsIn(posts)).toHaveLength(1)
+      expect(countsIn(posts)).toEqual(countsIn(neutral))
     })
 
     it('AC-013.2·AC-019.4: 비트 메모를 받지 못했으면(옛 도우미) 보내지 않는다: 입력 수 0으로 서버 수를 덮지 않는다', async () => {

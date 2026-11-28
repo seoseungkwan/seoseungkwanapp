@@ -3,7 +3,8 @@ import { dayCounts } from '@/lib/precheck/counts'
 import { drugRoles, type DrugRole } from '@/lib/precheck/drugRoles'
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
-import { createMemoEngine, unfinished, validatePhrases, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
+import { createMemoEngine, neutralPhrases, unfinished, validatePhrases, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
+import { autoLearn, holeCount, type LineOrigin } from '@/lib/precheck/memo/learn'
 import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, joinedMemo, readBitMemos, replacesOf, trimMemoEnd, visitMemos } from '@/lib/precheck/memoCompare'
 import { withRuleUpdates } from '@/lib/precheck/ruleUpdates'
 import { runRules } from '@/lib/precheck/rules/engine'
@@ -13,6 +14,7 @@ import type { ErrorCode } from '@/types/errors'
 import type { Outcome } from '@/types/parse'
 import type { BitMemos, ChartLine, ChartLineKind, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, RxRow, SavedRuleSettings, StuckPerson, StuckView, TargetRow, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
 import { createAssembler } from './assemble'
+import { draftLines, firstLearnKinds, forbiddenOf, learnEligible, learnedTags, learnInput, learnSetup, overlayVisit, usesLearning, visitCodes, visitRegions, type LearnSetup, type VisitLearn } from './learnJobs'
 import { loadTables as defaultLoadTables } from './tables'
 
 // 청구 Worker가 하는 일(design.md 6-2) [환자 자료 구역]. 시험은 이 파일을 바로 부른다(입구 precheck.worker.ts는 메시지만 잇는다).
@@ -145,12 +147,23 @@ export function ruleList(tables: Tables): RuleSummary[] {
 }
 
 /**
- * 진료마다 메모(TASK-14). 설정 줄이 없거나 검사를 지나지 못하면 메모를 만들지 않는다. 기본값으로 대신 만들지 않는다(AC-014.8).
- * 사람이 고쳤거나 완료한 메모는 그대로 두고 빠진 문장만 알린다(AC-014.4). 손대지 않은 메모는 저장하지 않으므로 늘 지금 설정으로 새로 만든다(AC-014.11, 원본 protectWork)
+ * 진료마다 메모(TASK-14). 설정이 검사를 지나지 못하면 메모를 만들지 않는다. 기본값으로 대신 만들지 않는다(AC-014.8).
+ * 설정 줄이 없으면(phrases null) 잠그지 않고 기본 문구(neutralPhrases, 설정 화면 [기본 문구로 바로 시작]과 같은 값)로 만들고 defaultPhrases를 싣는다(claim-learn AC-9310.1).
+ * 사람이 고쳤거나 완료한 메모는 그대로 두고 빠진 문장만 알린다(AC-014.4). 손대지 않은 메모는 저장하지 않으므로 늘 지금 설정으로 새로 만든다(AC-014.11, 원본 protectWork).
+ * 병원 문구의 학습은 엔진 글 위에 덧씌운다. 완료(input.finished)했거나 비트 메모가 이미 있는 진료에는 쓰지 않는다(claim-learn AC-9302.5)
  */
 export function memoViews(month: ClaimMonth, tables: Tables, input: MemoInput, kinds?: Map<string, readonly string[]>): MemoViews {
-  return memoViewsOf(month, tables, validatePhrases(input.phrases), input.saved, kinds)
+  const { checked, fallback } = phraseCheckOf(input.phrases)
+  return memoViewsOf(month, tables, checked, input.saved, kinds, undefined, { finished: input.finished, fallback })
 }
+
+/** 병원 문구 검사. 설정 줄이 없으면(null) 기본 문구로 본다(claim-learn AC-9310.1). 줄이 있는데 검사를 지나지 못하면 지금처럼 ok 거짓이다 */
+function phraseCheckOf(phrases: unknown): { checked: PhraseCheck; fallback: boolean } {
+  return phrases === null ? { checked: { ok: true, value: neutralPhrases() }, fallback: true } : { checked: validatePhrases(phrases), fallback: false }
+}
+
+/** memoViewsOf의 곁 재료: 완료한 진료(학습을 쓰지 않음), 기본 문구로 만듦, 진료마다 덧씌우기 결과를 받을 곳(Worker 메모리) */
+type MemoExtra = { finished?: ReadonlySet<string>; fallback?: boolean; learnOut?: Map<string, VisitLearn>; setupOut?: (setup: LearnSetup) => void }
 
 /** 약 역할 표와 처방 목록의 연골주사 약 이름(clinic-profile design.md 10·11절). 점검(runRules 넷째 값)과 메모(tables.roles·cartilageNames)가 같은 표를 쓴다 */
 type DrugTables = { roles: Map<string, DrugRole | 'none'>; cartilageNames: string[] }
@@ -168,19 +181,25 @@ function drugTablesOf(month: ClaimMonth, tables: Tables, phrases: Phrases | null
 }
 
 /** memoViews의 몸. 점검은 병원 문구 검사와 약 역할 표를 규칙과 나눠 쓴다(checkMonth) */
-function memoViewsOf(month: ClaimMonth, tables: Tables, checked: PhraseCheck, savedMemos: ReadonlyMap<string, string> | undefined, kinds?: Map<string, readonly string[]>, drugs?: DrugTables): MemoViews {
+function memoViewsOf(month: ClaimMonth, tables: Tables, checked: PhraseCheck, savedMemos: ReadonlyMap<string, string> | undefined, kinds?: Map<string, readonly string[]>, drugs?: DrugTables, extra: MemoExtra = {}): MemoViews {
   if (!checked.ok) return { memoBlocked: 'E-MEMO-NO-SETTINGS', memos: [] }
   const { roles, cartilageNames } = drugs ?? drugTablesOf(month, tables, checked.value)
   const engine = createMemoEngine(checked.value, { ...tables, roles, cartilageNames })
+  const setup = learnSetup(checked.value)
+  extra.setupOut?.(setup)
   return {
     memoBlocked: null,
     memos: engine.analyzeMonth(month).map((visit) => {
       // 증상 줄마다 메모 분석이 본 종류(AC-2601.1). 메모 목록의 열린 줄에 보인다
       kinds?.set(visit.key, visit.items.map((item) => item.k))
       const saved = savedMemos?.get(visit.key)
-      const text = saved ?? engine.fullText(visit)
+      // 학습은 엔진 글 위에 덧씌운다(claim-learn design.md 4절). 쓰지 않는 진료도 셈은 해 둔다(학습 글로 완료했는지 알려고)
+      const learn = overlayVisit(visit, engine.fullText(visit), setup, learnEligible(visit, extra.finished))
+      extra.learnOut?.set(visit.key, learn)
+      const text = saved ?? (learn.eligible ? learn.text : learn.engine)
       return { visitKey: visit.key, text, edited: saved !== undefined, missing: engine.savedMemoMissing(saved, visit), hasMemo: visit.memos.length > 0, unfinished: unfinished(text) }
     }),
+    ...(extra.fallback ? { defaultPhrases: true as const } : {}),
   }
 }
 
@@ -199,10 +218,10 @@ export function dxViews(month: ClaimMonth, links: readonly DxLink[], memos?: Mem
  * 약 역할 표는 달마다 한 번 만들어 규칙과 메모가 함께 쓴다(clinic-profile AC-6608.2·AC-6608.3·AC-6609.1)
  */
 export function checkMonth(month: ClaimMonth, tables: Tables, settings: RuleSettings, memo: MemoInput = { phrases: null }): CheckView {
-  const checked = validatePhrases(memo.phrases)
+  const { checked, fallback } = phraseCheckOf(memo.phrases)
   const drugs = drugTablesOf(month, tables, checked.ok ? checked.value : null)
   const { perVisit, groups, totals } = runRules(month, tables, settings, drugs.roles)
-  const memos = memoViewsOf(month, tables, checked, memo.saved, undefined, drugs)
+  const memos = memoViewsOf(month, tables, checked, memo.saved, undefined, drugs, { finished: memo.finished, fallback })
   const memoOf = new Map(memos.memos.map((view) => [view.visitKey, view]))
   return {
     visits: month.visits.map(({ key, chart, date, name }) => {
@@ -212,6 +231,7 @@ export function checkMonth(month: ClaimMonth, tables: Tables, settings: RuleSett
     groups: groups.map(({ ruleId, rule, grade, visits }) => ({ ruleId, title: rule.title, domain: rule.domain, grade, visitKeys: visits.map((row) => row.visitKey), basis: rule.basis })),
     totals,
     memoBlocked: memos.memoBlocked,
+    ...(memos.defaultPhrases ? { defaultPhrases: true as const } : {}),
   }
 }
 
@@ -247,8 +267,8 @@ function mergedTables(tables: Tables, updates: CheckSettings['ruleUpdates']): Ta
  * dxViews에는 메모 결과를 넘긴다(AC-014.13). 틀린 연결표로 던지면 상병 경고만 빠진 결과가 '문제 없음'처럼 보이지 않게 결과 없이 E-SETTINGS-FAILED다.
  * 규칙은 고시로 바뀐 판을 합친 표로 돌리고(진료일에 맞는 판이 걸린다), 켜진 규칙 수는 원래 표로 센다 — 판 줄 때문에 늘지 않게(AC-7804.2)
  */
-export function claimView(month: ClaimMonth, tables: Tables, settings: CheckSettings, saved: ReadonlyMap<string, string>, visible: DateRange): Outcome<ClaimView> {
-  const checked = checkMonth(month, mergedTables(tables, settings.ruleUpdates), settings.rules, { phrases: settings.phrases, saved })
+export function claimView(month: ClaimMonth, tables: Tables, settings: CheckSettings, saved: ReadonlyMap<string, string>, visible: DateRange, finished?: ReadonlySet<string>): Outcome<ClaimView> {
+  const checked = checkMonth(month, mergedTables(tables, settings.ruleUpdates), settings.rules, { phrases: settings.phrases, saved, finished })
   const memos: MemoViews = { memoBlocked: checked.memoBlocked, memos: checked.visits.flatMap((visit) => (visit.memo ? [visit.memo] : [])) }
   let dx: VisitDxView[]
   try {
@@ -274,6 +294,7 @@ export function claimView(month: ClaimMonth, tables: Tables, settings: CheckSett
       hasDx: month.hasDx,
       enabledRules: enabledRules(tables, settings.rules),
       memoBlocked: checked.memoBlocked,
+      ...(checked.defaultPhrases ? { defaultPhrases: true as const } : {}),
       visits,
       groups: checked.groups
         .map((group) => ({ ...group, visitKeys: group.visitKeys.filter((key) => inside.has(key)) }))
@@ -390,6 +411,11 @@ export function createPrecheckJobs(deps: {
   /** 메모 결과 캐시: 고를 때마다 메모를 다시 만들지 않게. 고친 글이나 설정이 바뀌면 지운다 */
   let viewsCache: MemoViews | null = null
   let kindsCache: Map<string, readonly string[]> = new Map()
+  /** 메모 보기와 함께 만드는 진료마다의 학습 덧씌우기 결과와 그때의 학습 재료(claim-learn design.md 4절). 메모 보기와 함께 버린다 */
+  let learnCache: Map<string, VisitLearn> = new Map()
+  let learnNow: LearnSetup | null = null
+  /** 진료마다 마지막 저절로 학습의 보이던 글·고친 글(학습 창 [조건 바꾸기]의 줄 차이, AC-9301.2). 새 loadStart가 지운다 */
+  const lastLearn = new Map<string, { shown: string; edited: string; origins: LineOrigin[] }>()
 
   // ── 메모 칸(TASK-18). 모두 Worker 메모리에만 있다 ──
   /** 직접 확인 기록이 남은 사람의 승인: 내원번호 → 승인한 비트 글(AC-018.14). 풀 때는 지운다: visitMemos는 글이 같으면 다시 승인으로 치므로 남기면 X→Y→X에 되살아난다 */
@@ -463,7 +489,7 @@ export function createPrecheckJobs(deps: {
     if (!settings) return fail('E-SETTINGS-FAILED')
     let view: Outcome<ClaimView>
     try {
-      view = claimView(current, tables.value, settings, work.saved, visible)
+      view = claimView(current, tables.value, settings, work.saved, visible, finishedKeys())
     } catch {
       return fail('E-RULES-LOAD-FAILED') // 엔진의 뜻밖의 오류. 원래 글은 환자 글자를 담을 수 있어 싣지 않는다
     }
@@ -473,7 +499,7 @@ export function createPrecheckJobs(deps: {
     const shownBefore = approved.size > 0 ? textOf() : null
     lastCheck = { check, view: view.value }
     // 병원 문구 검사는 점검 때 한 번이다: 코드 칸·코드 단추는 사람마다 코드마다 사전을 찾는다(AC-018.10·AC-018.11)
-    const phrases = validatePhrases(settings.phrases)
+    const phrases = phraseCheckOf(settings.phrases).checked
     memoContext = { tables: tables.value, settings, visible, codes: phrases.ok ? phrases.value : null }
     viewsCache = null
     if (shownBefore) {
@@ -533,9 +559,26 @@ export function createPrecheckJobs(deps: {
     if (!current || !memoContext) return { memoBlocked: null, memos: [] }
     if (!viewsCache) {
       kindsCache = new Map()
-      viewsCache = memoViews(current, memoContext.tables, { phrases: memoContext.settings.phrases, saved: work.saved }, kindsCache)
+      learnCache = new Map()
+      learnNow = null
+      const { checked, fallback } = phraseCheckOf(memoContext.settings.phrases)
+      viewsCache = memoViewsOf(current, memoContext.tables, checked, work.saved, kindsCache, undefined, { finished: finishedKeys(), fallback, learnOut: learnCache, setupOut: (setup) => (learnNow = setup) })
     }
     return viewsCache
+  }
+
+  /** 사람이 고친 글이 있는 진료(달 칸 drafts·저장 답을 못 받은 고친 글, claim-learn AC-9318.1) */
+  function draftedKeys(): ReadonlySet<string> {
+    const keys = new Set(unsaved.keys())
+    for (const file of work.months.values()) for (const key of file.drafts.keys()) keys.add(key)
+    return keys
+  }
+
+  /** 그 진료에 지금 쓰인 학습 번호(학습 글이 그대로 보일 때만, claim-learn AC-9302.7). 메모 보기를 먼저 만든다 */
+  function usedNow(key: string, shown: string | undefined, drafted = draftedKeys()): string[] {
+    currentViews()
+    const learn = learnCache.get(key)
+    return shown !== undefined && usesLearning(learn, shown, drafted.has(key)) ? [...learn.used] : []
   }
 
   /** 증상 줄 종류는 메모 보기와 함께 만들고 함께 버린다(AC-2601.1) */
@@ -558,9 +601,28 @@ export function createPrecheckJobs(deps: {
     const views = currentViews()
     const visible = memoContext?.visible
     const inside = visible ? (current?.visits ?? []).filter((visit) => inRange(visit.date, visible)) : []
-    const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased(), appendedFrom: work.appendedFrom }).map(withAppend)
+    const sameDay = new Map<string, number>()
+    for (const visit of inside) sameDay.set(`${visit.chart}|${visit.date}`, (sameDay.get(`${visit.chart}|${visit.date}`) ?? 0) + 1)
+    const visitOf = new Map(inside.map((visit) => [visit.key, visit]))
+    const drafted = draftedKeys()
+    const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased(), appendedFrom: work.appendedFrom })
+      .map(withAppend)
+      .map((row) => withLearnMarks(row, visitOf.get(row.key)!, sameDay, drafted))
     dropStaleRecords(rows)
-    return { views, rows, visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+    return { views, rows, visitOf }
+  }
+
+  /**
+   * 메모 줄 표시(claim-learn): 쓰인 학습 꼬리표(AC-9302.6)·빈칸 수(AC-9307.1)·하루 두 번(AC-9309.1). 뜻이 있을 때만 칸을 싣는다.
+   * 메모 글·비교·입력 대상 규칙은 바꾸지 않는다
+   */
+  function withLearnMarks(row: VisitMemo, visit: Visit, sameDay: ReadonlyMap<string, number>, drafted: ReadonlySet<string>): VisitMemo {
+    const learn = learnCache.get(row.key)
+    const tags = usesLearning(learn, row.text, drafted.has(row.key)) ? learnedTags(learn.used, learnNow?.rules ?? []) : []
+    const holes = holeCount(row.text)
+    const count = sameDay.get(`${visit.chart}|${visit.date}`) ?? 1
+    if (!tags.length && !holes && count < 2) return row
+    return { ...row, ...(tags.length ? { learned: tags } : {}), ...(holes ? { holes } : {}), ...(count > 1 ? { sameDay: count } : {}) }
   }
 
   /**
@@ -721,9 +783,15 @@ export function createPrecheckJobs(deps: {
     const targets = targetsFor(selection, rows, visitOf, visible, copiedNow)
     const viewOf = new Map(views.memos.map((view) => [view.visitKey, view]))
     const finished = finishedKeys()
+    // 손 간 정도(claim-learn AC-9318.1): 메모가 필요한 진료 가운데 학습이 쓰인 메모·사람이 고친 글이 있는 진료
+    const drafted = draftedKeys()
+    const need = rows.filter((row) => row.hasMemo)
+    const handStats = { need: need.length, learned: need.filter((row) => (row.learned?.length ?? 0) > 0).length, edited: need.filter((row) => drafted.has(row.key)).length }
     return {
       period: visible,
       memoBlocked: blocked,
+      ...(views.defaultPhrases ? { defaultPhrases: true as const } : {}),
+      handStats,
       noAsk,
       targets,
       table: rows.map((row) => {
@@ -1040,9 +1108,52 @@ export function createPrecheckJobs(deps: {
     const end = assembled.ok ? readInputEnd(assembled.text) : null
     if (!end) return fail('E-CLAIM-PARTIAL')
     inputRun = null
+    // 완료로 끝난 사람의 쓰인 학습은 결과를 적기 전에 본다: 적고 나면 완료라 학습 글을 다시 셈하지 않는다(AC-9302.5)
+    const drafted = draftedKeys()
+    const sentText = new Map(run.items.map((item) => [item.visitKey, item.memo]))
+    const used = end.results.filter((line) => line.result === '완료').flatMap((line) => usedNow(line.visitKey, sentText.get(line.visitKey), drafted))
     const result = applyInputResults(end, run)
     postDayCounts()
     deps.post({ type: 'inputDone', run: run.run, ok: true, result })
+    if (used.length) deps.post({ type: 'learnUsed', ids: used, how: 'done' })
+  }
+
+  /**
+   * 학습 창 재료(claim-learn AC-9301.2·AC-9301.3, design.md 5절). 줄 차이는 그 진료의 마지막 저절로 학습이다: 그 뒤 새 학습으로 메모가 바뀌어도 그때 고친 줄이 보인다.
+   * 이 불러오기에서 고친 적이 없으면 보이던 글(학습 글 또는 엔진 글)과 지금 고친 글(없으면 보이던 글)이다
+   */
+  function postLearnDraft(visitKey: string) {
+    const visit = current?.visits.find((row) => row.key === visitKey)
+    const views = currentViews()
+    const learn = learnCache.get(visitKey)
+    const setup = learnNow
+    if (!visit || !memoContext || views.memoBlocked || !learn || !setup) return deps.post({ type: 'learnDraft', visitKey, ok: false })
+    const shown = learn.eligible ? learn.text : learn.engine
+    const last = lastLearn.get(visitKey) ?? { shown, edited: work.saved.get(visitKey) ?? shown, origins: null }
+    const diffs = draftLines(last.origins ? { ...learn, text: last.shown, origins: last.origins } : learn, last.shown, last.edited, setup)
+    const { codes, withCodes } = visitCodes(visit, setup)
+    deps.post({
+      type: 'learnDraft',
+      visitKey,
+      ok: true,
+      diffs,
+      codes,
+      withCodes,
+      regions: visitRegions(learn.visit),
+      doctors: (visit.doctors ?? []).map((code) => ({ code, name: current?.doctorNames?.get(code) ?? null })),
+      forbidden: forbiddenOf(visit),
+      words: setup.words,
+    })
+  }
+
+  /** 처음 학습 종류(claim-learn AC-9305.1·AC-9305.3, design.md 7절). 고른 기간의 메모가 필요한 진료로 센다. 점검 전이면 total 0 */
+  function postFirstLearn() {
+    if (!current || !memoContext) return deps.post({ type: 'firstLearn', total: 0, kinds: [] })
+    const { rows, views } = memoRows()
+    const setup = learnNow
+    if (views.memoBlocked || !setup) return deps.post({ type: 'firstLearn', total: 0, kinds: [] })
+    const analyzed = new Map([...learnCache].map(([key, learn]) => [key, learn.visit]))
+    deps.post({ type: 'firstLearn', ...firstLearnKinds(rows, analyzed, setup, finishedKeys()) })
   }
 
   /** [엑셀로 저장](AC-018.15): 누를 때만 만든다 */
@@ -1130,6 +1241,7 @@ export function createPrecheckJobs(deps: {
         savingCopies.clear()
         memoContext = null
         viewsCache = null
+        lastLearn.clear()
         approved.clear()
         declined.clear()
         appended.clear() // 새 불러오기에서 저절로 붙이지 않는다(AC-6611.2)
@@ -1235,7 +1347,12 @@ export function createPrecheckJobs(deps: {
         const visit = current?.visits.find((row) => row.key === m.visitKey)
         if (!visit) return
         // 글이 그대로면 고친 것이 아니다: 저장하면 자동 메모가 얼어 설정을 바꿔도 다시 만들어지지 않는다(AC-014.11)
-        if (currentViews().memos.find((memo) => memo.visitKey === visit.key)?.text === m.text) return
+        const shownMemo = currentViews().memos.find((memo) => memo.visitKey === visit.key)
+        if (shownMemo?.text === m.text) return
+        // 저절로 학습의 재료는 고친 글을 적기 전에 잡는다: 보이던 글(엔진 + 학습)과 그 출처(claim-learn design.md 5-1절)
+        const learn = learnCache.get(visit.key)
+        const setup = learnNow
+        const usedBefore = usedNow(visit.key, shownMemo?.text)
         approved.delete(visit.key) // 우리 메모를 고치면 승인이 풀린다(AC-018.14)
         // 완료한 사람을 고치면 완료가 풀리고 다음 입력에서 '메모 바꿈'으로 든다. 같은 store.save에 drafts와 함께 간다(AC-2202.1)
         const release = finishedKeys().has(visit.key) || unsaved.get(visit.key)?.release === true
@@ -1246,14 +1363,22 @@ export function createPrecheckJobs(deps: {
         viewsCache = null
         markMonth(visit.month)
         saveMonth(visit.month)
+        if (usedBefore.length) deps.post({ type: 'learnUsed', ids: usedBefore, how: 'edited' })
+        if (learn && setup && shownMemo?.hasMemo) {
+          const input = learnInput(learn, shownMemo.text, m.text, setup)
+          lastLearn.set(visit.key, { shown: input.shown, edited: m.text, origins: [...input.origins] })
+          const auto = autoLearn(input)
+          if (auto.add.length || auto.update.length || auto.style.length || auto.personal) deps.post({ type: 'learnAuto', visitKey: visit.key, ...auto })
+        }
       } else if (m.type === 'memoCopied' && typeof m.visitKey === 'string' && typeof m.text === 'string') {
         // 화면이 우리 메모를 클립보드에 복사했다(AC-3104.1). 그 글이 지금 우리 메모일 때만 완료로 둔다: 다르면 엉뚱한 글이 완료로 언다.
-        // 이미 완료면(다시 복사, 비교 '같음' 포함) 바꾸지 않고 보내지 않는다. 날짜별 건수는 보내지 않는다(범위 밖)
+        // 이미 완료면(다시 복사, 비교 '같음' 포함) 바꾸지 않고 보내지 않는다. 완료가 바뀌면 저장 뒤 날짜별 건수를 다시 보낸다(claim-learn AC-9312.1)
         const key = m.visitKey
         const visit = current?.visits.find((row) => row.key === key)
         const memo = visit ? currentViews().memos.find((view) => view.visitKey === key) : undefined
         if (!visit || !memo || memo.text !== m.text || !memo.hasMemo || isBlankMemo(memo.text) || memo.unfinished || finishedKeys().has(key)) return
         if (memoRows().rows.find((row) => row.key === key)?.compare === '같음') return
+        const used = usedNow(key, memo.text)
         // 자동 입력이 '완료'로 끝난 사람과 같다(applyInputResults)
         work.done.add(key)
         work.released.delete(key)
@@ -1265,6 +1390,8 @@ export function createPrecheckJobs(deps: {
         viewsCache = null
         markMonth(visit.month)
         saveMonth(visit.month)
+        postDayCounts()
+        if (used.length) deps.post({ type: 'learnUsed', ids: used, how: 'done' })
       } else if (m.type === 'memoUndone' && typeof m.visitKey === 'string') {
         // [완료 풀기](AC-3104.2): 완료 표시로 된 완료만 고쳐 푼 것처럼 푼다. 비교 '같음'은 풀어도 다시 완료라 그대로다(AC-3104.3)
         const key = m.visitKey
@@ -1273,6 +1400,7 @@ export function createPrecheckJobs(deps: {
         if (memoRows().rows.find((row) => row.key === key)?.compare === '같음') return
         releaseDone(key, visit.month)
         copiedNow.delete(key)
+        viewsCache = null // 완료가 풀리면 학습을 다시 쓸 수 있다(claim-learn AC-9302.5)
         markMonth(visit.month)
         saveMonth(visit.month)
       } else if (m.type === 'memoApprove' && typeof m.visitKey === 'string') {
@@ -1305,6 +1433,10 @@ export function createPrecheckJobs(deps: {
         startInput(m.run, m.what as InputWhat, m.selection as InputSelection)
       } else if (m.type === 'inputExcel' && isLoad(m.ask)) {
         await runInputExcel(m.ask)
+      } else if (m.type === 'learnDraft' && typeof m.visitKey === 'string') {
+        postLearnDraft(m.visitKey)
+      } else if (m.type === 'firstLearn') {
+        postFirstLearn()
       }
     },
 

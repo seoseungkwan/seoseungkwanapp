@@ -441,3 +441,70 @@ describe('AC-009.5 달을 넘기는 기간(10/30~11/2)', () => {
     expect(month.history.get(visit(month, 'c3').chart)?.has('2026-10-30')).toBe(true)
   })
 })
+
+// ── 진료의(claim-learn AC-9317.2): 도우미 0.15.0이 claim.month 답 맨 위에 visitDoctors·doctors를 더한다. 옛 도우미 답에는 두 칸이 없다 ──────────
+describe('AC-9317.2 진료의 칸', () => {
+  /** 두 사람·세 진료(a2는 같은 사람 다른 날) */
+  const people = () => ({
+    s83: [r83('a1', '900001', '가상환자01', 'S) knee pain', '20261005'), r83('a2', '900001', '가상환자01', 'S) knee pain', '20261006'), r83('b1', '0900002', '가상환자02', 'LBP', '20261005')],
+    s47: [r47('KK090', '관절강내주사', '900001', '20261005'), r47('KK090', '관절강내주사', '900001', '20261006'), r47('LA358', '후지내측지', '0900002', '20261005')],
+    history: [hist('a1', '900001', '2026-10-05', ['KK090']), hist('a2', '900001', '2026-10-06', ['KK090']), hist('b1', '0900002', '2026-10-05', ['LA358'])],
+  })
+  const withDoctors = (visitDoctors: unknown, doctors: unknown) => ({ ...raw(people()), visitDoctors, doctors })
+
+  it('AC-9317.2: visitDoctors의 (차트번호, 진료일)로 그날 그 사람 진료의 코드들을 Visit.doctors에 싣고, doctors로 이름표를 만든다', () => {
+    const month = shapeClaimMonth(
+      withDoctors(
+        [
+          ['900001', '20261005', 'D01'],
+          ['900001', '20261005', 'D02'],
+          ['900001', '20261005', 'D01'], // 같은 날 두 번 접수: 코드는 한 번
+          ['900001', '2026-10-06', 'D02'], // 날짜는 YYYYMMDD·YYYY-MM-DD 모두
+          ['900002', '20261005', null], // 진료의를 모르는 접수. 차트번호 앞 0은 보지 않는다
+        ],
+        [
+          ['D01', '김원장'],
+          ['D02', null],
+        ],
+      ),
+    )
+    expect(visit(month, 'a1').doctors).toEqual(['D01', 'D02'])
+    expect(visit(month, 'a2').doctors).toEqual(['D02'])
+    expect(visit(month, 'b1').doctors).toEqual([])
+    expect(month.doctorNames).toEqual(new Map([['D01', '김원장'], ['D02', null]]))
+  })
+
+  it('AC-9317.2: 진료의 칸이 있는 답에서 줄이 없는 진료는 빈 배열이다', () => {
+    const month = shapeClaimMonth(withDoctors([], []))
+    expect(month.visits.map((v) => v.doctors)).toEqual([[], [], []])
+    expect(month.doctorNames).toEqual(new Map())
+  })
+
+  it('AC-9317.2: 두 칸이 없는 옛 도우미 답은 지금처럼 받는다(진료의 칸 없음 = 모름)', () => {
+    const month = shapeClaimMonth(raw(people()))
+    expect(month.visits).toHaveLength(3)
+    expect(month.visits.every((v) => (v.doctors ?? []).length === 0)).toBe(true)
+    expect(month.doctorNames ?? new Map()).toEqual(new Map())
+  })
+
+  it.each([
+    ['visitDoctors가 배열이 아님', { bad: true }, []],
+    ['doctors가 배열이 아님', [['900001', '20261005', 'D01']], 'x'],
+    ['줄 모양이 틀림', [['900001'], ['900001', 'x', 'D01'], [1, '20261005', 'D01'], ['900001', '20261005', 7], 'row'], [['D01'], [3, '이름'], ['D02', 5]]],
+  ])('AC-9317.2: %s이면 그 칸·줄만 버리고 멈추지 않는다', (_, visitDoctors, doctors) => {
+    const month = shapeClaimMonth(withDoctors(visitDoctors, doctors))
+    expect(month.visits).toHaveLength(3)
+    expect(month.visits.every((v) => Array.isArray(v.doctors ?? []))).toBe(true)
+    for (const v of month.visits) for (const code of v.doctors ?? []) expect(typeof code).toBe('string')
+    for (const [code, name] of month.doctorNames ?? new Map()) {
+      expect(typeof code).toBe('string')
+      expect(name === null || typeof name === 'string').toBe(true)
+    }
+  })
+
+  it('AC-9317.2: 진료의 코드·이름은 앞뒤 빈칸을 떼고 이름은 40자까지다', () => {
+    const month = shapeClaimMonth(withDoctors([['900001', '20261005', ' D01 ']], [[' D01 ', ` ${'가'.repeat(50)} `]]))
+    expect(visit(month, 'a1').doctors).toEqual(['D01'])
+    expect(month.doctorNames?.get('D01')).toBe('가'.repeat(40))
+  })
+})

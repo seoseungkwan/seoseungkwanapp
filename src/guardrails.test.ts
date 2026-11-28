@@ -1,9 +1,16 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createClient } from '@supabase/supabase-js'
 import { ESLint } from 'eslint'
 import ts from 'typescript'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { ourClinicPhrases } from '@/lib/precheck/memo'
+import { addLearnKinds, saveLearned, tickLearned } from '@/lib/storage/claimSettings'
+import type { PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
+import { createPrecheckJobs } from '@/workers/precheck/jobs'
+import { loadTables } from '@/workers/precheck/tables'
 
 // 실제 파일을 만들지 않고, 경로만 빌려 eslint.config.mjs가 그 자리에 거는 규칙을 확인한다
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -1516,5 +1523,92 @@ describe('AC-8524.3 components/gcalSettings/**/rows/**(구글 캘린더 설정 �
     expect(await errorRules("import { connectBridge } from '@/lib/bridge/client'", 'src/components/gcalSettings/import/Probe.tsx')).toContain(
       'no-restricted-imports',
     )
+  })
+})
+
+// ── AC-9316.2 청구 메모 학습 저장 요청(specs/claim-learn design.md 2절 '학습 모양', TASK-5) ──────────
+// 진짜 Worker가 고친 메모로 만든 학습(learnAuto) → 진짜 supabase-js가 만든 요청 몸통. 손으로 만든 학습이 아니다
+
+const LEARN_MONTH = readFileSync(fileURLToPath(new URL('../fixtures/precheck/fake/claim-month-memo.json', import.meta.url)), 'utf-8')
+const LEARN_DAY = { from: '2026-10-12', to: '2026-10-12' }
+const LEARN_SELECT = { mode: 'date', from: LEARN_DAY.from, to: LEARN_DAY.to, typed: '', chip: '', kind: 'range', day: LEARN_DAY.from, rangeFrom: LEARN_DAY.from, rangeTo: LEARN_DAY.to } as const
+const LEARN_RULE_KEYS = ['after', 'from', 'id', 'kind', 'left', 'made', 'name', 'on', 'to', 'when']
+
+describe('AC-9316.2 학습 저장·확인 수 바꿈·처음 학습 저장 요청에는 학습 모양 칸뿐이다', { timeout: 60_000 }, () => {
+  /** 진짜 Worker로 그날 메모를 만들고 한 사람(m73) 메모를 고쳐 learnAuto를 받는다 */
+  async function learnedFromWorker() {
+    const posts: PrecheckToScreen[] = []
+    const jobs = createPrecheckJobs({ post: (message) => posts.push(message), loadTables, toPort: () => {} })
+    const give = async (id: string, text: string) => {
+      await jobs.fromPort({ type: 'chunk', id, seq: 0, data: text })
+      await jobs.fromPort({ type: 'end', id, count: 1, bytes: Buffer.byteLength(text, 'utf8'), sha256: createHash('sha256').update(text, 'utf8').digest('hex') })
+    }
+    await jobs.fromScreen({ type: 'loadStart', load: 1 } satisfies PrecheckFromScreen)
+    await give('month', LEARN_MONTH)
+    await jobs.fromScreen({ type: 'month', id: 'month', load: 1 } satisfies PrecheckFromScreen)
+    await give('memos', JSON.stringify({ version: 1, period: LEARN_DAY, truncated: false, invalidRows: 0, rows: [] }))
+    await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos', load: 1 } satisfies PrecheckFromScreen)
+    await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: LEARN_DAY, settings: { rules: { schema: 1, off: [], on: [], grade: [] }, phrases: ourClinicPhrases(), dxLinks: [] } } satisfies PrecheckFromScreen)
+    await jobs.fromScreen({ type: 'memoView', ask: 1, selection: LEARN_SELECT } satisfies PrecheckFromScreen)
+    const view = posts.find((m) => m.type === 'memoView' && m.ok) as Extract<PrecheckToScreen, { type: 'memoView'; ok: true }> | undefined
+    const row = view?.view.table.find((item) => item.key === 'm73')
+    if (!view || !row) throw new Error('Worker 답이 없다')
+    // 고친 줄 하나 바꿈 + 한 줄 더함
+    await jobs.fromScreen({ type: 'editMemo', visitKey: row.key, text: `${row.text} 시행 (C-arm guide 하에)\n◈추가 문장(가상)` } satisfies PrecheckFromScreen)
+    const auto = posts.find((m) => m.type === 'learnAuto') as Extract<PrecheckToScreen, { type: 'learnAuto' }> | undefined
+    if (!auto) throw new Error('learnAuto가 없다')
+    const month = jobs.month()!
+    const visit = month.visits.find((item) => item.key === row.key)!
+    return { auto, row, visit }
+  }
+
+  function fakeServer() {
+    const requests: { url: string; method: string; body: string }[] = []
+    // 쓴 문구를 다음 읽기에 돌려주는 서버(학습을 더한 뒤 확인 수를 바꾸게)
+    const row: { hospital_id: string; phrases: unknown } = { hospital_id: '11111111-2222-4333-8444-555555555555', phrases: ourClinicPhrases() }
+    const sb = createClient('https://fake-project.supabase.test', 'fake-anon-key', {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      global: {
+        fetch: async (input, init) => {
+          const method = init?.method ?? 'GET'
+          requests.push({ url: String(input), method, body: String(init?.body ?? '') })
+          if (method !== 'GET') row.phrases = (JSON.parse(String(init?.body)) as { phrases: unknown }).phrases
+          return new Response(JSON.stringify(row), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        },
+      },
+    })
+    return { sb, requests }
+  }
+
+  it('AC-9316.2: 저절로 학습 저장(saveLearned)·확인 수(tickLearned)·처음 학습 종류(addLearnKinds) 몸통에 환자 이름·차트번호·진료 날짜·차트 원문이 없다', async () => {
+    const { auto, row, visit } = await learnedFromWorker()
+    // 시험이 헛돌지 않게: Worker가 진짜 환자 글자를 들고 있었고 학습이 만들어졌다
+    expect(row.name.length).toBeGreaterThan(0)
+    expect(auto.add.length).toBeGreaterThan(0)
+
+    const { sb, requests } = fakeServer()
+    const saved = await saveLearned(sb, { add: auto.add, update: auto.update })
+    expect(saved.ok).toBe(true)
+    const ids = saved.ok ? saved.added : []
+    expect(await tickLearned(sb, ids, 'done')).toBe('ok')
+    expect(await addLearnKinds(sb, ['LA358|lumbar'])).toBe('ok')
+
+    const writes = requests.filter((request) => request.method !== 'GET')
+    expect(writes.length).toBeGreaterThanOrEqual(3)
+    for (const write of writes) {
+      const body = JSON.parse(write.body) as Record<string, unknown>
+      expect(Object.keys(body)).toEqual(['phrases'])
+      const learned = ((body.phrases as { learned?: unknown[] }).learned ?? []) as Record<string, unknown>[]
+      for (const rule of learned) expect(Object.keys(rule).sort()).toEqual(LEARN_RULE_KEYS)
+      const learnText = JSON.stringify(learned)
+      for (const line of visit.lines) expect(learnText).not.toContain(line)
+    }
+    const everything = requests.map((request) => `${request.url} ${request.body}`).join('\n')
+    expect(everything).not.toContain(visit.name)
+    expect(everything).not.toContain(visit.chart)
+    expect(everything).not.toContain(visit.key)
+    expect(everything).not.toContain(visit.date)
+    expect(everything).not.toContain(visit.date.replaceAll('-', ''))
+    expect(everything).not.toContain('가상환자')
   })
 })

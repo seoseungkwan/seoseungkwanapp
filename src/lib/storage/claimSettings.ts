@@ -1,4 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { todayInKorea } from '@/lib/analytics/dates'
+import { LEARN_KIND_KEY_MAX, neutralPhrases, validatePhrases } from '@/lib/precheck/memo'
+import { overLearnLimit, personalHit, sameWhen } from '@/lib/precheck/memo/learn'
+import type { LearnRule, Phrases } from '@/lib/precheck/memo/types'
 import type { ClaimHospitalSettingsRow, ClaimRuleSettingRow } from '@/types/db'
 import type { ErrorCode } from '@/types/errors'
 import type { DxLink, SavedRuleSettings } from '@/types/precheck'
@@ -188,4 +192,192 @@ export async function saveInputMode(sb: SupabaseClient, hospitalId: string, mode
   } catch {
     // 알리지 않는다
   }
+}
+
+// ── 청구 메모 학습 저장(spec claim-learn design.md 2절·5-1절·6절·7절) ─────────────────────
+// 병원 문구(phrases)의 learned·learnKinds 칸만 바꾼다. 늘 서버 값을 다시 읽어 그 위에 고쳐 쓴다(다른 창·다른 칸을 덮지 않게).
+// 학습 모양은 design.md '학습 모양'뿐이다: 환자 이름·차트번호·진료 날짜·차트 원문은 여기 오지 않는다(guardrails.test.ts AC-9316.2가 증명).
+// 넷 다 던지지 않고 값으로 답한다. 한 번에 하나씩 차례로 한다(앞 것이 쓴 뒤 다음 것이 다시 읽는다)
+
+const LEARN_SAVE = 'E-LEARN-SAVE' as const
+const LEARN_PERSONAL = 'E-LEARN-PERSONAL' as const
+const LEARN_ID = /^l[0-9a-f]{8}$/
+const MADE_DAY = /^\d{4}-\d{2}-\d{2}$/
+const FRESH_LEFT = 3
+
+/** 저장할 학습: 번호·만든 날은 비면 여기서 붙인다 */
+export type LearnedDraft = Omit<LearnRule, 'id' | 'made'> & { id?: string; made?: string }
+/** 학습 하나 바꾸기. 남은 확인(left)을 주지 않으면 3으로 돌린다 */
+export type LearnedPatch = { id: string } & Partial<Omit<LearnRule, 'id'>>
+export type LearnedChange = { add?: readonly LearnedDraft[]; update?: readonly LearnedPatch[]; remove?: readonly string[] }
+/** 저장 결과. added = 새로 더한 학습 번호, before = 바꾸기 전 학습(되돌리기 재료). limit = 한도(학습 300·종류 2000·글자 200만)를 넘어 쓰지 않았다 */
+export type LearnedResult = { ok: true; phrases: Phrases; added: string[]; before: LearnRule[] } | { ok: false; code: 'E-LEARN-SAVE' | 'E-LEARN-PERSONAL'; limit: boolean }
+
+let learnQueue: Promise<unknown> = Promise.resolve()
+/** 학습 저장은 한 번에 하나씩(AC-9301.1) */
+function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
+  const run = learnQueue.then(job, job)
+  learnQueue = run.catch(() => undefined)
+  return run
+}
+
+type Changed = { kind: 'write'; next: Phrases } | { kind: 'same' }
+type ChangeResult = { kind: 'ok'; next: Phrases } | { kind: 'same'; next: Phrases } | { kind: 'failed'; limit: boolean }
+
+/**
+ * 내 줄의 phrases를 다시 읽어 change로 고쳐 phrases 한 칸만 쓴다. 줄이 없으면 기본 문구(neutralPhrases)에서 시작해 처음 만든다(AC-9310.3).
+ * 고친 문구가 한도를 넘거나 병원 문구 검사를 지나지 못하면 쓰지 않는다(병원 전체 메모가 잠기지 않게)
+ */
+async function changePhrases(sb: SupabaseClient, change: (phrases: Phrases) => Changed): Promise<ChangeResult> {
+  try {
+    const found = await sb.from(HOSPITAL_TABLE).select('hospital_id, phrases').maybeSingle()
+    if (found.error) return { kind: 'failed', limit: false }
+    const id = hospitalIdOf(found.data)
+    const raw = found.data === null ? null : (found.data as Record<string, unknown>).phrases
+    if (found.data !== null && id === null) return { kind: 'failed', limit: false }
+    if (raw !== null && (typeof raw !== 'object' || Array.isArray(raw))) return { kind: 'failed', limit: false }
+    const base: Phrases = raw === null ? neutralPhrases() : (structuredClone(raw) as Phrases)
+    const changed = change(base)
+    if (changed.kind === 'same') return { kind: 'same', next: base }
+    if (overLearnLimit(changed.next)) return { kind: 'failed', limit: true }
+    if (!validatePhrases(changed.next).ok) return { kind: 'failed', limit: false }
+    if (id !== null && raw !== null) {
+      const written = await sb.from(HOSPITAL_TABLE).update({ phrases: changed.next }).eq('hospital_id', id)
+      return written.error ? { kind: 'failed', limit: false } : { kind: 'ok', next: changed.next }
+    }
+    return (await startHospitalSettings(sb, changed.next)) === 'ok' ? { kind: 'ok', next: changed.next } : { kind: 'failed', limit: false }
+  } catch {
+    return { kind: 'failed', limit: false }
+  }
+}
+
+/** 학습의 글 칸에 전화·주민번호·메일 모양이 있나(AC-9301.5). 서버에 가기 전에 본다 */
+function learnedPersonal(rule: Partial<LearnRule>): boolean {
+  const texts = [rule.name, rule.from, rule.to, rule.after, ...(rule.when?.chartWords ?? [])]
+  return texts.some((text) => typeof text === 'string' && personalHit(text, []))
+}
+
+function newLearnId(taken: ReadonlySet<string>): string {
+  for (;;) {
+    const bytes = crypto.getRandomValues(new Uint8Array(4))
+    const id = `l${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
+    if (!taken.has(id)) return id
+  }
+}
+
+/** 학습 모양 칸만 골라 담는다(design.md '학습 모양') */
+const ruleOf = (rule: LearnRule): LearnRule => ({
+  id: rule.id,
+  name: rule.name,
+  kind: rule.kind,
+  from: rule.from,
+  to: rule.to,
+  after: rule.after,
+  when: { codes: [...rule.when.codes], regions: [...rule.when.regions], chartWords: [...rule.when.chartWords], withCodes: [...rule.when.withCodes], doctors: [...rule.when.doctors] },
+  on: rule.on,
+  left: rule.left,
+  made: rule.made,
+})
+
+/**
+ * 학습 저장(AC-9301.1·AC-9301.5·AC-9301.6·AC-9304.2): 서버 값을 다시 읽어 학습만 더하고·바꾸고·지운다.
+ * 할 일·줄 틀·앞 줄 틀·조건이 같은 학습이 이미 있으면 더하지 않고 그 학습의 문장을 바꾼다. 바꾼 학습은 남은 확인을 3으로 돌린다(주면 그 값).
+ * 개인정보 모양이 있으면 읽지도 쓰지도 않고 E-LEARN-PERSONAL, 한도·검사·네트워크 실패는 E-LEARN-SAVE
+ */
+export async function saveLearned(sb: SupabaseClient, change: LearnedChange): Promise<LearnedResult> {
+  const add = change.add ?? []
+  const update = change.update ?? []
+  const remove = new Set(change.remove ?? [])
+  if (add.some(learnedPersonal) || update.some(learnedPersonal)) return { ok: false, code: LEARN_PERSONAL, limit: false }
+  return oneAtATime(async () => {
+    let added: string[] = []
+    let before: LearnRule[] = []
+    const result = await changePhrases(sb, (phrases) => {
+      added = []
+      before = []
+      const learned = (Array.isArray(phrases.learned) ? phrases.learned : []).map((rule) => ({ ...rule }))
+      const touch = (rule: LearnRule) => {
+        if (!added.includes(rule.id) && !before.some((seen) => seen.id === rule.id)) before.push(ruleOf(rule))
+      }
+      for (const patch of update) {
+        const rule = learned.find((item) => item.id === patch.id)
+        if (!rule) continue
+        touch(rule)
+        for (const key of ['name', 'kind', 'from', 'to', 'after', 'on'] as const) if (patch[key] !== undefined) Object.assign(rule, { [key]: patch[key] })
+        if (patch.when !== undefined) rule.when = patch.when
+        rule.left = typeof patch.left === 'number' ? patch.left : FRESH_LEFT
+      }
+      const kept = learned.filter((rule) => !remove.has(rule.id))
+      const taken = new Set(kept.map((rule) => rule.id))
+      for (const item of add) {
+        const same = kept.find((rule) => rule.kind === item.kind && rule.from === item.from && rule.after === item.after && sameWhen(rule.when, item.when))
+        if (same) {
+          touch(same)
+          same.to = item.to
+          same.left = FRESH_LEFT
+          continue
+        }
+        const id = item.id && LEARN_ID.test(item.id) && !taken.has(item.id) ? item.id : newLearnId(taken)
+        taken.add(id)
+        kept.push(ruleOf({ ...item, id, made: item.made && MADE_DAY.test(item.made) ? item.made : todayInKorea() }))
+        added.push(id)
+      }
+      return { kind: 'write', next: { ...phrases, learned: kept.map(ruleOf) } }
+    })
+    if (result.kind === 'failed') return { ok: false, code: LEARN_SAVE, limit: result.limit }
+    return { ok: true, phrases: result.next, added, before }
+  })
+}
+
+/** [이번만 고친 거예요](AC-9301.2): 방금 더한 학습은 지우고, 바꾼 학습은 바꾸기 전으로 되돌린다. 다른 학습은 그대로다 */
+export async function revertLearned(sb: SupabaseClient, saved: { added: readonly string[]; before: readonly LearnRule[] }): Promise<LearnedResult> {
+  const drop = new Set(saved.added)
+  return oneAtATime(async () => {
+    const result = await changePhrases(sb, (phrases) => {
+      const learned = Array.isArray(phrases.learned) ? phrases.learned : []
+      if (!learned.some((rule) => drop.has(rule.id) || saved.before.some((old) => old.id === rule.id))) return { kind: 'same' }
+      const next = learned.filter((rule) => !drop.has(rule.id)).map((rule) => ruleOf(saved.before.find((old) => old.id === rule.id) ?? rule))
+      return { kind: 'write', next: { ...phrases, learned: next } }
+    })
+    if (result.kind === 'failed') return { ok: false, code: LEARN_SAVE, limit: result.limit }
+    return { ok: true, phrases: result.next, added: [], before: [] }
+  })
+}
+
+/**
+ * 남은 확인 바꾸기(AC-9302.7): done = 학습이 쓰인 메모를 고치지 않고 끝냄 → 쓰인 수만큼 하나씩 줄임(0 아래로 가지 않음), edited = 고침 → 3.
+ * 바뀌는 것이 없으면 쓰지 않는다. 실패는 'failed'(메모 일은 막지 않는다)
+ */
+export async function tickLearned(sb: SupabaseClient, ids: readonly string[], how: 'done' | 'edited'): Promise<'ok' | 'failed'> {
+  if (!ids.length || (how !== 'done' && how !== 'edited')) return 'ok'
+  return oneAtATime(async () => {
+    const result = await changePhrases(sb, (phrases) => {
+      const learned = Array.isArray(phrases.learned) ? phrases.learned : []
+      let moved = false
+      const next = learned.map((rule) => {
+        const times = ids.filter((id) => id === rule.id).length
+        if (!times) return rule
+        const left = how === 'edited' ? FRESH_LEFT : Math.max(0, rule.left - times)
+        if (left === rule.left) return rule
+        moved = true
+        return { ...rule, left }
+      })
+      return moved ? { kind: 'write', next: { ...phrases, learned: next } } : { kind: 'same' }
+    })
+    return result.kind === 'failed' ? 'failed' : 'ok'
+  })
+}
+
+/** 처음 학습에서 확인한 종류(AC-9305.3): 종류 열쇠를 더한다(겹침·빈 열쇠는 빼고 열쇠마다 120자까지). 더할 것이 없으면 쓰지 않는다 */
+export async function addLearnKinds(sb: SupabaseClient, keys: readonly string[]): Promise<'ok' | 'failed'> {
+  const fresh = [...new Set(keys.filter((key): key is string => typeof key === 'string').map((key) => key.trim().slice(0, LEARN_KIND_KEY_MAX)).filter(Boolean))]
+  if (!fresh.length) return 'ok'
+  return oneAtATime(async () => {
+    const result = await changePhrases(sb, (phrases) => {
+      const known = Array.isArray(phrases.learnKinds) ? phrases.learnKinds : []
+      const more = fresh.filter((key) => !known.includes(key))
+      return more.length ? { kind: 'write', next: { ...phrases, learnKinds: [...known, ...more] } } : { kind: 'same' }
+    })
+    return result.kind === 'failed' ? 'failed' : 'ok'
+  })
 }

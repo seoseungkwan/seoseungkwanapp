@@ -332,6 +332,45 @@ function readCatalog(x: unknown): HospitalCatalog {
   return { codes, la }
 }
 
+// ── 진료의(claim-learn AC-9317.2) ─────────────────────────
+
+/** 진료의 코드는 학습 조건 칸과 같게 40자까지(phrases validCode) */
+const DOCTOR_CODE_MAX = 40
+const DOCTOR_NAME_MAX = 40
+
+/**
+ * 도우미 0.15.0 claim.month 맨 위 두 칸: visitDoctors [[차트번호, 진료일, 진료의 코드|null]] → (앞 0을 뺀 차트번호|YYYY-MM-DD) → 코드들(나온 차례, 겹침 없음),
+ * doctors [[코드, 이름|null]] → 이름표(이름은 40자까지, 빈 이름은 null). 두 칸이 다 없으면(옛 도우미) null이다.
+ * 진료의는 학습 조건에만 쓰는 곁 자료라 틀린 칸·줄은 버리고 멈추지 않는다
+ */
+function readDoctors(raw: Rec): { byVisit: Map<string, string[]>; names: Map<string, string | null> } | null {
+  const { visitDoctors, doctors } = raw
+  if (visitDoctors === undefined && doctors === undefined) return null
+  const codeOf = (value: unknown) => (typeof value === 'string' && value.trim() && value.trim().length <= DOCTOR_CODE_MAX ? value.trim() : null)
+  const byVisit = new Map<string, string[]>()
+  for (const row of Array.isArray(visitDoctors) ? visitDoctors : []) {
+    if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string') continue
+    const owner = chartKey(row[0])
+    const day = dayOf(row[1])
+    const code = codeOf(row[2])
+    if (!owner || !day || !code) continue
+    const key = `${owner}|${day}`
+    const list = byVisit.get(key) ?? []
+    if (!list.includes(code)) list.push(code)
+    byVisit.set(key, list)
+  }
+  const names = new Map<string, string | null>()
+  for (const row of Array.isArray(doctors) ? doctors : []) {
+    if (!Array.isArray(row)) continue
+    const code = codeOf(row[0])
+    const name = row[1]
+    if (!code || names.has(code) || !(name === null || typeof name === 'string')) continue
+    const cut = name === null ? '' : name.trim().slice(0, DOCTOR_NAME_MAX)
+    names.set(code, cut || null)
+  }
+  return { byVisit, names }
+}
+
 // ── 한 달 자료 ───────────────────────────────────────────
 
 /** 풀린 claim.month JSON → ClaimMonth. 틀리거나 빠진 자료면 PrecheckError('E-CLAIM-PARTIAL') */
@@ -355,6 +394,7 @@ export function shapeClaimMonth(raw: unknown): ClaimMonth {
   if (!history.size) stop() // 12개월 이력은 늘 함께 온다(그 기간의 진료도 이력에 든다). 증상·소모처럼 거른 뒤에 센다
   const dxTrend = readTrend(raw.dxTrend, trendRange)
   const catalog = readCatalog(raw.catalog)
+  const doctors = readDoctors(raw)
 
   const visits: Visit[] = drafts.map((draft) => {
     const owner = chartKey(draft.chart)
@@ -365,7 +405,9 @@ export function shapeClaimMonth(raw: unknown): ClaimMonth {
         .filter((item) => item.h === owner)
         .map((item): DxLine => ({ c: item.c, n: item.n, m: item.m, s: item.s, d: item.d, t: item.t })),
       memosInBit: [...new Set((memos.get(draft.key) ?? []).filter((m) => m.chart === owner).map((m) => m.memo))],
+      // 옛 도우미 답(진료의 칸 없음)은 지금 모양 그대로다(AC-9317.2)
+      ...(doctors ? { doctors: [...(doctors.byVisit.get(`${owner}|${draft.date}`) ?? [])] } : {}),
     }
   })
-  return { period, visits, history, historyRange, rxByDay: rx.byDay, rxDayOrder: rx.order, dxTrend, catalog, hasDx: s83d.length > 0 }
+  return { period, visits, history, historyRange, rxByDay: rx.byDay, rxDayOrder: rx.order, dxTrend, catalog, hasDx: s83d.length > 0, ...(doctors ? { doctorNames: doctors.names } : {}) }
 }

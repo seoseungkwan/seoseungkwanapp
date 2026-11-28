@@ -21,6 +21,15 @@ export type LineDiff = { kind: LearnKind; old: string; new: string; before: stri
 export type StyleField = 'sideStyle' | 'siteNames' | 'fixedPhrases' | 'levelSep'
 /** 모든 메모에 해당하는 모양 고침(AC-9303.1). label은 notes '전체에 적용'의 칸 이름, patch는 설정에 얹을 값 */
 export type StyleChange = { field: StyleField; label: string; from: string; to: string; patch: Partial<Phrases> }
+/** 보이는 메모 줄 하나(design.md 5-1절): 바탕 엔진 줄(학습이 더한 줄이면 null)과 그 줄을 만든 학습 번호(없으면 null) */
+export type LineOrigin = { line: string; engine: string | null; rule: string | null }
+/** 저절로 학습이 만든 학습: 번호·만든 날은 화면이 붙인다(saveLearned) */
+export type AutoRule = Omit<LearnRule, 'id' | 'made'>
+/**
+ * 학습 창·저절로 학습의 줄 하나(design.md 5·5-1절). kind는 만들 학습의 할 일(학습이 더한 줄을 고치면 add), from·to·after는 학습 칸 값,
+ * update는 같은 줄 틀·같은 조건으로 바꿀 학습 번호(새로 더하면 null), skip은 학습하지 않는 까닭(hole 빈칸 채움 · style 모양 고침 · personal 개인정보 · empty 줄 틀이 없거나 길이 넘침), style은 모양 고침
+ */
+export type LearnDraftLine = LineDiff & { from: string; to: string; after: string; update: string | null; skip: 'hole' | 'style' | 'personal' | 'empty' | null; style: StyleChange | null }
 
 // ── 바뀌는 칸 글자 ─────────────
 
@@ -156,16 +165,25 @@ const ahead = (a: Live, b: Live) => a.count > b.count || (a.count === b.count &&
 /**
  * 엔진 글 위에 학습을 덧씌운다(AC-9302.1~.4). 켜져 있고 켠 조건이 모두 맞는 학습만 쓴다(켠 조건이 없는 학습은 쓰지 않는다).
  * 줄마다 맞는 줄 바꿈·줄 뺌 가운데 하나, 줄 더함은 앞 줄 틀과 맞는 첫 엔진 줄 바로 뒤(없으면 끝, 같은 글 줄이 있으면 더하지 않음).
- * 한 줄 모드(lineJoin 'oneLine')는 글 전체가 한 줄이고 줄 바꿈만 쓴다. used = 쓰인 학습 번호(쓴 차례, 겹침 없음)
+ * 한 줄 모드(lineJoin 'oneLine')는 글 전체가 한 줄이고 줄 바꿈만 쓴다. used = 쓰인 학습 번호(쓴 차례, 겹침 없음).
+ * 다섯째 값 'origins'를 주면 보이는 줄마다 바탕 엔진 줄·쓴 학습(origins, design.md 5-1절)도 준다. 주지 않으면 지금처럼 {text, used}뿐이다
  */
-export function applyLearned(text: string, rules: readonly LearnRule[], ctx: LearnContext, lineJoin: string | undefined): { text: string; used: string[] } {
+export function applyLearned(text: string, rules: readonly LearnRule[], ctx: LearnContext, lineJoin: string | undefined): { text: string; used: string[] }
+export function applyLearned(text: string, rules: readonly LearnRule[], ctx: LearnContext, lineJoin: string | undefined, withOrigins: 'origins'): { text: string; used: string[]; origins: LineOrigin[] }
+export function applyLearned(text: string, rules: readonly LearnRule[], ctx: LearnContext, lineJoin: string | undefined, withOrigins?: 'origins'): { text: string; used: string[]; origins?: LineOrigin[] } {
+  const result = overlay(text, rules, ctx, lineJoin)
+  return withOrigins === 'origins' ? result : { text: result.text, used: result.used }
+}
+
+function overlay(text: string, rules: readonly LearnRule[], ctx: LearnContext, lineJoin: string | undefined): { text: string; used: string[]; origins: LineOrigin[] } {
   const codes = new Set([...ctx.codes].map((code) => code.toUpperCase()))
   const chart = squash(ctx.chartText)
   const live = rules.map((rule, index) => ({ rule, index, count: whenCount(rule.when) })).filter(({ rule, count }) => rule.on && count > 0 && whenMet(rule.when, ctx, codes, chart))
-  if (!live.length) return { text, used: [] }
   const oneLine = lineJoin === 'oneLine'
-  const words = ctx.words
   const lines = oneLine ? [text] : text.split('\n')
+  const plain = (line: string): LineOrigin => ({ line, engine: line, rule: null })
+  if (!live.length) return { text, used: [], origins: lines.map(plain) }
+  const words = ctx.words
   const parts = lines.map((line) => splitMark(line, words.mark))
   const swaps = live.filter(({ rule }) => rule.kind === 'replace' || (!oneLine && rule.kind === 'remove'))
   const adds = oneLine ? [] : live.filter(({ rule }) => rule.kind === 'add')
@@ -174,22 +192,22 @@ export function applyLearned(text: string, rules: readonly LearnRule[], ctx: Lea
     if (!used.includes(id)) used.push(id)
   }
 
-  const out = lines.map((line, i): string[] => {
+  const out = lines.map((line, i): LineOrigin[] => {
     const { prefix, body } = parts[i]
-    if (!body) return [line]
+    if (!body) return [plain(line)]
     let best: { live: Live; slots: Slots } | null = null
     for (const entry of swaps) {
       const slots = matchPattern(entry.rule.from, body, words)
       if (slots && (!best || ahead(entry, best.live))) best = { live: entry, slots }
     }
-    if (!best) return [line]
+    if (!best) return [plain(line)]
     noteUsed(best.live.rule.id)
     if (best.live.rule.kind === 'remove') return []
-    return [prefix + fillTemplate(splitMark(best.live.rule.to, words.mark).body, best.slots)]
+    return [{ line: prefix + fillTemplate(splitMark(best.live.rule.to, words.mark).body, best.slots), engine: line, rule: best.live.rule.id }]
   })
 
-  const tails = lines.map((): string[] => [])
-  const end: string[] = []
+  const tails = lines.map((): LineOrigin[] => [])
+  const end: LineOrigin[] = []
   const key = (line: string) => splitMark(line, words.mark).body.replace(/\s+/g, ' ')
   for (const { rule } of adds) {
     let at = -1
@@ -202,11 +220,12 @@ export function applyLearned(text: string, rules: readonly LearnRule[], ctx: Lea
     }
     const line = fillTemplate(rule.to.trim(), slots)
     const mine = key(line)
-    if (!mine || [...out.flat(), ...tails.flat(), ...end].some((other) => key(other) === mine)) continue
-    ;(at < 0 ? end : tails[at]).push(line)
+    if (!mine || [...out.flat(), ...tails.flat(), ...end].some((other) => key(other.line) === mine)) continue
+    ;(at < 0 ? end : tails[at]).push({ line, engine: null, rule: rule.id })
     noteUsed(rule.id)
   }
-  return { text: [...lines.flatMap((_line, i) => [...out[i], ...tails[i]]), ...end].join('\n'), used }
+  const origins = [...lines.flatMap((_line, i) => [...out[i], ...tails[i]]), ...end]
+  return { text: origins.map((origin) => origin.line).join('\n'), used, origins }
 }
 
 // ── 줄 차이(design.md 5절) ─────────────
@@ -378,6 +397,183 @@ export function styleChange(old: string, next: string, phrases: Phrases): StyleC
   if (a === b) return null
   const tpl = phrases.TPL
   return sideChange(a, b, tpl) ?? siteChange(a, b, tpl) ?? fixedChange(a, b, tpl) ?? levelChange(a, b, tpl)
+}
+
+// ── 저절로 학습(design.md 5-1절, AC-9301.1) ─────────────
+
+/** 학습 조건으로 쓸 수 있는 부위 키(phrases.ts validateWhen의 목록과 같다) */
+export const LEARN_REGIONS: readonly string[] = ['shoulder', 'cervical', 'lumbar', 'knee', 'ankle', 'elbow', 'wrist', 'hand', 'hip', 'chest', 'foot', 'upper']
+/** 학습 이름·처음 학습 종류 이름의 짧은 부위 이름(예 'LA358 · 허리') */
+const REGION_SHORT: Readonly<Record<string, string>> = { shoulder: '어깨', cervical: '목', lumbar: '허리', knee: '무릎', ankle: '발목', elbow: '팔꿈치', wrist: '손목', hand: '손', hip: '고관절', chest: '갈비뼈', foot: '발', upper: '팔' }
+export const regionLabel = (key: string): string => REGION_SHORT[key] ?? key
+const NAME_MAX = 40
+const LINE_MAX = 300
+/** 빈칸 표시 [… 확인](AC-9301.1·AC-9307.1) */
+const HOLE = /\[[^\]]*확인\]/
+
+/** 조건 이름(처음 학습 이름, AC-9304.1): 처방 코드 · 부위. 40자까지 */
+export function learnName(when: LearnWhen): string {
+  const name = [when.codes.join(', '), when.regions.map(regionLabel).join(', ')].filter(Boolean).join(' · ')
+  return name.slice(0, NAME_MAX).trim() || '학습'
+}
+
+/** 두 조건이 같은가: 칸마다 같은 글 모음(차례·겹침 무시, 처방 코드는 대소문자 무시) */
+export function sameWhen(a: LearnWhen, b: LearnWhen): boolean {
+  const same = (x: readonly string[], y: readonly string[], fold = false) => {
+    const norm = (list: readonly string[]) => [...new Set(list.map((item) => (fold ? item.toUpperCase() : item)))].sort().join('\u0000')
+    return norm(x) === norm(y)
+  }
+  return same(a.codes, b.codes, true) && same(a.withCodes, b.withCodes, true) && same(a.regions, b.regions) && same(a.chartWords, b.chartWords) && same(a.doctors, b.doctors)
+}
+
+/** 줄의 바뀌는 칸 값: 줄 앞 표시를 뗀 몸에서 처음 나온 레벨·좌우·부위 글자(저절로 학습의 slotsOf) */
+export function lineSlots(line: string, words: SlotWords): Slots {
+  const slots: Slots = {}
+  for (const found of splitMark(line, words.mark).body.matchAll(scanOf(words))) {
+    const kind = slotOf(found[1], found[2])
+    if (slots[kind] === undefined) slots[kind] = found[0]
+  }
+  return slots
+}
+
+/** 새 문장에서 그 진료 값(slots)과 같은 좌우·레벨·부위 글자를 {좌우}·{레벨}·{부위}로 바꾼다. 다른 글자는 그대로다(학습 창의 '글자 그대로' 안내) */
+export function autoTemplate(next: string, slots: Slots, words: SlotWords): string {
+  return next.replace(scanOf(words), (all: string, level: string | undefined, side: string | undefined) => {
+    const kind = slotOf(level, side)
+    return slots[kind] !== undefined && slots[kind] === all ? `{${kind}}` : all
+  })
+}
+
+export type AutoLearnInput = {
+  /** 보이던 글(엔진 + 학습)과 그 줄마다의 출처 */
+  shown: string
+  origins: readonly LineOrigin[]
+  /** 사람이 고친 글 */
+  edited: string
+  /** 그 진료의 조건: 처방 코드(시술 코드) + 부위, 나머지 칸은 비움 */
+  when: LearnWhen
+  /** 엔진 줄의 바뀌는 칸 값 */
+  slotsOf(engineLine: string): Slots
+  words: SlotWords
+  phrases: Phrases
+  /** 지금 병원 문구의 학습(바꾸기를 찾는다) */
+  rules: readonly LearnRule[]
+  /** 그 진료의 환자 이름·차트번호 */
+  forbidden: readonly string[]
+}
+
+/** 한 줄 학습 칸으로 쓸 수 있는 글인가(phrases.ts 검사와 같게: 줄바꿈·탭·제어문자 없이 300자까지) */
+const fitsLine = (value: string) => value.length <= LINE_MAX && !/[\u0000-\u001f]/.test(value)
+
+/**
+ * 보이던 글과 고친 글의 줄 차이마다 만들 학습(design.md 5-1절 규칙). autoLearn과 학습 창 재료(learnDraft)가 함께 쓴다.
+ * 줄마다 origins로 바탕 엔진 줄을 찾는다: 바꿈·뺌의 from = 엔진 줄의 틀, 더함의 after = 앞 줄의 엔진 줄(또는 앞 줄)의 틀,
+ * 문장 = 새 줄의 그 진료 값을 칸으로(더함은 앞 줄의 값). 학습이 쓴 줄을 고치면 같은 줄 틀·같은 조건의 그 학습을 바꾼다
+ */
+export function learnLines(input: AutoLearnInput): LearnDraftLine[] {
+  const { words } = input
+  const rows = input.origins.map((origin) => ({ origin, key: origin.line.trim() }))
+  let cursor = 0
+  /** 바꿈·뺌의 옛 줄: 앞에서 찾은 줄 뒤에서 처음 같은 줄 */
+  const originOf = (old: string): LineOrigin | null => {
+    for (let i = cursor; i < rows.length; i++) {
+      if (rows[i].key !== old) continue
+      cursor = i + 1
+      return rows[i].origin
+    }
+    return null
+  }
+  /** 더함의 앞 줄: 바로 앞에서 찾은 줄 → 그 뒤 처음 같은 줄 → 그 앞 같은 줄 */
+  const anchorOf = (before: string): LineOrigin | null => {
+    if (!before) return null
+    if (cursor > 0 && rows[cursor - 1].key === before) return rows[cursor - 1].origin
+    for (let i = cursor; i < rows.length; i++) {
+      if (rows[i].key !== before) continue
+      cursor = i + 1
+      return rows[i].origin
+    }
+    for (let i = cursor - 1; i >= 0; i--) if (rows[i].key === before) return rows[i].origin
+    return null
+  }
+  /** 그 출처 바로 앞 줄(학습이 더한 줄을 고칠 때 값을 잡는 줄) */
+  const previousOf = (origin: LineOrigin): LineOrigin | null => {
+    const at = rows.findIndex((row) => row.origin === origin)
+    for (let i = at - 1; i >= 0; i--) if (rows[i].key) return rows[i].origin
+    return null
+  }
+  const ruleOf = (id: string | null) => (id ? (input.rules.find((rule) => rule.id === id) ?? null) : null)
+  const baseOf = (origin: LineOrigin | null) => (origin ? (origin.engine ?? origin.line) : '')
+
+  return diffLines(input.shown, input.edited).map((diff): LearnDraftLine => {
+    const line: LearnDraftLine = { ...diff, from: '', to: '', after: '', update: null, skip: null, style: null }
+    const skip = (why: NonNullable<LearnDraftLine['skip']>) => ({ ...line, skip: why })
+    if (diff.kind === 'add') {
+      const base = baseOf(anchorOf(diff.before))
+      line.after = base ? toPattern(base, words) : ''
+      line.to = autoTemplate(diff.new, base ? input.slotsOf(base) : {}, words)
+    } else {
+      const origin = originOf(diff.old)
+      if (HOLE.test(diff.old)) return skip('hole')
+      if (diff.kind === 'replace') {
+        const style = styleChange(diff.old, diff.new, input.phrases)
+        if (style) return { ...line, skip: 'style', style }
+      }
+      const rule = ruleOf(origin?.rule ?? null)
+      if (origin?.engine != null) {
+        line.from = toPattern(origin.engine, words)
+        if (diff.kind === 'replace') {
+          line.to = autoTemplate(splitMark(diff.new, words.mark).body, input.slotsOf(origin.engine), words)
+          if (rule && rule.kind === 'replace' && rule.from === line.from && sameWhen(rule.when, input.when)) line.update = rule.id
+        }
+      } else if (diff.kind === 'replace' && rule?.kind === 'add') {
+        // 학습이 더한 줄을 고쳤다: 그 더함 학습의 문장(같은 조건이면 그 학습을 바꾼다)
+        const previous = origin ? previousOf(origin) : null
+        Object.assign(line, { kind: 'add', after: rule.after, to: autoTemplate(diff.new, previous ? input.slotsOf(baseOf(previous)) : {}, words), update: sameWhen(rule.when, input.when) ? rule.id : null })
+      } else {
+        return skip('empty') // 바탕 엔진 줄이 없다: 만든 학습이 어느 진료에도 맞지 않는다
+      }
+    }
+    const fields = [line.from, line.to, line.after]
+    if (fields.some((value) => personalHit(value, input.forbidden))) return skip('personal')
+    const needs = line.kind === 'add' ? line.to.trim() : line.kind === 'remove' ? line.from.trim() : line.from.trim() && line.to.trim()
+    if (!needs || !fields.every(fitsLine)) return skip('empty')
+    return line
+  })
+}
+
+/**
+ * 저절로 학습(design.md 5-1절, AC-9301.1·AC-9301.5·AC-9303.1). 보이던 글과 고친 글의 줄마다 learnLines로 학습을 만든다:
+ * 빈칸을 채운 줄은 건너뛰고, 모양 고침은 style, 개인정보 줄은 세기만(personal), 학습이 쓴 줄을 고치면 update(남은 확인 3은 저장 함수가), 나머지는 add.
+ * 조건이 하나도 없으면(시술 코드·부위 없음) 학습하지 않는다. 받은 값은 고치지 않는다
+ */
+export function autoLearn(input: AutoLearnInput): { add: AutoRule[]; update: { id: string; to: string }[]; style: StyleChange[]; personal: number } {
+  const lines = learnLines(input)
+  const style: StyleChange[] = []
+  for (const line of lines) {
+    if (line.style && !style.some((seen) => seen.field === line.style!.field && seen.from === line.style!.from && seen.to === line.style!.to)) style.push(line.style)
+  }
+  const personal = lines.filter((line) => line.skip === 'personal').length
+  const add: AutoRule[] = []
+  const update = new Map<string, string>()
+  if (whenCount(input.when) > 0) {
+    const name = learnName(input.when)
+    for (const line of lines) {
+      if (line.skip) continue
+      if (line.update) {
+        update.set(line.update, line.to)
+        continue
+      }
+      if (add.some((rule) => rule.kind === line.kind && rule.from === line.from && rule.after === line.after && rule.to === line.to)) continue
+      const when: LearnWhen = { codes: [...input.when.codes], regions: [...input.when.regions], chartWords: [...input.when.chartWords], withCodes: [...input.when.withCodes], doctors: [...input.when.doctors] }
+      add.push({ name, kind: line.kind, from: line.from, to: line.to, after: line.after, when, on: true, left: 3 })
+    }
+  }
+  return { add, update: [...update].map(([id, to]) => ({ id, to })), style, personal }
+}
+
+/** 메모 글의 [… 확인] 빈칸 수(AC-9307.1) */
+export function holeCount(text: string): number {
+  return text.match(new RegExp(HOLE.source, 'g'))?.length ?? 0
 }
 
 // ── 개인정보·한도(design.md 2절) ─────────────
