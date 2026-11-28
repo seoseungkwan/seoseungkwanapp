@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "claim-learn",
-  "approved_at": "2026-11-28T03:09:59Z",
+  "approved_at": "2026-11-28T03:20:07Z",
   "approved_via": "user-prompt",
   "session_id": "64f1bf4e-a59d-4550-be14-1f4eba5abf71",
-  "spec_sha256": "420b0460804fe01d67684f70e9be4ad3291396959d3957e9e009a69549d7f45d",
+  "spec_sha256": "a8806843e67c80259676bae9394539efab04ea4411a875fcb250a33c4da1cd6d",
   "scope": [
     "helper/Directory.Build.props",
     "helper/src/Precheck.Core/Claim/ClaimMonthPayload.cs",
