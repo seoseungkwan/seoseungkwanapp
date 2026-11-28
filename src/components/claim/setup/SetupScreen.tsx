@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { Icon } from '@/components/common/Icon'
 import { DownloadButton } from '@/components/install/DownloadButton'
@@ -16,7 +16,7 @@ import { useBridge } from '../useBridge'
 import { checkedAtText } from './checkedAt'
 import { EXTENSION_STORE_URL } from './links'
 import { ReturnWhenReady } from './ReturnWhenReady'
-import { BusyCard, SetupAlert } from './SetupAlert'
+import { BusyCard, ClaimReasonBand, readSetupFrom, SetupAlert } from './SetupAlert'
 import { HelperUpdateSteps, ProblemActions, StepGuide } from './StepGuide'
 import { isRealProblem, setupSteps, type StepView } from './steps'
 
@@ -30,11 +30,18 @@ import { isRealProblem, setupSteps, type StepView } from './steps'
 // 데스크(desk-setup REQ-7002, 앱 틀의 useDesk): 제목 '비트 PC 연결' 하나(안쪽 메뉴 없음), '준비됨' 줄은 [수납일지로 가기], busy 카드에 [건수만 보기] 없음. 나머지는 원장과 같다
 // 비트가 아닌 병원(emr-choice REQ-7104, 시안 docs/mockups/emr-choice ③): 병원 정보를 읽었고 쓰는 EMR이 'bit'가 아니면 머리 아래 안내 상자 하나만.
 // 읽는 중·읽기 실패·줄 없음은 'bit'처럼 지금 화면이다(AC-7104.2). 도우미 연결은 그대로 돌지만 화면에 쓰지 않는다
+// claim-learn(REQ-9313): 주소 ?from=claim&why=…(청구가 옮김)면 맨 위에 '청구에서 옴' 띠(까닭 한 줄). ?from=store(저장 파일이 다른 병원 것)면
+// 등록이 되어 있어도 요양기관기호 단계에 [처음 등록] 안내를 보이고, 등록한 뒤에 '준비됨'이다. 주소 글은 정해진 값만 받고 그대로 그리지 않는다
 
 type Checked = { result: ResultOf<'bit.check'> | null; error: string | null; at: Date | null }
 const NOT_CHECKED: Checked = { result: null, error: null, at: null }
 
 const codeOf = (e: unknown) => (e instanceof BridgeError ? e.code : 'E-BRIDGE-REJECTED')
+
+// 주소 검색 글(from·why). 이 화면은 주소를 바꾸지 않으므로 지켜볼 것이 없다. 서버에서는 빈 글이다
+const noSubscribe = () => () => {}
+const searchNow = () => (typeof window === 'undefined' ? '' : (window.location?.search ?? ''))
+const noSearch = () => ''
 
 // 안쪽 메뉴: b2b 관리자 화면 안 탭(AdminApplications)과 같은 모양(AC-034.2). 40px(폰 44px)·좌우 12px·body, 줄 아래 1px line.
 // 첫 항목은 왼쪽 12px을 당겨 글자를 제목 끝에 맞춘다. 키보드 초점은 안쪽 2px accent 고리.
@@ -194,6 +201,9 @@ export function SetupScreen({
   const [working, setWorking] = useState<'check' | 'register' | null>(null)
   /** bit.register가 오류 번호로 끝났다(위 오류 상자에 보인다) */
   const [registerError, setRegisterError] = useState<string | null>(null)
+  /** ?from=store에서 다시 등록을 마쳤다(AC-9313.4) */
+  const [storeDone, setStoreDone] = useState(false)
+  const from = readSetupFrom(useSyncExternalStore(noSubscribe, searchNow, noSearch))
   const stepsTitleId = useId()
   const pcTitleId = useId()
   const keepTitleId = useId()
@@ -234,6 +244,7 @@ export function SetupScreen({
       setWorking(null)
       return
     }
+    setStoreDone(true)
     // 저장했든 확인 창에서 취소했든 다시 확인해 지금 상태를 보인다
     await runCheck()
   }, [call, runCheck])
@@ -248,15 +259,19 @@ export function SetupScreen({
     checkError: checked.error,
     checking: working === 'check',
   })
-  const allOk = steps.every((s) => s.status === 'ok')
   const [extension, helper, , , hospital] = steps
+  // 다시 등록 모양(AC-9313.4): 등록이 되어 있어도 요양기관기호 단계에 [처음 등록]. 등록한 뒤에야 '준비됨'이다
+  const reRegister = from?.from === 'store' && !storeDone && hospital.status === 'ok'
+  const allOk = steps.every((s) => s.status === 'ok') && !reRegister
   // 위 오류 상자: 진짜 문제 하나(그 단추를 상자로 옮긴다) 또는 방금 누른 등록이 실패한 오류.
   // 등록 오류는 5단계가 아직 등록을 기다릴 때만 보인다 — 그사이 연결이 끊기면(앞 단계가 할 차례) 그 단계 안내가 번호를 한 번만 보인다(빨강 아님)
   const problem = steps.find(isRealProblem)
-  const awaitingRegister = hospital.guide === 'register' || hospital.guide === 'reregister'
+  const awaitingRegister = hospital.guide === 'register' || hospital.guide === 'reregister' || reRegister
   const alertCode = (awaitingRegister ? registerError : null) ?? problem?.code ?? null
   const actions = { storeUrl: extensionStoreUrl, disabled, onRetry: recheck, onRegister: () => void register() }
   const institution = state === 'ready' ? checked.result?.institutionCode : undefined
+  // 청구에서 옴 띠(AC-9313.1): 화면 맨 위
+  const band = from?.from === 'claim' ? <ClaimReasonBand why={from.why} /> : null
 
   // 비트가 아닌 병원: 머리 아래 안내 상자 하나(AC-7104.1). 모든 훅을 부른 뒤, 다른 창 카드보다 먼저
   if (emr !== 'bit') {
@@ -273,6 +288,7 @@ export function SetupScreen({
   if (state === 'busy') {
     return (
       <div className="flex flex-col gap-4 max-md:gap-3">
+        {band}
         <Head desk={desk} />
         <BusyCard
           onRetry={recheck}
@@ -291,6 +307,7 @@ export function SetupScreen({
 
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
+      {band}
       {state === 'no-extension' && <PcNote />}
       <Head desk={desk} />
 
@@ -350,6 +367,8 @@ export function SetupScreen({
                   guide={
                     step.status === 'bad' && step.guide && !isRealProblem(step) ? (
                       <StepGuide kind={step.guide} code={step.code} {...actions} />
+                    ) : reRegister && step === hospital ? (
+                      <StepGuide kind="register" {...actions} />
                     ) : null
                   }
                 />

@@ -44,7 +44,8 @@ export type ClaimOwner = { user: string; institution: string }
 /** 점검 결과. owner를 모르면(null) 떠날 때 남기지 않는다 */
 export type CheckedClaim = { load: number; check: number; visible: DateRange; view: ClaimView; at: Date; used: CheckSettings | null; usedCopy: boolean; owner: ClaimOwner | null }
 /** 다른 탭에 다녀올 동안 남기는 것: 결과·기간·단계·설정 변경 띠·달 칸 저장 막힘. 환자 글자가 있으므로 이 메모리에만 둔다(저장소·주소 금지). 전체 페이지 이동(로그아웃)이면 Worker와 함께 사라진다 */
-export type KeptClaim = { result: CheckedClaim; period: DateRange; page: ClaimPage; stale: boolean; storeStuck?: boolean }
+/** brokenMonths: 저장 파일이 깨져 빈 채로 시작한 달(claim-learn AC-9315.2). 그 불러오기 동안 메모 단계 띠로 보인다 */
+export type KeptClaim = { result: CheckedClaim; period: DateRange; page: ClaimPage; stale: boolean; storeStuck?: boolean; brokenMonths?: string[] }
 export type ClaimPage = 'dates' | 'result' | 'memo'
 /** 비트 메모 읽기 상태(AC-018.24): 다녀와도 '한 번 받음'이 남는다. asked는 읽으려 한 적이 있는가(AC-018.27) */
 export type BitReadState = { status: 'never' | 'ok' | 'failed'; at: string | null; code: string | null; received: boolean; asked: boolean }
@@ -248,7 +249,30 @@ export type ClaimStream = <C extends PatientCommand>(cmd: C, args: ArgsOf<C>) =>
 /** 진행 표시: 달(이력 포함) → 비트 메모 → 저장한 작업 */
 export type LoadStep = 'month' | 'memos' | 'store'
 /** stuckMonth: 달 파일이 다른 병원 파일이다(AC-018.17). 멈추지 않고 저장한 작업 없이 점검을 계속하고 화면이 안내를 보인다 */
-export type LoadResult = { status: 'ok'; load: number; stuckMonth?: true } | { status: 'failed'; code: string } | { status: 'replaced' }
+/** brokenMonths: 앞 불러오기가 E-STORE-BROKEN으로 멈춘 달 가운데 이번 기간에 든 달(AC-9315.2). 없으면 칸이 없다 */
+export type LoadResult = { status: 'ok'; load: number; stuckMonth?: true; brokenMonths?: string[] } | { status: 'failed'; code: string } | { status: 'replaced' }
+
+/** 일하는 중(불러오기·비트 메모 읽기·입력)에 온 도우미 없음은 도우미가 멈춘 것이다(claim-learn AC-9315.1): 연결 화면 글 대신 그 자리 안내 */
+export const whileWorking = (code: string): string => (code === 'E-HELPER-MISSING' ? 'E-HELPER-STOPPED' : code)
+
+/**
+ * 달 칸 store.load가 E-STORE-BROKEN(이 PC 저장 파일이 깨짐)으로 멈춘 달(AC-9315.2). 도우미는 한 호출 전체를 같은 번호로 거절하므로 그 기간의 달을 모두 적는다.
+ * 다음 불러오기가 성공하면 그 기간에 든 달을 알리고 잊는다. Worker(탭)마다 따로이고 이 탭 메모리에만 있다
+ */
+const brokenStore = new WeakMap<ClaimChannel, Set<string>>()
+function rememberBroken(channel: ClaimChannel, months: readonly string[]) {
+  const known = brokenStore.get(channel) ?? new Set<string>()
+  for (const month of months) known.add(month)
+  brokenStore.set(channel, known)
+}
+function takeBroken(channel: ClaimChannel, months: readonly string[]): string[] {
+  const known = brokenStore.get(channel)
+  const taken = months.filter((month) => known?.has(month))
+  for (const month of taken) known?.delete(month)
+  return taken
+}
+
+const STORE_BROKEN = 'E-STORE-BROKEN'
 
 /** 그 자료 없이 계속해도 되는 거절 번호. 그 밖의 번호는 멈춘다(AC-013.11) */
 const NO_HELPER_YET: readonly string[] = ['E-HELPER-UNKNOWN-COMMAND'] // Phase 3 전(AC-013.2)
@@ -298,13 +322,18 @@ export async function runClaimLoad(channel: ClaimChannel, stream: ClaimStream, v
         channel.worker.postMessage({ type: 'storeBlock' } satisfies PrecheckFromScreen, [])
         continue
       }
+      if (step === 'store' && code === STORE_BROKEN) rememberBroken(channel, monthsIn(visible))
       return { status: 'failed', code }
     }
     const answer = await channel.ask<Extract<Answer, { type: 'loadPart' }>>({ type: 'loadPart', part, id, load })
     if (replaced()) return REPLACED
-    if (!answer.ok) return { status: 'failed', code: answer.code }
+    if (!answer.ok) {
+      if (step === 'store' && answer.code === STORE_BROKEN) rememberBroken(channel, monthsIn(visible))
+      return { status: 'failed', code: answer.code }
+    }
   }
-  return stuckMonth ? { status: 'ok', load, stuckMonth: true } : { status: 'ok', load }
+  const broken = takeBroken(channel, monthsIn(visible))
+  return { status: 'ok', load, ...(stuckMonth ? { stuckMonth: true as const } : {}), ...(broken.length > 0 ? { brokenMonths: broken } : {}) }
 }
 
 /** 불러오기 앞에 물은 날짜별 진료 수. 묻지 못했으면 null(AC-019.3) */
@@ -349,7 +378,8 @@ export async function runMemoReload(channel: ClaimChannel, stream: ClaimStream, 
   try {
     ;({ id } = await stream('claim.memos', visible))
   } catch (error) {
-    return replaced() ? { status: 'replaced' } : { status: 'failed', code: codeOf(error) }
+    // 읽는 중에 도우미가 사라지면 멈춤 안내다(AC-9315.1)
+    return replaced() ? { status: 'replaced' } : { status: 'failed', code: whileWorking(codeOf(error)) }
   }
   const answer = await channel.ask<Extract<Answer, { type: 'loadPart' }>>({ type: 'loadPart', part: 'memos', id, load, run })
   if (replaced()) return { status: 'replaced' }

@@ -1621,3 +1621,106 @@ describe('AC-7104.1·AC-7104.2 비트가 아닌 병원의 연결 화면', () => 
     for (const t of NOTE) expect(screen.getByText(t)).toBeTruthy()
   })
 })
+
+// claim-learn 연결 길(REQ-9313, design.md 11절): 주소의 from·why는 화면이 브라우저 주소에서 읽는다(정해진 값만)
+describe('AC-9313.1 청구에서 옴 띠', () => {
+  const at = (search: string) => window.history.replaceState(null, '', `/claim/setup${search}`)
+  afterEach(() => at(''))
+  const BAND = (why: string) => `청구 점검을 하려면 이 PC 연결을 먼저 마쳐야 해요. (${why})`
+
+  it.each([
+    ['no-helper', '도우미가 없어요'],
+    ['update-helper', '도우미를 업데이트해야 해요'],
+    ['update-extension', '확장을 업데이트해야 해요'],
+    ['disconnected', '도우미 연결이 끊겼어요'],
+  ])('AC-9313.1: 청구에서 %s로 옮겨 왔으면 맨 위에 "청구에서 옴" 띠(까닭 한 줄)가 있다', async (why, text) => {
+    at(`?from=claim&why=${why}`)
+    fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
+    const { container } = renderSetup()
+    const band = await screen.findByText(BAND(text))
+    // 맨 위: 화면의 첫 요소이고 제목보다 앞이다
+    expect(container.firstElementChild?.firstElementChild).toBe(band)
+    expect(isBefore(band, screen.getByRole('heading', { level: 1 }))).toBe(true)
+    hasAll(band, 'bg-warning-soft')
+  })
+
+  it('AC-9313.1: 연결 화면을 직접 열었거나 까닭이 정해진 값이 아니면 띠가 없고, 주소 글을 그대로 그리지 않는다', async () => {
+    for (const search of ['', '?from=claim', '?from=claim&why=%EB%A7%88%EC%9D%8C%EB%8C%80%EB%A1%9C', '?from=other&why=no-helper', '?next=dashboard']) {
+      at(search)
+      fakeExtension({ hello: HELLO })
+      renderSetup()
+      await screen.findByText('준비됨')
+      expect(document.body.textContent, search).not.toContain('청구 점검을 하려면')
+      expect(document.body.textContent, search).not.toContain('마음대로')
+      cleanup()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('AC-9313.1: 다른 창 카드(busy)에도 띠가 맨 위에 있다', async () => {
+    at('?from=claim&why=disconnected')
+    fakeExtension({ hello: 'busy' })
+    renderSetup()
+    await screen.findByRole('alert')
+    expect(screen.getByText(BAND('도우미 연결이 끊겼어요'))).toBeTruthy()
+  })
+})
+
+describe('AC-9313.3 확장 단계의 새로 고침', () => {
+  const REFRESH = '확장을 설치했으면 이 화면을 새로 고쳐야 알아봐요.'
+
+  it.each([
+    ['웹앱 보관함', {}],
+    ['웹스토어 주소', { extensionStoreUrl: STORE }],
+  ] as const)('AC-9313.3: 확장 단계 안내(%s)에 "새로 고침" 글과 [이 화면 새로 고침]이 있고, 누르면 이 화면을 새로 연다', async (_name, props) => {
+    const reload = vi.fn()
+    noExtension()
+    vi.stubGlobal('location', { origin: 'http://localhost:3000', href: 'http://localhost:3000/claim/setup', pathname: '/claim/setup', search: '', reload })
+    renderSetup(props)
+    const first = row(STEP_TITLES[0])
+    await waitFor(() => expectTurn(first))
+    expect(within(first).getByText(REFRESH)).toBeTruthy()
+    const again = within(first).getByRole('button', { name: '이 화면 새로 고침' })
+    expect(isSecondary(again)).toBe(true)
+    // 안내 상자 안 단추 둘(받기·[다시 확인])은 그대로다(AC-412.6)
+    expect(Array.from(guideOf(first)!.querySelectorAll('a, button'))).toHaveLength(2)
+    await userEvent.setup().click(again)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-9313.3: 확장 단계가 끝났으면(도우미 단계 차례) 새로 고침 글이 없다', async () => {
+    fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
+    renderSetup()
+    await screen.findByText(HELPER_META)
+    expect(screen.queryByText(REFRESH)).toBeNull()
+    expect(screen.queryByRole('button', { name: '이 화면 새로 고침' })).toBeNull()
+  })
+})
+
+describe('AC-9313.4 다시 등록 모양(?from=store)', () => {
+  const at = (search: string) => window.history.replaceState(null, '', `/claim/setup${search}`)
+  afterEach(() => at(''))
+
+  it('AC-9313.4: 등록이 되어 있어도 ?from=store면 요양기관기호 단계에 [처음 등록]이 있고, 누르면 bit.register 뒤 다시 확인해 준비됨이 된다', async () => {
+    at('?from=store')
+    const fake = fakeExtension({ hello: HELLO })
+    renderSetup()
+    const hospital = row(STEP_TITLES[4])
+    const first = await within(hospital).findByRole('button', { name: '처음 등록' })
+    // 이 장면도 주 단추는 하나다([청구로 가기] 줄은 등록한 뒤에 보인다)
+    expect(primaries()).toEqual([first])
+    expect(screen.queryByText('준비됨')).toBeNull()
+    await userEvent.setup().click(first)
+    await waitFor(() => expect(fake.count('bit.register')).toBe(1))
+    await screen.findByText('준비됨')
+    expect(fake.sent).toEqual(['hello', 'bit.check', 'bit.register', 'bit.check'])
+    expect(screen.queryByRole('button', { name: '처음 등록' })).toBeNull()
+  })
+
+  it('AC-9313.4: 주소에 from=store가 없으면 등록된 PC에 [처음 등록]이 없다(지금 그대로)', async () => {
+    fakeExtension({ hello: HELLO })
+    renderSetup()
+    await screen.findByText('준비됨')
+    expect(screen.queryByRole('button', { name: '처음 등록' })).toBeNull()
+  })
+})

@@ -484,8 +484,8 @@ describe('claim-day-done-pc: 비트 PC 화면에서 고른 기간의 날짜를 �
     expect(rowOf('10/28 (수)').textContent).toContain('완료로 바꿈 · 11월 8일 (일) 10:05')
     expect(rowOf('10/28 (수)').textContent).toContain('7명') // 숫자는 그대로
     expect(within(rowOf('10/28 (수)')).getByRole('button', { name: '10/28 (수) 되돌리기' })).toBeTruthy()
-    // 숫자로 끝난 날에는 [되돌리기]가 없다
-    expect(within(rowOf('10/27 (화)')).queryByRole('button')).toBeNull()
+    // 숫자로 끝난 날에는 [되돌리기]가 없다(줄 끝 [이 날만]은 모든 줄에 있다, claim-learn AC-9311.1)
+    expect(within(rowOf('10/27 (화)')).queryByRole('button', { name: /되돌리기/ })).toBeNull()
   })
 
   it('AC-2901.4: 알림의 [되돌리기]는 방금 바꾼 날을 지우는 요청 하나이고, 기간을 바꾸면 알림이 사라진다', async () => {
@@ -2113,5 +2113,105 @@ describe('AC-6610 입력 방식 기억', () => {
     await settle()
     expect(modeWrites()).toEqual([])
     expect(worker.of('memoView').at(-1)!.selection.mode).toBe('code')
+  })
+})
+
+describe('AC-9311.1 날짜 줄의 [이 날만]', () => {
+  it('AC-9311.1: [이 날만]을 누르면 시작·끝이 그 날 하나가 되고 요약도 그 하루다', async () => {
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await userEvent.setup().click(screen.getByRole('button', { name: '10/29 (목) 이 날만' }))
+    expect((screen.getByLabelText('시작') as HTMLInputElement).value).toBe('2026-10-29')
+    expect((screen.getByLabelText('끝') as HTMLInputElement).value).toBe('2026-10-29')
+    expect(screen.getByText(/^진료한 날 1일 · 진료 환자 49명/)).toBeTruthy()
+  })
+})
+
+describe('AC-9315.1 불러오는 중에 도우미가 멈춤', () => {
+  const STOPPED = errorInfo('E-HELPER-STOPPED')
+  const missing = () => bridge({ month: () => Promise.reject(new BridgeError('E-HELPER-MISSING')) })
+
+  it('AC-9315.1: 불러오는 중에 E-HELPER-MISSING이 오면 그 자리에 E-HELPER-STOPPED 안내와 [다시 불러오기]·[비트 PC 연결 확인]이 보인다', async () => {
+    show(fakeWorker(), missing())
+    await userEvent.setup().click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    const card = await screen.findByRole('alert')
+    expect(card.textContent).toContain(STOPPED.what)
+    expect(card.textContent).toContain(STOPPED.fix)
+    expect(card.textContent).toContain('오류 번호 E-HELPER-STOPPED')
+    expect(document.body.textContent).not.toContain('E-HELPER-MISSING')
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '비트 PC 연결 확인' }).getAttribute('href')).toBe('/claim/setup')
+  })
+
+  it('AC-9315.1: 날짜 목록을 읽다(일하는 중이 아님) E-HELPER-MISSING이면 지금 그대로다', async () => {
+    show(fakeWorker(), bridge({ dates: () => Promise.reject(new BridgeError('E-HELPER-MISSING')) }))
+    const card = await screen.findByRole('alert')
+    expect(card.textContent).toContain('오류 번호 E-HELPER-MISSING')
+  })
+
+  it('AC-9315.1: 불러오는 동안 일하는 중이라고 위로 알리고, 멈춤 안내가 뜨면 거둔다', async () => {
+    const onWorking = vi.fn()
+    let fail: (error: Error) => void = () => {}
+    const link = bridge({ month: () => new Promise((_, reject) => (fail = reject)) })
+    const worker = fakeWorker()
+    render(<ClaimScreen channel={claimChannel(worker)} call={link.call as never} stream={link.stream as never} onWorking={onWorking} />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    await waitFor(() => expect(onWorking).toHaveBeenLastCalledWith(true))
+    await act(async () => fail(new BridgeError('E-HELPER-MISSING')))
+    await screen.findByText('오류 번호 E-HELPER-STOPPED')
+    expect(onWorking).toHaveBeenLastCalledWith(false)
+  })
+
+  it('AC-9315.1: [다시 불러오기]는 연결을 다시 맞춘 뒤(reconnect) 다시 불러온다. 다시 붙지 못하면 달을 묻지 않고 멈춤 안내를 그대로 둔다', async () => {
+    let fails = true
+    const link = bridge({ month: () => (fails ? Promise.reject(new BridgeError('E-HELPER-MISSING')) : Promise.resolve({ id: 'month-ok', count: 1 })) })
+    const reconnect = vi.fn(() => Promise.resolve(false))
+    const worker = fakeWorker()
+    render(<ClaimScreen channel={claimChannel(worker)} call={link.call as never} stream={link.stream as never} reconnect={reconnect} />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    await screen.findByText('오류 번호 E-HELPER-STOPPED')
+    const months = () => link.stream.mock.calls.filter(([cmd]) => cmd === 'claim.month').length
+    expect(months()).toBe(1)
+
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    await screen.findByText('오류 번호 E-HELPER-STOPPED')
+    expect(months()).toBe(1)
+
+    fails = false
+    reconnect.mockImplementation(() => Promise.resolve(true))
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    expect(months()).toBe(2)
+    expect(screen.queryByText('오류 번호 E-HELPER-STOPPED')).toBeNull()
+  })
+})
+
+describe('AC-9315.2 저장 파일이 깨진 달', () => {
+  const BAND = '이 PC에 저장된 2026년 10월 고친 메모·완료 표시를 읽지 못해 빈 채로 시작했어요. 이 달 메모는 다시 확인해 주세요.'
+
+  it('AC-9315.2: E-STORE-BROKEN 뒤 [다시 불러오기]로 그 달을 빈 채로 시작하면 메모 단계에 그 달의 띠가 보이고, 다음 불러오기에는 없다', async () => {
+    let broken = true
+    const link = bridge({ store: (args) => (args.months && broken ? Promise.reject(new BridgeError('E-STORE-BROKEN')) : Promise.resolve({ id: `store-${String(args.months ?? 'copy')}`, count: 1 })) })
+    show(fakeWorker(), link)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('오류 번호 E-STORE-BROKEN')
+    broken = false // 도우미가 깨진 파일을 비키고 빈 채로 시작한다
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    expect(screen.queryByText(BAND)).toBeNull() // 점검 결과 단계에는 없다
+    await user.click(screen.getByRole('button', { name: '다음: 메모 확인' }))
+    const band = await screen.findByText(BAND)
+    expect(band.getAttribute('class')).toContain('bg-warning-soft')
+
+    // 다음 불러오기(그 불러오기가 끝남)에는 없다
+    await user.click(screen.getByRole('button', { name: '날짜 고르기' }))
+    await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    await user.click(screen.getByRole('button', { name: '다음: 메모 확인' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '메모 확인' }).getAttribute('aria-current')).toBe('step'))
+    expect(screen.queryByText(BAND)).toBeNull()
   })
 })

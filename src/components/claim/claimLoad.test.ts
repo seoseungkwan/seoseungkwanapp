@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { CheckSettings, ClaimView, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
-import { claimChannel, pressClaimLoad, runClaimCheck, runClaimExcel, runClaimLoad, runMemoReload, type KeptClaim, type LoadStep } from './claimLoad'
+import { claimChannel, pressClaimLoad, runClaimCheck, runClaimExcel, runClaimLoad, runMemoReload, whileWorking, type KeptClaim, type LoadStep } from './claimLoad'
 
 // 화면이 Worker에 보내는 차례(약속 전문: types/precheck.ts PrecheckFromScreen, design.md 6-2). 가짜 통로·가짜 Worker로 본다
 
@@ -756,6 +756,13 @@ describe('AC-018.24·AC-016.7 비트 메모 다시 불러오기', () => {
     expect(worker.posted.filter((m) => m.type === 'loadPart')).toEqual([])
   })
 
+  it('AC-9315.1: 읽는 중에 도우미가 사라지면(E-HELPER-MISSING) 도우미가 일하는 중에 멈춤(E-HELPER-STOPPED)이다', async () => {
+    const { channel, stream, calls } = readyChannel()
+    const result = runMemoReload(channel, stream, 7, DAY)
+    calls[0].reject('E-HELPER-MISSING')
+    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-HELPER-STOPPED' })
+  })
+
   it('AC-016.7: 겹치면 마지막 번호의 답만 친다. 옛 stream도 끝나면 물어 조각을 찾아 간다', async () => {
     const { worker, channel, stream, calls } = readyChannel()
     const first = runMemoReload(channel, stream, 7, DAY)
@@ -780,5 +787,88 @@ describe('AC-018.24·AC-016.7 비트 메모 다시 불러오기', () => {
     await tick()
     worker.emit({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1, ok: true })
     await expect(result).resolves.toEqual({ status: 'replaced' })
+  })
+})
+
+describe('AC-9315.1 일하는 중에 온 도우미 없음', () => {
+  it('AC-9315.1: whileWorking은 E-HELPER-MISSING만 E-HELPER-STOPPED로 바꾸고 다른 번호는 그대로 둔다', () => {
+    expect(whileWorking('E-HELPER-MISSING')).toBe('E-HELPER-STOPPED')
+    for (const code of ['E-BIT-READ-FAILED', 'E-STORE-BROKEN', 'E-BRIDGE-DISCONNECTED', 'E-CLAIM-PARTIAL']) expect(whileWorking(code)).toBe(code)
+  })
+})
+
+describe('AC-9315.2 저장 파일이 깨진 달', () => {
+  /** 불러오기 하나를 그 번호로 끝까지 간다. storeFail이면 달 칸 store.load를 그 번호로 거절한다 */
+  async function loadOnce(worker: Fake, load: number, visible = DAY, storeFail?: string) {
+    const channel = claimChannel(worker)
+    const { stream, calls } = fakeStream(worker)
+    const result = runClaimLoad(channel, stream, visible, () => {})
+    calls[0].resolve(`m${load}`)
+    await tick()
+    worker.emit(monthOk(`m${load}`, load))
+    await tick()
+    calls[1].resolve(`memos${load}`)
+    await tick()
+    worker.emit(partOk('memos', `memos${load}`, load))
+    await tick()
+    if (storeFail) {
+      calls[2].reject(storeFail)
+      return result
+    }
+    calls[2].resolve(`store${load}`)
+    await tick()
+    worker.emit(partOk('store', `store${load}`, load))
+    await tick()
+    calls[3].resolve(`copy${load}`)
+    await tick()
+    worker.emit(partOk('store', `copy${load}`, load))
+    return result
+  }
+
+  it('AC-9315.2: 달 칸 store.load가 E-STORE-BROKEN이면 지금처럼 실패하고, 다음 불러오기가 성공하면 그 달을 brokenMonths로 한 번 알린다', async () => {
+    const worker = fakeWorker()
+    await expect(loadOnce(worker, 1, DAY, 'E-STORE-BROKEN')).resolves.toEqual({ status: 'failed', code: 'E-STORE-BROKEN' })
+    await expect(loadOnce(worker, 2)).resolves.toEqual({ status: 'ok', load: 2, brokenMonths: ['2026-10'] })
+    // 알린 달은 잊는다: 그다음 불러오기에는 없다
+    await expect(loadOnce(worker, 3)).resolves.toEqual({ status: 'ok', load: 3 })
+  })
+
+  it('AC-9315.2: 기간의 달이 여럿이면 그 달마다 알리고, 이번 불러오기에 들지 않은 달은 남겨 두었다가 그 달을 불러올 때 알린다', async () => {
+    const worker = fakeWorker()
+    const TWO = { from: '2026-10-28', to: '2026-11-03' }
+    await loadOnce(worker, 1, TWO, 'E-STORE-BROKEN')
+    await expect(loadOnce(worker, 2, { from: '2026-11-02', to: '2026-11-03' })).resolves.toEqual({ status: 'ok', load: 2, brokenMonths: ['2026-11'] })
+    await expect(loadOnce(worker, 3, DAY)).resolves.toEqual({ status: 'ok', load: 3, brokenMonths: ['2026-10'] })
+  })
+
+  it('AC-9315.2: 다른 번호의 실패·설정 사본 호출의 E-STORE-BROKEN은 깨진 달로 기억하지 않는다', async () => {
+    const worker = fakeWorker()
+    await loadOnce(worker, 1, DAY, 'E-BIT-READ-FAILED')
+    await expect(loadOnce(worker, 2)).resolves.toEqual({ status: 'ok', load: 2 })
+    const channel = claimChannel(worker)
+    const { stream, calls } = fakeStream(worker)
+    const result = runClaimLoad(channel, stream, DAY, () => {})
+    calls[0].resolve('m3')
+    await tick()
+    worker.emit(monthOk('m3', 3))
+    await tick()
+    calls[1].resolve('memos3')
+    await tick()
+    worker.emit(partOk('memos', 'memos3', 3))
+    await tick()
+    calls[2].resolve('store3')
+    await tick()
+    worker.emit(partOk('store', 'store3', 3))
+    await tick()
+    calls[3].reject('E-STORE-BROKEN')
+    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-STORE-BROKEN' })
+    await expect(loadOnce(worker, 4)).resolves.toEqual({ status: 'ok', load: 4 })
+  })
+
+  it('AC-9315.2: 깨진 달은 Worker(탭)마다 따로다', async () => {
+    const one = fakeWorker()
+    await loadOnce(one, 1, DAY, 'E-STORE-BROKEN')
+    await expect(loadOnce(fakeWorker(), 1)).resolves.toEqual({ status: 'ok', load: 1 })
+    await expect(loadOnce(one, 2)).resolves.toEqual({ status: 'ok', load: 2, brokenMonths: ['2026-10'] })
   })
 })

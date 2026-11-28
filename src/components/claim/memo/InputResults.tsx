@@ -22,9 +22,10 @@ function Tile({ chip, label, count, foot }: { chip: string; label: string; count
   )
 }
 
-export type InputResultsProps = { result: InputResultView; busy: boolean; excelBusy: boolean; excelError: string | null; onRetry(): void; onResume(): void; onBack(): void; onExcel(): void }
+/** onDates: [날짜 목록으로](claim-learn AC-9314.2) — 다음 날을 고르러 날짜 칸으로 간다 */
+export type InputResultsProps = { result: InputResultView; busy: boolean; excelBusy: boolean; excelError: string | null; onRetry(): void; onResume(): void; onBack(): void; onExcel(): void; onDates(): void }
 
-export function InputResults({ result, busy, excelBusy, excelError, onRetry, onResume, onBack, onExcel }: InputResultsProps) {
+export function InputResults({ result, busy, excelBusy, excelError, onRetry, onResume, onBack, onExcel, onDates }: InputResultsProps) {
   const { status, code, reason, fields, done, check, skipped, uncounted, retry, entered, left, firstNoAsk } = result
   const replaced = done.filter((line) => line.previousMemo !== undefined).length
   const info = code && isErrorCode(code) ? errorInfo(code) : null
@@ -113,6 +114,9 @@ export function InputResults({ result, busy, excelBusy, excelError, onRetry, onR
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={ds.button.primary} onClick={onBack}>
           입력 방식으로 돌아가기
+        </button>
+        <button type="button" className={ds.button.secondary} onClick={onDates}>
+          날짜 목록으로
         </button>
         <button type="button" className={ds.button.secondary} aria-busy={excelBusy || undefined} onClick={onExcel}>
           {excelBusy ? '만드는 중…' : '엑셀로 저장'}

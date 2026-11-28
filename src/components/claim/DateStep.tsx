@@ -12,6 +12,7 @@ import { checkedAtText } from './setup/checkedAt'
 import type { LoadStep } from './claimLoad'
 
 // 1단계 날짜 고르기(AC-013.1·AC-013.2, 목업 화면 2). 날짜와 숫자뿐이다(환자 글자 없음).
+// claim-learn(REQ-9311): 줄 끝 [이 날만] · 목록 밖 기간 글 · 보낼 날에 오늘이 들면 고르기 줄에 노란 경고
 // 목업의 '이어서 하기'(쓰다 멈춘 사람)와 달마다 '진료가 없는 날' 줄은 그리지 않는다: 앞은 TASK-18의 자료이고 뒤는 진료 0건인 날을 빼면(AC-013.1) 알 수 없다
 
 export type DatesState = { kind: 'loading' } | { kind: 'failed'; code: string } | { kind: 'ready'; rows: DateRow[]; countsFailed: boolean }
@@ -50,7 +51,11 @@ function CloseBar({ rows, period, readFailed, close, onCloseDates, onReopen }: {
         </div>
       ) : (
         <div aria-live="polite" className={`${CLOSE_BAR} bg-accent-soft text-accent-strong`}>
-          <span>고른 기간에서 아직 입력 안 된 날 {dates.length}일</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            고른 기간에서 아직 입력 안 된 날 {dates.length}일
+            {/* 보낼 날짜에 오늘(한국 날짜)이 있으면 노란 경고(claim-learn AC-9311.3). 단추는 막지 않는다 */}
+            {dates.includes(todayInKorea()) && <span className={ds.chip.warning}>오늘도 들어 있어요. 오늘 진료가 더 있을 수 있어요.</span>}
+          </span>
           <button type="button" disabled={close.saving || close.blocked || unsafe || dates.length === 0} onClick={() => onCloseDates(dates)} className={ds.button.primarySmall}>
             {close.saving ? '저장 중…' : '고른 날 완료로 저장'}
           </button>
@@ -65,7 +70,18 @@ function CloseBar({ rows, period, readFailed, close, onCloseDates, onReopen }: {
   )
 }
 
-function DayRow({ row, period, onToggle, close, onReopen }: { row: DateRow; period: DateRange; onToggle(date: string): void; close: CloseState; onReopen(dates: string[]): void }) {
+type RowActions = { onToggle(date: string): void; onOnly(date: string): void; close: CloseState; onReopen(dates: string[]): void }
+
+/** 줄 끝 [이 날만](claim-learn AC-9311.1): 기간을 그 하루로. 안내 칸 안 오른쪽 끝에 둔다(칸을 더하지 않는다) */
+function OnlyButton({ date, onOnly }: { date: string; onOnly(date: string): void }) {
+  return (
+    <button type="button" aria-label={`${dayLabel(date)} 이 날만`} onClick={() => onOnly(date)} className={ds.button.secondarySmall}>
+      이 날만
+    </button>
+  )
+}
+
+function DayRow({ row, period, onToggle, onOnly, close, onReopen }: { row: DateRow; period: DateRange } & RowActions) {
   const status = statusOf(row)
   return (
     <tr className={ds.table.row}>
@@ -87,19 +103,27 @@ function DayRow({ row, period, onToggle, close, onReopen }: { row: DateRow; peri
         <td className={ds.table.tdSub}>
           <span className="flex items-center justify-between gap-3">
             <span>완료로 바꿈 · {checkedAtText(new Date(row.closedAt))}</span>
-            <button type="button" aria-label={`${dayLabel(row.date)} 되돌리기`} disabled={close.blocked || close.reopening.has(row.date)} onClick={() => onReopen([row.date])} className={ds.button.secondarySmall}>
-              되돌리기
-            </button>
+            <span className="flex items-center gap-2">
+              <button type="button" aria-label={`${dayLabel(row.date)} 되돌리기`} disabled={close.blocked || close.reopening.has(row.date)} onClick={() => onReopen([row.date])} className={ds.button.secondarySmall}>
+                되돌리기
+              </button>
+              <OnlyButton date={row.date} onOnly={onOnly} />
+            </span>
           </span>
         </td>
       ) : (
-        <td className={ds.table.tdSub}>{row.updatedAt ? `${checkedAtText(new Date(row.updatedAt))}에 바뀜` : row.memoInBit > 0 ? `비트 메모 ${row.memoInBit}건` : ''}</td>
+        <td className={ds.table.tdSub}>
+          <span className="flex items-center justify-between gap-3">
+            <span>{row.updatedAt ? `${checkedAtText(new Date(row.updatedAt))}에 바뀜` : row.memoInBit > 0 ? `비트 메모 ${row.memoInBit}건` : ''}</span>
+            <OnlyButton date={row.date} onOnly={onOnly} />
+          </span>
+        </td>
       )}
     </tr>
   )
 }
 
-function DateTable({ rows, period, onToggle, close, onReopen }: { rows: readonly DateRow[]; period: DateRange; onToggle(date: string): void; close: CloseState; onReopen(dates: string[]): void }) {
+function DateTable({ rows, period, ...actions }: { rows: readonly DateRow[]; period: DateRange } & RowActions) {
   const [allFinished, setAllFinished] = useState(false)
   const unfinished = rows.filter((row) => !row.done)
   const finished = rows.filter((row) => row.done)
@@ -136,7 +160,7 @@ function DateTable({ rows, period, onToggle, close, onReopen }: { rows: readonly
               </tr>
             )}
             {unfinished.map((row) => (
-              <DayRow key={row.date} row={row} period={period} onToggle={onToggle} close={close} onReopen={onReopen} />
+              <DayRow key={row.date} row={row} period={period} {...actions} />
             ))}
             {finished.length > 0 && (
               <tr>
@@ -146,7 +170,7 @@ function DateTable({ rows, period, onToggle, close, onReopen }: { rows: readonly
               </tr>
             )}
             {shownFinished.map((row) => (
-              <DayRow key={row.date} row={row} period={period} onToggle={onToggle} close={close} onReopen={onReopen} />
+              <DayRow key={row.date} row={row} period={period} {...actions} />
             ))}
           </tbody>
         </table>
@@ -197,7 +221,7 @@ function LoadingBox({ step, onStop }: { step: LoadingStep; onStop(): void }) {
   )
 }
 
-function PeriodPanel({ rows, period, onPeriod, loading, onLoad, onStop }: { rows: readonly DateRow[]; period: DateRange; onPeriod(next: DateRange): void; loading: LoadingStep | null; onLoad(): void; onStop(): void }) {
+function PeriodPanel({ rows, listed, period, onPeriod, loading, onLoad, onStop }: { rows: readonly DateRow[]; listed: boolean; period: DateRange; onPeriod(next: DateRange): void; loading: LoadingStep | null; onLoad(): void; onStop(): void }) {
   const fromId = useId()
   const toId = useId()
   const problem = checkPeriod(period)
@@ -236,7 +260,9 @@ function PeriodPanel({ rows, period, onPeriod, loading, onLoad, onStop }: { rows
             지난주
           </button>
         </div>
-        {!problem && (
+        {/* 목록을 읽었는데 기간의 날이 목록에 하나도 없으면 '진료한 날 0일' 대신 목록 밖 글(claim-learn AC-9311.2). 불러오기는 그대로 된다 */}
+        {!problem && listed && summary.outside && <p className="rounded-control bg-warning-soft px-3 py-2 text-small text-ink">목록에 없는 날짜예요. [자료 불러오기]를 누르면 보여요.</p>}
+        {!problem && !(listed && summary.outside) && (
           <div className="flex flex-col rounded-control bg-canvas px-3 py-2 text-small text-ink-2">
             <p>
               진료한 날 {summary.days}일 · 진료 환자 {summary.visits}명{summary.needMemo === null ? '' : ` · 메모 필요 ${summary.needMemo}명`}
@@ -309,11 +335,11 @@ export function DateStep({
           <div className="flex flex-col">
             {dates.countsFailed && <p className={`${ds.help} px-5 pb-2 max-md:px-4`}>입력 건수를 읽지 못해 비트 자료만으로 보여요.</p>}
             <CloseBar rows={rows} period={period} readFailed={dates.countsFailed} close={close} onCloseDates={onCloseDates} onReopen={onReopen} />
-            <DateTable rows={rows} period={period} onToggle={(date) => onPeriod(toggleDay(period, date))} close={close} onReopen={onReopen} />
+            <DateTable rows={rows} period={period} onToggle={(date) => onPeriod(toggleDay(period, date))} onOnly={(date) => onPeriod({ from: date, to: date })} close={close} onReopen={onReopen} />
           </div>
         )}
       </section>
-      <PeriodPanel rows={rows} period={period} onPeriod={onPeriod} loading={loading} onLoad={onLoad} onStop={onStop} />
+      <PeriodPanel rows={rows} listed={dates.kind === 'ready'} period={period} onPeriod={onPeriod} loading={loading} onLoad={onLoad} onStop={onStop} />
     </div>
   )
 }

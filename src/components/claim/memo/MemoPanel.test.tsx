@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
+import { errorInfo } from '@/lib/errors'
 import type { ErrorCode } from '@/types/errors'
 import type { ClaimView, ClaimVisitView, InputResultView, MemoScreenView, MemoTableRow, PrecheckFromScreen, PrecheckToScreen, StuckView, TargetRow } from '@/types/precheck'
 import { claimChannel } from '../claimLoad'
@@ -138,7 +139,7 @@ function bridge(over: { memos?: () => Promise<{ id: string; count: number }>; st
 const refusedStore = () => bridge({ store: (args) => (args.months ? Promise.reject(new BridgeError('E-BIT-HOSPITAL-MISMATCH')) : Promise.resolve({ id: 'copy', count: 1 })) })
 const memoCalls = (link: ReturnType<typeof bridge>) => link.stream.mock.calls.filter(([cmd]) => cmd === 'claim.memos').length
 
-async function toMemo(view: ScreenView | MemoScreenView = memoView(), link = bridge(), claim: ClaimView = VIEW, extra: { helperVersion?: string } = {}) {
+async function toMemo(view: ScreenView | MemoScreenView = memoView(), link = bridge(), claim: ClaimView = VIEW, extra: { helperVersion?: string; onWorking?(working: boolean): void; reconnect?(): Promise<boolean> } = {}) {
   const worker = fakeWorker(typeof view === 'function' ? view : () => view, claim)
   const channel = claimChannel(worker)
   const made = render(<ClaimScreen channel={channel} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} {...extra} />)
@@ -1337,7 +1338,7 @@ describe('AC-018.16 쓰다 멈춘 사람', () => {
 })
 
 describe('AC-018.17 기관기호 안내', () => {
-  const LINES = ['등록한 기관기호가 바뀌어 이전 병원의 저장 파일이 남아 있어요', '지금은 이 PC에 저장되지 않아요. 고친 메모는 이 화면에 그대로 있어요.', '이 달은 저장이 막혀 있어요. 이어서 하려면 개발자에게 도움을 요청해 주세요. 등록한 기관기호는 [설정 → 비트 PC 연결]에서 확인할 수 있어요.', '오류 번호 E-BIT-HOSPITAL-MISMATCH']
+  const LINES = ['등록한 기관기호가 바뀌어 이전 병원의 저장 파일이 남아 있어요', '지금은 이 PC에 저장되지 않아요. 고친 메모는 이 화면에 그대로 있어요.', '이 PC에 저장된 자료가 지금 등록한 병원(요양기관기호)과 달라요. 병원이 바뀌었으면 이 PC를 다시 등록해 주세요.', '오류 번호 E-BIT-HOSPITAL-MISMATCH']
 
   it('AC-018.17: store.load에서 받아도 멈추지 않고 목록과 세 줄의 글을 보이고, [다시 등록] 글과 지우는 단추가 없다', async () => {
     const { worker } = await toMemo(memoView(), refusedStore())
@@ -1647,5 +1648,106 @@ describe('AC-013.6 다른 탭에 다녀올 때', () => {
     render(<ClaimScreen channel={channel} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} />)
     await screen.findByRole('region', { name: '입력 방식' })
     await waitFor(() => expect(worker.of('memoSaveRetry').length).toBeGreaterThan(before))
+  })
+})
+
+describe('AC-9314.2 입력 결과에서 날짜 목록으로', () => {
+  it('AC-9314.2: 입력 결과의 [날짜 목록으로]를 누르면 날짜 단계로 가고 날짜 목록을 다시 읽는다', async () => {
+    const { user, worker, link } = await toMemo()
+    await user.click(inputButton())
+    await screen.findByRole('status', { name: '입력 진행' })
+    await done(worker, inputResult({ done: [{ key: 'a', date: '2026-10-28', month: '2026-10', name: '가상환자a', chart: '9a', result: '완료', reason: '입력', memo: '글', retry: false }] }))
+    const before = link.call.mock.calls.filter(([cmd]) => cmd === 'claim.dates').length
+    await user.click(await screen.findByRole('button', { name: '날짜 목록으로' }))
+    expect(await screen.findByRole('table', { name: '진료한 날짜' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '입력 도구' })).toBeNull()
+    await waitFor(() => expect(link.call.mock.calls.filter(([cmd]) => cmd === 'claim.dates').length).toBe(before + 1))
+    expect(screen.getByRole('button', { name: '날짜 고르기' }).getAttribute('aria-current')).toBe('step')
+  })
+})
+
+describe('AC-9315.1 일하는 중에 도우미가 멈춤', () => {
+  const STOPPED = errorInfo('E-HELPER-STOPPED')
+  /** 그 자리 안내: 멈춤 글·번호와 [다시 불러오기]·[비트 PC 연결 확인] */
+  const expectStopped = () => {
+    const card = screen.getAllByRole('alert').find((el) => (el.textContent ?? '').includes('오류 번호 E-HELPER-STOPPED')) as HTMLElement
+    expect(card, 'E-HELPER-STOPPED 안내').toBeTruthy()
+    expect(card.textContent).toContain(STOPPED.what)
+    expect(card.textContent).toContain(STOPPED.fix)
+    expect(document.body.textContent).not.toContain('오류 번호 E-HELPER-MISSING')
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '비트 PC 연결 확인' }).getAttribute('href')).toBe('/claim/setup')
+  }
+  /** claim.memos: 처음([자료 불러오기])은 되고, 그다음([비트 메모 전체 불러오기])은 그 번호로 거절한다 */
+  const memosThenFail = (code: string) => {
+    let first = true
+    return () => {
+      if (first) {
+        first = false
+        return Promise.resolve({ id: 'first', count: 1 })
+      }
+      return Promise.reject(new BridgeError(code))
+    }
+  }
+
+  it('AC-9315.1: 입력 중에 E-HELPER-MISSING으로 끝나면 연결 화면 글 대신 E-HELPER-STOPPED 안내와 [다시 불러오기]·[비트 PC 연결 확인]이다', async () => {
+    const { user, worker } = await toMemo()
+    await user.click(inputButton())
+    await screen.findByRole('status', { name: '입력 진행' })
+    await act(async () => worker.emit({ type: 'inputDone', run: lastRun(worker), ok: false, code: 'E-HELPER-MISSING' }))
+    await waitFor(() => expectStopped())
+  })
+
+  it('AC-9315.1: 비트 메모 읽기 중에 E-HELPER-MISSING이면 그 자리에 E-HELPER-STOPPED 안내와 [다시 불러오기]·[비트 PC 연결 확인]이다', async () => {
+    const { user } = await toMemo(memoView(), bridge({ memos: memosThenFail('E-HELPER-MISSING') }))
+    await user.click(screen.getByRole('button', { name: '비트 메모 전체 불러오기' }))
+    await waitFor(() => expectStopped())
+    expect(screen.getByText(/불러오지 못했어요\. 도우미가 일하는 중에 멈췄어요/)).toBeTruthy()
+  })
+
+  it('AC-9315.1: 비트 메모 읽기의 다른 번호는 지금 그대로다(멈춤 안내가 없다)', async () => {
+    const { user } = await toMemo(memoView(), bridge({ memos: memosThenFail('E-BIT-READ-FAILED') }))
+    await user.click(screen.getByRole('button', { name: '비트 메모 전체 불러오기' }))
+    await screen.findByText(/불러오지 못했어요/)
+    expect(document.body.textContent).not.toContain('E-HELPER-STOPPED')
+  })
+
+  it('AC-9315.1: 비트 메모를 읽는 동안·입력하는 동안 청구 화면은 일하는 중이라고 위로 알리고, 끝나면 거둔다', async () => {
+    const onWorking = vi.fn()
+    let finish: (value: { id: string; count: number }) => void = () => {}
+    let first = true
+    const memos = () => {
+      if (first) {
+        first = false
+        return Promise.resolve({ id: 'first', count: 1 })
+      }
+      return new Promise<{ id: string; count: number }>((resolve) => {
+        finish = resolve
+      })
+    }
+    const { user, worker } = await toMemo(memoView(), bridge({ memos }), VIEW, { onWorking })
+    expect(onWorking).toHaveBeenLastCalledWith(false)
+    await user.click(screen.getByRole('button', { name: '비트 메모 전체 불러오기' }))
+    await waitFor(() => expect(onWorking).toHaveBeenLastCalledWith(true))
+    await act(async () => finish({ id: 'again', count: 1 }))
+    await waitFor(() => expect(worker.of('loadPart').some((m) => m.id === 'again')).toBe(true))
+    await waitFor(() => expect(onWorking).toHaveBeenLastCalledWith(false))
+    await user.click(inputButton())
+    await screen.findByRole('status', { name: '입력 진행' })
+    await waitFor(() => expect(onWorking).toHaveBeenLastCalledWith(true))
+    await done(worker, inputResult())
+    await waitFor(() => expect(onWorking).toHaveBeenLastCalledWith(false))
+  })
+
+  it('AC-9315.1: 멈춤 안내의 [다시 불러오기]는 연결을 다시 맞춘 뒤(reconnect) 자료를 다시 불러온다', async () => {
+    const reconnect = vi.fn(() => Promise.resolve(true))
+    const { user, worker } = await toMemo(memoView(), bridge(), VIEW, { reconnect })
+    await user.click(inputButton())
+    await screen.findByRole('status', { name: '입력 진행' })
+    await act(async () => worker.emit({ type: 'inputDone', run: lastRun(worker), ok: false, code: 'E-HELPER-MISSING' }))
+    const loads = worker.of('loadStart').length
+    await user.click(await screen.findByRole('button', { name: '다시 불러오기' }))
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(worker.of('loadStart').length).toBe(loads + 1))
   })
 })

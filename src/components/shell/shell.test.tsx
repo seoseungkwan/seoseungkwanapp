@@ -2474,3 +2474,86 @@ describe('앱 틀 잇기 (google-link REQ-8540)', () => {
     expect(stopDot()).toBeNull()
   })
 })
+
+// 열린 창 이름 답하기(claim-learn AC-9313.5, design.md 11절): 앱 틀이 어느 탭이든 답하는 쪽을 켠다. 다른 탭은 같은 이름의 가짜 BroadcastChannel이다
+describe('AC-9313.5 앱 틀이 다른 창의 물음에 지금 화면 이름으로 답한다', () => {
+  let channels: { name: string; closed: boolean; posted: unknown[]; onmessage: ((e: { data: unknown }) => void) | null; postMessage(m: unknown): void; close(): void }[] = []
+  class FakeBroadcastChannel {
+    onmessage: ((e: { data: unknown }) => void) | null = null
+    closed = false
+    posted: unknown[] = []
+    constructor(public name: string) {
+      channels.push(this)
+    }
+    postMessage(m: unknown) {
+      this.posted.push(m)
+      for (const other of channels) {
+        if (other !== this && other.name === this.name && !other.closed) other.onmessage?.({ data: m })
+      }
+    }
+    close() {
+      this.closed = true
+    }
+  }
+  beforeEach(() => {
+    channels = []
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel)
+  })
+  /** 다른 탭이 묻고 받은 답 */
+  const ask = (id: string) => {
+    const asker = new FakeBroadcastChannel('ssk-open-tabs')
+    const got: unknown[] = []
+    asker.onmessage = ({ data }) => void got.push(data)
+    asker.postMessage({ type: 'who', id })
+    return got
+  }
+  const shellAt = (path: string, extra: { desk?: boolean } = {}) => {
+    pathname.mockReturnValue(path)
+    return render(
+      <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false} {...extra}>
+        <p>본문</p>
+      </AppShell>,
+    )
+  }
+
+  it.each([
+    ['/dashboard', '대시보드'],
+    ['/sunap', '수납일지'],
+    ['/claim/setup', '설정'],
+    ['/stats/x', '통계'],
+  ])('AC-9313.5: %s 화면은 who에 here(id, %s)로 답한다', (path, label) => {
+    shellAt(path)
+    expect(ask('tab-1')).toEqual([{ type: 'here', id: 'tab-1', label }])
+  })
+
+  it('AC-9313.5: 데스크 앱 틀도 답한다', () => {
+    shellAt('/sunap', { desk: true })
+    expect(ask('tab-2')).toEqual([{ type: 'here', id: 'tab-2', label: '수납일지' }])
+  })
+
+  it('AC-9313.5: 화면을 옮기면 옮긴 화면 이름으로 답하고, 메뉴 밖 화면(/admin)은 답하지 않는다', () => {
+    const { rerender } = shellAt('/dashboard')
+    pathname.mockReturnValue('/calendar')
+    rerender(
+      <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false}>
+        <p>본문</p>
+      </AppShell>,
+    )
+    expect(ask('tab-3')).toEqual([{ type: 'here', id: 'tab-3', label: '예약' }])
+    pathname.mockReturnValue('/admin')
+    rerender(
+      <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin>
+        <p>본문</p>
+      </AppShell>,
+    )
+    expect(ask('tab-4')).toEqual([])
+  })
+
+  it('AC-9313.5: 앱 틀이 사라지면 답하는 채널을 닫는다', () => {
+    const { unmount } = shellAt('/dashboard')
+    const mine = channels.filter((c) => c.name === 'ssk-open-tabs')
+    expect(mine).toHaveLength(1)
+    unmount()
+    expect(mine[0].closed).toBe(true)
+  })
+})

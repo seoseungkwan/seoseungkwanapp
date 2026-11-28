@@ -14,7 +14,7 @@ import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
 import type { CheckSettings } from '@/types/precheck'
 import { ClaimError, ExcelError, SetupLink } from './ClaimError'
-import { pressClaimLoad, runClaimCheck, runClaimExcel, type CheckedClaim, type ClaimChannel, type ClaimOwner, type ClaimPage } from './claimLoad'
+import { pressClaimLoad, runClaimCheck, runClaimExcel, whileWorking, type CheckedClaim, type ClaimChannel, type ClaimOwner, type ClaimPage } from './claimLoad'
 import { buildDateList, dayLabel, defaultPeriod, listRange, type ClosedDays } from './dateList'
 import { DateStep, type CloseState, type DatesState, type LoadingStep } from './DateStep'
 import { MemoPanel, type InputStage } from './memo/MemoPanel'
@@ -33,6 +33,9 @@ import { useCountsUpload } from './useCountsUpload'
 // 고친 글·승인·입력 기록은 Worker 메모리에 있어 다녀와도 그대로이고, 입력하는 동안 떠나면 결과가 이 화면에 오지 않으므로 맡긴 결과를 버린다(결과는 도우미 작업 저장에 있어 [자료 불러오기]로 읽는다, AC-018.5·AC-017.9)
 // 입력 방식(처방코드별·날짜별)은 병원 설정 줄의 input_mode에 기억한다(clinic-profile REQ-6610): 화면을 열 때 한 번 읽어 메모 칸의 처음 값으로 넘기고, 메모 칸에서 바꾸면 그 칸만 저장한다.
 // 병원 문구는 보내지 않아 설정 바뀜 띠와 상관없고, 읽기·저장이 안 돼도 알리지 않는다(고른 방식은 이 화면에서 그대로 쓴다). [뒤에 붙이기]를 보일지는 메모 칸이 연결된 도우미 판(helperVersion)으로 정한다(AC-6611.1)
+// claim-learn(REQ-9314·REQ-9315): 일하는 중(불러오기·비트 메모 읽기·입력)을 onWorking으로 위(ClaimEntry)에 알린다 — 그동안 도우미가 사라져도 연결 화면으로 옮기지 않고,
+// 이 화면이 그 자리에 E-HELPER-STOPPED 안내를 보인다. 그 안내의 [다시 불러오기]는 reconnect로 다시 붙은 뒤 불러온다(붙지 못하면 안내 그대로).
+// 앞 불러오기가 E-STORE-BROKEN으로 멈춘 달은 다음 불러오기가 성공하면 그 불러오기 동안 메모 단계 위에 달마다 띠로 보인다. 입력 결과의 [날짜 목록으로]는 날짜 칸으로 간다(목록을 다시 읽는다)
 // 날짜별 건수(REQ-019)는 Worker가 끝날 때마다 보내고 useCountsUpload가 올린다. 날짜 목록은 날짜 칸으로 돌아올 때·날짜 칸에서 창 초점이 올 때·건수를 올린 뒤에 다시 묻는다(AC-013.1): 그래야 오후에 온 환자가 보이고 [입력 안 된 날짜 모두]가 끝난 날을 건너뛴다. 불러오는 중·입력 중에는 묻지 않고, 묻지 못하면 보던 목록을 둔다. 고른 기간은 바꾸지 않는다
 
 const NO_TEMPLATES: SettingsBundle['templates'] = [] // 문자 문구는 TASK-25가 잇는다
@@ -78,6 +81,11 @@ function saveFile(bytes: ArrayBuffer, name: string) {
 }
 
 type Run = { kind: 'idle' } | { kind: 'loading'; step: LoadingStep } | { kind: 'failed'; code: string; visible: DateRange }
+
+const HELPER_STOPPED = 'E-HELPER-STOPPED'
+/** '2026-10' → '2026년 10월' */
+const monthText = (month: string) => `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`
+const WARN_BAND = 'rounded-control bg-warning-soft px-4 py-3 text-small text-ink'
 
 type FlowStep = ClaimPage | 'input' | 'inputResult'
 
@@ -140,6 +148,8 @@ export function ClaimScreen({
   stream,
   onProgress,
   helperVersion,
+  onWorking,
+  reconnect,
 }: {
   channel: ClaimChannel
   call: UseBridge['call']
@@ -147,6 +157,10 @@ export function ClaimScreen({
   onProgress?: UseBridge['onProgress']
   /** 연결된 도우미 판(hello.helperVersion). 메모 칸의 [뒤에 붙이기]가 본다(AC-6611.1). 없으면 모르는 판이다 */
   helperVersion?: string
+  /** 일하는 중(불러오기·비트 메모 읽기·입력)인가를 위로 알린다(AC-9315.1). 그동안 ClaimEntry는 연결 화면으로 옮기지 않는다 */
+  onWorking?(working: boolean): void
+  /** 도우미가 멈춘 뒤 다시 붙는다(AC-9315.1). 붙으면 참. 없으면 붙어 있는 것으로 본다 */
+  reconnect?(): Promise<boolean>
 }) {
   const [dates, setDates] = useState<DatesState>({ kind: 'loading' })
   const [period, setPeriod] = useState<DateRange>({ from: '', to: '' })
@@ -154,6 +168,10 @@ export function ClaimScreen({
   const [memoStage, setMemoStage] = useState<InputStage>('pick')
   /** 달 칸 저장이 막혔다(AC-018.17). 달 칸 store.load가 다음에 성공할 때까지 남는다 */
   const [storeStuck, setStoreStuck] = useState(false)
+  /** 저장 파일이 깨져 빈 채로 시작한 달(AC-9315.2). 이 불러오기 동안만 남는다 */
+  const [brokenMonths, setBrokenMonths] = useState<string[]>([])
+  /** 메모 칸이 비트 메모를 읽는 중(AC-9315.1의 일하는 중) */
+  const [bitReading, setBitReading] = useState(false)
   const [focusMemo, setFocusMemo] = useState<string | null>(null)
   const flushDrafts = useRef<(() => void) | null>(null)
   /** 띠의 [자료 불러오기]처럼 메모 칸에서 불렀으면 메모 칸으로 돌아온다(AC-018.16) */
@@ -177,6 +195,12 @@ export function ClaimScreen({
   /** 불러오는 중·입력 중: 목록을 새로 그리려고 묻지 않는다(AC-013.1) */
   const busy = useRef(false)
   busy.current = run.kind === 'loading' || memoStage === 'wait' || memoStage === 'run'
+  // 일하는 중을 위로 알린다(AC-9315.1). 화면이 사라지면 거둔다
+  const working = busy.current || bitReading
+  useEffect(() => {
+    onWorking?.(working)
+  }, [onWorking, working])
+  useEffect(() => () => onWorking?.(false), [onWorking])
 
   const loadDates = useCallback(async () => {
     const ask = ++datesAsk.current
@@ -352,17 +376,32 @@ export function ClaimScreen({
     setResult(null)
     setSettingsStale(false)
     setExcelError(null)
+    setBrokenMonths([])
     setPage('dates')
     setRun({ kind: 'loading', step: 'month' })
     const loaded = await pressClaimLoad(channel, stream, call, visible, (step) => setRun({ kind: 'loading', step }), { keepEdits: true, hold })
     if (loaded.status === 'replaced') return
     if (loaded.status === 'failed') {
-      setRun({ kind: 'failed', code: loaded.code, visible })
+      // 불러오는 중에 도우미가 사라지면 그 자리 멈춤 안내다(AC-9315.1)
+      setRun({ kind: 'failed', code: whileWorking(loaded.code), visible })
       return
     }
     setStoreStuck(loaded.stuckMonth === true)
+    setBrokenMonths(loaded.brokenMonths ?? [])
     setRun({ kind: 'loading', step: 'check' })
     await runCheck(loaded.load, visible, await readOwner(call))
+  }
+
+  /** 멈춤 안내·메모 칸의 [다시 불러오기](AC-9315.1): 도우미가 멈췄으면 다시 붙은 뒤 불러온다. 붙지 못하면 멈춤 안내를 그대로 둔다(받은 결과도 그대로) */
+  async function reload(visible: DateRange) {
+    if (reconnect) {
+      setRun({ kind: 'loading', step: 'month' })
+      if (!(await reconnect())) {
+        setRun({ kind: 'failed', code: HELPER_STOPPED, visible })
+        return
+      }
+    }
+    await load(visible)
   }
 
   /** [다시 점검](AC-013.6): 달은 그대로 두고 새 설정으로만 다시 점검한다 */
@@ -409,6 +448,7 @@ export function ClaimScreen({
       setPage(kept.page)
       setSettingsStale(kept.stale)
       setStoreStuck(kept.storeStuck === true)
+      setBrokenMonths(kept.brokenMonths ?? [])
       // 떠나기 전의 [다시 점검] 답을 아직 못 받았으면 이 화면에서 다시 물어 마지막 답을 받는다(엑셀은 마지막 번호로만 된다)
       if (channel.lastCheck() !== kept.result.check) {
         channel.nextCheck() // 옛 답을 지금 버린다. 옛 답이 실패여도 달을 버리지 않게
@@ -422,8 +462,8 @@ export function ClaimScreen({
 
   // 결과가 있는 동안 기간·단계·띠를 맡겨 둔다(AC-013.6). 누구 것인지 모르는 결과는 남기지 않는다
   useEffect(() => {
-    if (result?.owner) channel.keep({ result, period, page, stale: settingsStale, storeStuck })
-  }, [channel, result, period, page, settingsStale, storeStuck])
+    if (result?.owner) channel.keep({ result, period, page, stale: settingsStale, storeStuck, ...(brokenMonths.length > 0 ? { brokenMonths } : {}) })
+  }, [channel, result, period, page, settingsStale, storeStuck, brokenMonths])
 
   // 창 초점이 돌아오면, 그리고 탭을 옮겼다 돌아오면 한 번, 서버 설정을 다시 읽어 점검에 쓴 설정과 견준다(AC-013.6, design.md 6-5). 읽지 못하면 그대로 둔다
   const used = result?.used ?? null
@@ -486,6 +526,13 @@ export function ClaimScreen({
 
       {result && settingsStale && <SettingsChangedBanner onRecheck={() => void recheck(result)} busy={rechecking} />}
       {storeStuck && <StoreBlockedCard />}
+      {/* 저장 파일 깨짐(AC-9315.2): 그 불러오기의 메모 단계 위에 달마다 한 줄 */}
+      {showMemo &&
+        brokenMonths.map((month) => (
+          <p key={month} role="status" className={WARN_BAND}>
+            이 PC에 저장된 {monthText(month)} 고친 메모·완료 표시를 읽지 못해 빈 채로 시작했어요. 이 달 메모는 다시 확인해 주세요.
+          </p>
+        ))}
       {countsFailed && <CountsFailedLine lastUploadedAt={lastUploadedAt} />}
       {!countsFailed && countsSynced && showMemo && memoStage === 'result' && channel.keptMemo()?.result?.status === 'finished' && (
         <p className={`${ds.help} md:text-right`}>날짜별 입력 현황이 서버에 건수로 올라갔어요. 집이나 휴대폰에서 볼 수 있어요.</p>
@@ -495,7 +542,7 @@ export function ClaimScreen({
         <div className="flex flex-col items-start gap-2">
           <ClaimError code={run.code} />
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className={ds.button.primarySmall} onClick={() => void load(run.visible)}>
+            <button type="button" className={ds.button.primarySmall} onClick={() => void (run.code === HELPER_STOPPED ? reload(run.visible) : load(run.visible))}>
               다시 불러오기
             </button>
             <SetupLink code={run.code} />
@@ -589,7 +636,9 @@ export function ClaimScreen({
             setPeriod(range)
             void load(range, 'memo')
           }}
-          onReload={() => void load(result.visible)}
+          onReload={() => void reload(result.visible)}
+          onDates={() => setPage('dates')}
+          onBitReading={setBitReading}
           onStage={setMemoStage}
           flushRef={flushDrafts}
           focusKey={focusMemo}

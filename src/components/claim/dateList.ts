@@ -144,6 +144,8 @@ export function periodSummary(rows: readonly DateRow[], period: DateRange) {
     visits: inside.reduce((sum, row) => sum + row.visits, 0),
     needMemo: known.length ? known.reduce((sum, row) => sum + (row.needMemo ?? 0), 0) : null,
     months: [...months].map(([month, days]) => ({ month, days })),
+    // 기간의 날이 목록에 하나도 없다(시작·끝을 직접 친 목록 밖 날, claim-learn AC-9311.2): '진료한 날 0일' 대신 목록 밖 글을 보인다
+    ...(inside.length === 0 ? { outside: true as const } : {}),
   }
 }
 

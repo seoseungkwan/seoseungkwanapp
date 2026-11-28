@@ -223,6 +223,16 @@ describe('기간 요약·글자(목업 화면 2)', () => {
     expect(periodSummary(rows, { from: '2026-10-29', to: '2026-10-29' }).needMemo).toBeNull()
   })
 
+  it('AC-9311.2: 고른 기간의 날이 목록에 하나도 없으면 outside: true다(진료한 날 0일 대신 목록 밖 글)', () => {
+    expect(periodSummary(rows, { from: '2026-10-30', to: '2026-11-02' })).toMatchObject({ days: 0, visits: 0, outside: true })
+    expect(periodSummary(rows, { from: '2026-12-01', to: '2026-12-01' }).outside).toBe(true)
+  })
+
+  it('AC-9311.2: 목록에 있는 날이 하나라도 들면 outside가 없다', () => {
+    expect(periodSummary(rows, { from: '2026-10-28', to: '2026-10-28' }).outside).toBeUndefined()
+    expect(periodSummary(rows, { from: '2026-10-30', to: '2026-11-03' }).outside).toBeUndefined()
+  })
+
   it('날짜 글자는 10/28 (수) 모양이다', () => {
     expect(dayLabel('2026-10-28')).toBe('10/28 (수)')
     expect(dayLabel('2026-11-03')).toBe('11/3 (화)')

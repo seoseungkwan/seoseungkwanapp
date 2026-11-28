@@ -1,14 +1,22 @@
 import type { ErrorCode, ErrorInfo } from '@/types/errors'
 import type { StaffErrorCode } from '@/types/staff'
 
+/**
+ * 청구 흐름 번호(claim-learn design.md 14절). 번호 타입 파일(types/errors.ts) 밖에서 이 파일에 더한 번호라 목록과 글을 ERRORS 옆 CLAIM_FLOW_ERRORS에 따로 둔다
+ * (ERRORS는 ErrorCode 목록 그대로). errorInfo·isErrorCode는 둘 다 본다.
+ * E-HELPER-STOPPED: 불러오기·비트 메모 읽기·입력 중에 도우미가 사라짐(AC-9315.1)
+ */
+export const CLAIM_FLOW_CODES = ['E-HELPER-STOPPED'] as const
+export type ClaimFlowCode = (typeof CLAIM_FLOW_CODES)[number]
+
 /** 문구가 있는 번호. 직원 탭 번호(E-STAFF-*)도 이제 ErrorCode 안에 있다 — StaffErrorCode는 같은 다섯을 가리키는 이름으로 남긴다 */
-export type KnownErrorCode = ErrorCode | StaffErrorCode
+export type KnownErrorCode = ErrorCode | StaffErrorCode | ClaimFlowCode
 
 // 수납 구글 오류 번호(E-GSHEET-*)의 '무엇이'는 모두 이 글이다(specs/google-link design.md 9-3)
 const GSHEET_WHAT = '구글 시트에 넣지 못했어요'
 
 // 오류 번호 → 한국어 안내(무엇이 · 어떻게 고치나). 안내 문구는 이 파일 한 곳에만 둔다.
-export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
+export const ERRORS: Record<ErrorCode | StaffErrorCode, ErrorInfo> = {
   'E-PARSE-COLUMN': {
     what: '꼭 있어야 하는 칸이 파일에 없어요',
     fix: "비트에서 '환자별 소모 통계'의 열 설정에서 빠진 칸을 켜고 다시 뽑아 주세요",
@@ -773,11 +781,25 @@ export const EXCEL_FAILED: ErrorInfo = {
   fix: '점검 결과는 화면에 그대로 있어요. [엑셀 내려받기]를 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
 }
 
-export function errorInfo(code: KnownErrorCode): ErrorInfo {
-  return ERRORS[code]
+/** 청구 흐름 번호의 글(claim-learn, 시안 notes 글 그대로) */
+export const CLAIM_FLOW_ERRORS: Record<ClaimFlowCode, ErrorInfo> = {
+  // 일하는 중(불러오기·비트 메모 읽기·입력)에 도우미가 사라짐(AC-9315.1). 청구 화면이 그 자리에 [다시 불러오기]·[비트 PC 연결 확인]과 보인다
+  'E-HELPER-STOPPED': {
+    what: '도우미가 일하는 중에 멈췄어요',
+    fix: '[다시 불러오기]를 눌러 주세요. 또 멈추면 이 번호를 알려 주세요.',
+  },
 }
 
-/** 이 파일에 문구가 있는 번호인가(도우미가 준 번호는 글자라 모르는 번호일 수 있다. 그때 화면은 번호만 보인다) */
+const isClaimFlowCode = (code: string): code is ClaimFlowCode => Object.hasOwn(CLAIM_FLOW_ERRORS, code)
+
+export function errorInfo(code: KnownErrorCode): ErrorInfo {
+  return isClaimFlowCode(code) ? CLAIM_FLOW_ERRORS[code] : ERRORS[code]
+}
+
+/**
+ * 이 파일에 문구가 있는 번호인가(도우미가 준 번호는 글자라 모르는 번호일 수 있다. 그때 화면은 번호만 보인다).
+ * 청구 흐름 번호(CLAIM_FLOW_ERRORS)도 문구가 있는 번호다 — 받는 쪽은 errorInfo로만 글을 읽는다
+ */
 export function isErrorCode(code: string): code is ErrorCode {
-  return Object.hasOwn(ERRORS, code)
+  return Object.hasOwn(ERRORS, code) || isClaimFlowCode(code)
 }
