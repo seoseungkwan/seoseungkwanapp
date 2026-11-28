@@ -100,4 +100,48 @@ public class RegisterPromptTests
         Assert.Equal(new[] { next + 2 }, Enumerable.Range(0, lines.Length).Where(i => lines[i].Contains(Synthetic.Scope)).ToArray());
         Assert.DoesNotContain(lines, line => line.Contains(" · "));
     }
+
+    // ---- claim-learn AC-9317.3 전 병원 파일 보관 한 줄(notes '도우미 등록 확인 창 (0.15.0)') ----------------
+
+    [Fact(DisplayName = "AC-9317.3 '전 병원 파일 보관' 글은 notes 글자 그대로({n} = 파일 수)")]
+    public void AC9317_3_ArchiveLineText()
+    {
+        Assert.Equal("전에 쓰던 병원의 저장 파일 6개는 지우지 않고 따로 보관해요.", RegisterPrompt.ArchiveLine(6));
+        Assert.Equal("전에 쓰던 병원의 저장 파일 1개는 지우지 않고 따로 보관해요.", RegisterPrompt.ArchiveLine(1));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 다시 등록 글: 옮길 파일이 있으면 '기관기호가 달라 전 병원의 작업은 읽지 않습니다.' 다음 줄에 보관 한 줄, 그 뒤 [확인] 줄")]
+    public void AC9317_3_ReRegistrationArchiveLine()
+    {
+        var previous = Synthetic.Registration(institution: Synthetic.OtherInstitution);
+        var lines = Lines(RegisterPrompt.Build(Synthetic.Registration(), previous, 6));
+
+        var differs = System.Array.IndexOf(lines, "기관기호가 달라 전 병원의 작업은 읽지 않습니다.");
+        Assert.True(differs > 0);
+        Assert.Equal("전에 쓰던 병원의 저장 파일 6개는 지우지 않고 따로 보관해요.", lines[differs + 1]);
+        Assert.Equal("[확인]을 누르면 지금 등록을 바꿔 씁니다.", lines[differs + 2]);
+        Assert.Equal(differs + 3, lines.Length);
+    }
+
+    [Fact(DisplayName = "AC-9317.3 옮길 파일이 없으면(0) 글은 지금 그대로다")]
+    public void AC9317_3_NoArchiveKeepsText()
+    {
+        var previous = Synthetic.Registration(institution: Synthetic.OtherInstitution);
+        Assert.Equal(RegisterPrompt.Build(Synthetic.Registration(), previous), RegisterPrompt.Build(Synthetic.Registration(), previous, 0));
+        Assert.Equal(RegisterPrompt.Build(Synthetic.Registration()), RegisterPrompt.Build(Synthetic.Registration(), null, 0));
+        Assert.DoesNotContain("보관", RegisterPrompt.Build(Synthetic.Registration(), previous));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 처음 등록 글(등록 파일이 없거나 깨짐)·같은 기관기호 글도 옮길 파일이 있으면 [확인] 줄 바로 앞에 보관 한 줄")]
+    public void AC9317_3_OtherTextsArchiveLine()
+    {
+        var first = Lines(RegisterPrompt.Build(Synthetic.Registration(), null, 2));
+        Assert.Equal("전에 쓰던 병원의 저장 파일 2개는 지우지 않고 따로 보관해요.", first[first.Length - 2]);
+        Assert.StartsWith("[확인]을 누르면 이 PC에 등록합니다.", first[first.Length - 1]);
+
+        var same = Lines(RegisterPrompt.Build(Synthetic.Registration(scope: "NEWSCOPE"), Synthetic.Registration(), 3));
+        Assert.Equal("기관기호가 같아 하던 작업을 이어서 씁니다.", same[same.Length - 3]);
+        Assert.Equal("전에 쓰던 병원의 저장 파일 3개는 지우지 않고 따로 보관해요.", same[same.Length - 2]);
+        Assert.Equal("[확인]을 누르면 지금 등록을 바꿔 씁니다.", same[same.Length - 1]);
+    }
 }

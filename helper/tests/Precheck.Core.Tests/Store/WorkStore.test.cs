@@ -807,4 +807,134 @@ public class WorkStoreTests
         var root = Json.Parse(rig.Open().Load(new string[0], true, false));
         Assert.Equal(JsonValueKind.Null, root.GetProperty("settings").ValueKind);
     }
+
+    // ---- claim-learn AC-9317.3·AC-9317.4 다시 등록 때 전 병원 저장 파일 보관 ----------------------------
+
+    private static readonly DateTime ArchivedAt = new DateTime(2026, 11, 28, 14, 30, 5);
+
+    private static string[] OtherProfileNames => new[] { "contact.dat", "settings.dat.bak", "work-2026-09.dat", "work-2026-09.dat.bak" };
+
+    /// <summary>
+    /// 전 병원(OtherProfile) 작업 파일 넷 + 이 병원 파일 둘(work-2026-10.dat·settings.dat) + 건드리지 않을 것들:
+    /// 깨진 달 파일, 등록 파일, 확인 해시 파일(input-acks.dat, 프로필 없음), 전 병원 내용인 *.broken-* 파일.
+    /// </summary>
+    private static void PlantMixed(StoreRig rig)
+    {
+        rig.Plant("work-2026-09.dat", rig.GoodMonth("{\"900001|2026-09-15\":{\"memo\":\"전 병원 메모(가짜)\"}}", StoreRig.OtherProfile));
+        rig.Plant("work-2026-09.dat.bak", rig.GoodMonth(StoreRig.Empty, StoreRig.OtherProfile));
+        rig.Plant("contact.dat", rig.Encrypted("{\"profileId\":\"" + StoreRig.OtherProfile + "\",\"contact\":{\"900001\":{\"at\":\"2026-09-15\"}}}"));
+        rig.Plant("settings.dat.bak", rig.Encrypted("{\"profileId\":\"" + StoreRig.OtherProfile + "\",\"settings\":{\"s\":0}}"));
+        rig.Plant(StoreRig.MonthFile, rig.GoodMonth());
+        rig.Plant("settings.dat", rig.Encrypted("{\"profileId\":\"" + Synthetic.ProfileId + "\",\"settings\":{\"s\":1}}"));
+        rig.Plant("work-2026-08.dat", Encoding.ASCII.GetBytes("garbage"));
+        rig.Plant(RegistrationStore.FileName, rig.Encrypted("{\"profileId\":\"" + StoreRig.OtherProfile + "\"}"));
+        rig.Plant(WorkStore.AcksFile, rig.Encrypted("{\"hashes\":[]}"));
+        rig.Plant("work-2026-07.dat.broken-20261001T000000000Z", rig.GoodMonth(StoreRig.Empty, StoreRig.OtherProfile));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 CountOtherProfiles: 프로필이 다른 작업 파일(work-YYYY-MM.dat·contact.dat·settings.dat와 그 .bak)만 센다(FileState.OtherHospital 규칙), null이면 프로필이 적힌 작업 파일 모두")]
+    public void AC9317_3_CountsOtherProfileFiles()
+    {
+        using var rig = new StoreRig();
+        var folder = new StoreFolder(rig.Folder);
+        Assert.Equal(0, WorkStore.CountOtherProfiles(folder, rig.Protector, Synthetic.ProfileId)); // 폴더가 없으면 0
+
+        PlantMixed(rig);
+        var before = Snapshot(rig);
+        Assert.Equal(4, WorkStore.CountOtherProfiles(folder, rig.Protector, Synthetic.ProfileId));
+        Assert.Equal(2, WorkStore.CountOtherProfiles(folder, rig.Protector, StoreRig.OtherProfile));
+        Assert.Equal(6, WorkStore.CountOtherProfiles(folder, rig.Protector, null)); // 아직 만들지 않은 새 프로필
+        AssertUnchanged(rig, before); // 세기만 하고 아무것도 바꾸지 않는다
+    }
+
+    [Fact(DisplayName = "AC-9317.3 ArchiveOtherProfiles: 다른 프로필 작업 파일을 지우지 않고 저장 폴더 안 old-{yyyyMMdd-HHmmss}로 옮기고, 같은 프로필·다른 파일은 건드리지 않는다")]
+    public void AC9317_3_MovesOtherProfileFiles()
+    {
+        using var rig = new StoreRig();
+        PlantMixed(rig);
+        var before = Snapshot(rig);
+
+        Assert.Equal(4, WorkStore.ArchiveOtherProfiles(new StoreFolder(rig.Folder), rig.Protector, Synthetic.ProfileId, ArchivedAt));
+
+        var archive = Path.Combine(rig.Folder, "old-20261128-143005");
+        Assert.Equal(new[] { archive }, Directory.GetDirectories(rig.Folder));
+        Assert.Equal(OtherProfileNames, Directory.GetFiles(archive).Select(file => Path.GetFileName(file)!).OrderBy(name => name, StringComparer.Ordinal));
+        foreach (var name in OtherProfileNames) Assert.Equal(before[name], File.ReadAllBytes(Path.Combine(archive, name))); // 내용 그대로
+
+        var kept = before.Keys.Except(OtherProfileNames).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        Assert.Equal(kept, rig.Names());
+        foreach (var name in kept) Assert.Equal(before[name], rig.Bytes(name));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 보관 폴더 이름이 겹치면 -2, -3…을 붙이고, 옮길 파일이 없으면 폴더를 만들지 않는다")]
+    public void AC9317_3_ArchiveNameDoesNotCollide()
+    {
+        using var rig = new StoreRig();
+        PlantMixed(rig);
+        Directory.CreateDirectory(Path.Combine(rig.Folder, "old-20261128-143005"));
+        rig.Plant("old-20261128-143005-2", Encoding.ASCII.GetBytes("x"));
+        var folder = new StoreFolder(rig.Folder);
+
+        Assert.Equal(4, WorkStore.ArchiveOtherProfiles(folder, rig.Protector, Synthetic.ProfileId, ArchivedAt));
+        Assert.Equal(OtherProfileNames, Directory.GetFiles(Path.Combine(rig.Folder, "old-20261128-143005-3")).Select(file => Path.GetFileName(file)!).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Empty(Directory.GetFiles(Path.Combine(rig.Folder, "old-20261128-143005")));
+
+        Assert.Equal(0, WorkStore.ArchiveOtherProfiles(folder, rig.Protector, Synthetic.ProfileId, ArchivedAt));
+        Assert.Equal(2, Directory.GetDirectories(rig.Folder).Length);
+
+        using var empty = new StoreRig();
+        Assert.Equal(0, WorkStore.ArchiveOtherProfiles(new StoreFolder(empty.Folder), empty.Protector, Synthetic.ProfileId));
+        Assert.False(Directory.Exists(empty.Folder));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 시각을 주지 않으면 지금 시각으로 old-yyyyMMdd-HHmmss 폴더를 만든다")]
+    public void AC9317_3_ArchiveUsesNow()
+    {
+        using var rig = new StoreRig();
+        PlantMixed(rig);
+        Assert.Equal(4, WorkStore.ArchiveOtherProfiles(new StoreFolder(rig.Folder), rig.Protector, Synthetic.ProfileId));
+        var archive = Assert.Single(Directory.GetDirectories(rig.Folder));
+        Assert.Matches(@"^old-[0-9]{8}-[0-9]{6}$", Path.GetFileName(archive));
+        Assert.Equal(4, Directory.GetFiles(archive).Length);
+    }
+
+    [Fact(DisplayName = "AC-9317.4 옮긴 뒤에는 저장 파일이 막히지 않는다: 전 병원 달·연락은 빈 채로, 이 병원 파일은 그대로 읽고 쓴다")]
+    public void AC9317_4_LoadIsNotBlockedAfterArchive()
+    {
+        using var rig = new StoreRig();
+        PlantMixed(rig);
+        var store = rig.Open();
+        var months = new[] { "2026-09", StoreRig.Month };
+        Assert.Equal(BitErrors.HospitalMismatch, StoreJson.Code(() => store.Load(months, true, true)));
+
+        WorkStore.ArchiveOtherProfiles(new StoreFolder(rig.Folder), rig.Protector, Synthetic.ProfileId, ArchivedAt);
+
+        var loaded = store.Load(months, true, true);
+        StoreJson.Same("{\"drafts\":{},\"done\":{},\"journal\":{},\"sunap\":{}}", StoreJson.Month(loaded, "2026-09"));
+        StoreJson.Same(StoreRig.Drafts, StoreJson.Month(loaded, StoreRig.Month).GetProperty("drafts"));
+        StoreJson.Same("{}", Json.Parse(loaded).GetProperty("contact"));
+        StoreJson.Same("{\"s\":1}", Json.Parse(loaded).GetProperty("settings"));
+
+        store.SaveMonth("2026-09", StoreJson.El("{\"a\":1}"), null, null);
+        store.SaveContact(StoreJson.El("{\"c\":1}"));
+        store.SaveSettings(StoreJson.El("{\"s\":2}"));
+        StoreJson.Same("{\"a\":1}", StoreJson.Month(store.Load(new[] { "2026-09" }, false, false), "2026-09").GetProperty("drafts"));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 옮기다 실패하면(파일이 잠김) E-STORE-FAILED, 어떤 파일도 지우지 않는다(윈도우)")]
+    public void AC9317_3_MoveFailureIsStoreFailed()
+    {
+        if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)) return; // 잠긴 파일 옮기기는 윈도우에서만 막힌다
+        using var rig = new StoreRig();
+        PlantMixed(rig);
+        var before = Snapshot(rig);
+        using (new FileStream(rig.PathOf("work-2026-09.dat.bak"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.Equal(BitErrors.StoreFailed, StoreJson.Code(() => WorkStore.ArchiveOtherProfiles(new StoreFolder(rig.Folder), rig.Protector, Synthetic.ProfileId, ArchivedAt)));
+        }
+        var archive = Path.Combine(rig.Folder, "old-20261128-143005");
+        var moved = Directory.Exists(archive) ? Directory.GetFiles(archive).Select(file => Path.GetFileName(file)!).ToArray() : new string[0];
+        Assert.Equal(before.Keys.OrderBy(name => name, StringComparer.Ordinal), rig.Names().Concat(moved).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Contains("work-2026-09.dat.bak", rig.Names());
+    }
 }

@@ -100,6 +100,10 @@ public sealed class HospitalPickForm : Form
         warning.BackColor = NoticeBack;
         layout.Controls.Add(warning);
 
+        // 고른 줄로 등록하면 옮길 전 병원 저장 파일이 있을 때만 PC 확인 창과 같은 '전 병원 파일 보관' 한 줄(claim-learn AC-9317.3)
+        ArchiveNote = Line("", new Padding(0, 0, 0, 12));
+        layout.Controls.Add(ArchiveNote);
+
         var install = Line(view.InstallLine, new Padding(0));
         install.ForeColor = Muted;
         layout.Controls.Add(install);
@@ -123,6 +127,7 @@ public sealed class HospitalPickForm : Form
 
         if (view.Preselected is int preselected) choices[preselected].Checked = true;
         Ok.Enabled = Selected != null;
+        ShowArchive(view);
         // 줄마다 다른 칸 안에 있어 윈도우가 라디오를 한 묶음으로 보지 않는다: 하나가 켜지면 나머지를 직접 끈다(TabStop은 그대로 둔다)
         foreach (var radio in choices)
         {
@@ -133,6 +138,7 @@ public sealed class HospitalPickForm : Form
                     foreach (var other in choices.Where(other => !ReferenceEquals(other, radio))) other.Checked = false;
                 }
                 Ok.Enabled = Selected != null;
+                ShowArchive(view);
             };
         }
 
@@ -145,6 +151,9 @@ public sealed class HospitalPickForm : Form
 
     public Button Ok { get; }
 
+    /// <summary>'전 병원 파일 보관' 한 줄. 고른 줄로 옮길 파일이 없거나 고른 줄이 없으면 빈 글자이고 보이지 않는다.</summary>
+    public Label ArchiveNote { get; }
+
     public Button Cancel { get; }
 
     /// <summary>켜진 줄 번호. 없으면 null.</summary>
@@ -155,6 +164,13 @@ public sealed class HospitalPickForm : Form
             var index = choices.FindIndex(radio => radio.Checked);
             return index < 0 ? null : index;
         }
+    }
+
+    private void ShowArchive(HospitalPickView view)
+    {
+        var line = view.ArchiveLine(Selected);
+        ArchiveNote.Text = line ?? "";
+        ArchiveNote.Visible = line != null;
     }
 
     private Control Row(HospitalPickView view, int index)

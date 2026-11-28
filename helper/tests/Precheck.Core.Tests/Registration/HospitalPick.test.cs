@@ -124,4 +124,40 @@ public class HospitalPickTests
             HospitalPick.Read(failing, new[] { Synthetic.Scope, Other }, new VendorUser("SYNUSER", "20261030"), Synthetic.Today, Synthetic.Target(), null));
         Assert.Equal(BitErrors.ReadFailed, e.Code);
     }
+
+    // ---- claim-learn AC-9317.3 고르기 창도 같은 '전 병원 파일 보관' 한 줄 ----------------------------------
+
+    [Fact(DisplayName = "AC-9317.3 지금 등록과 범위·기관기호가 같은 줄만 프로필 ID를 그대로 둔다(RegisterFlow와 같은 규칙)")]
+    public void AC9317_3_KeepsProfile()
+    {
+        var previous = Synthetic.Registration();
+        Assert.True(HospitalPick.KeepsProfile(previous, Synthetic.Scope, Synthetic.Institution));
+        Assert.False(HospitalPick.KeepsProfile(previous, Other, Synthetic.Institution));
+        Assert.False(HospitalPick.KeepsProfile(previous, Synthetic.Scope, Synthetic.OtherInstitution));
+        Assert.False(HospitalPick.KeepsProfile(null, Synthetic.Scope, Synthetic.Institution));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 고른 줄로 등록하면 옮길 파일 수: 프로필을 그대로 두는 줄은 ifKept, 나머지는 ifNew. 0이거나 고른 줄이 없으면 보관 줄 없음")]
+    public void AC9317_3_ArchiveLineByChoice()
+    {
+        var choices = new[] { Choice(Synthetic.Scope, Synthetic.Institution, 3), Choice(Other, Synthetic.OtherInstitution, 0) };
+        var plain = View(choices, Synthetic.Registration());
+        Assert.Equal(0, plain.ArchiveCount(0));
+        Assert.Null(plain.ArchiveLine(1));
+
+        var view = plain.WithArchive(ifKept: 1, ifNew: 6);
+        Assert.Same(plain.Choices[1], view.Choices[1]);
+        Assert.Equal(plain.Preselected, view.Preselected);
+        Assert.Equal(plain.PreviousLine, view.PreviousLine);
+        Assert.Equal(1, view.ArchiveCount(0));
+        Assert.Equal(6, view.ArchiveCount(1));
+        Assert.Equal("전에 쓰던 병원의 저장 파일 1개는 지우지 않고 따로 보관해요.", view.ArchiveLine(0));
+        Assert.Equal("전에 쓰던 병원의 저장 파일 6개는 지우지 않고 따로 보관해요.", view.ArchiveLine(1));
+        Assert.Null(view.ArchiveLine(null));
+        Assert.Null(plain.WithArchive(ifKept: 0, ifNew: 6).ArchiveLine(0));
+
+        // 처음 등록(전 등록 없음)이면 어느 줄이든 새 프로필
+        var first = View(choices).WithArchive(ifKept: 0, ifNew: 2);
+        Assert.Equal(new[] { 2, 2 }, new[] { first.ArchiveCount(0), first.ArchiveCount(1) });
+    }
 }

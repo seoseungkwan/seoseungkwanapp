@@ -555,4 +555,177 @@ public class RegisterFlowTests
             Assert.Empty(rig.Pick.Shown); // 고르기 창 없이 번호만(AC-005.13)
         }
     }
+
+    // ── claim-learn AC-9317.3·AC-9317.4 다시 등록 때 전 병원 저장 파일 보관(도우미 0.15.0) ──
+
+    private const string OldProfile = "fedcba9876543210fedcba9876543210";
+
+    /// <summary>저장 폴더(등록 파일과 같은 곳)에 그 프로필의 작업 파일 하나를 심는다(가짜 암호화, 지어낸 내용).</summary>
+    private static void PlantWork(Rig rig, string name, string profileId)
+    {
+        System.IO.Directory.CreateDirectory(rig.Folder);
+        var json = "{\"profileId\":\"" + profileId + "\",\"drafts\":{\"900001|2026-10-27\":{\"memo\":\"가상환자01 메모\"}},\"done\":{},\"journal\":{}}";
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(rig.Folder, name),
+            Encoding.ASCII.GetBytes("PRECHECK-STORE-1\n").Concat(rig.Protector.Protect(Encoding.UTF8.GetBytes(json))).ToArray());
+    }
+
+    private static string[] Files(Rig rig) =>
+        System.IO.Directory.GetFiles(rig.Folder).Select(file => System.IO.Path.GetFileName(file)!).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+
+    /// <summary>저장 폴더 안 보관 폴더(old-…)마다 파일 이름들.</summary>
+    private static string[][] Archived(Rig rig) =>
+        System.IO.Directory.GetDirectories(rig.Folder)
+            .Select(dir =>
+            {
+                Assert.Matches(@"^old-[0-9]{8}-[0-9]{6}(-[0-9]+)?$", System.IO.Path.GetFileName(dir));
+                return System.IO.Directory.GetFiles(dir).Select(file => System.IO.Path.GetFileName(file)!).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+            })
+            .ToArray();
+
+    [Fact(DisplayName = "AC-9317.3 AC-9317.4 다시 등록(기관기호 다름): 확인 창에 보관 한 줄, [확인]으로 저장한 뒤 전 병원 작업 파일을 old-…로 옮기고 불러오기가 막히지 않는다")]
+    public void AC9317_3_ReRegisterArchivesFormerHospital()
+    {
+        using var rig = new Rig().Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
+        var previous = rig.Store.Load()!;
+        PlantWork(rig, "work-2026-10.dat", previous.ProfileId);
+        PlantWork(rig, "work-2026-10.dat.bak", previous.ProfileId);
+        PlantWork(rig, "contact.dat", previous.ProfileId);
+
+        // 옮기기 전에는 새 등록으로 읽으면 다른 병원 파일이라 막힌다(StoreBlockedCard)
+        var foreign = new Precheck.Core.Store.WorkStore(new Precheck.Core.Store.StoreFolder(rig.Folder), rig.Protector, Synthetic.Registration(profileId: OldProfile), () => rig.Today);
+        Assert.Equal(BitErrors.HospitalMismatch, Assert.ThrowsAny<HelperException>(() => foreign.Load(new[] { "2026-10" }, false, true)).Code);
+
+        Assert.True(Registered(Handle(rig)));
+
+        var saved = rig.Store.Load()!;
+        Assert.Equal(Synthetic.Institution, saved.InstitutionCode);
+        Assert.NotEqual(previous.ProfileId, saved.ProfileId);
+        var text = Assert.Single(rig.Confirm.Shown).Text;
+        Assert.Equal(RegisterPrompt.Build(saved, previous, 3), text);
+        Assert.Contains("기관기호가 달라 전 병원의 작업은 읽지 않습니다.\r\n전에 쓰던 병원의 저장 파일 3개는 지우지 않고 따로 보관해요.\r\n", text);
+
+        Assert.Equal(new[] { new[] { "contact.dat", "work-2026-10.dat", "work-2026-10.dat.bak" } }, Archived(rig));
+        Assert.Equal(new[] { "registration.dat", "registration.dat.bak" }, Files(rig));
+
+        // AC-9317.4: 새 등록으로 열면 막히지 않고 빈 채로 시작한다
+        var store = Precheck.Core.Store.WorkStore.ForRegistered(new Precheck.Core.Store.StoreFolder(rig.Folder), rig.Protector, rig.Store, () => rig.Today);
+        var loaded = Json.Parse(store.Load(new[] { "2026-10" }, true, true));
+        Assert.Equal("{}", loaded.GetProperty("months").GetProperty("2026-10").GetProperty("drafts").GetRawText());
+        Assert.Equal("{}", loaded.GetProperty("contact").GetRawText());
+    }
+
+    [Fact(DisplayName = "AC-9317.3 [취소]면 아무것도 옮기지 않고 확인 창 글에는 보관 한 줄이 있다")]
+    public void AC9317_3_CancelMovesNothing()
+    {
+        using var rig = new Rig().Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
+        PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+        var before = Files(rig).ToDictionary(name => name, name => System.IO.File.ReadAllBytes(System.IO.Path.Combine(rig.Folder, name)));
+        rig.Confirm.Answer = false;
+
+        Assert.False(Registered(Handle(rig)));
+        Assert.Contains("전에 쓰던 병원의 저장 파일 1개는 지우지 않고 따로 보관해요.", Assert.Single(rig.Confirm.Shown).Text);
+        Assert.Empty(System.IO.Directory.GetDirectories(rig.Folder));
+        Assert.Equal(before.Keys.OrderBy(name => name, StringComparer.Ordinal), Files(rig));
+        foreach (var pair in before) Assert.Equal(pair.Value, System.IO.File.ReadAllBytes(System.IO.Path.Combine(rig.Folder, pair.Key)));
+        Assert.Equal(Synthetic.OtherInstitution, rig.Store.Load()!.InstitutionCode);
+    }
+
+    [Fact(DisplayName = "AC-9317.3 같은 병원으로 다시 등록(프로필 그대로)이면 이 병원 파일은 건드리지 않고, 다른 프로필 파일만 옮긴다(없으면 글 그대로)")]
+    public void AC9317_3_SameHospitalKeepsOwnFiles()
+    {
+        using (var rig = new Rig().Registered(Synthetic.Registration(server: "192.168.0.10")))
+        {
+            var previous = rig.Store.Load()!;
+            PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+            Assert.True(Registered(Handle(rig)));
+            Assert.Equal(RegisterPrompt.Build(rig.Store.Load()!, previous), Assert.Single(rig.Confirm.Shown).Text);
+            Assert.Empty(System.IO.Directory.GetDirectories(rig.Folder));
+            Assert.Contains("work-2026-10.dat", Files(rig));
+        }
+        using (var rig = new Rig().Registered(Synthetic.Registration(server: "192.168.0.10")))
+        {
+            PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+            PlantWork(rig, "work-2026-09.dat", OldProfile);
+            Assert.True(Registered(Handle(rig)));
+            Assert.Contains("전에 쓰던 병원의 저장 파일 1개는 지우지 않고 따로 보관해요.", Assert.Single(rig.Confirm.Shown).Text);
+            Assert.Equal(new[] { new[] { "work-2026-09.dat" } }, Archived(rig));
+            Assert.Contains("work-2026-10.dat", Files(rig));
+        }
+    }
+
+    [Fact(DisplayName = "AC-9317.3 처음 등록(등록 파일 없음)이어도 저장 폴더의 작업 파일은 새 프로필과 다르므로 보관 한 줄을 보이고 옮긴다")]
+    public void AC9317_3_FirstRegistrationArchivesLeftovers()
+    {
+        using var rig = new Rig();
+        PlantWork(rig, "work-2026-10.dat", OldProfile);
+        Assert.True(Registered(Handle(rig)));
+        var text = Assert.Single(rig.Confirm.Shown).Text;
+        Assert.StartsWith("이 병원으로 등록할까요?", text);
+        Assert.Equal(RegisterPrompt.Build(rig.Store.Load()!, null, 1), text);
+        Assert.Equal(new[] { new[] { "work-2026-10.dat" } }, Archived(rig));
+    }
+
+    [Fact(DisplayName = "AC-9317.3 옮기다 실패하면 등록은 그대로 두고 E-STORE-FAILED로 알린다(윈도우: 잠긴 파일)")]
+    public void AC9317_3_MoveFailureKeepsRegistration()
+    {
+        if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)) return; // 잠긴 파일 옮기기는 윈도우에서만 막힌다
+        using var rig = new Rig().Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
+        PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+        JsonElement reply;
+        using (new System.IO.FileStream(System.IO.Path.Combine(rig.Folder, "work-2026-10.dat"), System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read))
+        {
+            reply = Handle(rig);
+        }
+        Assert.Equal("E-STORE-FAILED", ErrorCode(reply));
+        var saved = rig.Store.Load()!;
+        Assert.Equal(Synthetic.Institution, saved.InstitutionCode); // 등록은 저장됐다
+        Assert.Equal(rig.IssuedIds.Single(), saved.ProfileId);
+        Assert.Contains("work-2026-10.dat", Files(rig));             // 지우지 않았다
+    }
+
+    [Fact(DisplayName = "AC-9317.3 고르기 창도 같은 글: 줄마다 옮길 파일 수(프로필을 그대로 두는 줄은 다른 프로필만), [확인]으로 저장한 뒤 고른 줄 기준으로 옮긴다")]
+    public void AC9317_3_PickArchives()
+    {
+        using (var rig = TwoHospitals())
+        {
+            rig.Registered();
+            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope);
+            Active(rig, (Synthetic.Scope, 3));
+            PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+            PlantWork(rig, "work-2026-09.dat", OldProfile);
+            rig.Pick.Answer = _ => 1; // 다른 병원(FOREIGN)을 고름 → 새 프로필
+
+            Assert.True(Registered(Handle(rig)));
+            var view = rig.Pick.Shown.Single().View;
+            Assert.Equal(1, view.ArchiveCount(0));
+            Assert.Equal(2, view.ArchiveCount(1));
+            Assert.Equal("전에 쓰던 병원의 저장 파일 2개는 지우지 않고 따로 보관해요.", view.ArchiveLine(1));
+            Assert.Equal("FOREIGN", rig.Store.Load()!.Scope);
+            Assert.Equal(new[] { new[] { "work-2026-09.dat", "work-2026-10.dat" } }, Archived(rig));
+        }
+        using (var rig = TwoHospitals())
+        {
+            rig.Registered();
+            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope);
+            Active(rig, (Synthetic.Scope, 3));
+            PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+            PlantWork(rig, "work-2026-09.dat", OldProfile);
+
+            Assert.True(Registered(Handle(rig))); // 미리 골라 둔 지금 병원 그대로
+            Assert.Equal(Synthetic.ProfileId, rig.Store.Load()!.ProfileId);
+            Assert.Equal(new[] { new[] { "work-2026-09.dat" } }, Archived(rig));
+            Assert.Contains("work-2026-10.dat", Files(rig));
+        }
+        using (var rig = TwoHospitals())
+        {
+            rig.Registered();
+            rig.Session.Answer(Sql.UserScopeSql, Synthetic.Scope);
+            Active(rig, (Synthetic.Scope, 3));
+            PlantWork(rig, "work-2026-10.dat", Synthetic.ProfileId);
+            rig.Pick.Answer = _ => null; // [취소]
+            Assert.False(Registered(Handle(rig)));
+            Assert.Empty(System.IO.Directory.GetDirectories(rig.Folder));
+            Assert.Contains("work-2026-10.dat", Files(rig));
+        }
+    }
 }

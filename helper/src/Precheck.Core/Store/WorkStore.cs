@@ -24,12 +24,16 @@ namespace Precheck.Core.Store;
 /// 깨짐(AC-015.3): 맞는 .bak이 있으면 그것으로 되살리고, 없으면 E-STORE-BROKEN. 깨진 파일은 지우지 않고 *.broken-시각으로 이름을 바꾼다.
 /// 본 파일 없이 .bak만 있어도(바꿔치기 중 멈춤) 같은 규칙이다. 둘 다 없을 때만 빈 내용이다(AC-015.2).
 /// 다른 병원(AC-015.4): 프로필 ID가 등록과 다르면 E-BIT-HOSPITAL-MISMATCH이고 어떤 파일도 건드리지 않는다.
+/// 다시 등록(claim-learn AC-9317.3): 등록을 저장한 뒤 ArchiveOtherProfiles가 프로필이 다른 작업 파일을 저장 폴더 안 old-{yyyyMMdd-HHmmss}로 옮긴다(지우지 않음).
 /// 오류는 번호만 싣는다(AC-001.6). 여러 프로세스 사이의 순서는 부르는 쪽이 맞춘다(TASK-17 WorkLock, AC-017.10).
 /// </summary>
 public sealed partial class WorkStore
 {
     public const string ContactFile = "contact.dat";
     public const string SettingsFile = "settings.dat";
+
+    /// <summary>다시 등록 때 전 병원 작업 파일을 옮겨 두는 폴더 이름 머리: old-{yyyyMMdd-HHmmss}(claim-learn AC-9317.3).</summary>
+    public const string ArchivePrefix = "old-";
 
     /// <summary>이 달 수까지는 남긴다. 오늘이 속한 달과의 차이가 이보다 크면 지운다(AC-015.5).</summary>
     public const int KeepMonths = 13;
@@ -225,6 +229,37 @@ public sealed partial class WorkStore
     }
 
     /// <summary>
+    /// 저장 폴더의 작업 파일(work-YYYY-MM.dat·contact.dat·settings.dat와 그 .bak) 가운데 프로필이 profileId와 다른 것의 수(claim-learn AC-9317.3).
+    /// 판단은 읽을 때의 다른 병원 규칙(FileState.OtherHospital)과 같다: 머리·암호·JSON이 맞고 profileId 글자가 다를 때만. 깨진 파일·다른 파일은 세지 않는다.
+    /// profileId가 null이면 아직 만들지 않은 새 프로필이다: 프로필이 적힌 작업 파일은 모두 다르다. 파일은 읽기만 한다. 폴더가 없으면 0, 읽지 못하면 E-STORE-FAILED.
+    /// </summary>
+    public static int CountOtherProfiles(IStoreFolder folder, IProtector protector, string? profileId) =>
+        Guarded(() => OtherProfileFiles(folder, protector, profileId).Count);
+
+    /// <summary>ArchiveOtherProfiles(folder, protector, profileId, 지금 시각).</summary>
+    public static int ArchiveOtherProfiles(IStoreFolder folder, IProtector protector, string profileId) =>
+        ArchiveOtherProfiles(folder, protector, profileId, DateTime.Now);
+
+    /// <summary>
+    /// 다시 등록을 저장한 뒤(claim-learn AC-9317.3): CountOtherProfiles가 세는 파일을 저장 폴더 안 old-{at:yyyyMMdd-HHmmss} 폴더로 이름 그대로 옮긴다.
+    /// 폴더 이름이 이미 있으면 -2, -3…을 붙인다. 지우지 않고, 같은 프로필 파일은 건드리지 않는다. 옮길 파일이 없으면 폴더를 만들지 않는다.
+    /// 옮긴 파일 수를 돌려준다. 옮기다 막히면(잠긴 파일 등) E-STORE-FAILED이고, 그 전에 옮긴 파일은 보관 폴더에 남는다.
+    /// </summary>
+    public static int ArchiveOtherProfiles(IStoreFolder folder, IProtector protector, string profileId, DateTime at)
+    {
+        if (profileId == null) throw new ArgumentNullException(nameof(profileId));
+        return Guarded(() =>
+        {
+            var files = OtherProfileFiles(folder, protector, profileId);
+            if (files.Count == 0) return 0;
+            var target = ArchivePath(folder.Path, at);
+            Directory.CreateDirectory(target);
+            foreach (var file in files) File.Move(file, Path.Combine(target, Path.GetFileName(file)));
+            return files.Count;
+        });
+    }
+
+    /// <summary>
     /// 오늘이 속한 달에서 13개월보다 오래된 work-YYYY-MM.dat와 그 .bak을 이름만 보고 지운다(AC-015.5). 내용을 읽지 않으므로
     /// 다른 병원 파일도 지워진다. 깨진 파일(*.broken-*)과 다른 파일은 두고, 지우지 못한 파일은 다음 저장 때 다시 해 본다.
     /// </summary>
@@ -280,6 +315,36 @@ public sealed partial class WorkStore
     }
 
     private string FilePath(string name) => Path.Combine(folder.Path, name);
+
+    /// <summary>작업 파일 이름인가: work-YYYY-MM.dat·contact.dat·settings.dat와 그 .bak(등록·확인 해시·깨진 파일은 아니다).</summary>
+    private static bool IsWorkFile(string name) =>
+        MonthFileShape.IsMatch(name)
+        || string.Equals(name, ContactFile, StringComparison.Ordinal) || string.Equals(name, ContactFile + BackupSuffix, StringComparison.Ordinal)
+        || string.Equals(name, SettingsFile, StringComparison.Ordinal) || string.Equals(name, SettingsFile + BackupSuffix, StringComparison.Ordinal);
+
+    /// <summary>프로필이 다른 작업 파일 경로(이름 차례).</summary>
+    private static List<string> OtherProfileFiles(IStoreFolder folder, IProtector protector, string? profileId)
+    {
+        if (folder == null) throw new ArgumentNullException(nameof(folder));
+        if (protector == null) throw new ArgumentNullException(nameof(protector));
+        var found = new List<string>();
+        if (!Directory.Exists(folder.Path)) return found;
+        foreach (var file in Directory.GetFiles(folder.Path).OrderBy(file => file, StringComparer.Ordinal))
+        {
+            if (!IsWorkFile(Path.GetFileName(file))) continue;
+            if (Inspect(protector, profileId, file, out _) == FileState.OtherHospital) found.Add(file);
+        }
+        return found;
+    }
+
+    /// <summary>보관 폴더 경로: old-yyyyMMdd-HHmmss, 같은 이름(폴더·파일)이 있으면 -2, -3….</summary>
+    private static string ArchivePath(string root, DateTime at)
+    {
+        var stem = Path.Combine(root, ArchivePrefix + at.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+        var path = stem;
+        for (var n = 2; Directory.Exists(path) || File.Exists(path); n++) path = stem + "-" + n.ToString(CultureInfo.InvariantCulture);
+        return path;
+    }
 
     private string MonthPath(string month)
     {
@@ -361,7 +426,10 @@ public sealed partial class WorkStore
     }
 
     /// <summary>파일 하나의 머리·암호·JSON·병원을 본다. 병원이 다르면 칸은 들여다보지 않는다.</summary>
-    private FileState Inspect(string path, out JsonElement root)
+    private FileState Inspect(string path, out JsonElement root) => Inspect(protector, current.ProfileId, path, out root);
+
+    /// <summary>Inspect와 같은 규칙으로 profileId(null이면 아직 없는 새 프로필)와 견준다(claim-learn AC-9317.3 보관도 이 규칙을 쓴다).</summary>
+    private static FileState Inspect(IProtector protector, string? profileId, string path, out JsonElement root)
     {
         root = default;
         var data = File.ReadAllBytes(path);
@@ -389,7 +457,7 @@ public sealed partial class WorkStore
             {
                 return FileState.Broken;
             }
-            if (!string.Equals(profile.GetString(), current.ProfileId, StringComparison.Ordinal)) return FileState.OtherHospital;
+            if (!string.Equals(profile.GetString(), profileId, StringComparison.Ordinal)) return FileState.OtherHospital;
             foreach (var name in ObjectFields)
             {
                 if (parsed.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Object) return FileState.Broken;

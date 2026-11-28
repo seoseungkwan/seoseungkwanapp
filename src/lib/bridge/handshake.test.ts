@@ -88,9 +88,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.13.1 = 0.13.0 + 다른 의원 비트에서도 처음 등록·요양기관번호 없어도 청구(precheck TASK-43). 새 명령·새 칸 없음, 다른 최소 판은 그대로
   // 도우미 0.14.0 = 0.13.2 + 수납 구글 시트 명령 여덟(sheet.*)·지난 도착 calday 400일(google-link TASK-10). MIN·MIN_EXTENSION·다른 최소 판은 그대로
   // 도우미 0.14.1 = 0.14.0 + precheck TASK-46·47(병원 범위 여럿 처음 등록·매출 읽기 빠르게) + 병원이 여럿이면 등록 때 고르기 창(precheck TASK-48). 새 명령·새 칸 없음
-  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.14.1, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.15.0 = 0.14.1 + claim.month 진료의 칸(visitDoctors·doctors)·다시 등록 때 전 병원 저장 파일 보관(claim-learn TASK-2). 새 명령 없음, MIN·다른 최소 판은 그대로
+  it('AC-005.16·AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.15.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.14.1')
+    expect(LATEST_HELPER).toBe('0.15.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -99,6 +100,13 @@ describe('AC-004.4 웹 versions.ts 값', () => {
       latestHelper: LATEST_HELPER,
       minExtension: MIN_EXTENSION,
     })
+  })
+
+  it('AC-9317.5 도우미 0.15.0: LATEST_HELPER는 0.15.0이고 helper/Directory.Build.props 판과 같으며 MIN_HELPER는 0.3.0 그대로다', () => {
+    expect(LATEST_HELPER).toBe('0.15.0')
+    expect(MIN_HELPER).toBe('0.3.0')
+    const props = readFileSync(new URL('../../../helper/Directory.Build.props', import.meta.url), 'utf8')
+    expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
   })
 
   // 0.5.0을 내보낼 때는 LATEST = LIST였다. 0.5.1부터는 LIST(0.5.0)가 LATEST 이하인지만 본다(helper-stats-speed design.md)
