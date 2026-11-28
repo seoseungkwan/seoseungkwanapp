@@ -168,6 +168,14 @@ describe('AC-9301.4 학습할 문장', () => {
     expect(screen.queryByText(/글자 그대로 있어요/)).toBeNull()
   })
 
+  it("AC-9301.5: 문장에 전화번호 같은 개인정보 모양이 있으면 '글자 그대로' 바꾸기 권유 대신 E-LEARN-PERSONAL 글이 보인다", () => {
+    render(<Harness start={withSentence('Rt L4,5 knee IA 시행 010-1234-5678')} />)
+    expect(screen.queryByText(/글자 그대로 있어요/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /로 바꾸기$/ })).toBeNull()
+    expect(screen.getByText('학습 문장이나 차트 말에 전화번호·주민번호·메일 같은 글이 있어요')).toBeTruthy()
+    expect(screen.getByText('그 글을 지우고 다시 저장해 주세요.')).toBeTruthy()
+  })
+
   it('AC-9304.2: 줄 뺌 학습은 문장 칸이 없고 이름·조건만 고친다', () => {
     render(<Harness start={{ ...RULE, kind: 'remove', to: '' }} />)
     expect(screen.queryByRole('textbox', { name: '학습할 문장' })).toBeNull()

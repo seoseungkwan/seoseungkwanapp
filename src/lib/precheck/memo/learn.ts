@@ -123,11 +123,12 @@ export function fillTemplate(to: string, slots: Slots): string {
   return to.replace(/\{(좌우|레벨|부위)\}/g, (_all, key: SlotKey) => slots[key] || `[${key} 확인]`)
 }
 
-/** 학습 문장에 {} 없이 남은 좌우·레벨·부위 글자(나온 차례, 같은 글자는 한 번) */
+/** 학습 문장에 {} 없이 남은 좌우·레벨·부위 글자(나온 차례, 같은 글자는 한 번). 레벨은 척추 글자(C·T·L·S)가 붙은 것만 알린다(전화번호·날짜 같은 숫자 묶음 빼기) */
 export function literalSlots(to: string, words: SlotWords): LiteralSlot[] {
   const hits: LiteralSlot[] = []
   for (const found of to.matchAll(scanOf(words))) {
     const hit = { word: found[0], slot: slotOf(found[1], found[2]) }
+    if (hit.slot === '레벨' && !/^[CTLS]/.test(hit.word)) continue
     if (!hits.some((seen) => seen.word === hit.word && seen.slot === hit.slot)) hits.push(hit)
   }
   return hits

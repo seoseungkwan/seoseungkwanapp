@@ -145,6 +145,15 @@ describe("AC-9301.4 학습 문장의 '글자 그대로'(literalSlots·toSlot)", 
     expect(literalSlots('{좌우} {레벨} MBB 시행 (C-arm guide 하에) 1회', W())).toEqual([])
   })
 
+  it('AC-9301.4: 레벨은 척추 글자(C·T·L·S)가 붙은 것만 알린다 — 전화번호·날짜 같은 숫자 묶음은 [{레벨}로 바꾸기] 권유가 없다', () => {
+    const words = W()
+    expect(literalSlots('Rt L4,5 MBB 시행 010-1234-5678', words)).toEqual([
+      { word: 'Rt', slot: '좌우' },
+      { word: 'L4,5', slot: '레벨' },
+    ])
+    expect(literalSlots('MBB 4,5 시행 2026-11-28', words)).toEqual([])
+  })
+
   it('AC-9301.4: [{좌우}로 바꾸기]는 그 글자를 모두 바뀌는 칸으로 바꾸고, 그 뒤에는 그 글자를 알리지 않는다', () => {
     const words = W()
     const to = toSlot('Lt L3,4 MBB, Lt facet', { word: 'Lt', slot: '좌우' }, words)

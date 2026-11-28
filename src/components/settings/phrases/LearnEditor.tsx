@@ -2,7 +2,8 @@
 
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
-import { literalSlots, toSlot, whenCount, type LearnRule, type LearnWhen, type SlotKey, type SlotWords } from '@/lib/precheck/memo'
+import { errorInfo } from '@/lib/errors'
+import { literalSlots, personalHit, toSlot, whenCount, type LearnRule, type LearnWhen, type SlotKey, type SlotWords } from '@/lib/precheck/memo'
 import { regionShort } from './saveDiffRows'
 
 // 학습 칸 고치기(claim-learn AC-9301.3·AC-9301.4·AC-9304.2, design.md 12절, 시안 ?s=learn, notes '학습 창'). 환자 자료 없이 그린다:
@@ -126,7 +127,8 @@ export function LearnConditions({ when, chips, onChange }: { when: LearnWhen; ch
 
 /**
  * 학습할 문장 칸 하나(AC-9301.4): 글 칸 + 바뀌는 칸 단추(커서 자리에 넣음, 고른 글이 있으면 그 자리를 바꿈, 칸을 누른 적 없으면 끝에) + 작은 글
- * + 문장에 {} 없이 남은 좌우·레벨·부위 글자마다 '글자 그대로' 노란 안내와 [{…}로 바꾸기]. 안내가 있어도 저장은 막지 않는다
+ * + 문장에 {} 없이 남은 좌우·레벨·부위 글자마다 '글자 그대로' 노란 안내와 [{…}로 바꾸기]. 안내가 있어도 저장은 막지 않는다.
+ * 문장에 전화·주민번호·메일 모양이 있으면(AC-9301.5) 바꾸기 권유 대신 E-LEARN-PERSONAL 글이다 — 그 문장은 저장되지 않는다(저장 쪽이 막는다)
  */
 export function LearnSentence({ value, words, label = '학습할 문장', caption, onChange }: { value: string; words: SlotWords; label?: string; caption?: ReactNode; onChange(value: string): void }) {
   const field = useRef<HTMLInputElement>(null)
@@ -134,7 +136,9 @@ export function LearnSentence({ value, words, label = '학습할 문장', captio
   const placed = useRef(false)
   /** 넣은 뒤 글쓰기 표시를 둘 자리(다음 그리기 뒤) */
   const caretAfter = useRef<number | null>(null)
-  const hits = literalSlots(value, words)
+  const personal = personalHit(value, [])
+  const hits = personal ? [] : literalSlots(value, words)
+  const personalInfo = errorInfo('E-LEARN-PERSONAL')
 
   useLayoutEffect(() => {
     const at = caretAfter.current
@@ -169,6 +173,12 @@ export function LearnSentence({ value, words, label = '학습할 문장', captio
         ))}
         <span className={ds.help}>환자마다 다른 칸은 단추로 바꿔 두세요. 다음 진료의 값이 들어가요.</span>
       </div>
+      {personal && (
+        <div className="flex flex-col gap-0.5 rounded-control bg-warning-soft px-3 py-1.5 text-small text-warning">
+          <span>{personalInfo.what}</span>
+          <span>{personalInfo.fix}</span>
+        </div>
+      )}
       {hits.map((hit) => (
         <div key={`${hit.slot}:${hit.word}`} className="flex flex-wrap items-center gap-2 rounded-control bg-warning-soft px-3 py-1.5 text-small text-warning">
           <span>{`‘${hit.word}’가 글자 그대로 있어요. 다른 환자에게도 ‘${hit.word}’로 나와요.`}</span>
